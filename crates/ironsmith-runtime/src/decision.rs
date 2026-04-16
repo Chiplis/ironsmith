@@ -308,6 +308,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_blocks_force_of_will_alternative_cost() {
         let mut game = setup_game();
@@ -344,6 +345,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn trinisphere_requires_three_mana_for_force_of_will_alternative_cost() {
         let mut game = setup_game();
@@ -562,6 +564,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn simple_battlefield_mana_ability_output_recognizes_basic_land_tap() {
         let mut game = setup_game();
@@ -588,6 +593,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn simple_battlefield_mana_ability_output_ignores_non_mana_activated_abilities() {
         let mut game = setup_game();
@@ -638,6 +644,7 @@ mod tests {
     /// Scenario: Alice controls a Grizzly Bears that has been on the battlefield
     /// since the beginning of her turn (no summoning sickness). When computing
     /// legal attackers, it should be available to attack Bob (player 1).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_attackers() {
         use crate::cards::definitions::grizzly_bears;
@@ -671,6 +678,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_attackers_respects_cant_attack_restriction_tracker() {
         use crate::cards::definitions::grizzly_bears;
@@ -693,6 +701,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_attackers_respects_cant_attack_alone_with_single_attacker() {
         use crate::cards::definitions::grizzly_bears;
@@ -808,6 +817,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_blockers_respects_cant_block_alone_with_single_blocker() {
         use crate::cards::definitions::grizzly_bears;
@@ -842,6 +852,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_legal_blockers_excludes_tapped_creatures() {
         use crate::cards::definitions::grizzly_bears;
@@ -2341,6 +2352,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_compute_legal_actions_includes_kentaro_mana_value_cast_for_samurai() {
         let mut game = setup_game();
@@ -2423,6 +2437,9 @@ mod tests {
             "Kentaro should surface a hand cast action that uses the mana-value alternative cost"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_compute_legal_actions_includes_rooftop_storm_free_cast_only_for_zombies() {
@@ -2526,6 +2543,9 @@ mod tests {
             "Rooftop Storm should not grant a free cast to non-Zombie creature spells"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_can_cast_spell_with_non_targeted_prevent_all_damage_without_creatures() {
@@ -2817,6 +2837,7 @@ mod tests {
     /// Scenario: Alice controls an untapped Llanowar Elves (which has "{T}: Add {G}").
     /// When untapped, she should be able to activate the mana ability. After tapping it,
     /// she should no longer be able to activate the ability.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_activated_ability_tap_cost_validation() {
         use crate::cards::definitions::llanowar_elves;
@@ -2937,6 +2958,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_wall_of_roots_activation_uses_mana_sequence_solver() {
         use crate::ability::AbilityKind;
@@ -2985,6 +3007,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_wall_of_roots_activation_blocked_when_wall_already_used() {
         use crate::ability::AbilityKind;
@@ -3234,6 +3257,7 @@ mod tests {
     /// Scenario: Alice casts Llanowar Elves. On the same turn, the creature has
     /// summoning sickness, so she should not be able to activate its "{T}: Add {G}"
     /// mana ability.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_activated_ability_summoning_sickness_blocks_tap() {
         use crate::cards::definitions::llanowar_elves;
@@ -3266,6 +3290,7 @@ mod tests {
     /// Scenario: Alice has given her Llanowar Elves haste (e.g., via an effect like
     /// Swiftfoot Boots). Even though the creature just entered the battlefield and
     /// has summoning sickness, haste allows it to activate its "{T}: Add {G}" mana ability.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_activated_ability_haste_bypasses_summoning_sickness() {
         use crate::ability::Ability;
@@ -3511,6 +3536,9 @@ mod tests {
             "hand-zone activated ability should be discoverable as a legal action"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_compute_legal_actions_excludes_hand_only_ability_from_battlefield() {
@@ -3824,6 +3852,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_suspend_only_card_does_not_offer_normal_cast_from_hand() {
         let mut game = setup_game();
@@ -4089,6 +4120,7 @@ mod tests {
     ///
     /// Scenario: Player has empty mana pool but 4 untapped Mountains on battlefield.
     /// compute_potential_mana should return a pool with 4 red mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_compute_potential_mana_with_untapped_lands() {
         use crate::cards::definitions::basic_mountain;
@@ -4126,6 +4158,7 @@ mod tests {
     ///
     /// Scenario: Player has empty mana pool but 4 untapped Mountains.
     /// For a Fireball ({X}{R}), max X should be 3 (4 total mana - 1 for {R} = 3 for X).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_max_x_with_potential_mana() {
         use crate::cards::definitions::basic_mountain;
@@ -4175,6 +4208,7 @@ mod tests {
     ///
     /// Scenario: Player has 1 Mountain and 1 Llanowar Elves (untapped, no summoning sickness).
     /// For Fireball ({X}{R}), max X should be 1 (2 total mana - 1 for {R} = 1 for X).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_max_x_with_mana_dork() {
         use crate::cards::definitions::{basic_mountain, llanowar_elves};
@@ -4209,6 +4243,7 @@ mod tests {
         assert_eq!(max_x, 1, "max_x should be 1 (2 total - 1 for R = 1 for X)");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_graveyard_play_from_actions_include_variable_mana_sources() {
         use crate::cards::definitions::lightning_bolt;
@@ -4262,6 +4297,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_counter_unless_pays_spell_not_castable_without_stack_target() {
         use crate::cards::definitions::{basic_island, mana_tithe};
@@ -4295,6 +4331,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_conditional_counter_spell_not_castable_without_stack_target() {
         use crate::cards::definitions::basic_island;
@@ -4368,6 +4405,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_if_effect_counter_spell_not_castable_without_stack_target() {
         use crate::cards::definitions::basic_island;

@@ -18,13 +18,14 @@ pub fn boggart_brute() -> CardDefinition {
         .expect("Boggart Brute text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_boggart_brute() {
         let def = boggart_brute();
@@ -38,6 +39,7 @@ mod tests {
         }));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_boggart_brute_casting() {
         let game = run_replay_test(

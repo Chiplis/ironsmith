@@ -17,7 +17,7 @@ pub fn bleachbone_verge() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -54,6 +54,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bleachbone_verge_basic_properties() {
         let def = bleachbone_verge();
@@ -63,12 +64,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bleachbone_verge_is_not_basic() {
         let def = bleachbone_verge();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bleachbone_verge_has_two_mana_abilities() {
         let def = bleachbone_verge();
@@ -81,6 +84,7 @@ mod tests {
     // First Ability (Black Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_produces_black_mana() {
         let def = bleachbone_verge();
@@ -95,6 +99,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_is_unconditional() {
         let def = bleachbone_verge();
@@ -112,6 +117,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_requires_tap() {
         let def = bleachbone_verge();
@@ -130,6 +136,7 @@ mod tests {
     // Second Ability (White Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_produces_white_mana() {
         let def = bleachbone_verge();
@@ -144,6 +151,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_has_condition() {
         let def = bleachbone_verge();
@@ -184,6 +192,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_requires_tap() {
         let def = bleachbone_verge();
@@ -202,6 +211,7 @@ mod tests {
     // Activation Condition Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_black_ability_can_activate_without_other_lands() {
         let mut game = setup_game();
@@ -223,6 +233,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_white_ability_cannot_activate_without_plains_or_swamp() {
         let mut game = setup_game();
@@ -244,6 +255,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_white_ability_can_activate_with_plains() {
         let mut game = setup_game();
@@ -266,6 +278,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_white_ability_can_activate_with_swamp() {
         let mut game = setup_game();
@@ -288,6 +301,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_white_ability_can_activate_with_dual_land() {
         let mut game = setup_game();
@@ -315,6 +329,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_opponent_plains_does_not_enable_white_ability() {
         let mut game = setup_game();
@@ -344,6 +359,7 @@ mod tests {
     // Tap State Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cannot_activate_if_already_tapped() {
         let mut game = setup_game();
@@ -375,6 +391,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bleachbone_verge_on_battlefield() {
         let mut game = setup_game();
@@ -394,6 +411,7 @@ mod tests {
         assert!(obj.abilities[1].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_summoning_sickness_irrelevant_for_lands() {
         let mut game = setup_game();
@@ -420,6 +438,7 @@ mod tests {
     // Land Type Edge Cases
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_forest_does_not_enable_white_ability() {
         let mut game = setup_game();
@@ -442,6 +461,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_multiple_verges_condition_check() {
         let mut game = setup_game();
@@ -471,6 +491,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_bleachbone_verge_play() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

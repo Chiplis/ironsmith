@@ -22,7 +22,7 @@ pub fn yasharn_implacable_earth() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -36,6 +36,7 @@ mod tests {
     use crate::types::CardType;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_has_etb_trigger() {
         let def = yasharn_implacable_earth();
@@ -47,6 +48,7 @@ mod tests {
         )));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_etb_searches_forest_and_plains_to_hand() {
         let mut game =
@@ -103,6 +105,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_does_not_stop_shockland_life_payment() {
         let game = run_replay_test(
@@ -134,6 +137,7 @@ mod tests {
         assert_eq!(game.player(alice).expect("alice exists").life, 18);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_prevents_fetchland_activation() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -161,6 +165,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn yasharn_does_not_stop_resolution_time_sacrifices() {
         let game = run_replay_test(

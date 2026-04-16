@@ -18,13 +18,14 @@ pub fn gemstone_caverns() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::object::CounterType;
     use crate::static_abilities::PregameActionKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gemstone_caverns_parser_backed_pregame_action() {
         let card = gemstone_caverns();

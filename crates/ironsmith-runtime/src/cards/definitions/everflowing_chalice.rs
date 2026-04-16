@@ -24,11 +24,12 @@ pub fn everflowing_chalice() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_everflowing_chalice() {
         let card = everflowing_chalice();

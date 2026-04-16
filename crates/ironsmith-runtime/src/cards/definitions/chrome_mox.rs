@@ -21,7 +21,7 @@ pub fn chrome_mox() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -143,6 +143,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_basic_properties() {
         let def = chrome_mox();
@@ -161,6 +162,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_has_two_abilities() {
         let def = chrome_mox();
@@ -169,6 +171,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_has_etb_trigger() {
         let def = chrome_mox();
@@ -195,6 +198,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_has_mana_ability() {
         let def = chrome_mox();
@@ -211,6 +215,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_compiled_text_mentions_imprint_clause() {
         let def = chrome_mox();
@@ -231,6 +236,7 @@ mod tests {
     // Imprint Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprint_tracks_exiled_card() {
         let mut game = setup_game();
@@ -250,6 +256,7 @@ mod tests {
         assert_eq!(imprinted_object.zone, Zone::Exile);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_no_imprint_no_mana() {
         let mut game = setup_game();
@@ -265,6 +272,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprinted_red_produces_red() {
         let mut game = setup_game();
@@ -279,6 +287,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().mana_pool.red, 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprinted_blue_produces_blue() {
         let mut game = setup_game();
@@ -293,6 +302,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().mana_pool.blue, 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprinted_colorless_produces_nothing() {
         let mut game = setup_game();
@@ -307,6 +317,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_multicolor_imprint_one_mana() {
         let mut game = setup_game();
@@ -322,6 +333,7 @@ mod tests {
         assert_eq!(pool.blue + pool.red, 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprint_filter_excludes_artifacts() {
         let mut game = setup_game();
@@ -335,6 +347,7 @@ mod tests {
         assert!(game.player(alice).unwrap().hand.contains(&artifact_id));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprint_filter_excludes_lands() {
         let mut game = setup_game();
@@ -352,6 +365,7 @@ mod tests {
     // Mox Leaves Battlefield Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_leaving_clears_imprint() {
         let mut game = setup_game();
@@ -366,6 +380,7 @@ mod tests {
         assert!(!game.has_imprinted_cards(mox_id));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_imprinted_card_leaves_exile_no_mana() {
         let mut game = setup_game();
@@ -397,6 +412,7 @@ mod tests {
     // Oracle Text Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chrome_mox_oracle_text() {
         let def = chrome_mox();

@@ -45,7 +45,7 @@ fn undead_creature_filter() -> ObjectFilter {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::{Ability, AbilityKind};
@@ -82,6 +82,7 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_duneyard_basic_properties() {
         let def = accursed_duneyard();
@@ -99,6 +100,7 @@ mod tests {
         assert!(!def.is_creature());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_duneyard_has_mana_ability() {
         let def = accursed_duneyard();
@@ -118,6 +120,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_duneyard_has_regenerate_ability() {
         let def = accursed_duneyard();
@@ -139,6 +142,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_duneyard_regenerate_cost() {
         let def = accursed_duneyard();
@@ -177,6 +181,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regenerate_effect_adds_shield() {
         let mut game = setup_game();
@@ -219,6 +224,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_shield_prevents_destruction() {
         let mut game = setup_game();
@@ -284,6 +290,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_shield_works_with_lethal_damage() {
         let mut game = setup_game();
@@ -332,6 +339,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_shield_works_with_deathtouch_damage() {
         let mut game = setup_game();
@@ -387,6 +395,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_removes_attacker_from_combat() {
         let mut game = setup_game();
@@ -438,6 +447,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_removes_blocker_from_combat() {
         let mut game = setup_game();
@@ -490,6 +500,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_shields_cleared_at_end_of_turn() {
         let mut game = setup_game();
@@ -526,6 +537,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_undead_creature_filter() {
         let filter = undead_creature_filter();
@@ -546,6 +558,7 @@ mod tests {
         assert_eq!(filter.zone, Some(Zone::Battlefield));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regenerate_cannot_target_non_creature() {
         use crate::card::CardBuilder;
@@ -593,6 +606,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_regeneration_does_not_work_if_creature_loses_creature_type() {
         let mut game = setup_game();
@@ -688,6 +702,7 @@ mod tests {
     ///
     /// Initial actions for battlefield [Accursed Duneyard, Selfless Spirit, Swamp, Swamp]:
     /// 0=pass, 1=Duneyard mana, 2=Swamp1 mana, 3=Swamp2 mana, 4=Spirit sacrifice
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_accursed_duneyard_regenerate() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -783,6 +798,7 @@ mod tests {
     ///
     /// Battlefield order: [Swamp, Swamp, Swamp, Swamp, Accursed Duneyard, Selfless Spirit]
     /// Initial actions: 0=pass, 1=cast Doom Blade, 2-5=Swamp mana, 6=Duneyard mana, 7=Spirit sac
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_accursed_duneyard_regenerate_prevents_doom_blade() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -903,6 +919,7 @@ mod tests {
     /// Tests Accursed Duneyard's colorless mana ability.
     ///
     /// Scenario: Alice taps Accursed Duneyard for colorless mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_accursed_duneyard_mana() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

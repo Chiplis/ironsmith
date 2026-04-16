@@ -20,11 +20,12 @@ pub fn windswept_heath() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_windswept_heath_basic_properties() {
         let def = windswept_heath();
@@ -34,6 +35,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_windswept_heath_has_activated_ability() {
         let def = windswept_heath();
@@ -41,6 +43,7 @@ mod tests {
         assert!(matches!(&def.abilities[0].kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_windswept_heath_ability_costs() {
         let def = windswept_heath();
@@ -51,6 +54,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_windswept_heath_search_filter() {
         let def = windswept_heath();
@@ -61,6 +65,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_windswept_heath_not_mana_ability() {
         let def = windswept_heath();

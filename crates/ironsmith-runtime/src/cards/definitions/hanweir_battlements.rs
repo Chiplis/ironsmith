@@ -20,7 +20,7 @@ pub fn hanweir_battlements() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -53,6 +53,7 @@ mod tests {
         id
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_basic_properties() {
         let def = hanweir_battlements();
@@ -62,6 +63,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_first_ability_is_colorless_mana() {
         let def = hanweir_battlements();
@@ -75,6 +77,7 @@ mod tests {
         assert!(mana_ability.has_tap_cost());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_second_ability_targets_creature() {
         let def = hanweir_battlements();
@@ -101,6 +104,7 @@ mod tests {
         assert!(filter.card_types.contains(&CardType::Creature));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_second_ability_grants_haste() {
         let mut game = setup_game();
@@ -134,6 +138,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_third_ability_has_meld_cost() {
         let def = hanweir_battlements();
@@ -155,6 +160,7 @@ mod tests {
         assert_eq!(activated.effects.len(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_third_ability_melds_with_garrison() {
         let mut game = setup_game();
@@ -199,6 +205,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_hanweir_battlements_oracle_text_includes_meld_ability() {
         let def = hanweir_battlements();

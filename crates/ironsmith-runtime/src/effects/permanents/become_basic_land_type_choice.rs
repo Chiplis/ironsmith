@@ -113,6 +113,8 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
     #[test]
     fn become_basic_land_type_choice_sets_subtype_and_replaces_mana_ability() {
         let mut game = setup_game();
@@ -170,6 +172,9 @@ mod tests {
             "expected old {{C}}{{C}} mana ability to be removed, got {mana_symbols:?}"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn fixed_basic_land_type_sets_subtype_and_replaces_mana_ability() {

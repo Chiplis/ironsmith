@@ -249,6 +249,7 @@ mod tests {
     #[cfg(feature = "generated-registry")]
     use crate::{game_state::GameState, ids::PlayerId};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_card_definition_creation() {
         let def = llanowar_elves();
@@ -257,6 +258,7 @@ mod tests {
         assert!(!def.abilities.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_spell_definition() {
         let def = lightning_bolt();
@@ -265,6 +267,7 @@ mod tests {
         assert!(def.spell_effect.is_some());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_registry_lookup() {
         let registry =
@@ -279,6 +282,7 @@ mod tests {
         assert!(bolt.unwrap().is_spell());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_registry_queries() {
         let registry =
@@ -294,6 +298,7 @@ mod tests {
         assert!(!lands.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_registry_count() {
         let registry =
@@ -302,6 +307,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn ensure_cards_loaded_is_incremental() {
         let mut registry = CardRegistry::new();
         assert_eq!(registry.len(), 0);
@@ -317,6 +323,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn ensure_cards_loaded_normalizes_input_names() {
         let mut registry = CardRegistry::new();
         registry.ensure_cards_loaded(["  lightning bolt  ", " FoReSt "]);
@@ -326,6 +333,7 @@ mod tests {
         assert_eq!(registry.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn try_compile_card_can_resolve_handwritten_cards_without_full_builtin_registry() {
         let definition = CardRegistry::try_compile_card("Lightning Bolt")
@@ -334,6 +342,7 @@ mod tests {
         assert!(definition.is_spell());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn try_compile_card_can_resolve_basic_lands_by_name() {
         let definition =
@@ -360,6 +369,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn try_compile_card_prefers_builtin_transform_pair_metadata() {
         let galleon = CardRegistry::try_compile_card("Conqueror's Galleon // Conqueror's Foothold")
@@ -533,6 +543,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_discard_this_card_activated_ability_as_hand_zone_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Bloodrush Probe")
@@ -567,6 +580,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_if_this_is_tapped_predicate_as_intervening_if() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Storage Land Probe")
@@ -590,6 +606,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_if_there_are_no_counters_on_this_predicate() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Depletion Land Probe")
@@ -606,6 +625,9 @@ mod tests {
             "expected parsed effects or abilities"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn parse_add_mana_for_each_counter_removed_this_way_uses_x_value() {
@@ -636,6 +658,9 @@ mod tests {
         assert_eq!(scaled.amount, Value::X);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_activate_no_more_than_twice_each_turn_as_activation_limit() {
         use crate::ability::AbilityKind;
@@ -659,6 +684,9 @@ mod tests {
             Some(crate::ConditionExpr::MaxActivationsPerTurn(2))
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn parse_flip_it_clause_as_flip_effect() {
@@ -705,6 +733,9 @@ mod tests {
             "expected FlipEffect in triggered effects"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn parse_assigns_no_combat_damage_clause_as_combat_prevention() {
@@ -760,6 +791,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_look_at_top_then_put_some_into_hand_rest_into_graveyard() {
         use crate::effects::{ChooseObjectsEffect, LookAtTopCardsEffect};
@@ -786,6 +820,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_look_at_top_then_put_them_back_in_any_order() {
         use crate::effects::{LookAtTopCardsEffect, ReorderLibraryTopEffect};
@@ -810,6 +847,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_discover_keyword_action_clause() {
         use crate::effects::DiscoverEffect;
@@ -827,6 +867,9 @@ mod tests {
             "expected DiscoverEffect in compiled effects"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn parse_become_basic_land_type_of_your_choice_until_eot() {
@@ -856,6 +899,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_can_block_additional_creature_each_combat_static_ability() {
         use crate::static_abilities::StaticAbilityId;
@@ -876,6 +922,9 @@ mod tests {
             "expected CanBlockAdditionalCreatureEachCombat static ability"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn parse_enchanted_creature_cant_attack_or_block_static() {
@@ -950,6 +999,7 @@ mod tests {
     }
 
     #[cfg(feature = "generated-registry")]
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn try_compile_card_accepts_generated_supported_definitions() {
         let definition = CardRegistry::try_compile_card("Sicarian Infiltrator")
@@ -991,6 +1041,9 @@ mod tests {
         assert!(!generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_prowess() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Prowess Probe")
@@ -1004,6 +1057,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_cipher() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Cipher Probe")
@@ -1012,6 +1068,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_parsed_split_second() {
@@ -1022,6 +1081,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_riot() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Riot Probe")
@@ -1031,6 +1093,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_unleash() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Unleash Probe")
@@ -1039,6 +1104,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_parsed_unearth() {
@@ -1051,6 +1119,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_outlast() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Outlast Probe")
@@ -1061,6 +1132,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_parsed_vanishing() {
@@ -1073,6 +1147,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_devour() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Devour Probe")
@@ -1082,6 +1159,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_buyback() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Buyback Probe")
@@ -1090,6 +1170,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_parsed_bloodthirst() {
@@ -1102,6 +1185,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_ward_pay_life() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Ward Pay Life Probe")
@@ -1112,6 +1198,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_parsed_bolster() {
@@ -1124,6 +1213,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_rebound() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Rebound Probe")
@@ -1133,6 +1225,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_parsed_cascade() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Cascade Probe")
@@ -1141,6 +1236,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_saruman_of_many_colors() {
@@ -1152,6 +1250,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_good_day_to_pie() {
         let text = "Tap up to two target creatures.\nWhenever you put a name sticker on a creature, you may return this card from your graveyard to your hand.";
@@ -1162,6 +1263,9 @@ mod tests {
         assert!(generated_definition_is_supported(&definition));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_asari_captain() {
         let text = "Trample, haste\nWhenever a Samurai or Warrior you control attacks alone, it gets +1/+0 until end of turn for each Samurai or Warrior you control.";
@@ -1171,6 +1275,9 @@ mod tests {
 
         assert!(generated_definition_is_supported(&definition));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_brine_comber() {
@@ -1183,6 +1290,9 @@ mod tests {
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_devoted_grafkeeper() {
@@ -1197,6 +1307,9 @@ mod tests {
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_dokuchi_silencer() {
@@ -1215,6 +1328,9 @@ mod tests {
         assert!(!debug.contains("unimplemented"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_deepcavern_imp() {
         let text = "Mana cost: {2}{B}\nType: Creature — Imp Rebel\nPower/Toughness: 2/2\nFlying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
@@ -1228,6 +1344,9 @@ mod tests {
         assert!(!debug.contains("unimplemented"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_metropolis_angel() {
         let text = "Mana cost: {3}{W}{U}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\nFlying\nWhenever you attack with one or more creatures with counters on them, draw a card.";
@@ -1238,6 +1357,9 @@ mod tests {
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_nadu_winged_wisdom() {
@@ -1250,6 +1372,9 @@ mod tests {
         assert!(!debug.contains("unimplemented"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_radha_coalition_warlord() {
         let text = "Mana cost: {1}{R}{G}\nType: Legendary Creature — Elf Warrior\nPower/Toughness: 3/3\nDomain — Whenever Radha, Coalition Warlord enters or becomes tapped, another target creature you control gets +X/+X until end of turn, where X is the number of basic land types among lands you control.";
@@ -1260,6 +1385,9 @@ mod tests {
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_rockslide_sorcerer() {
@@ -1272,6 +1400,9 @@ mod tests {
         assert!(!debug.contains("unimplemented"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_shipwreck_sifters() {
         let text = "Mana cost: {1}{U}\nType: Creature — Spirit\nPower/Toughness: 1/2\nWhen Shipwreck Sifters enters, draw a card, then discard a card.\nWhenever a Spirit card or a card with disturb is put into your graveyard from anywhere, put a +1/+1 counter on Shipwreck Sifters.";
@@ -1283,6 +1414,9 @@ mod tests {
         assert!(!debug.contains("unimplemented"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn generated_definition_support_accepts_a_symmetry_sage() {
         let text = "Mana cost: {U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nFlying\nMagecraft — Whenever you cast or copy an instant or sorcery spell, target creature you control has base power 3 until end of turn.";
@@ -1293,6 +1427,9 @@ mod tests {
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn generated_definition_support_accepts_a_vampire_scrivener() {

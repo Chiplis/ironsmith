@@ -21,12 +21,13 @@ pub fn doom_blade() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_doom_blade() {
         let def = doom_blade();
@@ -46,6 +47,7 @@ mod tests {
     ///
     /// Scenario: Alice casts Doom Blade targeting Bob's Grizzly Bears (green creature).
     /// Expected: Grizzly Bears is destroyed and goes to Bob's graveyard.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_doom_blade_destroys_creature() {
         let game = run_replay_test(

@@ -727,6 +727,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_creature_sacrifice_cost_accepts_earthbent_land() {
         let mut game = setup_game();

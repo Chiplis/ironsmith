@@ -4141,6 +4141,7 @@ mod priority_mana_tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_ability_undo_safe_for_basic_tap_sources() {
         let mut game = setup_game();
@@ -4162,6 +4163,7 @@ mod priority_mana_tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_mana_ability_undo_not_safe_for_stateful_activations() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

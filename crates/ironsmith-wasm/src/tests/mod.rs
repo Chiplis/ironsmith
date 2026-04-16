@@ -18,7 +18,6 @@ use ironsmith::cards::definitions::{
     gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, polluted_delta, serum_powder,
     urzas_saga, yawgmoth_thran_physician,
 };
-use ironsmith::compiler_integration::compile_to_runtime_definition;
 use ironsmith::continuous::ContinuousEffect;
 use ironsmith::cost::OptionalCostsPaid;
 use ironsmith::decision::compute_legal_actions;
@@ -39,6 +38,7 @@ use ironsmith::snapshot::ObjectSnapshot;
 use ironsmith::triggers::{Trigger, TriggerEvent, check_triggers};
 use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
+use ironsmith_registry::compile_to_runtime_definition;
 use serde::Deserialize;
 use serde_json::json;
 

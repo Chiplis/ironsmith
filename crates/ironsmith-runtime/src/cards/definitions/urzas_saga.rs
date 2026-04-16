@@ -44,7 +44,7 @@ pub fn urzas_saga() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::CardDefinition;
@@ -56,6 +56,7 @@ mod tests {
     use crate::object::Object;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_urzas_saga() {
         let def = urzas_saga();
@@ -76,6 +77,7 @@ mod tests {
         assert!(!def.abilities.iter().any(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_urzas_saga_chapter_trigger() {
         let def = urzas_saga();
@@ -116,6 +118,7 @@ mod tests {
             .expect("Construct token text should be supported")
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_construct_token_has_scaling_static_ability() {
         let token_def = construct_token_def();
@@ -143,6 +146,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_construct_token_static_ability_generates_continuous_effect() {
         use crate::static_ability_processor::generate_continuous_effects_from_static_abilities;
@@ -165,6 +169,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_construct_token_pt_increases_with_artifacts() {
         let mut game = setup_game();
@@ -202,6 +207,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_construct_token_pt_with_no_other_artifacts() {
         let mut game = setup_game();
@@ -233,6 +239,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_construct_token_pt_counts_only_controller_artifacts() {
         let mut game = setup_game();

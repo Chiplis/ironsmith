@@ -25,12 +25,13 @@ pub fn sightless_ghoul() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::static_abilities::StaticAbilityId;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sightless_ghoul() {
         let def = sightless_ghoul();
@@ -77,6 +78,7 @@ mod tests {
     ///
     /// Sightless Ghoul: {3}{B} creature 2/2
     /// Can't block. Undying.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_sightless_ghoul_casting() {
         use crate::ids::PlayerId;

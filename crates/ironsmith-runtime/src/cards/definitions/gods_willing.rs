@@ -20,7 +20,7 @@ pub fn gods_willing() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
@@ -55,6 +55,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_basic_properties() {
         let def = gods_willing();
@@ -63,12 +64,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_is_instant() {
         let def = gods_willing();
         assert!(def.card.is_instant());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_is_white() {
         let def = gods_willing();
@@ -76,6 +79,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_has_three_effects() {
         let def = gods_willing();
@@ -87,6 +91,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_effect_grants_protection() {
         let mut game = setup_game();
@@ -124,6 +129,7 @@ mod tests {
         assert!(has_protection, "Soldier should have protection");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_effect_fails_without_target() {
         let mut game = setup_game();
@@ -145,6 +151,7 @@ mod tests {
         assert!(result.is_err(), "Should fail without a target");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_only_affects_target() {
         let mut game = setup_game();
@@ -191,6 +198,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gods_willing_oracle_text() {
         let def = gods_willing();

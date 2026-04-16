@@ -10,8 +10,6 @@ pub mod cards;
 pub mod color;
 pub mod combat_state;
 pub mod compiled_text;
-#[cfg(any(feature = "compiler-integration", test))]
-pub mod compiler_integration;
 pub mod condition_eval;
 pub mod continuous;
 pub mod cost;
@@ -22,6 +20,7 @@ pub mod dependency;
 pub(crate) mod derived_view;
 pub mod dungeon;
 pub mod effect;
+pub mod effect_model_interpreter;
 mod effect_text_shared;
 pub mod effects;
 pub mod events;

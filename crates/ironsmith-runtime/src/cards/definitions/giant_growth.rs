@@ -17,12 +17,13 @@ pub fn giant_growth() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giant_growth() {
         let def = giant_growth();
@@ -42,6 +43,7 @@ mod tests {
     /// 1. Casting the instant spell
     /// 2. Targeting a creature
     /// 3. The P/T modification being applied
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_giant_growth_pump() {
         let game = run_replay_test(

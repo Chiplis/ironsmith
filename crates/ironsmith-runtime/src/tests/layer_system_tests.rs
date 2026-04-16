@@ -67,6 +67,7 @@ fn mana_ability_index(game: &GameState, source: crate::ids::ObjectId, symbol: Ma
 ///
 /// This tests Layer 4 type-changing effects.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_urzas_saga_under_blood_moon_type_changes() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -128,6 +129,7 @@ fn test_urzas_saga_under_blood_moon_type_changes() {
 ///
 /// This tests Layer 6 ability-removing effects.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_urzas_saga_under_blood_moon_loses_chapter_abilities() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -162,6 +164,9 @@ fn test_urzas_saga_under_blood_moon_loses_chapter_abilities() {
     // not an explicitly granted ability. The key test here is that chapter
     // abilities are removed; the mana ability handling is a separate concern.
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_urborg_style_effect_includes_itself_and_grants_black_mana() {
@@ -218,6 +223,9 @@ fn test_urborg_style_effect_includes_itself_and_grants_black_mana() {
         "activating the granted mana ability should add black mana"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_blood_moon_turns_off_urborg_dependency_even_if_urborg_is_newer() {
@@ -304,6 +312,9 @@ fn test_blood_moon_turns_off_urborg_dependency_even_if_urborg_is_newer() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_blood_moon_replaces_nonbasic_land_mana_abilities_with_red() {
     let mut game = setup_game();
@@ -386,6 +397,7 @@ fn test_blood_moon_replaces_nonbasic_land_mana_abilities_with_red() {
 // =============================================================================
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_toph_mycosynth_blood_moon_dependency_chain() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -440,6 +452,7 @@ fn test_toph_mycosynth_blood_moon_dependency_chain() {
 // Dependency Interaction Tests (Marvin / Rex / Humility)
 // =============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_marvin_loses_copied_abilities_under_humility() {
     let mut game = setup_game();
@@ -469,6 +482,7 @@ fn test_marvin_loses_copied_abilities_under_humility() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_marvin_copies_rex_brain_counter_abilities() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -499,6 +513,7 @@ fn test_marvin_copies_rex_brain_counter_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_manascape_refractor_copies_squirrel_nest_ability() {
     let mut game = setup_game();
@@ -537,6 +552,9 @@ fn test_manascape_refractor_copies_squirrel_nest_ability() {
         "Manascape Refractor should copy the activated ability granted by Squirrel Nest"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_conditional_attached_creature_check_uses_in_progress_characteristics() {
@@ -593,6 +611,7 @@ fn test_conditional_attached_creature_check_uses_in_progress_characteristics() {
 ///
 /// This tests the interaction between Layer 6 and Saga sacrifice SBAs.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_urzas_saga_under_blood_moon_survives_without_chapter_abilities() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -644,6 +663,7 @@ fn test_urzas_saga_under_blood_moon_survives_without_chapter_abilities() {
 ///
 /// This tests the interaction between Layer 6, Saga mechanics, and triggers.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_urzas_saga_under_blood_moon_gains_lore_counter_but_no_triggers() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -717,6 +737,7 @@ fn test_urzas_saga_under_blood_moon_gains_lore_counter_but_no_triggers() {
 /// - Layer 7b: Creature's P/T is set to 1/1
 /// - The creature becomes 1/1 regardless of its printed P/T
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_sets_creatures_to_1_1() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -755,6 +776,7 @@ fn test_humility_sets_creatures_to_1_1() {
 /// - Layer 7c: Crusade gives +1/+1 to white creatures
 /// - Final result: 2/2 creature with no abilities
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_plus_crusade_results_in_2_2() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1269,6 +1291,7 @@ use crate::cards::definitions::student_of_warfare;
 ///
 /// Scenario: Alice casts Student of Warfare from her hand. Without any level counters,
 /// it should be a 1/1 creature with no first strike or double strike abilities.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_student_of_warfare_base_stats() {
     use crate::cards::definitions::basic_plains;
@@ -1359,6 +1382,7 @@ fn test_student_of_warfare_base_stats() {
 ///
 /// Scenario: Alice casts Student of Warfare and activates its level-up ability twice
 /// during her main phase. At level 2, the Student becomes a 3/3 with first strike.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_student_of_warfare_level_2() {
     use crate::cards::definitions::basic_plains;
@@ -1508,6 +1532,7 @@ fn test_student_of_warfare_level_2() {
 ///
 /// Scenario: Alice casts Student of Warfare and activates its level-up ability 7 times
 /// during her main phase. At level 7+, the Student becomes a 4/4 with double strike.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_student_of_warfare_level_7() {
     use crate::cards::definitions::basic_plains;
@@ -1624,6 +1649,7 @@ fn test_student_of_warfare_level_7() {
 /// - Level effects don't apply because level ability was removed
 /// - Result: 1/1 with no abilities
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_vs_leveled_student_humility_first() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1677,6 +1703,7 @@ fn test_humility_vs_leveled_student_humility_first() {
 /// - Humility applies first (depended-on), so level effects cease
 /// - Result: 1/1 with no abilities
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_vs_leveled_student_student_first() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1726,6 +1753,7 @@ fn test_humility_vs_leveled_student_student_first() {
 ///
 /// This tests that static ability effects are properly re-evaluated.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_removed_student_recovers() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1782,6 +1810,7 @@ fn test_humility_removed_student_recovers() {
 /// Note: This test uses direct ContinuousEffect creation because it's testing
 /// timestamp interaction between level abilities and "set P/T" effects in Layer 7b.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_turn_to_frog_vs_leveled_student() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1836,6 +1865,7 @@ fn test_turn_to_frog_vs_leveled_student() {
 /// (making it 3/3 with first strike), then casts Giant Growth targeting it. The layer
 /// system applies level P/T in layer 7b (setting) and Giant Growth in layer 7c (modifying).
 /// Final result is 6/6 with first strike.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_giant_growth_on_leveled_student() {
     use crate::cards::definitions::{basic_forest, basic_plains, giant_growth};
@@ -1968,6 +1998,7 @@ fn test_giant_growth_on_leveled_student() {
 /// Scenario: Alice casts Student of Warfare and levels it up to 7 (making it 4/4 with
 /// double strike). Then she puts +1/+1 counters on it through a game effect. The layer
 /// system applies level P/T in layer 7b and counters in layer 7d. Final result is 6/6.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_counters_on_leveled_student() {
     use crate::cards::definitions::basic_plains;
@@ -2101,6 +2132,7 @@ fn test_counters_on_leveled_student() {
 /// - Layer 7c: Giant Growth adds +3/+3
 /// - Result: 4/4 with no abilities
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_humility_plus_giant_growth_on_student() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -2205,6 +2237,7 @@ fn drive_non_priority_decisions_with_dm<D: crate::decision::DecisionMaker>(
 /// Scenario: Alice controls a Butcher Ghoul (1/1 with undying) and casts Lightning Bolt
 /// on it. The bolt deals 3 damage, killing the ghoul. Since the ghoul had no +1/+1 counters,
 /// undying triggers and returns it to the battlefield with a +1/+1 counter.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_undying_creature_returns_with_plus_counter() {
     use crate::cards::definitions::{basic_mountain, lightning_bolt};
@@ -2320,6 +2353,7 @@ fn test_undying_creature_returns_with_plus_counter() {
 /// it had previously returned via undying). Alice casts Lightning Bolt on it, dealing
 /// 3 damage to the 2/2 creature (lethal damage). Since the ghoul has a +1/+1 counter
 /// when it dies, undying does NOT trigger and the creature stays in the graveyard.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_undying_does_not_trigger_with_plus_counter_integration() {
     use crate::cards::definitions::{basic_mountain, lightning_bolt};
@@ -2437,6 +2471,7 @@ fn test_undying_does_not_trigger_with_plus_counter_integration() {
 /// the -1/-1 counter. After SBAs, the +1/+1 and -1/-1 counters annihilate each other.
 /// Now when Butcher Ghoul is killed later, undying can trigger again since it has no
 /// +1/+1 counter.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_counter_annihilation_enables_undying_loop() {
     use crate::cards::definitions::{basic_mountain, lightning_bolt};
@@ -2655,6 +2690,7 @@ fn test_counter_annihilation_enables_undying_loop() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_yawgmoth_undying_loop_draws_cards_until_death() {
     // Full combo test: Yawgmoth + Butcher Ghoul + Sightless Ghoul
     // This test uses the game loop machinery to process triggers and SBAs.
@@ -2899,6 +2935,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
 /// Expected behavior:
 /// - The declaration succeeds because the must-attack creature is included.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_must_attack_creature_can_be_declared() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -2946,6 +2983,7 @@ fn test_must_attack_creature_can_be_declared() {
 /// - The declaration fails with MustAttackNotDeclared error.
 /// - The error includes the creature ID of the must-attack creature.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_must_attack_creature_not_declared_returns_error() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -2993,6 +3031,7 @@ fn test_must_attack_creature_not_declared_returns_error() {
 /// Expected behavior:
 /// - The declaration succeeds because tapped creatures can't attack.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_tapped_must_attack_creature_is_exempt() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -3028,6 +3067,7 @@ fn test_tapped_must_attack_creature_is_exempt() {
 /// Expected behavior:
 /// - The declaration succeeds because summoning sick creatures without haste can't attack.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_summoning_sick_must_attack_creature_is_exempt() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -3063,6 +3103,7 @@ fn test_summoning_sick_must_attack_creature_is_exempt() {
 /// Expected behavior:
 /// - The declaration fails because both must-attack creatures need to be declared.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_multiple_must_attack_creatures_all_required() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -3115,6 +3156,7 @@ fn test_multiple_must_attack_creatures_all_required() {
 /// - The declaration succeeds because the must-attack creature is declared.
 /// - The optional creature (Grizzly Bears) does not need to be declared.
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_must_attack_with_optional_creature() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -3236,6 +3278,9 @@ fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
         other => panic!("expected InvalidAttackers for illegal goad target, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_goaded_creature_may_attack_goader_if_other_player_attack_cost_is_unpayable() {
@@ -3365,6 +3410,9 @@ fn test_same_player_goading_again_does_not_refresh_duration() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
     let mut game = setup_game();
@@ -3443,6 +3491,9 @@ fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
         other => panic!("expected attack-tax InvalidAttackers error, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_collective_restraint_attack_tax_scales_per_attacker_and_can_be_paid() {
@@ -3524,6 +3575,9 @@ fn test_collective_restraint_attack_tax_scales_per_attacker_and_can_be_paid() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_fixed_attack_tax_blocks_unpaid_attack() {
     let mut game = setup_game();
@@ -3580,6 +3634,9 @@ fn test_fixed_attack_tax_blocks_unpaid_attack() {
         other => panic!("expected attack-tax InvalidAttackers error, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_fixed_attack_tax_scales_per_attacker_and_can_be_paid() {

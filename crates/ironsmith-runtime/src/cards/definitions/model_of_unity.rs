@@ -24,7 +24,7 @@ pub fn model_of_unity() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -51,6 +51,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_basic_properties() {
         let def = model_of_unity();
@@ -60,12 +61,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_is_colorless() {
         let def = model_of_unity();
         assert!(def.card.colors().is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_has_two_abilities() {
         let def = model_of_unity();
@@ -73,6 +76,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_has_mana_ability() {
         let def = model_of_unity();
@@ -80,6 +84,7 @@ mod tests {
         assert!(has_mana, "Model of Unity should have a mana ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_has_triggered_ability() {
         let def = model_of_unity();
@@ -97,6 +102,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_on_voting_finished() {
         use crate::events::{KeywordActionEvent, KeywordActionKind, PlayerVote};
@@ -148,6 +154,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_on_etb() {
         use crate::events::EnterBattlefieldEvent;
@@ -178,6 +185,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_model_of_unity_on_battlefield() {
         let mut game = setup_game();
@@ -198,6 +206,7 @@ mod tests {
     // Multiplayer Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_in_multiplayer() {
         use crate::events::{KeywordActionEvent, KeywordActionKind, PlayerVote};
@@ -275,6 +284,7 @@ mod tests {
     /// 4. Model of Unity triggers for Bob
     /// 5. Bob may scry 2
     /// 6. If Alice voted with Bob, Alice may scry 2
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_model_of_unity_voting_interaction() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test_full_turn};

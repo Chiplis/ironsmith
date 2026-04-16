@@ -98,4 +98,46 @@ where
             || self.card.is_land()
             || self.card.is_planeswalker()
     }
+
+    pub fn try_map<A2, E2, C2, AC2, OC2, Error>(
+        self,
+        mut map_ability: impl FnMut(A) -> Result<A2, Error>,
+        mut map_effect: impl FnMut(E) -> Result<E2, Error>,
+        map_cost: impl FnMut(C) -> Result<C2, Error>,
+        mut map_alternative_cast: impl FnMut(AC) -> Result<AC2, Error>,
+        mut map_optional_cost: impl FnMut(OC) -> Result<OC2, Error>,
+    ) -> Result<CardDefinition<A2, E2, C2, AC2, OC2>, Error>
+    where
+        E2: Clone,
+    {
+        let mut abilities = Vec::with_capacity(self.abilities.len());
+        for ability in self.abilities {
+            abilities.push(map_ability(ability)?);
+        }
+
+        let mut alternative_casts = Vec::with_capacity(self.alternative_casts.len());
+        for method in self.alternative_casts {
+            alternative_casts.push(map_alternative_cast(method)?);
+        }
+
+        let mut optional_costs = Vec::with_capacity(self.optional_costs.len());
+        for cost in self.optional_costs {
+            optional_costs.push(map_optional_cost(cost)?);
+        }
+
+        Ok(CardDefinition {
+            card: self.card,
+            abilities,
+            spell_effect: self
+                .spell_effect
+                .map(|effects| effects.try_map_effects(&mut map_effect))
+                .transpose()?,
+            aura_attach_filter: self.aura_attach_filter,
+            alternative_casts,
+            has_fuse: self.has_fuse,
+            optional_costs,
+            max_saga_chapter: self.max_saga_chapter,
+            additional_cost: self.additional_cost.try_map(map_cost)?,
+        })
+    }
 }

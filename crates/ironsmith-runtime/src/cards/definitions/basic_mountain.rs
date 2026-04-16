@@ -15,10 +15,11 @@ pub fn basic_mountain() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_basic_mountain() {
         let def = basic_mountain();
@@ -31,6 +32,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_mountain_play() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

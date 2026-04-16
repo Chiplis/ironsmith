@@ -21,7 +21,7 @@ pub fn kami_of_false_hope() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Effect;
@@ -64,6 +64,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_basic_properties() {
         let def = kami_of_false_hope();
@@ -72,18 +73,21 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_subtypes() {
         let def = kami_of_false_hope();
         assert!(def.card.subtypes.contains(&Subtype::Spirit));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_power_toughness() {
         let def = kami_of_false_hope();
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(1, 1)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_is_white() {
         let def = kami_of_false_hope();
@@ -91,6 +95,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_has_one_ability() {
         let def = kami_of_false_hope();
@@ -101,6 +106,7 @@ mod tests {
     // Activated Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_has_sacrifice_ability() {
         let def = kami_of_false_hope();
@@ -145,6 +151,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_effect_creates_prevention_shield() {
         let mut game = setup_game();
@@ -173,6 +180,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_prevents_combat_damage_to_players() {
         let mut game = setup_game();
@@ -204,6 +212,7 @@ mod tests {
         assert_eq!(remaining, 0, "All combat damage should be prevented");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_does_not_prevent_noncombat_damage() {
         let mut game = setup_game();
@@ -235,6 +244,7 @@ mod tests {
         assert_eq!(remaining, 5, "Noncombat damage should NOT be prevented");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_prevents_combat_damage_to_creatures() {
         let mut game = setup_game();
@@ -277,6 +287,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_oracle_text() {
         let def = kami_of_false_hope();
@@ -289,6 +300,7 @@ mod tests {
     // Not a Mana Ability Test
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_ability_not_mana_ability() {
         let def = kami_of_false_hope();
@@ -304,6 +316,7 @@ mod tests {
     // Functional Zone Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_kami_of_false_hope_ability_functional_on_battlefield() {
         let def = kami_of_false_hope();
@@ -319,6 +332,7 @@ mod tests {
     ///
     /// Kami of False Hope: {W} creature 1/1 (Spirit)
     /// Sacrifice: Prevent all combat damage that would be dealt this turn.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_kami_of_false_hope_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

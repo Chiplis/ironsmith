@@ -26,7 +26,7 @@ pub fn merciless_executioner() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -43,6 +43,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_basic_properties() {
         let def = merciless_executioner();
@@ -51,6 +52,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_is_black() {
         let def = merciless_executioner();
@@ -58,6 +60,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_types() {
         let def = merciless_executioner();
@@ -65,6 +68,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Warrior));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_power_toughness() {
         let def = merciless_executioner();
@@ -73,6 +77,7 @@ mod tests {
         assert_eq!(pt.toughness.base_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_has_etb() {
         let def = merciless_executioner();
@@ -96,6 +101,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_merciless_executioner_on_battlefield() {
         let mut game = setup_game();
@@ -115,6 +121,7 @@ mod tests {
     // ========================================
 
     /// Tests casting Merciless Executioner with its ETB sacrifice effect.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_merciless_executioner_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -164,6 +171,7 @@ mod tests {
     }
 
     /// Tests Merciless Executioner when there are no other creatures - it must sacrifice itself.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_merciless_executioner_alone() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

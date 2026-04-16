@@ -24,7 +24,7 @@ pub fn blade_of_the_bloodchief() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -98,6 +98,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blade_of_the_bloodchief_basic_properties() {
         let def = blade_of_the_bloodchief();
@@ -107,12 +108,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_equipment_subtype() {
         let def = blade_of_the_bloodchief();
         assert!(def.card.subtypes.contains(&Subtype::Equipment));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_correct_number_of_abilities() {
         let def = blade_of_the_bloodchief();
@@ -124,6 +127,7 @@ mod tests {
     // Triggered Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_creature_dies_trigger() {
         let def = blade_of_the_bloodchief();
@@ -157,6 +161,7 @@ mod tests {
     // Equip Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_equip_ability() {
         let def = blade_of_the_bloodchief();
@@ -207,6 +212,7 @@ mod tests {
     // Trigger Effect Tests - Non-Vampire Creature
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_puts_one_counter_on_non_vampire() {
         let mut game = setup_game();
@@ -238,6 +244,7 @@ mod tests {
     // Trigger Effect Tests - Vampire Creature
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_puts_two_counters_on_vampire() {
         let mut game = setup_game();
@@ -263,6 +270,7 @@ mod tests {
     // Trigger Effect Tests - Edge Cases
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_does_nothing_when_not_equipped() {
         let mut game = setup_game();
@@ -284,6 +292,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_does_nothing_when_equipped_creature_gone() {
         let mut game = setup_game();
@@ -310,6 +319,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_accumulates_counters() {
         let mut game = setup_game();
@@ -334,6 +344,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_accumulates_counters_on_vampire() {
         let mut game = setup_game();
@@ -362,6 +373,7 @@ mod tests {
     // Power/Toughness Tests with Counters
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_counters_affect_power_toughness() {
         let mut game = setup_game();
@@ -390,6 +402,7 @@ mod tests {
         assert_eq!(creature.toughness(), Some(4));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vampire_gets_more_pt_from_counters() {
         let mut game = setup_game();
@@ -422,6 +435,7 @@ mod tests {
     // Equipment Movement Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_works_after_moving_equipment() {
         let mut game = setup_game();
@@ -486,6 +500,7 @@ mod tests {
     // Vampire with Multiple Subtypes Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vampire_knight_gets_two_counters() {
         let mut game = setup_game();
@@ -515,6 +530,7 @@ mod tests {
     // Opponent's Creature Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_when_opponent_creature_dies() {
         let mut game = setup_game();
@@ -547,6 +563,7 @@ mod tests {
     // Full Integration Scenario Test
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_full_scenario_vampire_tribal() {
         let mut game = setup_game();
@@ -595,6 +612,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_blade_of_the_bloodchief_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

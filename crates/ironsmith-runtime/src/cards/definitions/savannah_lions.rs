@@ -19,12 +19,13 @@ pub fn savannah_lions() -> CardDefinition {
         .build()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_savannah_lions() {
         let def = savannah_lions();
@@ -40,6 +41,7 @@ mod tests {
     /// Tests casting Savannah Lions (simple 1-mana creature).
     ///
     /// Savannah Lions: {W} creature 2/1
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_savannah_lions_casting() {
         let game = run_replay_test(

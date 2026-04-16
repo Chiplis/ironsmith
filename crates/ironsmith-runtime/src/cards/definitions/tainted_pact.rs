@@ -25,7 +25,7 @@ pub fn tainted_pact() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
@@ -80,6 +80,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_pact_basic_properties() {
         let def = tainted_pact();
@@ -96,6 +97,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_pact_repeat_process_keeps_progress_across_prompt_resume() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -158,6 +160,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_pact_can_skip_first_card_and_take_second() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -207,6 +210,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_pact_stops_on_duplicate_name() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

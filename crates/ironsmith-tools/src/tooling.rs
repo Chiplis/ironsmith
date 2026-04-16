@@ -1741,7 +1741,7 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAttempt {
     with_allow_unsupported(allow_unsupported, || {
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+            ironsmith_registry::compile_builder_to_runtime_definition(
                 CompilerCardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name),
                 parse_input.to_string(),
                 allow_unsupported,
@@ -1881,24 +1881,21 @@ fn definition_from_payload(
 ) -> Result<CardDefinition, String> {
     let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
     let builder = CompilerCardDefinitionBuilder::new(card_id, parse_name);
-    let mut definition =
-        match ironsmith::compiler_integration::compile_builder_to_runtime_definition(
-            builder.clone(),
-            payload.parse_input.clone(),
+    let mut definition = match ironsmith_registry::compile_builder_to_runtime_definition(
+        builder.clone(),
+        payload.parse_input.clone(),
+        false,
+    ) {
+        Ok(definition) => definition,
+        Err(parse_input_err) => ironsmith_registry::compile_builder_to_runtime_definition(
+            builder,
+            payload.oracle_text.clone(),
             false,
-        ) {
-            Ok(definition) => definition,
-            Err(parse_input_err) => {
-                ironsmith::compiler_integration::compile_builder_to_runtime_definition(
-                    builder,
-                    payload.oracle_text.clone(),
-                    false,
-                )
-                .map_err(|oracle_err| {
-                    format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
-                })?
-            }
-        };
+        )
+        .map_err(|oracle_err| {
+            format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
+        })?,
+    };
     decorate_definition_from_payload(&mut definition, payload);
     Ok(definition)
 }
@@ -2101,7 +2098,7 @@ mod tests {
     #[test]
     fn compilation_snapshot_uses_embedding_backed_similarity() {
         let oracle = "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.";
-        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+        let definition = ironsmith_registry::compile_builder_to_runtime_definition(
             CompilerCardDefinitionBuilder::new(CardId::new(), "House Cartographer"),
             oracle,
             false,
@@ -2135,7 +2132,7 @@ mod tests {
     #[test]
     fn compilation_snapshot_uses_same_normalized_text_as_default_cli_surface() {
         let oracle = "Enlist (As this creature attacks, you may tap a nonattacking creature you control without summoning sickness. When you do, add its power to this creature's until end of turn.)\nWhen this creature enters, create a 1/1 white Soldier creature token.";
-        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+        let definition = ironsmith_registry::compile_builder_to_runtime_definition(
             CompilerCardDefinitionBuilder::new(CardId::new(), "Argivian Cavalier"),
             oracle,
             false,
@@ -2166,7 +2163,7 @@ mod tests {
     #[test]
     fn compilation_snapshot_strips_parenthetical_text_from_stored_surfaces() {
         let oracle = "Flying (This creature can't be blocked except by creatures with flying or reach.)\nCycling {2} ({2}, Discard this card: Draw a card.)";
-        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+        let definition = ironsmith_registry::compile_builder_to_runtime_definition(
             CompilerCardDefinitionBuilder::new(CardId::new(), "Reminder Bird"),
             oracle,
             false,

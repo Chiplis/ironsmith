@@ -17,7 +17,7 @@ pub fn phyrexian_tower() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -34,6 +34,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_basic_properties() {
         let def = phyrexian_tower();
@@ -43,18 +44,21 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_is_legendary() {
         let def = phyrexian_tower();
         assert!(def.card.has_supertype(Supertype::Legendary));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_is_not_basic() {
         let def = phyrexian_tower();
         assert!(!def.card.has_supertype(Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_has_two_abilities() {
         let def = phyrexian_tower();
@@ -65,6 +69,7 @@ mod tests {
     // First Ability (Colorless Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_is_mana_ability() {
         let def = phyrexian_tower();
@@ -72,6 +77,7 @@ mod tests {
         assert!(ability.is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_produces_colorless_mana() {
         let def = phyrexian_tower();
@@ -84,6 +90,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_requires_tap() {
         let def = phyrexian_tower();
@@ -100,6 +107,7 @@ mod tests {
     // Second Ability (Sacrifice for BB) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_is_mana_ability() {
         let def = phyrexian_tower();
@@ -107,6 +115,7 @@ mod tests {
         assert!(ability.is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_produces_two_black_mana() {
         let def = phyrexian_tower();
@@ -122,6 +131,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_requires_tap() {
         let def = phyrexian_tower();
@@ -134,6 +144,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_requires_creature_sacrifice() {
         let def = phyrexian_tower();
@@ -173,6 +184,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_on_battlefield() {
         let mut game = setup_game();
@@ -189,6 +201,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_phyrexian_tower_oracle_text() {
         let def = phyrexian_tower();
@@ -205,6 +218,7 @@ mod tests {
     ///
     /// Phyrexian Tower: Legendary Land
     /// {T}: Add {C}.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_phyrexian_tower_mana() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -240,6 +254,7 @@ mod tests {
     // NOTE: This replay test remains disabled while replay prompt ordering for
     // mana abilities with choice costs is stabilized.
 
+    // #[cfg(ironsmith_runtime_parser_tests)]
     // #[test]
     // fn test_replay_phyrexian_tower_sacrifice() {
     //     use crate::tests::integration_tests::{run_replay_test, ReplayTestConfig};

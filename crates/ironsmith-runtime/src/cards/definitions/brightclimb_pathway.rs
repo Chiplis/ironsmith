@@ -31,7 +31,7 @@ pub fn grimclimb_pathway() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -48,6 +48,7 @@ mod tests {
     // Brightclimb Pathway (Front Face) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_basic_properties() {
         let def = brightclimb_pathway();
@@ -57,6 +58,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_is_colorless() {
         let def = brightclimb_pathway();
@@ -64,6 +66,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_color_identity() {
         let def = brightclimb_pathway();
@@ -73,6 +76,7 @@ mod tests {
         assert!(!def.card.color_identity().contains(Color::Black));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_has_mana_ability() {
         let def = brightclimb_pathway();
@@ -80,6 +84,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_taps_for_white() {
         let def = brightclimb_pathway();
@@ -94,6 +99,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_requires_tap() {
         let def = brightclimb_pathway();
@@ -107,6 +113,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_is_not_basic() {
         let def = brightclimb_pathway();
@@ -114,6 +121,7 @@ mod tests {
         assert!(!def.card.has_supertype(Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_no_subtypes() {
         let def = brightclimb_pathway();
@@ -121,6 +129,7 @@ mod tests {
         // Unlike basic Plains, this doesn't have the Plains subtype
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_on_battlefield() {
         let mut game = setup_game();
@@ -137,6 +146,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_pathway_untapped_on_entry() {
         let mut game = setup_game();
@@ -152,6 +162,7 @@ mod tests {
     // Grimclimb Pathway (Back Face) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_basic_properties() {
         let def = grimclimb_pathway();
@@ -161,6 +172,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_is_colorless() {
         let def = grimclimb_pathway();
@@ -168,6 +180,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_color_identity() {
         let def = grimclimb_pathway();
@@ -177,6 +190,7 @@ mod tests {
         assert!(!def.card.color_identity().contains(Color::White));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_has_mana_ability() {
         let def = grimclimb_pathway();
@@ -184,6 +198,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_taps_for_black() {
         let def = grimclimb_pathway();
@@ -198,6 +213,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_requires_tap() {
         let def = grimclimb_pathway();
@@ -211,6 +227,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_is_not_basic() {
         let def = grimclimb_pathway();
@@ -218,12 +235,14 @@ mod tests {
         assert!(!def.card.has_supertype(Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_no_subtypes() {
         let def = grimclimb_pathway();
         assert!(def.card.subtypes.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_on_battlefield() {
         let mut game = setup_game();
@@ -240,6 +259,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_grimclimb_pathway_untapped_on_entry() {
         let mut game = setup_game();
@@ -255,6 +275,7 @@ mod tests {
     // Comparison Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_brightclimb_and_grimclimb_are_different() {
         let front = brightclimb_pathway();
@@ -276,6 +297,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_both_faces_are_lands() {
         let front = brightclimb_pathway();
@@ -285,6 +307,7 @@ mod tests {
         assert!(back.card.is_land());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mdfc_combined_color_identity() {
         // In Commander, MDFCs have combined color identity from both faces
@@ -312,6 +335,7 @@ mod tests {
     // Rules Interaction Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_pathway_not_affected_by_land_subtypes() {
         // Pathways don't have land subtypes, so effects like "destroy all Swamps"
@@ -323,6 +347,7 @@ mod tests {
         assert!(!back.card.has_subtype(Subtype::Plains));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_pathway_cannot_be_fetched() {
         // Fetchlands search for lands with specific subtypes (Swamp, Plains, etc.)
@@ -335,6 +360,7 @@ mod tests {
         assert!(back.card.subtypes.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_pathway_not_affected_by_blood_moon() {
         // Blood Moon turns nonbasic lands with land subtypes into Mountains
@@ -354,6 +380,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_brightclimb_pathway_play() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -371,6 +398,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_grimclimb_pathway_play() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

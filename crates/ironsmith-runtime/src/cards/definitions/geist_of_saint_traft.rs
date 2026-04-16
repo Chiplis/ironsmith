@@ -30,7 +30,7 @@ pub fn geist_of_saint_traft() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -52,6 +52,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_geist_of_saint_traft_basic_properties() {
         let def = geist_of_saint_traft();
@@ -61,6 +62,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_geist_has_hexproof() {
         let def = geist_of_saint_traft();
@@ -74,6 +76,7 @@ mod tests {
         assert!(has_hexproof, "Geist should have hexproof");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_geist_has_attack_trigger() {
         let def = geist_of_saint_traft();
@@ -91,6 +94,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_geist_subtypes() {
         let def = geist_of_saint_traft();
@@ -98,6 +102,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Cleric));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_geist_power_toughness() {
         let def = geist_of_saint_traft();
@@ -111,6 +116,7 @@ mod tests {
     // Token Creation Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_attack_trigger_creates_token() {
         let def = geist_of_saint_traft();
@@ -142,6 +148,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_token_creation_execution() {
         // Test that executing the trigger effect creates a token with proper properties
@@ -212,6 +219,7 @@ mod tests {
         assert!(delayed.one_shot);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_angel_token_has_flying() {
         let mut game = setup_game();
@@ -260,6 +268,7 @@ mod tests {
         assert!(has_flying, "Angel token should have Flying");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_angel_enters_attacking() {
         use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
@@ -336,6 +345,7 @@ mod tests {
     /// Geist of Saint Traft: {1}{W}{U} legendary creature 2/2
     /// Hexproof
     /// Whenever attacks, creates 4/4 Angel token.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_geist_of_saint_traft_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

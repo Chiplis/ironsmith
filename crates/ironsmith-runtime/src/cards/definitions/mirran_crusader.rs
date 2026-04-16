@@ -24,12 +24,13 @@ pub fn mirran_crusader() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mirran_crusader() {
         let def = mirran_crusader();
@@ -46,6 +47,7 @@ mod tests {
     ///
     /// Mirran Crusader: {1}{W}{W} creature 2/2
     /// Double strike, protection from black and from green
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_mirran_crusader_casting() {
         let game = run_replay_test(

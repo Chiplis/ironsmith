@@ -27,11 +27,12 @@ pub fn force_of_will() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::AlternativeCastingMethod;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_force_of_will() {
         let card = force_of_will();

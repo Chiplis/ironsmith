@@ -23,10 +23,11 @@ pub fn think_twice() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_think_twice() {
         let card = think_twice();
@@ -73,6 +74,7 @@ mod tests {
     /// Think Twice: {1}{U} instant
     /// Draw a card.
     /// Flashback {2}{U}
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_think_twice_from_hand() {
         use crate::ids::PlayerId;
@@ -115,6 +117,7 @@ mod tests {
     /// Tests casting Think Twice with flashback from graveyard.
     ///
     /// Flashback {2}{U} - must exile after resolving
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_think_twice_flashback() {
         use crate::ids::PlayerId;

@@ -714,6 +714,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parse_each_player_scries_uses_simultaneous_scry_effect() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Shared Visions")

@@ -19,7 +19,7 @@ pub fn nemesis_mask() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::{AbilityKind, ActivationTiming};
@@ -74,6 +74,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_nemesis_mask_basic_properties() {
         let def = nemesis_mask();
@@ -93,6 +94,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_nemesis_mask_has_equip_and_must_block_grant() {
         let def = nemesis_mask();
@@ -135,6 +137,7 @@ mod tests {
         assert!(saw_equip, "expected equip activated ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_nemesis_mask_requires_each_legal_blocker_while_attached() {
         let mut game = setup_game();

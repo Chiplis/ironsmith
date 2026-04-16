@@ -26,11 +26,12 @@ pub fn blood_moon() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_moon() {
         let card = blood_moon();

@@ -26,7 +26,7 @@ pub fn cataclysm() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
@@ -107,6 +107,7 @@ mod tests {
     // Basic Properties Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_basic_properties() {
         let def = cataclysm();
@@ -117,6 +118,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 4);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_is_white() {
         let def = cataclysm();
@@ -124,6 +126,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_mana_cost() {
         let def = cataclysm();
@@ -131,6 +134,7 @@ mod tests {
         // {2}{W}{W} = 2 generic + 2 white
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_has_spell_effect() {
         let def = cataclysm();
@@ -142,6 +146,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_keeps_one_of_each_type() {
         let mut game = setup_game();
@@ -211,6 +216,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_affects_both_players() {
         let mut game = setup_game();
@@ -252,6 +258,7 @@ mod tests {
         assert_eq!(bob_count, 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_artifact_creature_counts_as_one() {
         let mut game = setup_game();
@@ -285,6 +292,7 @@ mod tests {
         assert!(game.battlefield.contains(&golem), "Golem should survive");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_player_with_no_permanents() {
         let mut game = setup_game();
@@ -323,6 +331,7 @@ mod tests {
         assert_eq!(bob_count, 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_player_with_only_creatures() {
         let mut game = setup_game();
@@ -352,6 +361,7 @@ mod tests {
         assert!(alice_permanents[0].has_card_type(CardType::Creature));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_sacrificed_permanents_go_to_graveyard() {
         let mut game = setup_game();
@@ -380,6 +390,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_empty_battlefield() {
         let mut game = setup_game();
@@ -399,6 +410,7 @@ mod tests {
         assert_eq!(result.unwrap().value, crate::effect::OutcomeValue::Count(0));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_one_of_each_type_survives() {
         let mut game = setup_game();
@@ -437,6 +449,7 @@ mod tests {
     // Rules Interaction Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_is_symmetrical() {
         // The oracle text says "Each player" - this is symmetrical
@@ -444,6 +457,7 @@ mod tests {
         assert!(def.card.oracle_text.contains("Each player"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysm_planeswalkers_are_sacrificed() {
         // Cataclysm only lets you keep artifact, creature, enchantment, land

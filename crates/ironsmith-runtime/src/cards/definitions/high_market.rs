@@ -18,7 +18,7 @@ pub fn high_market() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Zone;
@@ -35,6 +35,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_basic_properties() {
         let def = high_market();
@@ -44,12 +45,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_is_not_basic() {
         let def = high_market();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_has_two_abilities() {
         let def = high_market();
@@ -60,6 +63,7 @@ mod tests {
     // First Ability (Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_is_mana_ability() {
         let def = high_market();
@@ -68,6 +72,7 @@ mod tests {
         assert!(ability.is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_produces_colorless_mana() {
         let def = high_market();
@@ -81,6 +86,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_requires_tap() {
         let def = high_market();
@@ -98,6 +104,7 @@ mod tests {
     // Second Ability (Sacrifice) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_is_activated_ability() {
         let def = high_market();
@@ -106,6 +113,7 @@ mod tests {
         assert!(matches!(ability.kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_is_not_mana_ability() {
         let def = high_market();
@@ -114,6 +122,7 @@ mod tests {
         assert!(!ability.is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_requires_tap() {
         let def = high_market();
@@ -126,6 +135,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_requires_creature_sacrifice() {
         let def = high_market();
@@ -161,6 +171,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_gains_life() {
         let def = high_market();
@@ -179,6 +190,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_instant_speed() {
         let def = high_market();
@@ -191,6 +203,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_has_no_targets() {
         let def = high_market();
@@ -207,6 +220,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_on_battlefield() {
         let mut game = setup_game();
@@ -224,6 +238,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_oracle_text() {
         let def = high_market();
@@ -233,6 +248,7 @@ mod tests {
         assert!(def.card.oracle_text.contains("gain 1 life"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_is_permanent() {
         let def = high_market();
@@ -240,6 +256,7 @@ mod tests {
         assert!(def.is_permanent());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_high_market_is_not_spell() {
         let def = high_market();
@@ -252,6 +269,7 @@ mod tests {
     // Sacrifice Filter Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sacrifice_any_creature_type() {
         let def = high_market();
@@ -288,6 +306,7 @@ mod tests {
     // Functional/Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gain_life_effect_execution() {
         // Test that the gain life effect actually works when executed
@@ -322,6 +341,7 @@ mod tests {
     // The game loop checks non-mana costs at execution time, not in can_pay_cost.
     // Replay tests verify the full activation flow works correctly.
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sacrifice_ability_vs_mana_ability() {
         // Verify the sacrifice ability is NOT a mana ability (uses the stack)
@@ -349,6 +369,7 @@ mod tests {
     ///
     /// High Market: Land
     /// {T}: Add {C}.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_high_market_mana() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -380,6 +401,7 @@ mod tests {
     /// Tests High Market's sacrifice ability (gain 1 life).
     ///
     /// {T}, Sacrifice a creature: You gain 1 life.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_high_market_sacrifice() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

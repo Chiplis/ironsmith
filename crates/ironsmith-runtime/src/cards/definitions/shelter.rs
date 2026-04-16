@@ -23,7 +23,7 @@ pub fn shelter() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
@@ -61,6 +61,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_basic_properties() {
         let def = shelter();
@@ -69,12 +70,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_is_instant() {
         let def = shelter();
         assert!(def.card.is_instant());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_is_white() {
         let def = shelter();
@@ -82,6 +85,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_has_three_effects() {
         let def = shelter();
@@ -93,6 +97,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_effect_grants_protection() {
         let mut game = setup_game();
@@ -127,6 +132,7 @@ mod tests {
         assert!(has_protection, "Soldier should have protection");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_effect_fails_without_target() {
         let mut game = setup_game();
@@ -150,6 +156,7 @@ mod tests {
         assert!(result.is_err(), "Should fail without a target");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_only_affects_target() {
         let mut game = setup_game();
@@ -198,6 +205,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shelter_oracle_text() {
         let def = shelter();

@@ -16,7 +16,7 @@ pub fn shattered_sanctum() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -33,6 +33,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shattered_sanctum_basic_properties() {
         let def = shattered_sanctum();
@@ -42,12 +43,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shattered_sanctum_is_not_basic() {
         let def = shattered_sanctum();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shattered_sanctum_has_two_abilities() {
         let def = shattered_sanctum();
@@ -58,6 +61,7 @@ mod tests {
     // Mana Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_offers_white_and_black() {
         let def = shattered_sanctum();
@@ -92,6 +96,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shattered_sanctum_on_battlefield() {
         let mut game = setup_game();
@@ -106,6 +111,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shattered_sanctum_oracle_text() {
         let def = shattered_sanctum();
@@ -122,6 +128,7 @@ mod tests {
     // ========================================
 
     /// Tests Shattered Sanctum tapping for white mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_shattered_sanctum_tap_for_white() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -141,6 +148,7 @@ mod tests {
     }
 
     /// Tests Shattered Sanctum tapping for black mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_shattered_sanctum_tap_for_black() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

@@ -189,6 +189,9 @@ fn test_monarch_end_step_draws_a_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn sarevok_deathbringer_end_step_hits_active_player_when_no_permanent_left() {
     let mut game = setup_game();
@@ -228,6 +231,9 @@ fn sarevok_deathbringer_end_step_hits_active_player_when_no_permanent_left() {
         "Sarevok should make the active player lose life equal to its power"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn sarevok_deathbringer_skips_end_step_if_a_permanent_left_battlefield() {
@@ -280,6 +286,9 @@ fn sarevok_deathbringer_skips_end_step_if_a_permanent_left_battlefield() {
         "Sarevok should not trigger if any permanent left the battlefield this turn"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
@@ -373,6 +382,9 @@ fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader() {
     let mut game = setup_game();
@@ -438,6 +450,9 @@ fn guild_artisan_grants_treasure_trigger_when_commander_attacks_tied_life_leader
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() {
     let mut game = setup_game();
@@ -498,6 +513,9 @@ fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_life_leader() 
         .count();
     assert_eq!(treasure_count, 0, "no Treasure tokens should be created");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_them() {
@@ -642,6 +660,9 @@ fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_suspended_card_removes_time_counter_during_upkeep() {
     let mut game = setup_game();
@@ -713,6 +734,9 @@ fn test_suspended_card_removes_time_counter_during_upkeep() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
     let mut game = setup_game();
@@ -779,6 +803,9 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
         "card without time counters is no longer suspended and should not trigger again"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
@@ -888,6 +915,9 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
         "resolving Oath should stop after the first creature is revealed"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyard() {
@@ -1015,6 +1045,9 @@ fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyar
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
     let mut game = setup_game();
@@ -1063,6 +1096,9 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
         "the player with the most life should gain control of Wild Dogs"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
@@ -1312,6 +1348,9 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
         "the enchantment should return to its original name once the copy expires"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
@@ -1577,6 +1616,7 @@ fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn emrakul_cast_trigger_prompts_for_opponent_in_four_player_game() {
     #[derive(Debug, Default)]
     struct RecordingTargetDecisionMaker {
@@ -1677,6 +1717,7 @@ fn emrakul_cast_trigger_prompts_for_opponent_in_four_player_game() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn emrakul_cast_trigger_prompt_does_not_autofill_or_stack_before_choice() {
     #[derive(Debug, Default)]
     struct PromptOnlyDecisionMaker {
@@ -2069,6 +2110,9 @@ fn test_pending_zone_change_still_drives_non_delayed_triggered_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
     let mut game = setup_game();
@@ -2147,6 +2191,9 @@ fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_portcullis_does_not_trigger_without_two_other_creatures() {
     let mut game = setup_game();
@@ -2193,6 +2240,9 @@ fn test_portcullis_does_not_trigger_without_two_other_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_optional_trigger_target_stacks_without_legal_targets() {
     let mut game = setup_game();
@@ -2229,6 +2279,9 @@ fn test_optional_trigger_target_stacks_without_legal_targets() {
         "optional target trigger should not invent a target"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_optional_trigger_target_can_be_skipped_even_with_legal_targets() {
@@ -2280,6 +2333,9 @@ fn test_optional_trigger_target_can_be_skipped_even_with_legal_targets() {
         "declining an optional trigger target should leave the trigger untargeted"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
@@ -2392,6 +2448,7 @@ fn bridge_from_below_definition() -> crate::cards::CardDefinition {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_bridge_from_below_triggers_from_graveyard_on_your_creature_dying() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -2430,6 +2487,7 @@ fn test_bridge_from_below_triggers_from_graveyard_on_your_creature_dying() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_bridge_from_below_exiles_itself_when_opponents_creature_dies() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -2466,6 +2524,7 @@ fn test_bridge_from_below_exiles_itself_when_opponents_creature_dies() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -2588,6 +2647,9 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
         "the non-owned creature should remain in its owner's graveyard"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
@@ -2739,6 +2801,9 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
         "trigger stack entry should carry TurnedFaceUp trigger event"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
@@ -2923,6 +2988,9 @@ fn test_extract_target_spec_no_count() {
     assert_eq!(extracted.max_targets, Some(1), "should default to max 1");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_extract_target_specs_pump_and_gain_clause_uses_single_target_selection() {
     use crate::cards::CardDefinitionBuilder;
@@ -2956,6 +3024,9 @@ fn test_extract_target_specs_pump_and_gain_clause_uses_single_target_selection()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_extract_target_specs_target_player_chain_uses_single_shared_target() {
     use crate::cards::CardDefinitionBuilder;
@@ -2984,6 +3055,9 @@ fn test_extract_target_specs_target_player_chain_uses_single_shared_target() {
         "expected both players to be legal targets in a two-player game"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_extract_target_specs_target_player_sacrifice_choice_has_target_requirement() {
@@ -3193,6 +3267,7 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed()
  {
     run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed(
@@ -3445,11 +3520,13 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_exchange_of_words_cast_from_hand_swaps_alices_yawgmoth_and_ornithopter() {
     let _ = run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_compute_legal_actions_after_exchange_of_words_sees_borrowed_activated_abilities() {
     let (game, ornithopter_id, yawgmoth_id) =
         run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
@@ -3579,6 +3656,9 @@ fn profile_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornitho
         let _ = run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter();
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_extract_target_specs_two_distinct_targets_create_two_requirements() {
@@ -3742,6 +3822,9 @@ fn test_distinct_player_target_clauses_resolve_against_their_own_selected_target
     assert_eq!(game.player(bob).expect("bob exists").life, 23);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_verdant_command_distinct_player_modes_use_their_own_targets() {
     let mut game = setup_game();
@@ -3847,6 +3930,9 @@ fn test_stack_resolution_keeps_distinct_target_clause_assignments_when_one_targe
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_nightcreep_turns_creatures_black_and_lands_into_swamps_until_end_of_turn() {
     let mut game = setup_game();
@@ -3924,6 +4010,9 @@ fn test_nightcreep_turns_creatures_black_and_lands_into_swamps_until_end_of_turn
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_extract_target_specs_exactly_two_targets_uses_single_requirement_with_count_two() {
     use crate::cards::CardDefinitionBuilder;
@@ -3970,6 +4059,9 @@ fn test_extract_target_specs_exactly_two_targets_uses_single_requirement_with_co
         requirements
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_beast_within_target_requirements_include_enchantments() {
@@ -4802,6 +4894,7 @@ fn undying_effects() -> Vec<Effect> {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_goddric_celebration_inactive_without_two_nonland_entries() {
     let (mut game, alice, _bob, goddric_id) = setup_goddric_fixture();
 
@@ -4848,6 +4941,7 @@ fn test_goddric_celebration_inactive_without_two_nonland_entries() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_goddric_celebration_grants_dragon_stats_flying_and_activation() {
     let (mut game, alice, _bob, goddric_id) = setup_goddric_fixture();
 
@@ -4904,6 +4998,7 @@ fn test_goddric_celebration_grants_dragon_stats_flying_and_activation() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
     use crate::decision::LegalAction;
 
@@ -4991,6 +5086,9 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
         "non-Dragons you control should not get pumped"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_root_greevil_activation_reaches_stack_and_resolves_with_color_choice() {
@@ -5218,6 +5316,9 @@ fn test_resolve_stack_entry_basic() {
     assert_eq!(player.graveyard.len(), 1);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_resolve_stack_entry_uses_self_replacement_branch_when_condition_is_true() {
     let mut game = setup_game();
@@ -5261,6 +5362,9 @@ fn test_resolve_stack_entry_uses_self_replacement_branch_when_condition_is_true(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_resolve_stack_entry_uses_default_effect_when_self_replacement_condition_is_false() {
     let mut game = setup_game();
@@ -5299,6 +5403,9 @@ fn test_resolve_stack_entry_uses_default_effect_when_self_replacement_condition_
         "the default segment should draw exactly one card"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_echo_upkeep_trigger_without_payment_sacrifices_source() {
@@ -5402,6 +5509,9 @@ fn test_resolve_stack_entry_with_graveyard_object_target() {
         "target card should be returned to battlefield"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {
@@ -5663,6 +5773,8 @@ fn assert_pact_upkeep_trigger_survives_fail_to_find(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn test_pact_upkeep_trigger_still_fires_after_fail_to_find() {
     let pact_def = CardDefinitionBuilder::new(CardId::from_raw(91_002), "Summoner's Pact Probe")
@@ -5687,6 +5799,9 @@ fn test_generated_summoners_pact_upkeep_trigger_survives_fail_to_find() {
 
     assert_pact_upkeep_trigger_survives_fail_to_find(pact_def, "Summoner's Pact");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_fatal_push_without_revolt_does_not_destroy_four_mana_target() {
@@ -5724,6 +5839,9 @@ fn test_fatal_push_without_revolt_does_not_destroy_four_mana_target() {
         "without revolt, Fatal Push should not destroy a mana value 4 creature"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_fatal_push_with_revolt_destroys_four_mana_target() {
@@ -5849,6 +5967,7 @@ fn test_unblocked_attacker_uses_calculated_power_from_conditional_anthem() {
     assert_eq!(game.player(bob).unwrap().life, 16);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_earthbent_land_deals_combat_damage_using_counter_boosted_power() {
     let mut game = setup_game();
@@ -6206,6 +6325,9 @@ fn test_sba_player_loses() {
     assert!(game.player(alice).unwrap().has_lost);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_state_trigger_sacrifice_fires_from_sba_scan() {
     let mut game = setup_game();
@@ -6234,6 +6356,9 @@ fn test_state_trigger_sacrifice_fires_from_sba_scan() {
         "creature should be sacrificed once the trigger resolves"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_state_trigger_only_retriggers_after_condition_turns_false() {
@@ -6363,6 +6488,8 @@ impl DecisionMaker for CorpseCobbleDecisionMaker {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
     use crate::cards::definitions::{basic_island, basic_swamp, grizzly_bears, llanowar_elves};
@@ -6449,6 +6576,9 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
         "Zombie token should use the total power of the sacrificed creatures"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
@@ -6567,6 +6697,9 @@ fn test_etb_trigger_fires() {
     assert!(!trigger_queue.is_empty());
     assert_eq!(trigger_queue.entries.len(), 1);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
@@ -6795,6 +6928,9 @@ fn test_combat_damage_with_triggers() {
     assert!(!trigger_queue.is_empty());
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves() {
     let mut game = setup_game();
@@ -6858,6 +6994,9 @@ fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves(
         "Katana trigger should gain 2 life for the equipped creature's controller"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
@@ -6991,6 +7130,9 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
         "Ragavan's exiled card should become castable in the postcombat main phase once timing allows it"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission() {
@@ -7143,6 +7285,7 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
 
 // === Full Game Flow Integration Test ===
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_full_game_lightning_bolt_wins() {
     use crate::cards::definitions::{basic_mountain, lightning_bolt};
@@ -7239,6 +7382,7 @@ fn test_full_game_lightning_bolt_wins() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_full_game_with_decision_maker() {
     use crate::cards::definitions::{basic_mountain, fireball};
@@ -7485,6 +7629,7 @@ fn test_full_game_with_decision_maker() {
 // Card-Specific Integration Tests
 // ============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_darksteel_colossus_shuffle_into_library() {
     use crate::cards::definitions::darksteel_colossus;
@@ -7522,6 +7667,7 @@ fn test_darksteel_colossus_shuffle_into_library() {
     // implementing the replacement effect handling in game_state.rs
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_thorn_elemental_has_ability() {
     use crate::cards::definitions::thorn_elemental;
@@ -7558,6 +7704,7 @@ fn test_thorn_elemental_has_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_thorn_elemental_combat_decision() {
     use crate::cards::definitions::thorn_elemental;
@@ -7607,6 +7754,7 @@ fn test_thorn_elemental_combat_decision() {
     assert_eq!(game.player(bob).unwrap().life, 15);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_has_abilities() {
     use crate::ability::AbilityKind;
@@ -7675,6 +7823,7 @@ fn test_stormbreath_dragon_has_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_is_monstrous_field() {
     use crate::cards::definitions::stormbreath_dragon;
@@ -7702,6 +7851,7 @@ fn test_stormbreath_dragon_is_monstrous_field() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_trigger_condition() {
     use crate::ability::AbilityKind;
@@ -7744,6 +7894,9 @@ fn test_stormbreath_dragon_trigger_condition() {
         "BecameMonstrous should trigger Stormbreath Dragon's ability"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
@@ -7795,6 +7948,7 @@ fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_geist_of_saint_traft_has_abilities() {
     use crate::ability::AbilityKind;
@@ -7833,6 +7987,7 @@ fn test_geist_of_saint_traft_has_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_geist_of_saint_traft_attack_trigger() {
     use crate::ability::AbilityKind;
@@ -7891,6 +8046,7 @@ fn test_geist_of_saint_traft_attack_trigger() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_geist_token_has_correct_modifications() {
     use crate::ability::AbilityKind;
@@ -7923,6 +8079,7 @@ fn test_geist_token_has_correct_modifications() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_monstrosity_adds_counters() {
     use crate::cards::definitions::stormbreath_dragon;
@@ -7971,6 +8128,7 @@ fn test_stormbreath_dragon_monstrosity_adds_counters() {
     assert_eq!(dragon.toughness(), Some(7));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_monstrosity_only_works_once() {
     use crate::cards::definitions::stormbreath_dragon;
@@ -8022,6 +8180,7 @@ fn test_stormbreath_dragon_monstrosity_only_works_once() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stormbreath_dragon_becomes_monstrous_trigger_fires() {
     use crate::cards::definitions::stormbreath_dragon;
@@ -8061,6 +8220,9 @@ fn test_stormbreath_dragon_becomes_monstrous_trigger_fires() {
     assert_eq!(triggers[0].source, dragon_id);
     assert_eq!(triggers[0].controller, alice);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_fleecemane_lion_gains_keywords_when_monstrous() {
@@ -8966,6 +9128,7 @@ fn test_once_per_turn_restriction_survives_control_change() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_wall_of_roots_once_per_turn_mana_ability_fast_path() {
     use crate::decision::compute_legal_actions;
@@ -9035,6 +9198,7 @@ fn test_wall_of_roots_once_per_turn_mana_ability_fast_path() {
     }));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
     use crate::decision::LegalAction;
@@ -9168,6 +9332,9 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
         "Bosh should deal damage equal to the sacrificed artifact's mana value (2)"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
@@ -9319,6 +9486,9 @@ fn test_brutal_suppression_adds_a_land_sacrifice_activation_cost() {
         "the Rebel ability should reach the stack after paying the extra activation cost"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
@@ -9519,6 +9689,7 @@ fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
     assert_eq!(sacrificed[0].name, "Fodder");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_yawgmoth_proliferate_activation_prompts_discard_choice() {
     use crate::decision::{GameProgress, LegalAction};
@@ -9646,6 +9817,9 @@ fn test_yawgmoth_proliferate_activation_prompts_discard_choice() {
         "second hand card should be selectable for discard cost"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_yawgmoth_proliferate_activation_is_legal_with_black_lotus_and_discard_card() {
@@ -10166,6 +10340,7 @@ fn test_legend_rule_with_different_controllers() {
 // Flashback Tests
 // ============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_appears_in_legal_actions_from_graveyard() {
     use crate::cards::definitions::think_twice;
@@ -10212,6 +10387,7 @@ fn test_flashback_appears_in_legal_actions_from_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_not_available_from_hand() {
     use crate::cards::definitions::think_twice;
@@ -10274,6 +10450,7 @@ fn test_flashback_not_available_from_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_exiles_after_resolution() {
     use crate::cards::definitions::think_twice;
@@ -10360,6 +10537,9 @@ fn test_flashback_exiles_after_resolution() {
     assert!(in_exile, "Think Twice SHOULD be in exile after flashback");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     use crate::cards::builders::CardDefinitionBuilder;
@@ -10443,6 +10623,9 @@ fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_make_an_example_sacrifices_the_chosen_pile() {
     use crate::effects::ExecutionContext;
@@ -10510,6 +10693,9 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
         "the chosen creature should leave the battlefield"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
@@ -10640,6 +10826,9 @@ fn test_split_the_spoils_opponent_can_take_the_split_pile_into_hand() {
         "the complement pile should return to the graveyard"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
@@ -10860,6 +11049,9 @@ fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_dash_cost_reduction_applies_only_to_dash_casts() {
     let mut game = setup_game();
@@ -10949,6 +11141,9 @@ fn test_dash_cost_reduction_applies_only_to_dash_casts() {
         "the reduced dash cast should spend only the single red mana"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
@@ -11066,6 +11261,9 @@ fn test_gargoyle_sentinel_gains_flying_only_for_itself_until_end_of_turn() {
         "defender should come back after end of turn"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
@@ -11613,6 +11811,9 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     use crate::cards::CardDefinitionBuilder;
@@ -11751,6 +11952,9 @@ fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_players_upkeep() {
     let mut game = setup_game();
@@ -11842,6 +12046,9 @@ fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_players_upkeep()
         "the enchanted player should lose life when the curse trigger resolves"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_kitsune_mystic_requires_two_attached_auras_for_end_step_trigger() {
@@ -11943,6 +12150,9 @@ fn test_illegal_equipment_becomes_unattached_instead_of_dying() {
         "Equipment should become unattached when its bearer stops being a creature"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
@@ -12056,6 +12266,7 @@ fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     use crate::cards::basic_forest;
@@ -12373,6 +12584,9 @@ fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches() {
     let mut game = setup_game();
@@ -12464,6 +12678,7 @@ fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_split_card_cast_prompt_offers_front_back_and_fuse_methods() {
     use crate::mana::ManaSymbol;
@@ -12565,6 +12780,7 @@ fn test_split_card_cast_prompt_offers_front_back_and_fuse_methods() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_split_other_half_cast_uses_back_face_characteristics_on_stack() {
     let mut game = setup_game();
@@ -12615,6 +12831,7 @@ fn test_split_other_half_cast_uses_back_face_characteristics_on_stack() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_fused_split_cast_combines_effects_and_resolves_in_order() {
     let mut game = setup_game();
@@ -12685,6 +12902,9 @@ fn test_fused_split_cast_combines_effects_and_resolves_in_order() {
         "Entering half of fused spell should return a creature under the caster's control"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_cipher_resolution_encodes_and_combat_damage_casts_a_copy() {
@@ -12856,6 +13076,7 @@ fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_pays_alternative_cost() {
     use crate::cards::definitions::think_twice;
@@ -12899,6 +13120,7 @@ fn test_flashback_pays_alternative_cost() {
     assert_eq!(mana_pool.blue, 0, "Should have spent all mana on flashback");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_normal_cast_goes_to_graveyard() {
     use crate::cards::definitions::think_twice;
@@ -12962,6 +13184,7 @@ fn test_normal_cast_goes_to_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_requires_enough_mana() {
     use crate::cards::definitions::think_twice;
@@ -13012,6 +13235,7 @@ fn test_flashback_requires_enough_mana() {
 // Everflowing Chalice / Multikicker Tests
 // =========================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_everflowing_chalice_no_kicks() {
     use crate::cards::definitions::everflowing_chalice;
@@ -13061,6 +13285,7 @@ fn test_everflowing_chalice_no_kicks() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_everflowing_chalice_one_kick() {
     use crate::cards::definitions::everflowing_chalice;
@@ -13106,6 +13331,7 @@ fn test_everflowing_chalice_one_kick() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_everflowing_chalice_two_kicks() {
     use crate::cards::definitions::everflowing_chalice;
@@ -13151,6 +13377,7 @@ fn test_everflowing_chalice_two_kicks() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_everflowing_chalice_etb_trigger_uses_object_kick_count() {
     // This test verifies that when an ETB trigger fires, it can read
@@ -13198,6 +13425,7 @@ fn test_everflowing_chalice_etb_trigger_uses_object_kick_count() {
 // Force of Will / Alternative Cost Tests
 // =========================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_available() {
     use crate::cards::definitions::force_of_will;
@@ -13253,6 +13481,7 @@ fn test_force_of_will_alternative_cost_available() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_casting_flow() {
     use crate::alternative_cast::CastingMethod;
@@ -13440,6 +13669,7 @@ fn test_force_of_will_alternative_cost_casting_flow() {
     assert_eq!(exiled[0].name, "Counterspell");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_not_available_without_card() {
     use crate::cards::definitions::force_of_will;
@@ -13487,6 +13717,9 @@ fn test_force_of_will_alternative_cost_not_available_without_card() {
         "Should NOT be able to use alternative cost without another blue card"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_force_of_negation_resolution_counters_and_exiles_target_spell() {
@@ -13538,6 +13771,9 @@ fn test_force_of_negation_resolution_counters_and_exiles_target_spell() {
         "countered spell should no longer be on the stack"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
@@ -13616,6 +13852,7 @@ fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_not_available_with_only_nonblue_card() {
     use crate::cards::definitions::force_of_will;
@@ -13668,6 +13905,7 @@ fn test_force_of_will_alternative_cost_not_available_with_only_nonblue_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_normal_cast_available_with_mana() {
     use crate::cards::definitions::force_of_will;
@@ -13724,6 +13962,7 @@ fn test_force_of_will_normal_cast_available_with_mana() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_both_options_available() {
     use crate::cards::definitions::{counterspell, force_of_will, lightning_bolt};
@@ -13818,6 +14057,7 @@ fn test_force_of_will_both_options_available() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_choose_casting_method_flow() {
     use crate::cards::definitions::{counterspell, force_of_will, lightning_bolt};
@@ -13909,6 +14149,9 @@ fn test_choose_casting_method_flow() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_omniscience_grants_free_cast_from_hand_without_mana() {
     use crate::cards::definitions::lightning_bolt;
@@ -13951,6 +14194,9 @@ fn test_omniscience_grants_free_cast_from_hand_without_mana() {
         "Omniscience should expose a free cast action from hand without available mana"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_omniscience_choose_casting_method_includes_free_option() {
@@ -14015,6 +14261,9 @@ fn test_omniscience_choose_casting_method_includes_free_option() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
     use crate::decision::compute_legal_actions;
@@ -14063,6 +14312,9 @@ fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
         "Omniscience should not let sorceries ignore normal timing restrictions"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_backdraft_cast_from_hand_uses_blasphemous_act_damage_history() {
@@ -14201,6 +14453,9 @@ fn test_backdraft_cast_from_hand_uses_blasphemous_act_damage_history() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile_for_free() {
     use crate::alternative_cast::CastingMethod;
@@ -14320,6 +14575,7 @@ fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile
 // Underworld Breach / Granted Escape Tests
 // =========================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_grants_escape_to_graveyard_cards() {
     use crate::cards::definitions::{lightning_bolt, underworld_breach};
@@ -14375,6 +14631,7 @@ fn test_underworld_breach_grants_escape_to_graveyard_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_no_escape_without_enough_cards_to_exile() {
     use crate::cards::definitions::{lightning_bolt, underworld_breach};
@@ -14428,6 +14685,7 @@ fn test_underworld_breach_no_escape_without_enough_cards_to_exile() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_escape_needs_3_other_cards() {
     // Regression test: with 3 cards in graveyard, you can only exile 2 OTHER cards,
@@ -14516,6 +14774,7 @@ fn test_underworld_breach_escape_needs_3_other_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_doesnt_grant_escape_to_lands() {
     use crate::cards::definitions::{basic_mountain, underworld_breach};
@@ -14566,6 +14825,7 @@ fn test_underworld_breach_doesnt_grant_escape_to_lands() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_no_escape_without_breach_on_battlefield() {
     use crate::cards::definitions::lightning_bolt;
@@ -14619,6 +14879,7 @@ fn test_underworld_breach_no_escape_without_breach_on_battlefield() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_cannot_use_alt_cost_when_escaping() {
     // This tests a tricky interaction:
@@ -14724,6 +14985,7 @@ fn test_force_of_will_cannot_use_alt_cost_when_escaping() {
     // This is implicitly tested by the above - we only have GrantedEscape, not Alternative(0)
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_underworld_breach_escape_works_with_4_cards() {
     // With 4 cards in graveyard, escape SHOULD be available (3 other cards to exile)
@@ -14802,6 +15064,7 @@ fn test_underworld_breach_escape_works_with_4_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_escape_with_spell_on_stack() {
     // Simulates:
@@ -14960,6 +15223,7 @@ fn test_force_of_will_escape_with_spell_on_stack() {
 // Affinity for Artifacts Tests
 // ============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_affinity_reduces_mana_cost() {
     // Frogmite costs {4} with affinity for artifacts
@@ -15018,6 +15282,7 @@ fn test_affinity_reduces_mana_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_affinity_partial_reduction() {
     // Frogmite costs {4} with affinity for artifacts
@@ -15100,6 +15365,7 @@ fn test_affinity_partial_reduction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_affinity_only_counts_own_artifacts() {
     // Affinity only counts artifacts YOU control
@@ -15141,6 +15407,7 @@ fn test_affinity_only_counts_own_artifacts() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_frogmite_counts_as_artifact_for_affinity_when_on_battlefield() {
     // Frogmite is an artifact creature, so once on battlefield it counts for other affinity costs
@@ -15173,6 +15440,7 @@ fn test_frogmite_counts_as_artifact_for_affinity_when_on_battlefield() {
 // Delve Tests
 // ============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_delve_reduces_mana_cost() {
     // Treasure Cruise costs {7}{U} with Delve
@@ -15238,6 +15506,7 @@ fn test_delve_reduces_mana_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_delve_partial_reduction() {
     // Treasure Cruise costs {7}{U} with Delve
@@ -15324,6 +15593,7 @@ fn test_delve_partial_reduction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_delve_exiles_cards_on_cast() {
     // When casting with Delve, cards should be exiled from graveyard
@@ -15392,6 +15662,7 @@ fn test_delve_exiles_cards_on_cast() {
     assert_eq!(game.stack.len(), 1);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_delve_cannot_cast_without_enough_graveyard_or_mana() {
     // Treasure Cruise costs {7}{U}
@@ -15444,6 +15715,7 @@ fn test_delve_cannot_cast_without_enough_graveyard_or_mana() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_convoke_reduces_mana_cost_with_creatures() {
     // Stoke the Flames costs {2}{R}{R} with Convoke
@@ -15527,6 +15799,7 @@ fn test_convoke_reduces_mana_cost_with_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_convoke_taps_creatures_on_cast() {
     // When casting with Convoke, the creatures used should be tapped
@@ -15690,6 +15963,7 @@ fn test_convoke_colored_creatures_pay_colored_mana() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_convoke_summoning_sick_creatures_can_be_tapped() {
     // Convoke taps creatures to pay a spell's cost, so summoning sickness does not matter.
@@ -15788,6 +16062,7 @@ fn test_convoke_summoning_sick_creatures_can_be_tapped() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_improvise_reduces_mana_cost_with_artifacts() {
     // Reverse Engineer costs {3}{U}{U} with Improvise
@@ -15853,6 +16128,7 @@ fn test_improvise_reduces_mana_cost_with_artifacts() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_improvise_taps_artifacts_on_cast() {
     // When casting with Improvise, the artifacts used should be tapped
@@ -16006,6 +16282,7 @@ fn test_improvise_already_tapped_artifacts_cannot_be_used() {
 // Search Library Tests (The Birth of Meletis)
 // =========================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_search_library_finds_matching_card() {
     use crate::cards::definitions::{basic_plains, the_birth_of_meletis};
@@ -16095,6 +16372,7 @@ fn test_search_library_finds_matching_card() {
     assert!(plains_in_hand, "Plains should be in hand after search");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_search_library_no_matching_cards() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -16164,6 +16442,7 @@ fn test_search_library_no_matching_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_search_library_fail_to_find() {
     use crate::cards::definitions::{basic_plains, the_birth_of_meletis};
@@ -16254,6 +16533,7 @@ fn test_search_library_fail_to_find() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_search_library_for_card_cannot_fail_to_find() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -16309,6 +16589,7 @@ fn test_search_library_for_card_cannot_fail_to_find() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_search_library_selects_specific_card() {
     use crate::cards::definitions::{basic_island, basic_plains, the_birth_of_meletis};
@@ -16401,6 +16682,9 @@ fn test_search_library_selects_specific_card() {
         || !game.player(alice).unwrap().library.contains(&plains2_id);
     assert!(moved_to_hand, "One of the Plains should have moved to hand");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
@@ -16591,6 +16875,9 @@ fn test_evolving_door_finds_two_color_creature_and_respects_may_cast_decline() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     use crate::ability::AbilityKind;
@@ -16708,6 +16995,9 @@ fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
     });
     assert!(forest_on_battlefield, "forest should be on battlefield");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_oreskos_explorer_searches_for_players_with_more_lands_than_you() {
@@ -16857,6 +17147,7 @@ fn count_battlefield_permanents_named(game: &GameState, controller: PlayerId, na
         .count()
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_doubling_chant_resolves_search_for_each_creature_you_control() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
@@ -16947,6 +17238,7 @@ fn test_doubling_chant_resolves_search_for_each_creature_you_control() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_doubling_chant_declined_iteration_leaves_matching_card_in_library() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
@@ -17042,6 +17334,7 @@ fn test_doubling_chant_declined_iteration_leaves_matching_card_in_library() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_doubling_chant_same_name_search_prompts_are_user_facing() {
     use crate::cards::definitions::ornithopter;
@@ -17163,6 +17456,9 @@ fn test_doubling_chant_same_name_search_prompts_are_user_facing() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
     use crate::cards::builders::CardDefinitionBuilder;
@@ -17257,6 +17553,9 @@ fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
         "the searched basic land should become a new battlefield object"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_boseiju_channel_lets_destroyed_permanent_controller_search_for_land() {
@@ -17359,6 +17658,9 @@ fn test_boseiju_channel_lets_destroyed_permanent_controller_search_for_land() {
         "the searched land should become a new battlefield object"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_boseiju_channel_activation_flow_preserves_land_search_after_destroying_target() {
@@ -17542,6 +17844,9 @@ fn test_boseiju_channel_activation_flow_preserves_land_search_after_destroying_t
         "the searched land should enter as a new battlefield object"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_boseiju_channel_assigns_multiplayer_search_prompt_to_destroyed_controller() {
@@ -17733,6 +18038,9 @@ fn test_boseiju_channel_assigns_multiplayer_search_prompt_to_destroyed_controlle
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
     use crate::cards::builders::CardDefinitionBuilder;
@@ -17801,6 +18109,9 @@ fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
         "The One Ring should prevent combat damage dealt before Alice's next turn"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
@@ -17955,6 +18266,9 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
     use crate::PriorityResponse;
@@ -18088,6 +18402,9 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
@@ -18185,6 +18502,9 @@ fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn voices_from_the_void_discards_one_card_per_basic_land_type() {
     use crate::cards::definitions::{basic_forest, basic_island, basic_swamp};
@@ -18243,6 +18563,9 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
         "the discard count should match the three basic land types on Alice's battlefield"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() {
@@ -18405,6 +18728,9 @@ fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     let mut game = setup_game();
@@ -18501,6 +18827,9 @@ fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
     let mut game = setup_game();
@@ -18585,6 +18914,7 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
 // Saga Integration Tests
 // ============================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_etb_adds_lore_counter() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -18614,6 +18944,7 @@ fn test_saga_etb_adds_lore_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_precombat_main_adds_lore_counter() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -18649,6 +18980,7 @@ fn test_saga_precombat_main_adds_lore_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_final_chapter_marks_for_sacrifice() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -18680,6 +19012,7 @@ fn test_saga_final_chapter_marks_for_sacrifice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_sacrifice_sba() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -18741,6 +19074,7 @@ fn test_saga_sacrifice_sba() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_full_lifecycle() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -18824,6 +19158,7 @@ fn test_saga_full_lifecycle() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_survives_when_lore_counter_removed() {
     use crate::cards::definitions::{hex_parasite, ornithopter, urzas_saga};
@@ -19006,6 +19341,7 @@ fn test_saga_survives_when_lore_counter_removed() {
     println!("- Alice's life: 18");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_saga_chapter_triggers_again_after_counter_removed() {
     use crate::cards::definitions::urzas_saga;
@@ -19124,6 +19460,7 @@ fn test_saga_chapter_triggers_again_after_counter_removed() {
     println!("Test passed: Chapter III triggered twice after counter manipulation!");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_urzas_saga_excludes_x_cost_artifacts() {
     use crate::cards::definitions::{everflowing_chalice, ornithopter, urzas_saga};
@@ -19237,6 +19574,7 @@ fn test_urzas_saga_excludes_x_cost_artifacts() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_hex_parasite_pump_effect() {
     use crate::cards::definitions::{hex_parasite, the_birth_of_meletis};
@@ -19332,6 +19670,7 @@ fn test_hex_parasite_pump_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_remove_up_to_counters_player_choice() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -19397,6 +19736,7 @@ fn test_remove_up_to_counters_player_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_remove_up_to_counters_choose_zero() {
     use crate::cards::definitions::the_birth_of_meletis;
@@ -19688,6 +20028,7 @@ fn test_create_object_on_battlefield_seeds_starting_loyalty_counters() {
 // Valley Floodcaller Tests
 // ========================================================================
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_valley_floodcaller_grants_flash_to_sorceries() {
     use crate::cards::definitions::valley_floodcaller;
@@ -19730,6 +20071,7 @@ fn test_valley_floodcaller_grants_flash_to_sorceries() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_valley_floodcaller_does_not_grant_flash_to_creatures() {
     use crate::cards::definitions::valley_floodcaller;
@@ -19764,6 +20106,7 @@ fn test_valley_floodcaller_does_not_grant_flash_to_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_valley_floodcaller_flash_grant_removed_when_floodcaller_leaves() {
     use crate::cards::definitions::valley_floodcaller;
@@ -19815,6 +20158,7 @@ fn test_valley_floodcaller_flash_grant_removed_when_floodcaller_leaves() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_valley_floodcaller_sorcery_castable_during_combat() {
     use crate::cards::definitions::valley_floodcaller;
@@ -19862,6 +20206,7 @@ fn test_valley_floodcaller_sorcery_castable_during_combat() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_valley_floodcaller_only_grants_to_controller() {
     use crate::cards::definitions::valley_floodcaller;
@@ -19913,6 +20258,7 @@ fn test_valley_floodcaller_only_grants_to_controller() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_compute_legal_actions_respects_valley_floodcaller_flash_grant_on_opponents_turn() {
     use crate::cards::definitions::valley_floodcaller;

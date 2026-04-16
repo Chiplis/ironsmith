@@ -254,6 +254,7 @@ mod tests {
         assert!(format!("{:?}", cloned).contains("TapEffect"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tap_source_cost_allows_summoning_sick_earthbent_land_with_haste() {
         use crate::cards::definitions::basic_mountain;

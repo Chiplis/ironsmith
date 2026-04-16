@@ -21,7 +21,7 @@ pub fn demonic_consultation() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
@@ -66,6 +66,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_demonic_consultation_basic_properties() {
         let def = demonic_consultation();
@@ -91,6 +92,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_demonic_consultation_waits_for_name_choice_before_exiling() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -137,6 +139,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_demonic_consultation_exiles_six_then_finds_named_card() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

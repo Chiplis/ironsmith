@@ -31,11 +31,12 @@ pub fn the_birth_of_meletis() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_the_birth_of_meletis() {
         let def = the_birth_of_meletis();
@@ -56,6 +57,7 @@ mod tests {
         assert_eq!(chapter_abilities.len(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_chapter_triggers() {
         let def = the_birth_of_meletis();

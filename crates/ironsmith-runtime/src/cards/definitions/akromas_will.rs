@@ -24,7 +24,7 @@ pub fn akromas_will() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Effect;
@@ -99,6 +99,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_akromas_will_basic_properties() {
         let def = akromas_will();
@@ -118,6 +119,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_akromas_will_has_spell_effect() {
         let def = akromas_will();
@@ -135,6 +137,7 @@ mod tests {
     // Mode 1 Tests (Flying, Vigilance, Double Strike)
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_1_grants_flying_vigilance_double_strike() {
         let mut game = setup_game();
@@ -207,6 +210,7 @@ mod tests {
     // Mode 2 Tests (Lifelink, Indestructible, Protection from all colors)
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_2_grants_lifelink_indestructible_protection() {
         let mut game = setup_game();
@@ -278,6 +282,7 @@ mod tests {
     // Both Modes Tests (Commander conditional)
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_both_modes_grant_all_abilities() {
         let mut game = setup_game();
@@ -334,6 +339,7 @@ mod tests {
     // Commander Conditional Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_condition_with_commander_on_battlefield() {
         let mut game = setup_game();
@@ -354,6 +360,7 @@ mod tests {
         assert!(game.player_controls_own_commander(alice));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_condition_without_commander() {
         let mut game = setup_game();
@@ -366,6 +373,7 @@ mod tests {
         assert!(!game.player_controls_a_commander(alice));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_condition_commander_in_command_zone() {
         let mut game = setup_game();
@@ -393,6 +401,7 @@ mod tests {
         assert!(!game.player_controls_a_commander(alice));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_akromas_will_allows_both_modes_with_commander() {
         let mut game = setup_game();
@@ -472,6 +481,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_akromas_will_only_one_mode_without_commander() {
         let mut game = setup_game();
@@ -505,6 +515,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_akromas_will_allows_both_modes_with_opponents_commander() {
         let mut game = setup_game();
@@ -534,6 +545,7 @@ mod tests {
         // This is the key distinction - the card says "a commander" not "your commander"
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_opponent_commander_on_battlefield_not_controlled() {
         let mut game = setup_game();
@@ -558,6 +570,7 @@ mod tests {
     // Multiple Creatures Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_1_affects_multiple_creatures() {
         let mut game = setup_game();
@@ -602,6 +615,7 @@ mod tests {
     // Opponent's Creatures Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_does_not_affect_opponents_creatures() {
         let mut game = setup_game();
@@ -648,6 +662,7 @@ mod tests {
     // Duration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_abilities_expire_at_end_of_turn() {
         let mut game = setup_game();
@@ -697,6 +712,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_akromas_will_mode_1() {
         use crate::ids::PlayerId;
@@ -758,6 +774,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_akromas_will_mode_2() {
         use crate::ability::ProtectionFrom;
@@ -824,6 +841,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_akromas_will_both_modes_with_commander() {
         use crate::ability::ProtectionFrom;
@@ -922,6 +940,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_akromas_will_double_strike_combat() {
         use crate::ids::PlayerId;

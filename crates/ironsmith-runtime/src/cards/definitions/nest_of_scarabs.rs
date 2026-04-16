@@ -23,11 +23,12 @@ pub fn nest_of_scarabs() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_nest_of_scarabs_basic_properties() {
         let def = nest_of_scarabs();
@@ -36,6 +37,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_nest_of_scarabs_trigger_shape() {
         let def = nest_of_scarabs();

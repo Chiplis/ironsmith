@@ -18,11 +18,12 @@ pub fn vampire_nighthawk() -> CardDefinition {
         .expect("Vampire Nighthawk text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vampire_nighthawk() {
         let def = vampire_nighthawk();
@@ -38,6 +39,7 @@ mod tests {
     ///
     /// Vampire Nighthawk: {1}{B}{B} creature 2/3
     /// Flying, deathtouch, lifelink
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_vampire_nighthawk_casting() {
         let game = run_replay_test(

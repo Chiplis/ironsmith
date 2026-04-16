@@ -108,6 +108,7 @@ mod tests {
         ));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_generate_replacements_respects_nonbattlefield_functional_zones() {
         let alice = PlayerId::from_index(0);

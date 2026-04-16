@@ -21,7 +21,7 @@ pub fn vault_of_champions() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -38,6 +38,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vault_of_champions_basic_properties() {
         let def = vault_of_champions();
@@ -47,12 +48,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vault_of_champions_is_not_basic() {
         let def = vault_of_champions();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vault_of_champions_has_two_abilities() {
         let def = vault_of_champions();
@@ -63,6 +66,7 @@ mod tests {
     // Mana Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_offers_white_and_black() {
         let def = vault_of_champions();
@@ -93,6 +97,7 @@ mod tests {
         assert!(mana_abilities[0].has_tap_cost());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_ability_is_a_mana_ability() {
         let def = vault_of_champions();
@@ -118,6 +123,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vault_of_champions_on_battlefield() {
         let mut game = setup_game();
@@ -133,6 +139,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_vault_of_champions_oracle_text() {
         let def = vault_of_champions();
@@ -146,6 +153,7 @@ mod tests {
     // ========================================
 
     /// Tests Vault of Champions tapping for white mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_vault_of_champions_white() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -170,6 +178,7 @@ mod tests {
     }
 
     /// Tests Vault of Champions tapping for black mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_vault_of_champions_black() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

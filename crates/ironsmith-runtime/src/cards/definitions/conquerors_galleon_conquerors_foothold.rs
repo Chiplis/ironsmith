@@ -47,7 +47,7 @@ pub fn conquerors_foothold() -> CardDefinition {
         .expect("Conqueror's Foothold text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -63,6 +63,7 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn conquerors_galleon_and_foothold_are_linked_transform_faces() {
         crate::cards::clear_runtime_custom_cards();
@@ -96,6 +97,7 @@ mod tests {
         assert_eq!(foothold.abilities.len(), 4);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn conquerors_galleon_transforms_into_foothold_after_combat() {
         crate::cards::clear_runtime_custom_cards();

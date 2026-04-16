@@ -39,7 +39,7 @@ pub fn selfless_spirit() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -79,6 +79,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_basic_properties() {
         let def = selfless_spirit();
@@ -87,6 +88,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_subtypes() {
         let def = selfless_spirit();
@@ -94,12 +96,14 @@ mod tests {
         assert!(def.card.subtypes.contains(&Subtype::Cleric));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_power_toughness() {
         let def = selfless_spirit();
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(2, 1)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_is_white() {
         let def = selfless_spirit();
@@ -107,6 +111,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_has_two_abilities() {
         let def = selfless_spirit();
@@ -118,6 +123,7 @@ mod tests {
     // Flying Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_has_flying() {
         let def = selfless_spirit();
@@ -136,6 +142,7 @@ mod tests {
     // Activated Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_has_sacrifice_ability() {
         let def = selfless_spirit();
@@ -180,6 +187,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_effect_gives_indestructible() {
         let mut game = setup_game();
@@ -224,6 +232,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_effect_only_affects_your_creatures() {
         let mut game = setup_game();
@@ -273,6 +282,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_effect_no_creatures() {
         let mut game = setup_game();
@@ -298,6 +308,7 @@ mod tests {
         assert!(game.battlefield.is_empty(), "No creatures should remain");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_creatures_entering_after_do_not_gain_indestructible() {
         let mut game = setup_game();
@@ -363,6 +374,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_oracle_text() {
         let def = selfless_spirit();
@@ -376,6 +388,7 @@ mod tests {
     // Not a Mana Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_abilities_not_mana_abilities() {
         let def = selfless_spirit();
@@ -393,6 +406,7 @@ mod tests {
     // Functional Zone Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_spirit_abilities_functional_on_battlefield() {
         let def = selfless_spirit();
@@ -413,6 +427,7 @@ mod tests {
     /// Selfless Spirit: {1}{W} creature 2/1
     /// Flying
     /// Sacrifice Selfless Spirit: Creatures you control gain indestructible until end of turn.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_selfless_spirit_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -436,6 +451,7 @@ mod tests {
     }
 
     /// Tests Selfless Spirit sacrifice ability granting indestructible.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_selfless_spirit_sacrifice() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

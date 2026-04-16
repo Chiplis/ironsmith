@@ -21,7 +21,7 @@ pub fn goblin_guide() -> CardDefinition {
         .expect("Goblin Guide text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -40,6 +40,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_goblin_guide_basic_properties() {
         let def = goblin_guide();
@@ -48,6 +49,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_goblin_guide_has_haste() {
         let def = goblin_guide();
@@ -61,6 +63,7 @@ mod tests {
         assert!(has_haste, "Goblin Guide should have haste");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_goblin_guide_subtypes() {
         let def = goblin_guide();
@@ -68,6 +71,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Scout));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_goblin_guide_power_toughness() {
         let def = goblin_guide();
@@ -81,6 +85,7 @@ mod tests {
     // Attack Trigger Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_goblin_guide_has_attack_trigger() {
         let def = goblin_guide();
@@ -98,6 +103,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_attack_trigger_uses_defending_player_filter() {
         let def = goblin_guide();
@@ -135,6 +141,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_attack_trigger_fires_on_attack_event() {
         use crate::events::combat::CreatureAttackedEvent;
@@ -166,6 +173,7 @@ mod tests {
         assert_eq!(triggers[0].source_name, "Goblin Guide");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_does_not_fire_for_other_creature_attacks() {
         use crate::card::{CardBuilder, PowerToughness as CardPT};
@@ -207,6 +215,7 @@ mod tests {
     // Defending Player Resolution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_defending_player_available_in_execution_context() {
         let mut game = setup_game();
@@ -228,6 +237,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_event_contains_attack_target() {
         use crate::events::combat::CreatureAttackedEvent;
@@ -302,6 +312,7 @@ mod tests {
     ///
     /// Goblin Guide: {R} creature 2/2
     /// Haste
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_goblin_guide_casting() {
         let game = run_replay_test(

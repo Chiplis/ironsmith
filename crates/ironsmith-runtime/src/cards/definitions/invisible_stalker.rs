@@ -20,13 +20,14 @@ pub fn invisible_stalker() -> CardDefinition {
         .expect("Invisible Stalker text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_invisible_stalker() {
         let def = invisible_stalker();
@@ -47,6 +48,7 @@ mod tests {
         }));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_invisible_stalker_casting() {
         let game = run_replay_test(

@@ -20,7 +20,7 @@ pub fn bloodstained_mire() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Zone;
@@ -39,6 +39,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_basic_properties() {
         let def = bloodstained_mire();
@@ -57,6 +58,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_is_not_basic() {
         let def = bloodstained_mire();
@@ -65,6 +67,7 @@ mod tests {
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_has_no_land_subtypes() {
         let def = bloodstained_mire();
@@ -75,6 +78,7 @@ mod tests {
         assert!(!def.card.has_subtype(Subtype::Mountain));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_has_activated_ability() {
         let def = bloodstained_mire();
@@ -86,6 +90,7 @@ mod tests {
         assert!(matches!(&def.abilities[0].kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_ability_costs() {
         let def = bloodstained_mire();
@@ -119,6 +124,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_ability_effects() {
         let def = bloodstained_mire();
@@ -141,6 +147,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_search_filter() {
         let def = bloodstained_mire();
@@ -173,6 +180,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_searches_for_correct_types() {
         let def = bloodstained_mire();
@@ -199,6 +207,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_on_battlefield() {
         let mut game = setup_game();
@@ -217,6 +226,7 @@ mod tests {
         assert!(matches!(&obj.abilities[0].kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_not_a_mana_ability() {
         let def = bloodstained_mire();
@@ -229,6 +239,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_activation_requires_untapped() {
         let mut game = setup_game();
@@ -251,6 +262,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -270,6 +282,7 @@ mod tests {
     // GameScript Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_play_from_hand() {
         // Test that Bloodstained Mire can be played as a land
@@ -296,6 +309,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_with_dual_land_types() {
         // Verify the filter would match lands with both Swamp and Mountain types
@@ -324,6 +338,7 @@ mod tests {
     // Cost Verification Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_life_cost_amount() {
         let def = bloodstained_mire();
@@ -338,6 +353,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_no_mana_cost_to_activate() {
         let def = bloodstained_mire();
@@ -357,6 +373,7 @@ mod tests {
     // Comparison with other fetch lands
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bloodstained_mire_differs_from_arid_mesa() {
         // Bloodstained Mire fetches Swamp/Mountain

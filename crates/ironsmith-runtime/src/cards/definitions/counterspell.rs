@@ -17,12 +17,13 @@ pub fn counterspell() -> CardDefinition {
         .expect("Counterspell text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_counterspell() {
         let def = counterspell();
@@ -42,6 +43,7 @@ mod tests {
     ///
     /// Scenario: Alice casts Llanowar Elves, Bob responds with Counterspell.
     /// Expected: Llanowar Elves is countered, goes to Alice's graveyard instead of battlefield.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_counterspell_counters_creature() {
         let game = run_replay_test(

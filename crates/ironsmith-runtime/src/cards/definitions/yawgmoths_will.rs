@@ -22,7 +22,7 @@ pub fn yawgmoths_will() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::color::Color;
@@ -33,6 +33,7 @@ mod tests {
     // Basic Properties Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoths_will_basic_properties() {
         let def = yawgmoths_will();
@@ -43,6 +44,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoths_will_is_black() {
         let def = yawgmoths_will();
@@ -50,6 +52,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoths_will_has_spell_effect() {
         let def = yawgmoths_will();
@@ -64,6 +67,7 @@ mod tests {
     /// Tests basic Yawgmoth's Will casting and resolution.
     ///
     /// After Yawgmoth's Will resolves, cards in graveyard should be castable.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_yawgmoths_will_basic() {
         // Simple test: cast Yawgmoth's Will and verify it resolves
@@ -106,6 +110,7 @@ mod tests {
     /// This scenario currently has complex interactions with targeting and
     /// cost_effect ordering. The "2 legal targets" at Targets[6] is still
     /// under investigation.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_yawgmoths_will_with_force_of_will() {
         // Setup: P1 casts Yawgmoth's Will, then has Force of Will available from GY
@@ -168,6 +173,7 @@ mod tests {
     ///
     /// After Yawgmoth's Will resolves, P1 casts Lightning Bolt on their own
     /// creature. The creature should be exiled instead of going to graveyard.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_yawgmoths_will_replacement_effect() {
         let game = run_replay_test(

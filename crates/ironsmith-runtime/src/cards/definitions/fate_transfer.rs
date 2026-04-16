@@ -22,10 +22,11 @@ pub fn fate_transfer() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fate_transfer() {
         let def = fate_transfer();
@@ -35,6 +36,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fate_transfer_has_two_targets() {
         let def = fate_transfer();

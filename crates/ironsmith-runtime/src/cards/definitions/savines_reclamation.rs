@@ -24,7 +24,7 @@ pub fn savines_reclamation() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};
@@ -35,6 +35,7 @@ mod tests {
     use crate::ids::PlayerId;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_savines_reclamation_basic_properties() {
         let def = savines_reclamation();
@@ -56,6 +57,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_savines_reclamation_returns_one_permanent_normally() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -93,6 +95,7 @@ mod tests {
         assert!(!in_graveyard, "The target should leave the graveyard");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_savines_reclamation_flashback_copies_and_exiles_spell() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

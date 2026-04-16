@@ -262,6 +262,7 @@ impl DecisionMaker for ScriptedDecisionMaker {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_true_name_nemesis_stores_choice_and_prevents_blocking() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
@@ -288,6 +289,7 @@ fn choose_player_true_name_nemesis_stores_choice_and_prevents_blocking() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_stuffy_doll_redirects_damage_to_chosen_player() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
@@ -333,6 +335,9 @@ fn choose_player_stuffy_doll_redirects_damage_to_chosen_player() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn choose_player_spectral_searchlight_gives_mana_to_chosen_player() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -368,6 +373,7 @@ fn choose_player_spectral_searchlight_gives_mana_to_chosen_player() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_gluntch_keeps_first_second_and_third_players_distinct() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
@@ -421,6 +427,7 @@ fn choose_player_gluntch_keeps_first_second_and_third_players_distinct() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_split_the_party_returns_half_the_chosen_players_creatures_rounded_up() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
@@ -476,6 +483,7 @@ fn choose_player_split_the_party_returns_half_the_chosen_players_creatures_round
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_saskia_redirects_combat_damage_to_the_chosen_player() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
@@ -527,6 +535,7 @@ fn choose_player_saskia_redirects_combat_damage_to_the_chosen_player() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_sewer_nemesis_only_triggers_for_the_chosen_players_spells() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
@@ -597,6 +606,7 @@ fn choose_player_sewer_nemesis_only_triggers_for_the_chosen_players_spells() {
 }
 
 #[test]
+#[cfg(ironsmith_runtime_parser_tests)]
 fn choose_player_backdraft_uses_the_selected_sorcerys_damage_history() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);

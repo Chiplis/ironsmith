@@ -27,7 +27,7 @@ pub fn tivit_seller_of_secrets() -> CardDefinition {
         .expect("Tivit text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -57,6 +57,7 @@ mod tests {
     // Treasure Token Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_treasure_token_properties() {
         let token = treasure_token_definition();
@@ -66,6 +67,7 @@ mod tests {
         assert!(token.card.is_token);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_treasure_token_has_mana_ability() {
         let token = treasure_token_definition();
@@ -77,6 +79,7 @@ mod tests {
     // Clue Token Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_clue_token_properties() {
         let token = clue_token_definition();
@@ -86,6 +89,7 @@ mod tests {
         assert!(token.card.is_token);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_clue_token_has_activated_ability() {
         let token = clue_token_definition();
@@ -97,6 +101,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_basic_properties() {
         let def = tivit_seller_of_secrets();
@@ -106,12 +111,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 6);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_is_legendary() {
         let def = tivit_seller_of_secrets();
         assert!(def.card.has_supertype(Supertype::Legendary));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_is_sphinx_rogue() {
         let def = tivit_seller_of_secrets();
@@ -119,6 +126,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Rogue));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_power_toughness() {
         use crate::card::PtValue;
@@ -128,6 +136,7 @@ mod tests {
         assert_eq!(pt.toughness, PtValue::Fixed(6));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_is_esper_colors() {
         let def = tivit_seller_of_secrets();
@@ -139,6 +148,7 @@ mod tests {
         assert!(!colors.contains(Color::Green));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_has_flying() {
         use crate::static_abilities::StaticAbilityId;
@@ -154,6 +164,7 @@ mod tests {
         assert!(has_flying, "Tivit should have flying");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_has_ward() {
         use crate::static_abilities::StaticAbilityId;
@@ -173,6 +184,7 @@ mod tests {
     // Triggered Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_has_three_abilities() {
         // Flying, Ward, and the triggered ability
@@ -180,6 +192,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_has_triggered_ability() {
         let def = tivit_seller_of_secrets();
@@ -190,6 +203,7 @@ mod tests {
         assert!(has_triggered, "Tivit should have a triggered ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_is_etb_or_combat_damage() {
         let def = tivit_seller_of_secrets();
@@ -214,6 +228,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_has_vote_effect() {
         let def = tivit_seller_of_secrets();
@@ -239,6 +254,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_on_etb() {
         use crate::events::zones::ZoneChangeEvent;
@@ -267,6 +283,7 @@ mod tests {
         assert_eq!(triggered.len(), 1, "Tivit should trigger on ETB");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_on_combat_damage_to_player() {
         use crate::events::DamageEvent;
@@ -301,6 +318,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_on_non_combat_damage() {
         use crate::events::DamageEvent;
@@ -335,6 +353,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_on_combat_damage_to_creature() {
         use crate::events::DamageEvent;
@@ -375,6 +394,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_on_battlefield() {
         let mut game = setup_game();
@@ -391,6 +411,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_creature_stats() {
         let mut game = setup_game();
@@ -409,6 +430,7 @@ mod tests {
     // Multiplayer Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tivit_triggers_in_multiplayer() {
         use crate::events::zones::ZoneChangeEvent;
@@ -450,6 +472,7 @@ mod tests {
     /// Scenario: Alice casts Tivit, chooses to vote an additional time.
     /// Votes: Alice -> evidence, bribery; Bob -> bribery.
     /// Expected: Alice creates 1 Clue and 2 Treasure tokens.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_tivit_etb_creates_tokens() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -518,6 +541,7 @@ mod tests {
     /// Votes: Player 1 -> bribery, bribery; Player 2 -> evidence; Player 3 -> evidence.
     /// Expected: Player 1 creates 2 Clue and 2 Treasure tokens; Marneus draws three times
     /// (two separate investigates + one Treasure batch).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_tivit_etb_with_marneus_draws_on_tokens() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

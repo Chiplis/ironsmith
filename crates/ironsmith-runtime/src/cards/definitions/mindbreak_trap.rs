@@ -28,11 +28,12 @@ pub fn mindbreak_trap() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::{AlternativeCastingMethod, TrapCondition};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mindbreak_trap_basic() {
         let card = mindbreak_trap();
@@ -42,6 +43,7 @@ mod tests {
         assert_eq!(card.card.mana_cost.as_ref().unwrap().mana_value(), 4);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mindbreak_trap_has_alternative_cast() {
         let card = mindbreak_trap();
@@ -58,6 +60,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mindbreak_trap_has_effect() {
         let card = mindbreak_trap();

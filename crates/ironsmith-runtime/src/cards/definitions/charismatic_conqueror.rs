@@ -33,7 +33,7 @@ pub fn charismatic_conqueror() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -61,6 +61,7 @@ mod tests {
     // Basic Properties Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_basic_properties() {
         let def = charismatic_conqueror();
@@ -69,6 +70,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_is_white() {
         let def = charismatic_conqueror();
@@ -76,6 +78,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_subtypes() {
         let def = charismatic_conqueror();
@@ -83,6 +86,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Soldier));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_power_toughness() {
         let def = charismatic_conqueror();
@@ -92,6 +96,7 @@ mod tests {
         assert_eq!(pt.toughness, PtValue::Fixed(2));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_has_vigilance() {
         let def = charismatic_conqueror();
@@ -105,6 +110,7 @@ mod tests {
         assert!(has_vigilance, "Should have vigilance");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_has_triggered_ability() {
         let def = charismatic_conqueror();
@@ -119,6 +125,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_charismatic_conqueror_on_battlefield() {
         let mut game = setup_game();
@@ -139,24 +146,28 @@ mod tests {
     // Rules Interaction Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_may_tap() {
         let def = charismatic_conqueror();
         assert!(def.card.oracle_text.contains("may tap"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_artifact_or_creature() {
         let def = charismatic_conqueror();
         assert!(def.card.oracle_text.contains("artifact or creature"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_opponent_controls() {
         let def = charismatic_conqueror();
         assert!(def.card.oracle_text.contains("opponent controls"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_untapped() {
         let def = charismatic_conqueror();
@@ -167,6 +178,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_detection_for_opponent_creature() {
         use crate::events::zones::EnterBattlefieldEvent;
@@ -197,6 +209,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_no_trigger_for_own_creature() {
         use crate::events::zones::EnterBattlefieldEvent;
@@ -235,6 +248,7 @@ mod tests {
     /// Setup: Alice controls Charismatic Conqueror on battlefield.
     /// Bob has Snapcaster Mage (flash) in hand with 2 Islands and a Lightning Bolt in graveyard.
     /// Bob casts Snapcaster on Alice's turn, declines to tap it, Alice gets a Vampire token.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_charismatic_conqueror_opponent_declines_tap() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -298,6 +312,7 @@ mod tests {
     /// Test: Opponent's creature enters, opponent chooses to tap → No token created.
     ///
     /// Same setup as above, but Bob chooses to tap Snapcaster Mage to prevent token.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_charismatic_conqueror_opponent_taps() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

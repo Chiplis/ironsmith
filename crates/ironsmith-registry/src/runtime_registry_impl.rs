@@ -1,4 +1,4 @@
-//! Registry-owned runtime card-loading implementation bridged into runtime.
+//! Registry-owned runtime card-loading implementation shared with runtime.
 
 use super::{generated_meld_counterparts, generated_registry, *};
 use crate::ability::Ability;
@@ -10,7 +10,7 @@ use crate::cards::CardDefinitionBuilder;
 use crate::cards::definitions::*;
 use crate::ids::CardId;
 use crate::static_abilities::StaticAbilityId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 /// Registry of all card definitions.
@@ -556,32 +556,16 @@ pub fn reject_unsupported_generated_definition(
 
 #[cfg(all(feature = "handwritten-parse-support", not(test)))]
 fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
-    let requested_key = normalize_card_constructor_key(name);
-    if requested_key.is_empty() {
+    let requested_keys = requested_constructor_keys(name);
+    if requested_keys.is_empty() {
         return None;
     }
 
     let mut registry = CardRegistry::new();
     registry.register_builtin_handwritten_cards_if(|constructor_key| {
-        requested_key == constructor_key
-            || constructor_key
-                .strip_prefix("basic_")
-                .is_some_and(|stripped| stripped == requested_key)
+        constructor_key_matches_any_request(constructor_key, &requested_keys)
     });
 
-    let targeted_match = registry
-        .get(name)
-        .cloned()
-        .or_else(|| loose_name_match(&registry, name).cloned())
-        .or_else(|| first_face_lookup(&registry, name).cloned());
-    if targeted_match.is_some() {
-        return targeted_match;
-    }
-
-    // Multi-face handwritten cards can have a printed name that does not map cleanly
-    // back to the constructor function name. If the targeted probe misses, fall back
-    // to the handwritten-only registry before consulting generated data.
-    registry.register_builtin_handwritten_cards_if(|_| true);
     registry
         .get(name)
         .cloned()
@@ -591,8 +575,8 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
 
 #[cfg(test)]
 fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
-    let requested_key = normalize_card_constructor_key(name);
-    if requested_key.is_empty() {
+    let requested_keys = requested_constructor_keys(name);
+    if requested_keys.is_empty() {
         return None;
     }
 
@@ -600,23 +584,10 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
     super::register_builtin_handwritten_cards_if_for_runtime_tests(
         &mut registry,
         |constructor_key| {
-            requested_key == constructor_key
-                || constructor_key
-                    .strip_prefix("basic_")
-                    .is_some_and(|stripped| stripped == requested_key)
+            constructor_key_matches_any_request(constructor_key, &requested_keys)
         },
     );
 
-    let targeted_match = registry
-        .get(name)
-        .cloned()
-        .or_else(|| loose_name_match(&registry, name).cloned())
-        .or_else(|| first_face_lookup(&registry, name).cloned());
-    if targeted_match.is_some() {
-        return targeted_match;
-    }
-
-    super::register_builtin_handwritten_cards_if_for_runtime_tests(&mut registry, |_| true);
     registry
         .get(name)
         .cloned()
@@ -647,6 +618,33 @@ fn normalize_card_constructor_key(name: &str) -> String {
     }
 
     normalized.trim_matches('_').to_string()
+}
+
+fn requested_constructor_keys(name: &str) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    let full_key = normalize_card_constructor_key(name);
+    if !full_key.is_empty() {
+        keys.insert(full_key);
+    }
+
+    for face in name.split("//") {
+        let face_key = normalize_card_constructor_key(face);
+        if !face_key.is_empty() {
+            keys.insert(face_key);
+        }
+    }
+
+    keys
+}
+
+fn constructor_key_matches_any_request(
+    constructor_key: &str,
+    requested_keys: &HashSet<String>,
+) -> bool {
+    requested_keys.contains(constructor_key)
+        || constructor_key
+            .strip_prefix("basic_")
+            .is_some_and(|stripped| requested_keys.contains(stripped))
 }
 
 fn normalize_card_lookup_name(name: &str) -> String {

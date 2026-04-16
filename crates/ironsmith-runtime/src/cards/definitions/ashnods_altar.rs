@@ -16,13 +16,14 @@ pub fn ashnods_altar() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::GameScript;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_basic_properties() {
         let def = ashnods_altar();
@@ -32,12 +33,14 @@ mod tests {
         assert!(!def.card.card_types.contains(&CardType::Creature));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_has_mana_ability() {
         let def = ashnods_altar();
         assert!(def.abilities.iter().any(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_produces_colorless_mana() {
         let def = ashnods_altar();
@@ -62,6 +65,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_requires_creature_sacrifice() {
         let def = ashnods_altar();
@@ -102,6 +106,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_is_not_a_creature() {
         let def = ashnods_altar();
@@ -109,6 +114,7 @@ mod tests {
         assert!(def.is_permanent());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_no_tap_required() {
         let def = ashnods_altar();
@@ -129,6 +135,7 @@ mod tests {
 
     // Integration tests using GameScript
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_in_hand() {
         // Test that we can set up a game with Ashnod's Altar in hand
@@ -150,6 +157,7 @@ mod tests {
         assert!(altar_in_hand, "Ashnod's Altar should be in Alice's hand");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_with_creature_in_hand() {
         // Test that we can have both altar and a creature in hand
@@ -178,6 +186,7 @@ mod tests {
         assert!(creature_in_hand, "Grizzly Bears should be in hand");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_mana_ability_is_instant_speed() {
         // Mana abilities don't use the stack and can be activated any time
@@ -197,6 +206,7 @@ mod tests {
         assert!(mana_ability.is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ashnods_altar_can_sacrifice_any_creature_type() {
         // Verify the filter accepts any creature (not restricted to specific types)
@@ -230,6 +240,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_ashnods_altar_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

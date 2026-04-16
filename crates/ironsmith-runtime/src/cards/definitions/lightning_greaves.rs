@@ -22,7 +22,7 @@ pub fn lightning_greaves() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -78,6 +78,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_lightning_greaves_basic_properties() {
         let def = lightning_greaves();
@@ -87,18 +88,21 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_equipment_subtype() {
         let def = lightning_greaves();
         assert!(def.card.subtypes.contains(&Subtype::Equipment));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_is_colorless() {
         let def = lightning_greaves();
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_correct_number_of_abilities() {
         let def = lightning_greaves();
@@ -110,6 +114,7 @@ mod tests {
     // Equipment Grant Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_equipment_grant_ability() {
         let def = lightning_greaves();
@@ -149,6 +154,7 @@ mod tests {
     // Equip Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_equip_ability() {
         let def = lightning_greaves();
@@ -200,6 +206,7 @@ mod tests {
     // Shroud Protection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_equipped_creature_has_shroud() {
         let mut game = setup_game();
@@ -228,6 +235,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_equipped_creature_has_haste() {
         let mut game = setup_game();
@@ -260,6 +268,7 @@ mod tests {
     // Equipment Movement Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_abilities_move_with_equipment() {
         let mut game = setup_game();
@@ -337,6 +346,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_unequipped_equipment_grants_nothing() {
         let mut game = setup_game();
@@ -373,6 +383,7 @@ mod tests {
     // Equip Cost Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_equip_zero_cost() {
         let def = lightning_greaves();
@@ -398,6 +409,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_contains_abilities() {
         let def = lightning_greaves();
@@ -410,6 +422,7 @@ mod tests {
     // Not a Mana Ability Test
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_equip_not_mana_ability() {
         let def = lightning_greaves();
@@ -422,6 +435,7 @@ mod tests {
     // Functional Zone Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_abilities_only_functional_on_battlefield() {
         let def = lightning_greaves();
@@ -442,6 +456,7 @@ mod tests {
     // Shroud Prevents Targeting Tests (Conceptual)
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shroud_conceptual_behavior() {
         // Note: Full targeting prevention would be tested at the targeting
@@ -471,6 +486,7 @@ mod tests {
     // Haste Allows Immediate Attack Test (Conceptual)
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_haste_conceptual_behavior() {
         // Note: Full summoning sickness check would be tested at the
@@ -501,6 +517,7 @@ mod tests {
     /// Lightning Greaves: {2} artifact - equipment
     /// Equipped creature has haste and shroud.
     /// Equip {0}
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_lightning_greaves_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

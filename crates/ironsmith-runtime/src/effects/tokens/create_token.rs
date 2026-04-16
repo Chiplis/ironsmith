@@ -308,6 +308,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_created_creature_token_gets_etb_replacement_counter() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

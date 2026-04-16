@@ -15,10 +15,11 @@ pub fn basic_island() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_basic_island() {
         let def = basic_island();

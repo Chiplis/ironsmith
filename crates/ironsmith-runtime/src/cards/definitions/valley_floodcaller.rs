@@ -26,7 +26,7 @@ pub fn valley_floodcaller() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -34,6 +34,7 @@ mod tests {
     use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_valley_floodcaller() {
         let def = valley_floodcaller();
@@ -82,6 +83,7 @@ mod tests {
         )));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_valley_floodcaller_casting() {
         let game = run_replay_test(

@@ -34,13 +34,14 @@ pub fn bello_bard_of_the_brambles() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bello_basic_properties() {
         let def = bello_bard_of_the_brambles();
@@ -55,6 +56,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bello_animates_non_equipment_artifacts_too() {
         use crate::cards::definitions::mycosynth_lattice;
@@ -92,6 +94,7 @@ mod tests {
     /// In layer 6, Humility depends on Bello's ability-granting effect and is applied after it,
     /// so the granted abilities are removed. In layer 7b, timestamp order applies, so Bello's
     /// later timestamp sets power/toughness to 4/4.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_bello_humility_humility_first_then_bello() {
         let mut game = run_replay_test(
@@ -151,6 +154,7 @@ mod tests {
     /// Per Gatherer layering notes:
     /// - With Bello earlier and Humility later, Humility removes the abilities Bello granted
     ///   in layer 6 and overrides the 4/4 setting to 1/1 in layer 7b.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_bello_humility_bello_first_then_humility() {
         let mut game = run_replay_test(

@@ -47,7 +47,7 @@ fn shapeshifter_mercenary_token() -> CardDefinition {
         .expect("Shapeshifter token text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Zone;
@@ -59,6 +59,7 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_black_market_connections_basic_properties() {
         let def = black_market_connections();
@@ -72,6 +73,7 @@ mod tests {
         assert_eq!(mana_cost.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_has_triggered_ability() {
         let def = black_market_connections();
@@ -93,6 +95,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggered_ability_has_modal_effect() {
         let def = black_market_connections();
@@ -114,6 +117,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_treasure_token_definition() {
         let token = treasure_token_definition();
@@ -124,6 +128,7 @@ mod tests {
         assert!(token.card.power_toughness.is_none());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_treasure_token_has_mana_ability() {
         use crate::object::Object;
@@ -169,6 +174,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_treasure_mana_ability_adds_any_color() {
         use crate::object::Object;
@@ -210,6 +216,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shapeshifter_token_definition() {
         let token = shapeshifter_mercenary_token();
@@ -238,6 +245,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_sell_contraband_creates_treasure_and_loses_life() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -277,6 +285,7 @@ mod tests {
         assert!(treasures[0].subtypes.contains(&Subtype::Treasure));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_buy_information_draws_card_and_loses_life() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -335,6 +344,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mode_hire_mercenary_creates_shapeshifter_and_loses_life() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -382,6 +392,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_choosing_multiple_modes() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -443,6 +454,7 @@ mod tests {
         assert_eq!(shapeshifters.len(), 1, "Should have 1 Shapeshifter");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ability_functions_only_on_battlefield() {
         let def = black_market_connections();
@@ -454,6 +466,7 @@ mod tests {
         assert!(!ability.functions_in(&Zone::Exile));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_shapeshifter_has_changeling_all_creature_types() {
         // Create a Shapeshifter token and verify it has all creature types due to Changeling

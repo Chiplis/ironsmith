@@ -21,7 +21,7 @@ pub fn giver_of_runes() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Color;
@@ -59,6 +59,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_basic_properties() {
         let def = giver_of_runes();
@@ -67,6 +68,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_subtypes() {
         let def = giver_of_runes();
@@ -74,12 +76,14 @@ mod tests {
         assert!(def.card.subtypes.contains(&Subtype::Cleric));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_power_toughness() {
         let def = giver_of_runes();
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(1, 2)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_is_white() {
         let def = giver_of_runes();
@@ -87,6 +91,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_has_one_ability() {
         let def = giver_of_runes();
@@ -97,6 +102,7 @@ mod tests {
     // Activated Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_has_tap_ability() {
         let def = giver_of_runes();
@@ -147,6 +153,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_effect_grants_protection() {
         let mut game = setup_game();
@@ -190,6 +197,7 @@ mod tests {
         assert!(has_protection, "Soldier should have protection");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_effect_fails_without_target() {
         let mut game = setup_game();
@@ -221,6 +229,7 @@ mod tests {
         assert!(result.is_err(), "Should fail without a target");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_targets_another_creature() {
         let def = giver_of_runes();
@@ -242,6 +251,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_oracle_text() {
         let def = giver_of_runes();
@@ -261,6 +271,7 @@ mod tests {
     // Not a Mana Ability Test
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_ability_not_mana_ability() {
         let def = giver_of_runes();
@@ -276,6 +287,7 @@ mod tests {
     // Functional Zone Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giver_of_runes_ability_functional_on_battlefield() {
         let def = giver_of_runes();
@@ -291,6 +303,7 @@ mod tests {
     ///
     /// Giver of Runes: {W} creature 1/2
     /// {T}: Another target creature you control gains protection from colorless or color until end of turn.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_giver_of_runes_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

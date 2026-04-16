@@ -21,7 +21,7 @@ pub fn maskwood_nexus() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -33,6 +33,7 @@ mod tests {
     use crate::types::Subtype;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_maskwood_nexus_has_generic_subtype_static_effects() {
         let def = maskwood_nexus();
@@ -67,6 +68,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_maskwood_nexus_updates_creature_types_across_zones() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

@@ -1017,6 +1017,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn stack_resolution_tracks_creature_damage_for_backdraft_history() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -1069,6 +1070,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn backdraft_prompts_for_spell_history_when_the_same_player_cast_both_spells() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -1140,6 +1142,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn run_priority_loop_finishes_backdraft_after_the_single_player_prompt() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);

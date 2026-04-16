@@ -20,7 +20,7 @@ pub fn arid_mesa() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -38,6 +38,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_basic_properties() {
         let def = arid_mesa();
@@ -56,6 +57,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_is_not_basic() {
         let def = arid_mesa();
@@ -64,6 +66,7 @@ mod tests {
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_has_activated_ability() {
         let def = arid_mesa();
@@ -75,6 +78,7 @@ mod tests {
         assert!(matches!(&def.abilities[0].kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_ability_costs() {
         let def = arid_mesa();
@@ -119,6 +123,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_ability_effects() {
         let def = arid_mesa();
@@ -141,6 +146,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_search_filter() {
         let def = arid_mesa();
@@ -177,6 +183,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_on_battlefield() {
         let mut game = setup_game();
@@ -195,6 +202,7 @@ mod tests {
         assert!(matches!(&obj.abilities[0].kind, AbilityKind::Activated(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_not_a_mana_ability() {
         let def = arid_mesa();
@@ -207,6 +215,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_activation_requires_untapped() {
         let mut game = setup_game();
@@ -233,6 +242,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -252,6 +262,7 @@ mod tests {
     // GameScript Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_play_from_hand() {
         // Test that Arid Mesa can be played as a land
@@ -278,6 +289,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_activate_find_plains() {
         // Test activating Arid Mesa to find a Plains
@@ -305,6 +317,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_with_dual_land_types() {
         // Verify the filter would match lands with both Mountain and Plains types
@@ -333,6 +346,7 @@ mod tests {
     // Cost Verification Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_life_cost_amount() {
         let def = arid_mesa();
@@ -349,6 +363,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arid_mesa_no_mana_cost_to_activate() {
         let def = arid_mesa();

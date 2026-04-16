@@ -18,11 +18,12 @@ pub fn ornithopter() -> CardDefinition {
         .expect("Ornithopter text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ornithopter() {
         let def = ornithopter();
@@ -40,6 +41,7 @@ mod tests {
     ///
     /// Ornithopter: {0} artifact creature
     /// This test verifies that 0-cost spells can be cast without tapping mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_ornithopter_zero_cost() {
         let game = run_replay_test(

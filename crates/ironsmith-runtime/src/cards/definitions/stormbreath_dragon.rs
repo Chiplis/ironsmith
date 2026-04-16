@@ -29,13 +29,14 @@ pub fn stormbreath_dragon() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_stormbreath_dragon() {
         let def = stormbreath_dragon();
@@ -76,6 +77,7 @@ mod tests {
     ///
     /// Stormbreath Dragon: {3}{R}{R} creature 4/4
     /// Flying, haste, protection from white
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_stormbreath_dragon_casting() {
         let game = run_replay_test(

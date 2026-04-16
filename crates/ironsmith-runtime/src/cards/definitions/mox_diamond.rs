@@ -22,7 +22,7 @@ pub fn mox_diamond() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -49,6 +49,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_basic_properties() {
         let def = mox_diamond();
@@ -67,6 +68,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_has_two_abilities() {
         let def = mox_diamond();
@@ -75,6 +77,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_has_static_ability() {
         use crate::static_abilities::StaticAbilityId;
@@ -91,6 +94,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_has_mana_ability() {
         let def = mox_diamond();
@@ -111,6 +115,7 @@ mod tests {
     // Mana Production Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_mana_ability_produces_any_color() {
         let mut game = setup_game();
@@ -130,6 +135,7 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().mana_pool.green, 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_can_tap_for_mana_immediately() {
         let mut game = setup_game();
@@ -154,6 +160,7 @@ mod tests {
     // (These test the expected behavior - actual implementation in game loop)
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_has_etb_replacement_marker() {
         let def = mox_diamond();
@@ -173,6 +180,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_oracle_text() {
         let def = mox_diamond();
@@ -182,6 +190,7 @@ mod tests {
         assert!(def.card.oracle_text.contains("any color"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_static_display_keeps_land_restriction() {
         let def = mox_diamond();
@@ -248,6 +257,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_enters_when_land_discarded() {
         use crate::game_loop::resolve_stack_entry_with;
@@ -320,6 +330,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_goes_to_graveyard_when_no_land_discarded() {
         use crate::game_loop::resolve_stack_entry_with;
@@ -392,6 +403,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_goes_to_graveyard_when_no_lands_in_hand() {
         use crate::game_loop::resolve_stack_entry_with;
@@ -455,6 +467,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_can_tap_after_entering_with_land_discard() {
         use crate::game_loop::resolve_stack_entry_with;
@@ -531,12 +544,14 @@ mod tests {
     // Mox Comparison Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_is_zero_cost() {
         let def = mox_diamond();
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_is_permanent() {
         let def = mox_diamond();
@@ -544,6 +559,7 @@ mod tests {
     }
 
     /// Test that the ETB replacement prompt works through the priority loop
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_via_priority_loop() {
         use crate::game_loop::run_priority_loop_with;

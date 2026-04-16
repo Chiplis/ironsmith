@@ -27,10 +27,11 @@ pub fn fireball() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fireball() {
         let def = fireball();
@@ -45,6 +46,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_fireball_deals_damage_to_player() {
         use crate::ids::PlayerId;
@@ -78,6 +80,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_fireball_x_equals_1() {
         use crate::ids::PlayerId;

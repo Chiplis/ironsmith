@@ -20,7 +20,7 @@ pub fn culling_the_weak() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::cards::CardDefinitionRuntimeExt;
@@ -30,6 +30,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_culling_the_weak_basic_properties() {
         let def = culling_the_weak();
@@ -39,6 +40,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_culling_the_weak_is_black() {
         let def = culling_the_weak();
@@ -46,6 +48,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_culling_the_weak_has_additional_costs() {
         let def = culling_the_weak();
@@ -69,6 +72,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_culling_the_weak_has_spell_effect() {
         let def = culling_the_weak();
@@ -85,6 +89,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_culling_the_weak_oracle_text() {
         let def = culling_the_weak();
@@ -99,6 +104,7 @@ mod tests {
     // NOTE: Replay coverage is temporarily disabled while the replay harness
     // catches up with the current non-mana cost ordering and prompts.
 
+    // #[cfg(ironsmith_runtime_parser_tests)]
     // #[test]
     // fn test_replay_culling_the_weak_casting() {
     //     use crate::tests::integration_tests::{run_replay_test, ReplayTestConfig};

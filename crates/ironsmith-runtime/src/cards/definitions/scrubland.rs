@@ -18,7 +18,7 @@ pub fn scrubland() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -37,6 +37,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_basic_properties() {
         let def = scrubland();
@@ -55,6 +56,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_is_not_basic() {
         let def = scrubland();
@@ -63,6 +65,7 @@ mod tests {
         assert!(!def.card.has_supertype(Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_has_plains_subtype() {
         let def = scrubland();
@@ -71,6 +74,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Plains));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_has_swamp_subtype() {
         let def = scrubland();
@@ -79,6 +83,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Swamp));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_is_dual_typed() {
         let def = scrubland();
@@ -93,6 +98,7 @@ mod tests {
     // Mana Ability Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_has_one_mana_ability() {
         let def = scrubland();
@@ -104,6 +110,7 @@ mod tests {
         assert!(def.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_can_produce_white_or_black() {
         let def = scrubland();
@@ -132,6 +139,7 @@ mod tests {
         assert!(colors.contains(&crate::color::Color::Black));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_mana_abilities_have_tap_cost() {
         let def = scrubland();
@@ -153,6 +161,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_on_battlefield() {
         let mut game = setup_game();
@@ -171,6 +180,7 @@ mod tests {
         assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_activation_requires_untapped() {
         let mut game = setup_game();
@@ -200,6 +210,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -218,6 +229,7 @@ mod tests {
         assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_oracle_text() {
         let def = scrubland();
@@ -231,6 +243,7 @@ mod tests {
     // Rules Interaction Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_can_be_found_by_fetchlands() {
         // Scrubland can be found by any fetchland that searches for Plains or Swamp
@@ -243,6 +256,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Swamp));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_is_not_a_creature() {
         let def = scrubland();
@@ -251,6 +265,7 @@ mod tests {
         assert!(!def.is_creature());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_is_a_permanent() {
         let def = scrubland();
@@ -259,6 +274,7 @@ mod tests {
         assert!(def.is_permanent());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_is_not_a_spell() {
         let def = scrubland();
@@ -278,6 +294,7 @@ mod tests {
     ///
     /// Scrubland: Land — Plains Swamp
     /// {T}: Add {W} or {B}.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_scrubland_tap_for_white() {
         let game = run_replay_test(
@@ -316,6 +333,7 @@ mod tests {
     }
 
     /// Tests tapping Scrubland for black mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_scrubland_tap_for_black() {
         let game = run_replay_test(

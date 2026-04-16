@@ -319,6 +319,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn transform_swaps_faces_and_refreshes_timestamp() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -386,6 +387,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn conquerors_galleon_returns_transformed_at_end_of_combat() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -473,6 +475,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn harvest_hand_returns_transformed_when_it_dies() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -552,6 +555,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn transform_does_nothing_if_other_face_is_an_instant_or_sorcery() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -583,6 +587,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn transform_source_ability_fizzles_if_source_already_transformed_since_it_was_stacked() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -623,6 +628,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn convert_swaps_faces_emits_converted_event_and_not_transform_event() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -677,6 +683,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn convert_respects_cant_transform_restrictions() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -709,6 +716,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn transform_uses_game_local_linked_face_cache_after_runtime_registry_is_cleared() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();
@@ -741,6 +749,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn convert_source_ability_fizzles_if_source_already_transformed_since_it_was_stacked() {
         let _guard = runtime_custom_registry_test_guard();
         crate::cards::clear_runtime_custom_cards();

@@ -69,47 +69,22 @@ fn workspace_dependency_rules_hold() {
         "ironsmith-core must not depend on internal workspace crates: {core:?}"
     );
 
-    assert!(
-        !root
-            .join("crates/ironsmith-compiler-runtime-bridge")
-            .exists(),
-        "compiler/runtime conversion must be runtime-owned; the bridge crate should not exist"
-    );
-
     let runtime = deps.get("ironsmith-runtime").expect("runtime deps");
-    for forbidden in ["ironsmith-registry", "ironsmith-wasm"] {
+    for forbidden in [
+        "ironsmith-compiler",
+        "ironsmith-registry",
+        "ironsmith-wasm",
+    ] {
         assert!(
             !runtime.iter().any(|dep| dep == forbidden),
             "ironsmith-runtime must not depend on {forbidden}: {runtime:?}"
         );
     }
-    let runtime_manifest_path = root.join("crates/ironsmith-runtime/Cargo.toml");
-    let runtime_manifest_raw = fs::read_to_string(&runtime_manifest_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", runtime_manifest_path.display()));
-    let runtime_manifest: toml::Value =
-        toml::from_str(&runtime_manifest_raw).expect("runtime manifest parses");
-    let compiler_dep = runtime_manifest
-        .get("dependencies")
-        .and_then(toml::Value::as_table)
-        .and_then(|deps| deps.get("ironsmith-compiler"))
-        .and_then(toml::Value::as_table)
-        .expect("runtime compiler integration dependency");
-    assert_eq!(
-        compiler_dep.get("optional").and_then(toml::Value::as_bool),
-        Some(true),
-        "runtime may depend on the compiler only through an optional integration feature"
-    );
-    let compiler_feature = runtime_manifest
-        .get("features")
-        .and_then(toml::Value::as_table)
-        .and_then(|features| features.get("compiler-integration"))
-        .and_then(toml::Value::as_array)
-        .expect("runtime compiler-integration feature");
+
+    let runtime_lib_rs = read_repo_file(&root, "crates/ironsmith-runtime/src/lib.rs");
     assert!(
-        compiler_feature
-            .iter()
-            .any(|value| value.as_str() == Some("dep:ironsmith-compiler")),
-        "runtime compiler dependency must remain gated behind compiler-integration"
+        !runtime_lib_rs.contains("compiler_integration"),
+        "runtime must not export compiler_integration after compiler/runtime boundary cleanup"
     );
 
     let compiler = deps.get("ironsmith-compiler").expect("compiler deps");
@@ -143,6 +118,7 @@ fn production_rust_files_stay_under_size_ceiling() {
     let mut files = Vec::new();
     collect_rust_files(&crates_dir, &mut files);
     let allowlisted_legacy_hotspots = [
+        "crates/ironsmith-core/src/effect.rs",
         "crates/ironsmith-tools/src/bin/audit_oracle_clusters.rs",
         "crates/ironsmith-runtime/src/cards/builders.rs",
         "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/anthem_grant_lines.rs",
@@ -352,13 +328,10 @@ fn migrated_effect_payloads_are_core_owned() {
         );
     }
 
-    let integration = read_repo_file(
-        &root,
-        "crates/ironsmith-runtime/src/compiler_integration.rs",
-    );
+    let integration = read_repo_file(&root, "crates/ironsmith-registry/src/compiler_runtime.rs");
     assert!(
         !integration.contains(
-            "crate::effects::GainLifeEffect::new(payload.amount.clone(), payload.player.clone())",
+            "ironsmith::effects::GainLifeEffect::new(payload.amount.clone(), payload.player.clone())",
         ),
         "compiler integration must not reconstruct GainLifeEffect field by field"
     );
@@ -399,13 +372,73 @@ fn migrated_static_ability_model_is_core_owned() {
         "compiler should alias the core StaticAbilityPayload data model"
     );
 
-    let runtime_compiler_integration = read_repo_file(
+    assert!(
+        !root
+            .join("crates/ironsmith-runtime/src/compiler_integration.rs")
+            .exists(),
+        "runtime compiler integration module should be deleted after compiler/runtime boundary cleanup"
+    );
+}
+
+#[test]
+fn compiler_boundary_adapter_has_no_semantic_conversion_tables() {
+    let root = workspace_root();
+    let core_cost = read_repo_file(&root, "crates/ironsmith-core/src/cost_model.rs");
+    let core_ability = read_repo_file(&root, "crates/ironsmith-core/src/ability_model.rs");
+    let core_definition = read_repo_file(&root, "crates/ironsmith-core/src/definition_model.rs");
+    let compiler_costs = read_repo_file(&root, "crates/ironsmith-compiler/src/costs/mod.rs");
+    let runtime_effect_interpreter = read_repo_file(
         &root,
-        "crates/ironsmith-runtime/src/compiler_integration.rs",
+        "crates/ironsmith-runtime/src/effect_model_interpreter.rs",
+    );
+    let integration = read_repo_file(&root, "crates/ironsmith-registry/src/compiler_runtime.rs");
+
+    assert!(
+        core_cost.contains("pub enum Cost<E>"),
+        "core must own the non-static cost data model"
     );
     assert!(
-        !runtime_compiler_integration.contains("fn convert_static_ability"),
-        "compiler integration must not define a static-ability semantic conversion table"
+        compiler_costs.contains("pub type Cost = ironsmith_core::Cost<crate::effect::Effect>;"),
+        "compiler costs should alias the core cost data model"
+    );
+    assert!(
+        core_cost.contains("impl<E> CoreCostComponent for Cost<E>"),
+        "core-owned costs should provide the core tap-cost constructor"
+    );
+    assert!(
+        core_ability.contains("pub fn try_map<SA2, T2, E2, C2, Error>"),
+        "core Ability should own structural mapping across non-static families"
+    );
+    assert!(
+        core_definition.contains("pub fn try_map<A2, E2, C2, AC2, OC2, Error>"),
+        "core CardDefinition should own structural mapping across non-static families"
+    );
+
+    for forbidden in [
+        "fn convert_cost",
+        "fn convert_total_cost",
+        "fn convert_optional_cost",
+        "fn convert_resolution_program",
+        "fn convert_effect(",
+        "fn convert_ability",
+        "fn convert_card_definition",
+    ] {
+        assert!(
+            !integration.contains(forbidden),
+            "compiler boundary adapter must not recreate the old non-static conversion table entry `{forbidden}`"
+        );
+    }
+
+    assert!(
+        runtime_effect_interpreter.contains("pub trait EffectModel")
+            && runtime_effect_interpreter.contains("pub fn interpret_effect_model"),
+        "runtime should own the compiler-free effect model interpreter"
+    );
+    assert!(
+        integration.contains(
+            "impl ironsmith::effect_model_interpreter::EffectModel for CompilerEffectModel"
+        ),
+        "compiler boundary adapter should stay a compiler model adapter, not the semantic effect table"
     );
 }
 

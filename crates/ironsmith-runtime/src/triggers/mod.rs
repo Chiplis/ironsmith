@@ -43,9 +43,9 @@
 
 use crate::filter::ObjectFilterExt as _;
 pub mod check;
-mod compiler_model;
 pub mod event;
 pub mod matcher_trait;
+mod model_interpreter;
 
 // Trigger category submodules
 pub mod cards;
@@ -65,9 +65,9 @@ pub use check::{
     compute_trigger_identity, generate_step_trigger_events, player_filter_matches_with_context,
     verify_intervening_if,
 };
-pub use compiler_model::TriggerModelConversionError;
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
+pub use model_interpreter::TriggerModelConversionError;
 pub type TriggerEvent = crate::events::RawEvent;
 
 // Re-export trigger implementations from submodules

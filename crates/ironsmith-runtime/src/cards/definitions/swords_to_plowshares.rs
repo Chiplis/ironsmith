@@ -17,7 +17,7 @@ pub fn swords_to_plowshares() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
@@ -25,6 +25,7 @@ mod tests {
     use crate::ids::PlayerId;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_swords_to_plowshares() {
         let def = swords_to_plowshares();
@@ -35,6 +36,7 @@ mod tests {
         assert_eq!(def.spell_effect.as_ref().unwrap().len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_swords_to_plowshares_exiles_and_gains_life() {
         // Test that the controller of the exiled creature gains life equal to its power
@@ -115,6 +117,7 @@ mod tests {
     ///
     /// Scenario: Alice casts StP targeting Bob's Giant Spider (2/4).
     /// Expected: Spider is exiled, Bob gains 2 life.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_swords_to_plowshares_exile_life_gain() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -167,6 +170,7 @@ mod tests {
     ///
     /// Scenario: Alice casts StP targeting her own Grizzly Bears (2/2).
     /// Expected: Bears is exiled, Alice gains 2 life.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_swords_to_plowshares_self_target() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

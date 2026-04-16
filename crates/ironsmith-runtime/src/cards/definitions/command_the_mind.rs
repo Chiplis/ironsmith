@@ -19,7 +19,7 @@ Gain control of target opponent until end of turn.";
         .expect("Command the Mind text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use crate::cards::CardRegistry;
     use crate::decision::{DecisionRouter, NumericInputDecisionMaker};
@@ -32,6 +32,7 @@ mod tests {
 
     /// Replay: cast Command the Mind, then cast Tivit so the controlled player votes.
     /// Alice's inputs should be used for Bob's vote while control is active.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_control_player_during_own_turn() {
         let registry = CardRegistry::with_builtin_cards_for_names([

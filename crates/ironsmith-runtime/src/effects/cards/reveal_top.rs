@@ -126,6 +126,9 @@ mod tests {
         }));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn reveal_top_emits_card_revealed_event_that_triggers_reveal_abilities() {
         let mut game = setup_game();

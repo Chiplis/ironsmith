@@ -3387,6 +3387,9 @@ mod tests {
         assert!(matches!(effects[0].applies_to, EffectTarget::Source));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_commander_cast_count_anthem_scales_from_player_commander_casts() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -3441,6 +3444,9 @@ mod tests {
             "Commander's Insignia should grant +1/+1 per commander cast from the command zone"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_bonehoard_counts_creature_cards_in_all_graveyards() {
@@ -3501,6 +3507,9 @@ mod tests {
             "Bonehoard should count creature cards in both graveyards"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_kembas_banner_counts_creatures_you_control_for_each() {
@@ -3567,6 +3576,9 @@ mod tests {
             "Kemba's Banner should apply the same bonus to toughness"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_cranial_ram_counts_artifacts_for_x_only_bonus() {
@@ -3892,6 +3904,8 @@ mod tests {
             creature.attachments.push(equipment_id);
         }
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
 
     #[test]
     fn bruenor_anthem_parses_with_attached_to_affected_and_renders_correctly() {

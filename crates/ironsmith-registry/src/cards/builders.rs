@@ -10,7 +10,7 @@ use ironsmith::types::{CardType, Subtype, Supertype};
 use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
 use ironsmith_compiler::{KeywordAction, MetadataLine};
 
-pub type CardTextError = ironsmith::compiler_integration::CompilerIntegrationError;
+pub type CardTextError = crate::CompilerIntegrationError;
 pub type ParseAnnotations = ironsmith_compiler::ParseAnnotations;
 pub type TextSpan = ironsmith_compiler::TextSpan;
 
@@ -227,21 +227,13 @@ impl CardDefinitionBuilder {
     }
 
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
-        ironsmith::compiler_integration::compile_builder_to_runtime_definition(
-            self.compiler,
-            text,
-            false,
-        )
+        crate::compile_builder_to_runtime_definition(self.compiler, text, false)
     }
 
     pub fn parse_text_allow_unsupported(
         self,
         text: impl Into<String>,
     ) -> Result<CardDefinition, CardTextError> {
-        ironsmith::compiler_integration::compile_builder_to_runtime_definition(
-            self.compiler,
-            text,
-            true,
-        )
+        crate::compile_builder_to_runtime_definition(self.compiler, text, true)
     }
 }

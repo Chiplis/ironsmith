@@ -1,4 +1,4 @@
-use crate::cost_model::{CostComponent, TotalCost};
+use crate::cost_model::{CoreCostComponent, TotalCost};
 use crate::{
     CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram, Subtype,
     Zone,
@@ -251,6 +251,44 @@ where
     pub fn functions_in(&self, zone: &Zone) -> bool {
         self.functional_zones.contains(zone)
     }
+
+    pub fn try_map<SA2, T2, E2, C2, Error>(
+        self,
+        mut map_static: impl FnMut(SA) -> Result<SA2, Error>,
+        mut map_trigger: impl FnMut(T) -> Result<T2, Error>,
+        mut map_effect: impl FnMut(E) -> Result<E2, Error>,
+        mut map_cost: impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<Ability<SA2, T2, E2, C2>, Error>
+    where
+        E2: Clone,
+    {
+        let kind = match self.kind {
+            AbilityKind::Static(static_ability) => AbilityKind::Static(map_static(static_ability)?),
+            AbilityKind::Triggered(triggered) => AbilityKind::Triggered(TriggeredAbility {
+                trigger: map_trigger(triggered.trigger)?,
+                effects: triggered.effects.try_map_effects(&mut map_effect)?,
+                choices: triggered.choices,
+                intervening_if: triggered.intervening_if,
+            }),
+            AbilityKind::Activated(activated) => AbilityKind::Activated(ActivatedAbility {
+                mana_cost: activated.mana_cost.try_map(&mut map_cost)?,
+                effects: activated.effects.try_map_effects(&mut map_effect)?,
+                choices: activated.choices,
+                timing: activated.timing,
+                additional_restrictions: activated.additional_restrictions,
+                activation_restrictions: activated.activation_restrictions,
+                mana_output: activated.mana_output,
+                activation_condition: activated.activation_condition,
+                mana_usage_restrictions: activated.mana_usage_restrictions,
+            }),
+        };
+
+        Ok(Ability {
+            kind,
+            functional_zones: self.functional_zones,
+            text: self.text,
+        })
+    }
 }
 
 impl<SA, T, E, C> From<SA> for Ability<SA, T, E, C>
@@ -261,10 +299,6 @@ where
     fn from(value: SA) -> Self {
         Self::static_ability(value)
     }
-}
-
-pub trait CoreCostComponent: CostComponent {
-    fn tap_cost() -> Self;
 }
 
 impl<SA> LevelAbility<SA> {

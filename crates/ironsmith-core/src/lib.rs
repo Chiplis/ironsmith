@@ -40,9 +40,8 @@ pub mod zone;
 pub struct WorkspaceSplitMarker;
 
 pub use ability_model::{
-    Ability, AbilityKind, ActivatedAbility, ActivationTiming, CoreCostComponent, LevelAbility,
-    ManaUsageRestriction, ManaUsageSubtypeRequirement, ProtectionFrom, RestrictedManaUnit,
-    TriggeredAbility,
+    Ability, AbilityKind, ActivatedAbility, ActivationTiming, LevelAbility, ManaUsageRestriction,
+    ManaUsageSubtypeRequirement, ProtectionFrom, RestrictedManaUnit, TriggeredAbility,
 };
 pub use alternative_cast_model::{
     AlternativeCastRequirements, AlternativeCastingMethod, TrapCondition,
@@ -55,7 +54,9 @@ pub use color::{Color, ColorSet};
 pub use continuous_model::{
     CompiledContinuousEffectTarget, CompiledContinuousModification, CompiledPtSublayer,
 };
-pub use cost_model::{CostComponent, OptionalCost, OptionalCostsPaid, TotalCost};
+pub use cost_model::{
+    CoreCostComponent, Cost, CostComponent, OptionalCost, OptionalCostsPaid, TotalCost,
+};
 pub use counter::CounterType;
 pub use definition_model::CardDefinition;
 pub use effect::{

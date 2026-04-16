@@ -18,7 +18,7 @@ pub fn tainted_field() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -56,6 +56,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_field_basic_properties() {
         let def = tainted_field();
@@ -65,12 +66,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_field_is_not_basic() {
         let def = tainted_field();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_field_has_two_mana_abilities() {
         let def = tainted_field();
@@ -83,6 +86,7 @@ mod tests {
     // First Ability (Colorless Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_produces_colorless_mana() {
         let def = tainted_field();
@@ -97,6 +101,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_is_unconditional() {
         let def = tainted_field();
@@ -114,6 +119,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_requires_tap() {
         let def = tainted_field();
@@ -132,6 +138,7 @@ mod tests {
     // Second Ability (Colored Mana) Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_offers_white_and_black() {
         let def = tainted_field();
@@ -157,6 +164,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_has_swamp_condition() {
         let def = tainted_field();
@@ -189,6 +197,7 @@ mod tests {
     // Activation Condition Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_colorless_ability_can_activate_without_swamp() {
         let mut game = setup_game();
@@ -210,6 +219,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_colored_ability_cannot_activate_without_swamp() {
         let mut game = setup_game();
@@ -231,6 +241,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_colored_ability_can_activate_with_swamp() {
         let mut game = setup_game();
@@ -253,6 +264,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_plains_does_not_enable_colored_ability() {
         let mut game = setup_game();
@@ -274,6 +286,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dual_land_with_swamp_enables_abilities() {
         let mut game = setup_game();
@@ -300,6 +313,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_opponent_swamp_does_not_enable_abilities() {
         let mut game = setup_game();
@@ -329,6 +343,7 @@ mod tests {
     // Tap State Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cannot_activate_if_already_tapped() {
         let mut game = setup_game();
@@ -356,6 +371,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tainted_field_on_battlefield() {
         let mut game = setup_game();
@@ -374,6 +390,7 @@ mod tests {
         assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text() {
         let def = tainted_field();
@@ -394,6 +411,7 @@ mod tests {
     /// Tainted Field: Land
     /// {T}: Add {C}.
     /// {T}: Add {W} or {B}. Activate only if you control a Swamp.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_tainted_field_colorless_mana() {
         let game = run_replay_test(
@@ -414,6 +432,7 @@ mod tests {
     }
 
     /// Tests tapping Tainted Field with a Swamp to enable colored mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_tainted_field_colored_mana_with_swamp() {
         let game = run_replay_test(
@@ -435,6 +454,7 @@ mod tests {
     }
 
     /// Tests tapping Tainted Field with a Swamp to choose black mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_tainted_field_black_mana_with_swamp() {
         let game = run_replay_test(

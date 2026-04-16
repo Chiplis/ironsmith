@@ -141,6 +141,57 @@ impl Cost {
         CostEffect::from_validated_effect(effect).map(Self::new)
     }
 
+    /// Interpret a shared core cost model into the runtime cost payer wrapper.
+    pub fn from_model(model: ironsmith_core::Cost<crate::effect::Effect>) -> Result<Self, String> {
+        fn fixed_u32(value: crate::effect::Value, context: &str) -> Result<u32, String> {
+            match value {
+                crate::effect::Value::Fixed(amount) if amount >= 0 => Ok(amount as u32),
+                other => Err(format!(
+                    "{context} requires a fixed non-negative value, got {other:?}"
+                )),
+            }
+        }
+
+        Ok(match model {
+            ironsmith_core::Cost::Mana(mana) => Self::mana(mana),
+            ironsmith_core::Cost::Tap => Self::tap(),
+            ironsmith_core::Cost::Untap => Self::untap(),
+            ironsmith_core::Cost::DiscardSource => Self::discard_source(),
+            ironsmith_core::Cost::SacrificeSelf => Self::sacrifice_self(),
+            ironsmith_core::Cost::Sacrifice(filter) => Self::sacrifice(filter),
+            ironsmith_core::Cost::Discard { count, card_types } => {
+                Self::discard_types(count, card_types)
+            }
+            ironsmith_core::Cost::DiscardHand => Self::discard_hand(),
+            ironsmith_core::Cost::RemoveCounters {
+                counter_type,
+                count,
+            } => Self::remove_counters(counter_type, count),
+            ironsmith_core::Cost::AddCounters {
+                counter_type,
+                count,
+            } => Self::add_counters(counter_type, count),
+            ironsmith_core::Cost::RemoveAnyCountersFromSource {
+                counter_type,
+                display_x,
+            } => Self::remove_any_counters_from_source(counter_type, display_x),
+            ironsmith_core::Cost::Energy(amount) => Self::energy(fixed_u32(amount, "energy cost")?),
+            ironsmith_core::Cost::Mill(count) => Self::mill(fixed_u32(count, "mill cost")?),
+            ironsmith_core::Cost::Life(amount) => Self::life(fixed_u32(amount, "life cost")?),
+            ironsmith_core::Cost::ExileSelf => Self::exile_self(),
+            ironsmith_core::Cost::ExileFromHand {
+                count,
+                color_filter,
+            } => Self::exile_from_hand(count, color_filter),
+            ironsmith_core::Cost::ReturnSelfToHand => Self::return_self_to_hand(),
+            ironsmith_core::Cost::Effect(effect) => Self::try_from_runtime_effect(effect)
+                .map_err(|detail| format!("effect-backed cost is not cost-executable: {detail}"))?,
+            ironsmith_core::Cost::Placeholder(label) => {
+                return Err(format!("untyped compiler cost placeholder: {label}"));
+            }
+        })
+    }
+
     /// Create a sacrifice self cost.
     pub fn sacrifice_self() -> Self {
         Self::validated_effect(crate::effect::Effect::sacrifice_source())

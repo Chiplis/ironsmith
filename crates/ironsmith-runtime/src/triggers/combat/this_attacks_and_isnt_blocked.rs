@@ -50,6 +50,9 @@ mod tests {
         assert!(trigger.matches(&event, &ctx));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn parser_supports_attacks_and_isnt_blocked_trigger() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ophidian Variant")

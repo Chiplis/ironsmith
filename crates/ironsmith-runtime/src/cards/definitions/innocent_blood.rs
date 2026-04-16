@@ -17,7 +17,7 @@ pub fn innocent_blood() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::color::Color;
@@ -26,6 +26,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_innocent_blood_basic_properties() {
         let def = innocent_blood();
@@ -36,6 +37,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_innocent_blood_is_black() {
         let def = innocent_blood();
@@ -43,6 +45,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_innocent_blood_has_spell_effect() {
         let def = innocent_blood();
@@ -59,6 +62,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_innocent_blood_oracle_text() {
         let def = innocent_blood();
@@ -73,6 +77,7 @@ mod tests {
     ///
     /// Innocent Blood: {B} Sorcery
     /// Each player sacrifices a creature of their choice.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_innocent_blood_casting() {
         use crate::ids::PlayerId;

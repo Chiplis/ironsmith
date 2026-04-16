@@ -17,7 +17,7 @@ pub fn command_tower() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -37,6 +37,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_basic_properties() {
         let def = command_tower();
@@ -55,6 +56,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_mana_value_is_zero() {
         let def = command_tower();
@@ -63,6 +65,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_is_not_creature() {
         let def = command_tower();
@@ -71,6 +74,7 @@ mod tests {
         assert!(!def.card.is_creature());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_has_no_subtypes() {
         let def = command_tower();
@@ -79,6 +83,7 @@ mod tests {
         assert!(def.card.subtypes.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_has_mana_ability() {
         let def = command_tower();
@@ -90,6 +95,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_mana_ability_structure() {
         let def = command_tower();
@@ -117,6 +123,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_mana_ability_has_tap_cost() {
         let def = command_tower();
@@ -140,6 +147,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_on_battlefield() {
         let mut game = setup_game();
@@ -158,6 +166,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_activation_requires_untapped() {
         let mut game = setup_game();
@@ -184,6 +193,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -207,6 +217,7 @@ mod tests {
     // Commander Color Identity Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_effect_uses_commander_identity() {
         let def = command_tower();
@@ -229,6 +240,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_with_no_commander() {
         let game = setup_game();
@@ -242,6 +254,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_with_white_black_commander() {
         let mut game = setup_game();
@@ -276,6 +289,7 @@ mod tests {
         assert_eq!(identity.count(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_with_five_color_commander() {
         let mut game = setup_game();
@@ -313,6 +327,7 @@ mod tests {
         assert_eq!(identity.count(), 5);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_with_colorless_commander() {
         let mut game = setup_game();
@@ -343,6 +358,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_command_tower_oracle_text() {
         let def = command_tower();
@@ -355,6 +371,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_command_tower_play() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

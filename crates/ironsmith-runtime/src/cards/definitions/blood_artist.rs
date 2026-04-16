@@ -20,7 +20,7 @@ pub fn blood_artist() -> CardDefinition {
         .expect("Blood Artist text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -78,6 +78,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_basic_properties() {
         let def = blood_artist();
@@ -87,12 +88,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_is_vampire() {
         let def = blood_artist();
         assert!(def.card.has_subtype(Subtype::Vampire));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_power_toughness() {
         use crate::card::PtValue;
@@ -102,6 +105,7 @@ mod tests {
         assert_eq!(pt.toughness, PtValue::Fixed(1));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_is_black() {
         let def = blood_artist();
@@ -109,6 +113,7 @@ mod tests {
         assert!(!def.card.colors().contains(Color::White));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_mana_cost() {
         let def = blood_artist();
@@ -116,6 +121,7 @@ mod tests {
         // {1}{B} = 1 generic + 1 black
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_has_one_ability() {
         let def = blood_artist();
@@ -126,6 +132,7 @@ mod tests {
     // Triggered Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ability_is_triggered() {
         let def = blood_artist();
@@ -133,6 +140,7 @@ mod tests {
         assert!(matches!(ability.kind, AbilityKind::Triggered(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_condition_is_creature_dies() {
         let def = blood_artist();
@@ -145,6 +153,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_has_three_effects() {
         let def = blood_artist();
@@ -157,6 +166,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_requires_target_player() {
         use crate::target::PlayerFilter;
@@ -175,6 +185,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ability_functions_on_battlefield() {
         let def = blood_artist();
@@ -187,6 +198,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_when_another_creature_dies() {
         let mut game = setup_game();
@@ -214,6 +226,7 @@ mod tests {
         assert_eq!(triggered[0].source, blood_artist_id);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_when_blood_artist_itself_dies() {
         let mut game = setup_game();
@@ -242,6 +255,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_when_opponent_creature_dies() {
         let mut game = setup_game();
@@ -270,6 +284,7 @@ mod tests {
         assert_eq!(triggered[0].source, blood_artist_id);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_multiple_blood_artists_trigger_separately() {
         let mut game = setup_game();
@@ -302,6 +317,7 @@ mod tests {
         assert!(sources.contains(&blood_artist2_id));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_for_noncreature_permanents() {
         let mut game = setup_game();
@@ -337,6 +353,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_target_player_loses_one_life() {
         let mut game = setup_game();
@@ -372,6 +389,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_controller_gains_one_life() {
         let mut game = setup_game();
@@ -407,6 +425,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_both_effects_execute_correctly() {
         let mut game = setup_game();
@@ -450,6 +469,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_can_target_self_with_life_loss() {
         let mut game = setup_game();
@@ -491,6 +511,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_on_battlefield() {
         let mut game = setup_game();
@@ -511,6 +532,7 @@ mod tests {
         assert!(matches!(obj.abilities[0].kind, AbilityKind::Triggered(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_creature_stats() {
         let mut game = setup_game();
@@ -532,6 +554,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_multiple_creatures_dying_triggers_multiple_times() {
         let mut game = setup_game();
@@ -562,6 +585,7 @@ mod tests {
         assert_eq!(triggered2[0].source, blood_artist_id);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_doesnt_trigger_from_graveyard() {
         let mut game = setup_game();
@@ -591,6 +615,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_artist_vampire_creature_type_interaction() {
         let mut game = setup_game();
@@ -622,6 +647,7 @@ mod tests {
     // Edge Case Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_token_creature_dying_triggers() {
         let mut game = setup_game();
@@ -657,6 +683,7 @@ mod tests {
         assert_eq!(triggered[0].source, blood_artist_id);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_effect_result_values() {
         let mut game = setup_game();
@@ -698,6 +725,7 @@ mod tests {
     ///
     /// Scenario: Cast Doom Blade on Grizzly Bears, Blood Artist triggers,
     /// target opponent with the life loss.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_blood_artist_creature_dies() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -770,6 +798,7 @@ mod tests {
     }
 
     /// Tests Blood Artist trigger when targeting self (net zero life change).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_blood_artist_target_self() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

@@ -1,6 +1,6 @@
 mod tooling;
 
-pub use ironsmith::compiler_integration::{
+pub use ironsmith_registry::{
     CompilerIntegrationError, compile_builder_to_runtime_definition, compile_to_runtime_definition,
     into_runtime_compiled_card_text, into_runtime_definition,
 };

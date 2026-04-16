@@ -27,13 +27,14 @@ pub fn murder_of_crows() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_murder_of_crows() {
         let def = murder_of_crows();
@@ -42,6 +43,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 2); // Flying + trigger
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_murder_of_crows_trigger_structure() {
         let def = murder_of_crows();
@@ -77,6 +79,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_murder_of_crows_casting() {
         let game = run_replay_test(

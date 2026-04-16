@@ -351,6 +351,23 @@ fn normalize_clause_line(text: &str) -> String {
     normalize_end_turn_creature_buff_split(&normalized)
 }
 
+fn normalize_that_player_references_for_clause_surface(text: &str) -> String {
+    text.replace("That player controls", "They control")
+        .replace("that player controls", "they control")
+        .replace("That player draws", "They draw")
+        .replace("that player draws", "they draw")
+        .replace("That player loses", "They lose")
+        .replace("that player loses", "they lose")
+        .replace("That player discards", "They discard")
+        .replace("that player discards", "they discard")
+        .replace("That player sacrifices", "They sacrifice")
+        .replace("that player sacrifices", "they sacrifice")
+        .replace("That player ", "They ")
+        .replace("that player ", "they ")
+        .replace(", that player ", ", they ")
+        .replace("that player, ", "they, ")
+}
+
 fn normalize_end_turn_creature_buff_split(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
     let marker = ". creatures you control gain ";
@@ -828,7 +845,7 @@ fn strip_ability_word_prefix(clause: &str) -> String {
     if semantic_tail || starts_with_cost_like {
         if starts_with_cost_like {
             let without_cost = strip_compiled_ability_cost_prefix(tail.trim());
-            return normalize_explicit_damage_source_for_compare(without_cost).to_string();
+            return normalize_damage_source_for_clause_surface(without_cost).to_string();
         }
         tail.to_string()
     } else {
@@ -2181,21 +2198,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(" and this spell deals ", ". Deal ")
         .replace(" and it deals ", ". Deal ")
         .replace(" and you gain ", ". You gain ")
-        .replace(" and you lose ", ". You lose ")
-        .replace("That player's ", "Their ")
-        .replace("that player's ", "their ")
-        .replace("that player's,", "their,")
-        .replace("that player's.", "their.")
-        .replace("that player's:", "their:")
-        .replace("that player controls", "they control")
-        .replace("that player draws", "they draw")
-        .replace("that player loses", "they lose")
-        .replace("that player discards", "they discard")
-        .replace("that player sacrifices", "they sacrifice")
-        .replace("that player ", "they ")
-        .replace("That player ", "They ")
-        .replace(", that player ", ", they ")
-        .replace("that player, ", "they, ")
+        .replace(" and you lose ", ". You lose ");
+    normalized = normalize_that_player_references_for_clause_surface(&normalized)
         .replace(" to their owners' hands", " to their owner's hand")
         .replace(" to their owners hand", " to their owner's hand")
         .replace(" to its owner's hand", " to their owner's hand")
@@ -2741,15 +2745,73 @@ fn normalize_for_each_player_conditional_for_compare(line: &str) -> String {
     line.to_string()
 }
 
+fn starts_with_damage_subject(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.starts_with("deal ")
+        || lower.starts_with("this creature deals ")
+        || lower.starts_with("this permanent deals ")
+        || lower.starts_with("this spell deals ")
+        || lower.starts_with("this enchantment deals ")
+        || lower.starts_with("this artifact deals ")
+        || lower.starts_with("this land deals ")
+        || lower.starts_with("this token deals ")
+        || lower.starts_with("that creature deals ")
+        || lower.starts_with("that permanent deals ")
+        || lower.starts_with("it deals ")
+}
+
+fn normalize_damage_self_reference(text: &str) -> String {
+    text.replace(" to this creature", " to itself")
+        .replace(" to This creature", " to itself")
+        .replace(" to this Creature", " to itself")
+}
+
+fn strip_leading_mana_cost_for_damage_clause(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix('{')?;
+    let end = rest.find("}: ")?;
+    if !rest[..end].chars().all(|c| match c {
+        '{' | '}' | '/' | ',' | ' ' => true,
+        '0'..='9' => true,
+        'A'..='Z' | 'a'..='z' => matches!(
+            c.to_ascii_uppercase(),
+            'W' | 'U' | 'B' | 'R' | 'G' | 'T' | 'X' | 'Y' | 'Z' | 'S' | 'P' | 'C'
+        ),
+        _ => false,
+    }) {
+        return None;
+    }
+
+    let tail = rest[end + 3..].trim_start();
+    if starts_with_damage_subject(tail) {
+        Some(tail)
+    } else {
+        None
+    }
+}
+
+fn normalize_damage_source_for_clause_surface(line: &str) -> String {
+    let normalized = strip_leading_mana_cost_for_damage_clause(line).unwrap_or(line);
+    if starts_with_damage_subject(normalized) {
+        return normalize_damage_self_reference(normalized);
+    }
+
+    for separator in [": ", ". "] {
+        if let Some((left, right)) = normalized.split_once(separator) {
+            let right = right.trim_start();
+            if starts_with_damage_subject(right) {
+                return format!("{left}{separator}{}", normalize_damage_self_reference(right));
+            }
+        }
+    }
+
+    normalized.to_string()
+}
+
 fn normalize_explicit_damage_source_for_compare(line: &str) -> String {
     fn normalize_damage_clause_tail(text: &str) -> Option<String> {
         let lower = text.to_ascii_lowercase();
         if lower.starts_with("deal ") {
-            return Some(
-                text.replace(" to this creature", " to itself")
-                    .replace(" to This creature", " to itself")
-                    .replace(" to this Creature", " to itself"),
-            );
+            return Some(normalize_damage_self_reference(text));
         }
 
         for prefix in [
@@ -2765,11 +2827,7 @@ fn normalize_explicit_damage_source_for_compare(line: &str) -> String {
             "it deals ",
         ] {
             if lower.starts_with(prefix) {
-                let rest = text[prefix.len()..]
-                    .trim_start()
-                    .replace(" to this creature", " to itself")
-                    .replace(" to This creature", " to itself")
-                    .replace(" to this Creature", " to itself");
+                let rest = normalize_damage_self_reference(text[prefix.len()..].trim_start());
                 return Some(format!("Deal {rest}"));
             }
         }
@@ -2778,34 +2836,8 @@ fn normalize_explicit_damage_source_for_compare(line: &str) -> String {
     }
 
     let mut normalized = line;
-    let starts_with_damage_subject = |text: &str| -> bool {
-        let lower = text.to_ascii_lowercase();
-        lower.starts_with("deal ")
-            || lower.starts_with("this creature deals ")
-            || lower.starts_with("this permanent deals ")
-            || lower.starts_with("this spell deals ")
-            || lower.starts_with("this enchantment deals ")
-            || lower.starts_with("this artifact deals ")
-            || lower.starts_with("this land deals ")
-            || lower.starts_with("this token deals ")
-            || lower.starts_with("that creature deals ")
-            || lower.starts_with("that permanent deals ")
-            || lower.starts_with("it deals ")
-    };
-    if let Some(rest) = line.strip_prefix("{")
-        && let Some(end) = rest.find("}: ")
-        && rest[..end].chars().all(|c| match c {
-            '{' | '}' | '/' | ',' | ' ' => true,
-            '0'..='9' => true,
-            'A'..='Z' | 'a'..='z' => matches!(
-                c.to_ascii_uppercase(),
-                'W' | 'U' | 'B' | 'R' | 'G' | 'T' | 'X' | 'Y' | 'Z' | 'S' | 'P' | 'C'
-            ),
-            _ => false,
-        })
-        && starts_with_damage_subject(rest[end + 3..].trim_start())
-    {
-        normalized = rest[end + 3..].trim_start();
+    if let Some(tail) = strip_leading_mana_cost_for_damage_clause(line) {
+        normalized = tail;
     }
 
     if let Some(normalized_damage) = normalize_damage_clause_tail(normalized) {
@@ -2964,7 +2996,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
         let line = strip_modal_option_labels(&line);
         let line = normalize_for_each_player_conditional_for_compare(&line);
         let line = split_common_clause_conjunctions(&line);
-        let line = normalize_explicit_damage_source_for_compare(&line);
+        let line = normalize_damage_source_for_clause_surface(&line);
         let line = expand_create_list_clause(&normalize_clause_line(&line));
         let line = expand_return_list_clause(&line);
         push_semantic_clauses(&line, &mut clauses);
@@ -3534,7 +3566,8 @@ fn is_bare_keyword_clause(tokens: &[String]) -> bool {
 }
 
 fn comparison_tokens(clause: &str) -> Vec<String> {
-    let tokens = tokenize_text(clause)
+    let comparable_clause = normalize_explicit_damage_source_for_compare(clause);
+    let tokens = tokenize_text(&comparable_clause)
         .into_iter()
         .filter_map(|token| normalize_word(&token))
         .collect();
@@ -3773,7 +3806,8 @@ fn normalize_that_references(tokens: Vec<String>) -> Vec<String> {
 }
 
 fn compiled_comparison_tokens(clause: &str) -> Vec<String> {
-    let tokens = tokenize_text(clause)
+    let comparable_clause = normalize_explicit_damage_source_for_compare(clause);
+    let tokens = tokenize_text(&comparable_clause)
         .into_iter()
         .filter_map(|token| normalize_word(&token))
         .collect();
@@ -3788,7 +3822,8 @@ fn compiled_comparison_tokens(clause: &str) -> Vec<String> {
 }
 
 fn embedding_tokens(clause: &str) -> Vec<String> {
-    tokenize_text(clause)
+    let comparable_clause = normalize_explicit_damage_source_for_compare(clause);
+    tokenize_text(&comparable_clause)
         .into_iter()
         .filter_map(|token| normalize_word(&token))
         .collect()

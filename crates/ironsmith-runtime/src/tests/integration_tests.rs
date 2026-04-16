@@ -1235,6 +1235,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_spelunking_and_airship_engine_room_can_enter_untapped() {
         let (mut game, alice, airship_id) = setup_spelunking_airship_game();
         let cause = EventCause::from_special_action(Some(airship_id), alice);
@@ -1256,6 +1257,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_spelunking_and_airship_engine_room_can_enter_tapped() {
         let (mut game, alice, airship_id) = setup_spelunking_airship_game();
         let cause = EventCause::from_special_action(Some(airship_id), alice);
@@ -1276,6 +1278,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_darksteel_colossus_and_external_graveyard_replacement_require_choice() {
         let alice = PlayerId::from_index(0);
@@ -1383,6 +1386,9 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_copy_as_enters_applies_before_other_etb_replacements() {
         let copy_land =
@@ -1422,6 +1428,9 @@ mod tests {
             "copy-as-enters should apply before the original enters-tapped replacement"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_copy_as_enters_can_add_card_type_to_copied_permanent() {
@@ -1471,6 +1480,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_copy_as_enters_can_add_ability_to_copied_permanent() {
         let omni = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Omni Replica")
@@ -1515,6 +1527,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_simple_play_land() {
         let result = GameScript::new()
             .player("Alice", &["Forest"])
@@ -1540,6 +1553,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_cast_creature_spell() {
         let result = GameScript::new()
             .player("Alice", &["Forest", "Llanowar Elves"])
@@ -1572,6 +1586,7 @@ mod tests {
     /// - Cast Lightning Bolt targeting Player 2
     /// - Pay mana by tapping Mountain
     /// - Pass priority to let spell resolve
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_lightning_bolt() {
         let config = ReplayTestConfig::new()
@@ -1616,6 +1631,7 @@ mod tests {
 
     /// Tests simple priority passing using inline replay inputs.
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_replay_simple_pass() {
         let config = ReplayTestConfig::new()
             .p1_hand(vec!["Mountain"])
@@ -1635,6 +1651,7 @@ mod tests {
     /// Tests Lightning Bolt using inline inputs (no file needed).
     ///
     /// This demonstrates the inline input capability for simpler test setup.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_inline_lightning_bolt() {
         let game = run_replay_test(
@@ -1663,6 +1680,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_commander_casting_via_c_input() {
         // Test that commanders in the command zone can be cast via 'C' input
         // Grizzly Bears is a simple 2-mana creature to test basic functionality

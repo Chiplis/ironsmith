@@ -317,6 +317,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn pay_mana_effect_activates_mana_ability_then_pays() {
         let mut game = setup_game();

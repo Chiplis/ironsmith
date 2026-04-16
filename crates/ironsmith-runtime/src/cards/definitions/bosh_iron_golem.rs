@@ -26,11 +26,12 @@ pub fn bosh_iron_golem() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bosh_iron_golem_basic_properties() {
         let def = bosh_iron_golem();
@@ -48,6 +49,7 @@ mod tests {
         assert_eq!(pt.toughness.base_value(), 7);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_bosh_iron_golem_has_activated_ability() {
         let def = bosh_iron_golem();

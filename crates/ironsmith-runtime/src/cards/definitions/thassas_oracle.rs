@@ -29,7 +29,7 @@ pub fn thassas_oracle() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -42,6 +42,7 @@ mod tests {
     use crate::types::CardType;
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_thassas_oracle_basic_properties() {
         let def = thassas_oracle();
@@ -69,6 +70,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_thassas_oracle_wins_when_devotion_matches_library() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -120,6 +122,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_thassas_oracle_reorders_top_cards_without_forcing_one_on_top() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

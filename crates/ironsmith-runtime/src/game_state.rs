@@ -6958,6 +6958,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn creatures_controlled_by_includes_animated_land() {
         use crate::card::{CardBuilder, PowerToughness};
@@ -6992,6 +6993,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn current_characteristic_helpers_reflect_animation() {
         use crate::card::{CardBuilder, PowerToughness};
@@ -7088,6 +7090,9 @@ mod tests {
                 .is_some_and(|subtypes| subtypes.contains(&Subtype::Wizard))
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn azusa_after_first_land_grants_two_remaining_land_plays() {

@@ -5,7 +5,7 @@ edition = "2024"
 autobins = false
 
 [dependencies]
-ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", features = ["compiler-integration"] }
+ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime" }
 ironsmith-registry = { path = "../ironsmith-registry" }
 ironsmith-compiler = { path = "../ironsmith-compiler" }
 rayon = "1.10"

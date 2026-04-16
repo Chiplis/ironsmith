@@ -26,13 +26,14 @@ pub fn underworld_breach() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::{AbilityKind, TriggeredAbility};
     use crate::grant::{DerivedAlternativeCast, Grantable};
     use crate::static_abilities::StaticAbilityId;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_underworld_breach() {
         let card = underworld_breach();

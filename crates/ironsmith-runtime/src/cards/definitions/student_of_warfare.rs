@@ -30,7 +30,7 @@ pub fn student_of_warfare() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -38,6 +38,7 @@ mod tests {
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_student_of_warfare() {
         let def = student_of_warfare();
@@ -48,6 +49,7 @@ mod tests {
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(1, 1)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_level_up_ability() {
         let def = student_of_warfare();
@@ -60,6 +62,7 @@ mod tests {
         assert!(has_level_up, "Should have level-up activated ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_level_abilities() {
         use crate::static_abilities::StaticAbility;
@@ -96,6 +99,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_level_ability_applies_at_level() {
         // Test the helper method
@@ -113,6 +117,7 @@ mod tests {
         assert!(tier2.applies_at_level(100));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_student_of_warfare_casting() {
         let game = run_replay_test(

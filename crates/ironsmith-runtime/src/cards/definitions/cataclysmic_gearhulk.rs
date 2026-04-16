@@ -34,7 +34,7 @@ pub fn cataclysmic_gearhulk() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -112,6 +112,7 @@ mod tests {
     // Basic Properties Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_basic_properties() {
         let def = cataclysmic_gearhulk();
@@ -122,6 +123,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 5);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_is_white() {
         let def = cataclysmic_gearhulk();
@@ -129,12 +131,14 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_is_construct() {
         let def = cataclysmic_gearhulk();
         assert!(def.card.has_subtype(Subtype::Construct));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_power_toughness() {
         let def = cataclysmic_gearhulk();
@@ -144,6 +148,7 @@ mod tests {
         assert_eq!(pt.toughness, PtValue::Fixed(5));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_has_vigilance() {
         let def = cataclysmic_gearhulk();
@@ -157,6 +162,7 @@ mod tests {
         assert!(has_vigilance, "Should have vigilance");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_cataclysmic_gearhulk_has_etb_trigger() {
         let def = cataclysmic_gearhulk();
@@ -174,6 +180,7 @@ mod tests {
     // Effect Execution Tests - Lands Are Safe
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_lands_are_not_affected() {
         let mut game = setup_game();
@@ -197,6 +204,7 @@ mod tests {
         assert!(game.battlefield.contains(&land3), "land3 should survive");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_keeps_one_nonland_of_each_type() {
         let mut game = setup_game();
@@ -238,6 +246,7 @@ mod tests {
         assert_eq!(alice_count, 5);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_affects_both_players() {
         let mut game = setup_game();
@@ -283,6 +292,7 @@ mod tests {
         assert_eq!(bob_count, 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_with_only_lands() {
         let mut game = setup_game();
@@ -306,6 +316,7 @@ mod tests {
         assert!(game.battlefield.contains(&land2));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_empty_battlefield() {
         let mut game = setup_game();
@@ -326,6 +337,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_triggers_on_etb() {
         use crate::events::zones::ZoneChangeEvent;
@@ -358,12 +370,14 @@ mod tests {
     // Rules Interaction Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_oracle_mentions_nonland() {
         let def = cataclysmic_gearhulk();
         assert!(def.card.oracle_text.contains("nonland"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_oracle_mentions_planeswalker() {
         // Unlike Cataclysm, Gearhulk includes planeswalker
@@ -371,6 +385,7 @@ mod tests {
         assert!(def.card.oracle_text.contains("planeswalker"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_gearhulk_is_artifact_creature() {
         let def = cataclysmic_gearhulk();

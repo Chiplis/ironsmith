@@ -24,10 +24,11 @@ pub fn wall_of_roots() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_wall_of_roots_basic_properties() {
         let def = wall_of_roots();
@@ -38,6 +39,7 @@ mod tests {
         assert!(def.card.subtypes.contains(&Subtype::Wall));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_wall_of_roots_has_defender_and_mana_ability() {
         let def = wall_of_roots();

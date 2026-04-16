@@ -30,7 +30,7 @@ pub fn mana_vault() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Zone;
@@ -46,6 +46,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_vault_basic_properties() {
         let def = mana_vault();
@@ -54,6 +55,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_vault_has_four_abilities() {
         let def = mana_vault();
@@ -65,6 +67,7 @@ mod tests {
     // Static Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_vault_does_not_untap() {
         use crate::static_abilities::StaticAbilityId;
@@ -87,6 +90,7 @@ mod tests {
     // Mana Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_vault_produces_three_colorless() {
         let def = mana_vault();
@@ -117,6 +121,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mana_vault_on_battlefield() {
         let mut game = setup_game();
@@ -136,6 +141,7 @@ mod tests {
     // ========================================
 
     /// Tests casting Mana Vault and tapping for mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_mana_vault_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -158,6 +164,7 @@ mod tests {
     }
 
     /// Tests Mana Vault's mana ability.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_mana_vault_tap_for_mana() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

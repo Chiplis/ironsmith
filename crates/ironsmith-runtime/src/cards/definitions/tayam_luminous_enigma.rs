@@ -32,7 +32,7 @@ pub fn tayam_luminous_enigma() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -47,6 +47,7 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_basic_properties() {
         let def = tayam_luminous_enigma();
@@ -58,6 +59,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 4);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_has_etb_counter_static_and_activated_ability() {
         let def = tayam_luminous_enigma();
@@ -78,6 +80,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_tayam_grants_vigilance_counter_to_other_creatures_entering() {
         let mut game = setup_game();

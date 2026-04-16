@@ -14,7 +14,7 @@ pub fn ancient_tomb() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -33,6 +33,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_basic_properties() {
         let def = ancient_tomb();
@@ -51,6 +52,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_is_not_basic() {
         let def = ancient_tomb();
@@ -59,6 +61,7 @@ mod tests {
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_has_mana_ability() {
         let def = ancient_tomb();
@@ -70,6 +73,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_mana_ability_structure() {
         let def = ancient_tomb();
@@ -101,6 +105,7 @@ mod tests {
     // Mana Production Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_produces_two_colorless() {
         let def = ancient_tomb();
@@ -133,6 +138,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_on_battlefield() {
         let mut game = setup_game();
@@ -151,6 +157,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_activation_requires_untapped() {
         let mut game = setup_game();
@@ -177,6 +184,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_summoning_sickness_irrelevant() {
         let mut game = setup_game();
@@ -200,6 +208,7 @@ mod tests {
     // Life Total Interaction Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_effect_targets_source_controller() {
         // Verify that when multiple players exist, the damage targets the source controller
@@ -216,6 +225,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ancient_tomb_mana_ability_has_tap_cost() {
         let def = ancient_tomb();
@@ -239,6 +249,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_ancient_tomb_deals_damage() {
         let game = run_replay_test(

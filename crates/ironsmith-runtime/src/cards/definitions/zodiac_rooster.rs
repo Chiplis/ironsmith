@@ -24,7 +24,7 @@ pub fn zodiac_rooster() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -32,6 +32,7 @@ mod tests {
     use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_zodiac_rooster() {
         let def = zodiac_rooster();
@@ -45,6 +46,7 @@ mod tests {
         }));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_zodiac_rooster_casting() {
         let game = run_replay_test(

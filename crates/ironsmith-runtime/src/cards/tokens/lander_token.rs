@@ -29,12 +29,13 @@ pub fn lander_token_definition() -> CardDefinition {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::lander_token_definition;
     use crate::ability::AbilityKind;
     use crate::types::{CardType, Subtype};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn lander_token_has_expected_basic_land_search_ability() {
         let lander = lander_token_definition();

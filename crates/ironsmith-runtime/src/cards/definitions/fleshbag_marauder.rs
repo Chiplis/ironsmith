@@ -24,7 +24,7 @@ pub fn fleshbag_marauder() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -34,6 +34,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fleshbag_marauder_basic_properties() {
         let def = fleshbag_marauder();
@@ -42,6 +43,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fleshbag_marauder_is_black() {
         let def = fleshbag_marauder();
@@ -49,6 +51,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fleshbag_marauder_subtypes() {
         let def = fleshbag_marauder();
@@ -56,6 +59,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Warrior));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fleshbag_marauder_power_toughness() {
         let def = fleshbag_marauder();
@@ -64,6 +68,7 @@ mod tests {
         assert_eq!(pt.toughness.base_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_fleshbag_marauder_has_etb_trigger() {
         let def = fleshbag_marauder();
@@ -98,6 +103,7 @@ mod tests {
     /// Note: The ETB trigger causes each player to sacrifice a creature.
     /// If the Marauder is the only creature Alice controls when the trigger
     /// resolves, she will have to sacrifice it.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_fleshbag_marauder_casting() {
         use crate::ids::PlayerId;

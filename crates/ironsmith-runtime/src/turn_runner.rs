@@ -1151,6 +1151,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn test_turn_runner_pauses_for_exert_attack_choice_before_applying_attackers() {
         let mut game = setup_game();
@@ -1238,6 +1241,9 @@ mod tests {
         assert!(matches!(action, TurnAction::RunPriority));
         assert_eq!(game.objects_in_zone(crate::zone::Zone::Command).len(), 1);
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_turn_runner_pauses_for_optional_reveal_first_draw_and_queues_trigger() {

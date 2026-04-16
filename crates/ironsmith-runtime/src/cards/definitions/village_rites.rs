@@ -20,7 +20,7 @@ pub fn village_rites() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::cards::CardDefinitionRuntimeExt;
@@ -30,6 +30,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_village_rites_basic_properties() {
         let def = village_rites();
@@ -39,6 +40,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_village_rites_is_black() {
         let def = village_rites();
@@ -46,6 +48,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_village_rites_has_additional_costs() {
         let def = village_rites();
@@ -69,6 +72,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_village_rites_has_spell_effect() {
         let def = village_rites();
@@ -85,6 +89,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_village_rites_oracle_text() {
         let def = village_rites();

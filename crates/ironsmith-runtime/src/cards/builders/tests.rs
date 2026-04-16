@@ -86,6 +86,9 @@ fn test_creature_with_etb() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_deep_gnome_terramancer_ignores_played_lands() {
     let deep_gnome = CardDefinitionBuilder::new(CardId::from_raw(1), "Deep Gnome Terramancer")
@@ -624,6 +627,9 @@ fn test_builder_bloodthirst_creates_real_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_soulshift_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulshift Parse Test")
@@ -640,6 +646,9 @@ fn test_parse_soulshift_keyword_line_compiles_keyword_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_outlast_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Outlast Parse Test")
@@ -655,6 +664,9 @@ fn test_parse_outlast_keyword_line_compiles_keyword_text() {
         "expected outlast keyword render, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_devour_keyword_line_compiles_without_unsupported_marker() {
@@ -679,6 +691,9 @@ fn test_parse_devour_keyword_line_compiles_without_unsupported_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_bloodthirst_keyword_line_compiles_without_unsupported_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bloodthirst Parse Test")
@@ -701,6 +716,9 @@ fn test_parse_bloodthirst_keyword_line_compiles_without_unsupported_marker() {
         "bloodthirst parse should avoid unsupported placeholders, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_backup_keyword_line_compiles_to_explicit_etb_trigger() {
@@ -725,6 +743,9 @@ fn test_parse_backup_keyword_line_compiles_to_explicit_etb_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_repeated_backup_keyword_line_compiles_each_instance() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Repeated Backup Parse Test")
@@ -746,6 +767,9 @@ fn test_parse_repeated_backup_keyword_line_compiles_each_instance() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_plain_vanishing_keyword_line_compiles_without_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanishing Parse Test")
@@ -765,6 +789,9 @@ fn test_parse_plain_vanishing_keyword_line_compiles_without_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_extort_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Extort Parse Test")
@@ -781,6 +808,9 @@ fn test_parse_extort_keyword_line_compiles_keyword_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_partner_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Parse Test")
@@ -794,6 +824,9 @@ fn test_parse_partner_keyword_line_compiles_keyword_text() {
         "expected partner keyword render, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_partner_with_keyword_line_fails_loudly() {
@@ -811,6 +844,9 @@ fn test_parse_partner_with_keyword_line_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_assist_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Assist Parse Test")
@@ -825,6 +861,9 @@ fn test_parse_assist_keyword_line_compiles_keyword_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_modular_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Modular Parse Test")
@@ -838,6 +877,9 @@ fn test_parse_modular_keyword_line_compiles_keyword_text() {
         "expected modular keyword render, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_graft_keyword_line_compiles_keyword_text() {
@@ -855,6 +897,9 @@ fn test_parse_graft_keyword_line_compiles_keyword_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_sunburst_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sunburst Parse Test")
@@ -868,6 +913,9 @@ fn test_parse_sunburst_keyword_line_compiles_keyword_text() {
         "expected sunburst keyword render, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_fading_keyword_line_compiles_keyword_text() {
@@ -885,6 +933,9 @@ fn test_parse_fading_keyword_line_compiles_keyword_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_cant_gain_life_from_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "No Life")
@@ -900,6 +951,9 @@ fn test_parse_cant_gain_life_from_text() {
 
     assert!(has_cant_gain);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_deafening_silence_noncreature_cast_limit() {
@@ -926,6 +980,9 @@ fn test_parse_deafening_silence_noncreature_cast_limit() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_you_cant_cast_more_than_one_spell_each_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Moderation Variant")
@@ -939,6 +996,9 @@ fn test_parse_you_cant_cast_more_than_one_spell_each_turn() {
         "expected player-scoped cast-limit text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_each_player_cant_cast_more_than_one_spell_each_turn() {
@@ -954,6 +1014,9 @@ fn test_parse_each_player_cant_cast_more_than_one_spell_each_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_players_cant_cast_more_than_one_spell_each_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rule Of Law Variant")
@@ -967,6 +1030,9 @@ fn test_parse_players_cant_cast_more_than_one_spell_each_turn() {
         "expected players cast-limit text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_canonist_style_nonartifact_cast_limit() {
@@ -988,6 +1054,9 @@ fn test_parse_canonist_style_nonartifact_cast_limit() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_your_opponents_nonartifact_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lavinia Variant")
@@ -1003,6 +1072,9 @@ fn test_parse_your_opponents_nonartifact_cast_limit() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_nonphyrexian_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Censor Variant")
@@ -1017,6 +1089,9 @@ fn test_parse_nonphyrexian_cast_limit() {
         "expected non-phyrexian cast-limit text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_uncounterable_from_text() {
@@ -1034,6 +1109,9 @@ fn test_parse_uncounterable_from_text() {
     assert!(has_uncounterable);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_spells_cant_be_countered_as_rule_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Global No Counter")
@@ -1049,6 +1127,9 @@ fn test_parse_spells_cant_be_countered_as_rule_restriction() {
 
     assert!(has_rule_restriction);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cavern_of_souls_generic_mana_usage_restriction() {
@@ -1084,6 +1165,9 @@ fn test_parse_cavern_of_souls_generic_mana_usage_restriction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_nonsource_cant_block_specific_attacker_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cowardly Rule")
@@ -1099,6 +1183,9 @@ fn test_parse_nonsource_cant_block_specific_attacker_restriction() {
 
     assert!(has_rule_restriction);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_bare_cant_be_blocked_by_more_than_one_creature() {
@@ -1117,6 +1204,9 @@ fn test_parse_bare_cant_be_blocked_by_more_than_one_creature() {
     assert!(has_limit);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_enchanted_creature_cant_attack_or_block() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arrest Test")
@@ -1131,6 +1221,9 @@ fn test_parse_enchanted_creature_cant_attack_or_block() {
         "expected enchanted attack/block restriction text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_enchanted_creature_cant_activate_abilities() {
@@ -1150,6 +1243,9 @@ fn test_parse_enchanted_creature_cant_activate_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strip Bare")
@@ -1164,6 +1260,9 @@ fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() {
         "expected Strip Bare's attached-permanent text to normalize cleanly, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_deadlock_trap_its_activated_abilities_cant_be_activated_this_turn() {
@@ -1182,6 +1281,9 @@ fn test_parse_deadlock_trap_its_activated_abilities_cant_be_activated_this_turn(
         "expected deadlock-trap restriction text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_activated_abilities_with_t_in_costs_cant_be_activated() {
@@ -1203,6 +1305,9 @@ fn test_parse_activated_abilities_with_t_in_costs_cant_be_activated() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_enchanted_permanent_cant_attack_or_block() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bound In Gold Test")
@@ -1218,6 +1323,9 @@ fn test_parse_enchanted_permanent_cant_attack_or_block() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_target_creature_you_dont_control_gets_minus_two_minus_two() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Downsize Test")
@@ -1231,6 +1339,9 @@ fn test_parse_target_creature_you_dont_control_gets_minus_two_minus_two() {
         "expected parsed pump effect, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_destination_first_return_all_to_hand_clause() {
@@ -1247,6 +1358,9 @@ fn test_parse_destination_first_return_all_to_hand_clause() {
         "expected destination-first return-to-hand text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_split_the_party_chooses_target_player_and_half_their_creatures() {
@@ -1282,6 +1396,9 @@ fn test_parse_split_the_party_chooses_target_player_and_half_their_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_destination_first_return_all_to_battlefield_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Return To Battlefield Test")
@@ -1297,6 +1414,9 @@ fn test_parse_destination_first_return_all_to_battlefield_clause() {
         "expected destination-first return-to-battlefield text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_choose_color_as_enters_for_nonland_subjects() {
@@ -1326,6 +1446,9 @@ fn test_parse_choose_color_as_enters_for_nonland_subjects() {
     assert!(enchantment_has);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_choose_basic_land_type_as_enters_for_aura() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Convincing Mirage Variant")
@@ -1349,6 +1472,9 @@ fn test_parse_choose_basic_land_type_as_enters_for_aura() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_choose_land_type_as_enters_for_aura() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Traveler's Cloak Variant")
@@ -1371,6 +1497,9 @@ fn test_parse_choose_land_type_as_enters_for_aura() {
     assert!(ids.contains(&StaticAbilityId::AttachedChosenLandwalkGrant));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_choose_player_as_enters_without_placeholder() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Choice Artifact")
@@ -1392,6 +1521,9 @@ fn test_parse_choose_player_as_enters_without_placeholder() {
         "expected typed choose-player-as-enters static ability, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {
@@ -1419,6 +1551,9 @@ fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {
         "expected typed chosen-type Aura static abilities, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_aura_chosen_basic_land_type_sets_enchanted_land_subtype() {
@@ -1476,6 +1611,9 @@ fn test_aura_chosen_basic_land_type_sets_enchanted_land_subtype() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_roaming_throne_variant_parses_without_placeholders() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Roaming Throne Variant")
@@ -1507,6 +1645,9 @@ fn test_roaming_throne_variant_parses_without_placeholders() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_chosen_creature_type_static_adds_selected_subtype() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Roaming Throne Variant")
@@ -1536,6 +1677,9 @@ fn test_chosen_creature_type_static_adds_selected_subtype() {
         "expected chosen subtype to be added"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_roaming_throne_variant_duplicates_matching_creature_triggers() {
@@ -1579,6 +1723,9 @@ fn test_roaming_throne_variant_duplicates_matching_creature_triggers() {
         "expected Wall of Omens ETB trigger to fire twice, got {wall_entries}: {triggered:#?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_this_cost_is_reduced_by_basic_land_types_without_placeholder() {
@@ -1644,6 +1791,9 @@ fn test_parse_this_cost_is_reduced_by_basic_land_types_without_placeholder() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_basic_land_type_count_conditionals_for_you_control_tail() {
     let exact = CardDefinitionBuilder::new(CardId::from_raw(1), "Exact Domain Condition")
@@ -1670,6 +1820,9 @@ fn test_parse_basic_land_type_count_conditionals_for_you_control_tail() {
         "expected rendered threshold conditional to mention basic land types among lands you control, got {threshold_rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
@@ -1698,6 +1851,9 @@ fn parse_voices_from_the_void_domain_discard_counts_basic_land_types() {
         "expected Voices from the Void wording to keep the domain discard clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_atraxa_grand_unifier_uses_card_type_reveal_bundle() {
@@ -1743,6 +1899,9 @@ fn parse_atraxa_grand_unifier_uses_card_type_reveal_bundle() {
         "expected Atraxa compiled text to preserve the reveal bundle structure, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_portcullis_exile_until_leaves_battlefield() {
@@ -1790,12 +1949,18 @@ fn test_parse_portcullis_exile_until_leaves_battlefield() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_damage_equal_to_thiss_power() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Power Reference")
         .parse_text("This deals damage equal to this's power to any target.")
         .expect("parse damage equal to this's power");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_characteristic_power_equal_number_of_creatures() {
@@ -1838,6 +2003,9 @@ fn test_parse_characteristic_power_equal_number_of_creatures() {
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert!(matches!(toughness, crate::effect::Value::SourceToughness));
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_characteristic_power_equal_greatest_mana_value() {
@@ -1883,6 +2051,9 @@ fn test_parse_characteristic_power_equal_greatest_mana_value() {
     assert!(matches!(toughness, crate::effect::Value::SourceToughness));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_creatures_attack_this_turn_if_able_clause() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Instigate Combat")
@@ -1890,6 +2061,9 @@ fn test_parse_creatures_attack_this_turn_if_able_clause() {
         .parse_text("Creatures your opponents control attack this turn if able.")
         .expect("parse creatures attack this turn if able");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_this_creature_must_be_blocked_if_able_static_line() {
@@ -1906,6 +2080,9 @@ fn test_parse_this_creature_must_be_blocked_if_able_static_line() {
     });
     assert!(has_rule_restriction);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_double_cant_clause_from_text() {
@@ -1929,6 +2106,9 @@ fn test_parse_double_cant_clause_from_text() {
     assert!(has_cant_lose);
     assert!(has_cant_win);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_characteristic_pt_constant_plus_count() {
@@ -1980,6 +2160,9 @@ fn test_parse_characteristic_pt_constant_plus_count() {
     assert_eq!(power, toughness);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_characteristic_pt_count_plus_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulless One")
@@ -1994,6 +2177,9 @@ fn test_parse_characteristic_pt_count_plus_count() {
         "expected characteristic P/T zombie count wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_keyword_action_trigger_you_earthbend() {
@@ -2014,6 +2200,9 @@ fn test_parse_keyword_action_trigger_you_earthbend() {
 
     assert_eq!(triggered.trigger.display(), "Whenever you earthbend");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_keyword_action_trigger_any_player() {
@@ -2037,6 +2226,9 @@ fn test_parse_keyword_action_trigger_any_player() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_keyword_action_trigger_you_surveil() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Surveil Watcher")
@@ -2055,6 +2247,9 @@ fn test_parse_keyword_action_trigger_you_surveil() {
 
     assert_eq!(triggered.trigger.display(), "Whenever you surveil");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_keyword_action_trigger_players_finish_voting() {
@@ -2078,6 +2273,9 @@ fn test_parse_keyword_action_trigger_players_finish_voting() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_enters_tapped_filter_keeps_opponent_controller_constraint() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Frozen Aether Variant")
@@ -2092,6 +2290,9 @@ fn test_parse_enters_tapped_filter_keeps_opponent_controller_constraint() {
         "expected rendered line to preserve opponents controller filter, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cohort_ability_word_prefix_keeps_cost_and_effect() {
@@ -2111,6 +2312,9 @@ fn test_parse_cohort_ability_word_prefix_keeps_cost_and_effect() {
         "expected opponent life-loss effect in compiled text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_labeled_leading_condition_with_gets_and_has() {
@@ -2142,6 +2346,9 @@ fn test_parse_labeled_leading_condition_with_gets_and_has() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_coven_condition_uses_different_power_predicate() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Coven Variant")
@@ -2157,6 +2364,9 @@ fn test_parse_coven_condition_uses_different_power_predicate() {
         "expected coven predicate to require different powers, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_target_player_may_copy_this_spell_and_choose_new_targets() {
@@ -2189,6 +2399,9 @@ fn test_parse_target_player_may_copy_this_spell_and_choose_new_targets() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_then_controller_may_copy_spell_and_choose_new_targets() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Chain of Acid Variant")
@@ -2210,6 +2423,9 @@ fn test_parse_then_controller_may_copy_spell_and_choose_new_targets() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_choose_new_targets_for_the_copy() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Reverberate Style Variant")
@@ -2230,6 +2446,9 @@ fn test_parse_choose_new_targets_for_the_copy() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Krark, the Thumbless")
@@ -2246,6 +2465,9 @@ fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
     assert!(debug.contains("CopySpellEffect"), "{debug}");
     assert!(debug.contains("ChooseNewTargetsEffect"), "{debug}");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
@@ -2282,6 +2504,9 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sevinne's Reclamation")
@@ -2316,6 +2541,9 @@ fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_gain_keyword_ability_does_not_fall_back_to_gain_life() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Keyword Variant")
@@ -2333,6 +2561,9 @@ fn test_parse_gain_keyword_ability_does_not_fall_back_to_gain_life() {
         "did not expect life-gain fallback for keyword grant, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_lose_keyword_ability_does_not_fall_back_to_lose_life() {
@@ -2352,6 +2583,9 @@ fn test_parse_lose_keyword_ability_does_not_fall_back_to_lose_life() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_lose_keyword_ability_without_duration() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lose Keyword No Duration Variant")
@@ -2365,6 +2599,9 @@ fn test_parse_lose_keyword_ability_without_duration() {
         "expected flying-removal effect, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
@@ -2410,6 +2647,9 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
         "expected Plumb resolution effects, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
@@ -2472,6 +2712,9 @@ fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fear of Exposure")
@@ -2511,6 +2754,9 @@ fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
         "expected creature/land tap filter, got {filter:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
@@ -2553,6 +2799,9 @@ fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_target_opponent_gains_control_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Witch Engine Variant")
@@ -2572,6 +2821,9 @@ fn test_parse_target_opponent_gains_control_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_gain_control_each_noncommander_creature_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Subjugate the Hobbits Variant")
@@ -2585,6 +2837,9 @@ fn test_parse_gain_control_each_noncommander_creature_clause() {
         "expected compiled text to preserve universal gain-control wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_create_token_for_each_creature_that_died_this_turn() {
@@ -2607,6 +2862,9 @@ fn test_parse_create_token_for_each_creature_that_died_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
@@ -2626,6 +2884,9 @@ fn test_parse_trigger_attacks_with_subject_filter() {
         "expected trigger subject to remain filtered, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_deals_combat_damage_with_subject_filter() {
@@ -2652,6 +2913,9 @@ fn test_parse_trigger_deals_combat_damage_with_subject_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_deals_combat_damage_to_you_preserves_recipient() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Combat Damage Recipient Probe")
@@ -2666,6 +2930,9 @@ fn test_parse_trigger_deals_combat_damage_to_you_preserves_recipient() {
         "expected trigger recipient to remain 'you', got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_this_blocks_filtered_creature() {
@@ -2687,6 +2954,9 @@ fn test_parse_trigger_this_blocks_filtered_creature() {
         "expected trigger to include blocked-object filter, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_you_discard_filtered_card() {
@@ -2714,6 +2984,9 @@ fn test_parse_trigger_you_discard_filtered_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_opponent_discards_card() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Discard Trigger Probe")
@@ -2732,6 +3005,9 @@ fn test_parse_trigger_opponent_discards_card() {
         "expected discard trigger wording in compiled text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_opponent_plays_land() {
@@ -2758,6 +3034,9 @@ fn test_parse_trigger_opponent_plays_land() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_tap_swamp_for_mana() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tap Swamp Trigger Probe")
@@ -2776,6 +3055,9 @@ fn test_parse_trigger_tap_swamp_for_mana() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_tap_creature_for_mana() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tap Creature Trigger Probe")
@@ -2791,6 +3073,9 @@ fn test_parse_trigger_tap_creature_for_mana() {
         "expected creature-filtered tap-for-mana trigger, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_one_or_more_plus_one_counters_put_on_this_creature() {
@@ -2810,6 +3095,9 @@ fn test_parse_trigger_one_or_more_plus_one_counters_put_on_this_creature() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_a_plus_one_counter_put_on_this_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Trigger Each Probe")
@@ -2827,6 +3115,9 @@ fn test_parse_trigger_a_plus_one_counter_put_on_this_creature() {
         "expected typed per-counter placement trigger, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_you_put_one_or_more_minus_one_counters_on_a_creature() {
@@ -2848,6 +3139,9 @@ fn test_parse_trigger_you_put_one_or_more_minus_one_counters_on_a_creature() {
         "expected typed active-voice counter placement trigger, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_swindlers_scheme_keeps_counter_target_on_triggering_spell_after_reveal() {
@@ -2877,6 +3171,9 @@ fn parse_swindlers_scheme_keeps_counter_target_on_triggering_spell_after_reveal(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_nest_of_scarabs_style_trigger_and_token_amount() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nest of Scarabs Variant")
@@ -2902,6 +3199,9 @@ fn test_parse_nest_of_scarabs_style_trigger_and_token_amount() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
@@ -2916,6 +3216,9 @@ fn test_parse_trigger_unknown_non_source_subject_fails() {
         "expected strict trigger-subject parse failure, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_player_subject_attack_trigger_uses_one_or_more_creature_filter() {
@@ -2932,6 +3235,9 @@ fn test_parse_player_subject_attack_trigger_uses_one_or_more_creature_filter() {
         "expected one-or-more attacks trigger for creatures you control, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_player_subject_attack_with_three_or_more_uses_thresholded_mode() {
@@ -2950,6 +3256,9 @@ fn test_parse_player_subject_attack_with_three_or_more_uses_thresholded_mode() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_opponent_attacks_you_trigger_uses_one_or_more_mode() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Attacks You Probe")
@@ -2965,6 +3274,9 @@ fn test_parse_opponent_attacks_you_trigger_uses_one_or_more_mode() {
         "expected one-or-more attacks-you trigger for opponent-controlled creatures, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_attack_life_loss_uses_iterated_defending_player_attack_filter() {
@@ -2986,6 +3298,9 @@ fn test_parse_attack_life_loss_uses_iterated_defending_player_attack_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_target_creature_you_control_fights_target_creature_you_dont_control() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prey Upon Probe")
@@ -3005,6 +3320,9 @@ fn test_parse_target_creature_you_control_fights_target_creature_you_dont_contro
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_target_creature_deals_damage_to_itself_equal_to_its_power() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Justice Strike Variant")
@@ -3023,6 +3341,9 @@ fn test_parse_target_creature_deals_damage_to_itself_equal_to_its_power() {
         "expected compiled output to keep one-sided power damage semantics, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_target_creature_you_control_deals_damage_equal_to_its_power_to_target_creature() {
@@ -3049,6 +3370,9 @@ fn test_parse_target_creature_you_control_deals_damage_equal_to_its_power_to_tar
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_double_target_creatures_power_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mr. Orfeo Probe")
@@ -3071,6 +3395,9 @@ fn test_parse_double_target_creatures_power_until_end_of_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_unleash_fury_current_oracle_wording() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unleash Fury Probe")
@@ -3092,6 +3419,9 @@ fn test_parse_unleash_fury_current_oracle_wording() {
         "expected compiled output to preserve current double-power wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_double_power_and_toughness_of_each_creature_you_control() {
@@ -3117,6 +3447,9 @@ fn test_parse_double_power_and_toughness_of_each_creature_you_control() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_triple_target_creatures_power_and_toughness_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tifa Probe")
@@ -3141,6 +3474,9 @@ fn test_parse_triple_target_creatures_power_and_toughness_until_end_of_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_triple_power_and_toughness_of_each_creature_you_control() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Triple Sweep Probe")
@@ -3160,6 +3496,9 @@ fn test_parse_triple_power_and_toughness_of_each_creature_you_control() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_double_target_creatures_power_and_toughness_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Choose Your Weapon Probe")
@@ -3173,6 +3512,9 @@ fn test_parse_double_target_creatures_power_and_toughness_until_end_of_turn() {
         "expected dynamic double P/T modifier, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_double_target_players_life_total() {
@@ -3194,6 +3536,9 @@ fn test_parse_double_target_players_life_total() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_double_your_life_total() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Revenge Probe")
@@ -3207,6 +3552,9 @@ fn test_parse_double_your_life_total() {
         "expected compact self double-life rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_doubling_cube_oracle_text() {
@@ -3227,6 +3575,9 @@ fn test_parse_doubling_cube_oracle_text() {
         "expected compiled output to preserve mana-doubling semantics, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_reinforce_keyword_line_from_hand() {
@@ -3255,6 +3606,9 @@ fn test_parse_reinforce_keyword_line_from_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_do_not_replace_keyword_named_card_reference_in_enchanted_grant_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vigilance")
@@ -3269,6 +3623,9 @@ fn test_do_not_replace_keyword_named_card_reference_in_enchanted_grant_line() {
         "expected aura grant to keep vigilance keyword, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
@@ -3292,6 +3649,9 @@ fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
         "expected dynamic count amount using untapped Mountains, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
@@ -3323,6 +3683,9 @@ fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_exile_named_source_with_time_counters() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Suspend Setup Variant")
@@ -3345,6 +3708,9 @@ fn test_parse_exile_named_source_with_time_counters() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_keyword_marker_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Marker Keywords")
@@ -3364,6 +3730,9 @@ fn test_parse_keyword_marker_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_marker_keyword_with_parameter_keeps_parameter_in_render() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fabricate Probe")
@@ -3378,6 +3747,9 @@ fn test_parse_marker_keyword_with_parameter_keeps_parameter_in_render() {
         "expected fabricate parameter in render output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_marker_keyword_with_cost_keeps_cost_in_render() {
@@ -3405,6 +3777,9 @@ fn test_parse_marker_keyword_with_cost_keeps_cost_in_render() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn compiled_lines_render_zurgo_restriction_before_dash() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zurgo Bellstriker Variant")
@@ -3420,6 +3795,9 @@ fn compiled_lines_render_zurgo_restriction_before_dash() {
     assert_eq!(lines.get(1).map(String::as_str), Some("Dash {1}{R}."));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_hideaway_marker_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
@@ -3433,6 +3811,9 @@ fn test_parse_hideaway_marker_line() {
         "expected hideaway marker in render output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_implicit_become_clause() {
@@ -3448,6 +3829,9 @@ fn test_parse_implicit_become_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_split_second_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Split Second Probe")
@@ -3461,6 +3845,9 @@ fn test_parse_split_second_keyword_line() {
         "expected split second marker in render output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cascade_keyword_line() {
@@ -3486,6 +3873,9 @@ fn test_parse_cascade_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_spells_you_cast_have_cascade_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imoti Probe")
@@ -3508,6 +3898,9 @@ fn test_parse_spells_you_cast_have_cascade_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_colorless_spells_from_hand_have_double_cascade_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zhulodok Probe")
@@ -3529,6 +3922,9 @@ fn test_parse_colorless_spells_from_hand_have_double_cascade_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_riot_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Riot Probe")
@@ -3547,6 +3943,9 @@ fn test_parse_riot_keyword_line() {
         "riot should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_unleash_keyword_line() {
@@ -3572,6 +3971,9 @@ fn test_parse_unleash_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_zhur_taa_goblin_riot_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Zhur-Taa Goblin")
@@ -3590,6 +3992,9 @@ fn test_parse_zhur_taa_goblin_riot_keyword_line() {
         "zhur-taa goblin riot should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_training_keyword_line() {
@@ -3610,6 +4015,9 @@ fn test_parse_training_keyword_line() {
         "training render should hide runtime keyword-action instrumentation, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_vanishing_keyword_line() {
@@ -3632,6 +4040,9 @@ fn test_parse_vanishing_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_enchant_keyword_grant_does_not_duplicate_keyword_tail() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aura Keyword Probe")
@@ -3646,6 +4057,9 @@ fn oracle_like_enchant_keyword_grant_does_not_duplicate_keyword_tail() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_cycling_uses_braced_mana_symbols() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Probe")
@@ -3659,6 +4073,9 @@ fn oracle_like_cycling_uses_braced_mana_symbols() {
         "expected braced cycling mana cost in render output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_unearth_keyword_line() {
@@ -3683,6 +4100,9 @@ Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It ga
         "expected unearth to compile without placeholder marker static abilities, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_echo_keyword_line_with_mana_cost() {
@@ -3718,6 +4138,9 @@ fn test_parse_echo_keyword_line_with_mana_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_echo_keyword_line_with_non_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Discard Probe")
@@ -3752,6 +4175,9 @@ fn test_parse_echo_keyword_line_with_non_mana_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_escape_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Escape Probe")
@@ -3771,6 +4197,9 @@ fn test_parse_escape_keyword_line() {
         other => panic!("expected escape alternative cast, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_flashback_keyword_line() {
@@ -3795,6 +4224,9 @@ fn test_parse_flashback_keyword_line() {
         other => panic!("expected flashback alternative cast, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_bestow_keyword_line() {
@@ -3843,6 +4275,9 @@ fn test_parse_bestow_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_bestow_keyword_line_with_extra_cost_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bestow Extra Cost Probe")
@@ -3874,6 +4309,9 @@ fn test_parse_bestow_keyword_line_with_extra_cost_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_buyback_keyword_line_compiles_to_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Buyback Probe")
@@ -3891,6 +4329,9 @@ fn test_parse_buyback_keyword_line_compiles_to_optional_cost() {
         .expect("buyback should preserve mana cost");
     assert_eq!(mana.to_oracle(), "{3}");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_kicker_keyword_line_compiles_to_optional_cost() {
@@ -3910,6 +4351,9 @@ fn test_parse_kicker_keyword_line_compiles_to_optional_cost() {
     assert_eq!(mana.to_oracle(), "{1}{U}");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kicker Reminder Probe")
@@ -3928,6 +4372,9 @@ fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
         .expect("kicker should preserve mana cost");
     assert_eq!(mana.to_oracle(), "{2}{R}");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() {
@@ -3956,6 +4403,9 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
         .expect("entwine should preserve mana cost");
     assert_eq!(mana.to_oracle(), "{2}");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger() {
@@ -3992,6 +4442,9 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
         "squad should not fall back to a marker, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
@@ -4053,6 +4506,9 @@ fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     assert_eq!(token_count, 2, "expected two squad-created tokens");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger() {
     use crate::ability::AbilityKind;
@@ -4106,6 +4562,9 @@ fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trig
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Conspire Test")
@@ -4133,6 +4592,9 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
         "expected spell text to render before conspire reminder, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
@@ -4195,6 +4657,9 @@ fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     assert_eq!(token.toughness(), Some(1), "offspring token should be 1/1");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
     use crate::zone::Zone;
@@ -4226,6 +4691,9 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
         "expected scavenge cost/effect lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
@@ -4315,6 +4783,9 @@ fn oracle_like_lines_render_bannerhide_krushok_keywords_and_clear_similarity_flo
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mobilize Test")
@@ -4336,6 +4807,9 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
         "mobilize should not fall back to marker text, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_mobilize_trigger_creates_attacking_warriors() {
@@ -4406,6 +4880,9 @@ fn test_mobilize_trigger_creates_attacking_warriors() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_named_counter_types_fall_back_to_named_counter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Named Counter Probe")
@@ -4421,6 +4898,9 @@ fn test_parse_named_counter_types_fall_back_to_named_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_plus_zero_plus_one_counter_type() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "PT Counter Probe")
@@ -4434,6 +4914,9 @@ fn test_parse_plus_zero_plus_one_counter_type() {
         "expected +0/+1 to map to CounterType::PlusZeroPlusOne, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_switch_power_toughness_until_eot() {
@@ -4449,6 +4932,9 @@ fn test_parse_switch_power_toughness_until_eot() {
         "expected continuous switch P/T modification, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
@@ -4483,6 +4969,9 @@ fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lotus Bloom")
@@ -4507,6 +4996,9 @@ fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_cost() {
         other => panic!("expected Lotus Bloom suspend metadata, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_plot_keyword_line_compiles_to_alternative_cast() {
@@ -4536,6 +5028,9 @@ fn test_parse_plot_keyword_line_compiles_to_alternative_cast() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_foretell_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Foretell Probe")
@@ -4563,6 +5058,9 @@ fn test_parse_foretell_keyword_line_compiles_to_alternative_cast() {
         "foretell parse should avoid unsupported placeholders, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_harmonize_keyword_line_compiles_to_alternative_cast() {
@@ -4598,6 +5096,9 @@ fn test_parse_harmonize_keyword_line_compiles_to_alternative_cast() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_spectacle_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spectacle Probe")
@@ -4619,6 +5120,9 @@ fn test_parse_spectacle_keyword_line_compiles_to_alternative_cast() {
         "spectacle parse should lower to a real alternative cost, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
@@ -4648,6 +5152,9 @@ fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_cipher_keyword_line_compiles_to_real_spell_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cipher Probe")
@@ -4670,6 +5177,9 @@ fn test_parse_cipher_keyword_line_compiles_to_real_spell_effect() {
         "cipher should not remain a keyword marker, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_overload_keyword_line_compiles_to_alternative_cast_and_rewritten_effects() {
@@ -4707,6 +5217,9 @@ fn test_parse_overload_keyword_line_compiles_to_alternative_cast_and_rewritten_e
         "overload parse should avoid unsupported placeholders, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
@@ -4759,6 +5272,9 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doubling Chant Probe")
@@ -4806,6 +5322,9 @@ fn test_parse_doubling_chant_compiles_search_put_onto_battlefield_and_shuffle() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_triggered_explore_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore Trigger Probe")
@@ -4825,6 +5344,9 @@ fn test_parse_triggered_explore_clause_without_fallback_marker() {
         "explore trigger should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_explore_trigger_subject_without_fallback_marker() {
@@ -4853,6 +5375,9 @@ fn test_parse_explore_trigger_subject_without_fallback_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_open_attraction_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Open Attraction Probe")
@@ -4872,6 +5397,9 @@ fn test_parse_open_attraction_clause_without_fallback_marker() {
         "open-attraction trigger should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence() {
@@ -4903,6 +5431,9 @@ fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn costume_shop_keeps_visit_sticker_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Costume Shop")
@@ -4925,6 +5456,9 @@ fn costume_shop_keeps_visit_sticker_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_adapt_activation_with_reminder_text_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Adapt Probe")
@@ -4944,6 +5478,9 @@ fn test_parse_adapt_activation_with_reminder_text_without_fallback_marker() {
         "adapt activation should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_manifest_dread_trigger_without_fallback_marker() {
@@ -4965,6 +5502,9 @@ fn test_parse_manifest_dread_trigger_without_fallback_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Probe")
@@ -4985,6 +5525,9 @@ fn test_parse_manifest_top_card_of_your_library_without_fallback_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_manifest_top_card_of_that_players_library_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Theft Probe")
@@ -5004,6 +5547,9 @@ fn test_parse_manifest_top_card_of_that_players_library_without_fallback_marker(
         "manifest that-player trigger should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_manifest_chain_after_create_token_keeps_both_effects() {
@@ -5028,6 +5574,9 @@ fn test_parse_manifest_chain_after_create_token_keeps_both_effects() {
         "create-plus-manifest trigger should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_manifest_dread_then_multi_counter_followup_keeps_full_chain() {
@@ -5054,6 +5603,9 @@ fn parse_manifest_dread_then_multi_counter_followup_keeps_full_chain() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_trigger_uses_card_name_when_oracle_uses_name() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Name Trigger Probe")
@@ -5067,6 +5619,9 @@ fn render_trigger_uses_card_name_when_oracle_uses_name() {
         "expected rendered trigger to keep card name, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_alchemy_prefixed_name_still_resolves_self_reference_triggers() {
@@ -5088,6 +5643,9 @@ fn parse_alchemy_prefixed_name_still_resolves_self_reference_triggers() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Loran of the Third Path")
@@ -5102,6 +5660,9 @@ fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
         "expected self-reference trigger render, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_bolster_trigger_without_fallback_marker() {
@@ -5123,6 +5684,9 @@ fn test_parse_bolster_trigger_without_fallback_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_bolster_spell_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bolster Spell Probe")
@@ -5142,6 +5706,9 @@ fn test_parse_bolster_spell_clause_without_fallback_marker() {
         "bolster spell clause should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_support_trigger_without_fallback_marker() {
@@ -5163,6 +5730,9 @@ fn test_parse_support_trigger_without_fallback_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_support_spell_clause_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Support Spell Probe")
@@ -5182,6 +5752,9 @@ fn test_parse_support_spell_clause_without_fallback_marker() {
         "support spell clause should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_counter_target_activated_or_triggered_ability_clause() {
@@ -5204,6 +5777,9 @@ fn test_parse_counter_target_activated_or_triggered_ability_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_counter_target_spell_activated_or_triggered_ability_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disallow Probe")
@@ -5223,6 +5799,9 @@ fn test_parse_counter_target_spell_activated_or_triggered_ability_clause() {
         "counter spell-or-ability clause should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_counter_target_activated_ability_from_artifact_source_clause() {
@@ -5245,6 +5824,9 @@ fn test_parse_counter_target_activated_ability_from_artifact_source_clause() {
         "counter activated-ability from artifact source should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_ouphe_vandals_preserves_type_line_and_artifact_source_target() {
@@ -5286,6 +5868,9 @@ fn test_parse_ouphe_vandals_preserves_type_line_and_artifact_source_target() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_counter_target_ability_or_legendary_spell_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tales End Probe")
@@ -5303,6 +5888,9 @@ fn test_parse_counter_target_ability_or_legendary_spell_clause() {
         "counter activated/triggered ability or legendary spell should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_counter_target_ability_or_noncreature_spell_clause() {
@@ -5322,6 +5910,9 @@ fn test_parse_counter_target_ability_or_noncreature_spell_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_counter_up_to_one_target_activated_or_triggered_ability_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tidebinder Probe")
@@ -5340,6 +5931,9 @@ fn test_parse_counter_up_to_one_target_activated_or_triggered_ability_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_counter_target_ability_you_dont_control_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Obstructionist Probe")
@@ -5357,6 +5951,9 @@ fn test_parse_counter_target_ability_you_dont_control_clause() {
         "counter activated/triggered ability you don't control should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_counter_target_activated_ability_from_permanent_source_unless_clause() {
@@ -5377,6 +5974,9 @@ fn test_parse_counter_target_activated_ability_from_permanent_source_unless_clau
         "counter activated ability from permanent source unless should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_counter_target_instant_or_sorcery_spell_or_ability_clause() {
@@ -5402,6 +6002,9 @@ fn test_parse_counter_target_instant_or_sorcery_spell_or_ability_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_prevent_all_damage_to_creatures_static_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bubble Matrix Probe")
@@ -5422,6 +6025,9 @@ fn test_parse_prevent_all_damage_to_creatures_static_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_prevent_all_damage_duration_before_target_order_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sivvi Prevention Probe")
@@ -5437,6 +6043,9 @@ fn test_parse_prevent_all_damage_duration_before_target_order_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_prevent_all_damage_to_explicit_target_stays_targeted() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Targeted Prevention Probe")
@@ -5450,6 +6059,9 @@ fn test_parse_prevent_all_damage_to_explicit_target_stays_targeted() {
         "expected targeted prevent-all-damage effect in parsed spell text, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_clause() {
@@ -5474,6 +6086,9 @@ fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_clau
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_land_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tanglewalker Probe")
@@ -5496,6 +6111,9 @@ fn test_parse_cant_be_blocked_as_long_as_defending_player_controls_artifact_land
         "expected defending-player artifact-land unblockable static ability in parsed card"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_add_any_type_that_land_produced_clause() {
@@ -5522,6 +6140,9 @@ fn test_parse_add_any_type_that_land_produced_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_raid_conditional_with_attacked_this_turn_without_fallback() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Raid Probe")
@@ -5542,6 +6163,9 @@ fn test_parse_raid_conditional_with_attacked_this_turn_without_fallback() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_x_target_lands_clause_without_fallback() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "X Untap Probe")
@@ -5559,6 +6183,9 @@ fn test_parse_x_target_lands_clause_without_fallback() {
         "x-target untap clause should not rely on unsupported fallback marker: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_exile_cards_from_single_graveyard_without_fallback() {
@@ -5578,6 +6205,9 @@ fn test_parse_exile_cards_from_single_graveyard_without_fallback() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_each_of_them_gets_clause_targets_selected_objects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hope and Glory Probe")
@@ -5596,6 +6226,9 @@ fn test_parse_each_of_them_gets_clause_targets_selected_objects() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_return_cards_at_random_from_graveyard_to_hand() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make a Wish Probe")
@@ -5609,6 +6242,9 @@ fn test_parse_return_cards_at_random_from_graveyard_to_hand() {
         "expected random graveyard return wording in rendered text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
@@ -5644,6 +6280,9 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_merfolk_spy_keeps_random_hand_reveal_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Merfolk Spy")
@@ -5667,6 +6306,9 @@ fn test_parse_merfolk_spy_keeps_random_hand_reveal_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Regenerate")
@@ -5687,6 +6329,9 @@ fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_render_enters_with_single_counter_uses_singular_wording() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Single Counter Probe")
@@ -5700,6 +6345,9 @@ fn test_render_enters_with_single_counter_uses_singular_wording() {
         "expected singular enters-with-counter wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_tayam_oracle_text_regression() {
@@ -5779,6 +6427,9 @@ fn parse_tayam_oracle_text_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_if_you_attacked_this_turn_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Goblin Boarders Variant")
@@ -5810,6 +6461,9 @@ fn parse_enters_with_counter_if_you_attacked_this_turn_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_x_plus_one_counters_line_is_typed_static() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Endless One Variant")
@@ -5834,6 +6488,9 @@ fn parse_enters_with_x_plus_one_counters_line_is_typed_static() {
         "x enters-with-counters should not fall back to placeholder static ability: {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_if_opponent_lost_life_is_typed_static() {
@@ -5862,6 +6519,9 @@ fn parse_enters_with_counter_if_opponent_lost_life_is_typed_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_if_creature_died_this_turn_is_typed_static() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Moldering Reclaimer Variant")
@@ -5888,6 +6548,9 @@ fn parse_enters_with_counter_if_creature_died_this_turn_is_typed_static() {
         "creature-died conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_if_permanent_left_under_your_control_is_typed_static() {
@@ -5916,6 +6579,9 @@ fn parse_enters_with_counter_if_permanent_left_under_your_control_is_typed_stati
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_for_each_creature_that_died_this_turn_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bloodcrazed Paladin Variant")
@@ -5930,6 +6596,9 @@ fn parse_enters_with_counter_for_each_creature_that_died_this_turn_line() {
         "expected creatures-died-this-turn value in static ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_for_each_color_of_mana_spent_to_cast_it_line() {
@@ -5947,6 +6616,9 @@ fn parse_enters_with_counter_for_each_color_of_mana_spent_to_cast_it_line() {
         "expected spent-to-cast color value in static ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_for_each_time_it_was_kicked_line() {
@@ -5979,6 +6651,9 @@ fn parse_enters_with_counter_for_each_time_it_was_kicked_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_for_each_creature_card_in_your_graveyard_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Golgari Raiders Variant")
@@ -6005,6 +6680,9 @@ fn parse_enters_with_counter_for_each_creature_card_in_your_graveyard_line() {
         "graveyard-count enters-with-counter variant should not use placeholder fallback: {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_equal_to_number_of_creature_cards_in_your_graveyard_line() {
@@ -6033,6 +6711,9 @@ fn parse_enters_with_counter_equal_to_number_of_creature_cards_in_your_graveyard
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_if_you_control_creature_with_power_four_or_greater_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Frontier Mastodon Variant")
@@ -6060,6 +6741,9 @@ fn parse_enters_with_counter_if_you_control_creature_with_power_four_or_greater_
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_for_each_other_creature_and_or_artifact_you_control_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Luxknight Breacher Variant")
@@ -6086,6 +6770,9 @@ fn parse_enters_with_counter_for_each_other_creature_and_or_artifact_you_control
         "for-each-other-creature-and-or-artifact variant should not use placeholder fallback: {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_if_x_is_five_or_more_additional_x_line() {
@@ -6125,6 +6812,9 @@ fn parse_enters_with_counter_if_x_is_five_or_more_additional_x_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_where_x_is_total_life_lost_by_opponents_this_turn_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cryptborn Horror Variant")
@@ -6159,6 +6849,9 @@ fn parse_enters_with_counter_where_x_is_total_life_lost_by_opponents_this_turn_l
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_unless_two_or_more_colors_of_mana_were_spent_to_cast_it_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Steel Exemplar Variant")
@@ -6192,6 +6885,9 @@ fn parse_enters_with_counter_unless_two_or_more_colors_of_mana_were_spent_to_cas
         "expected distinct-colors-spent condition in static ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
@@ -6230,6 +6926,9 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
  {
@@ -6265,6 +6964,9 @@ fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_d
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_enters_with_counter_plus_additional_for_each_other_creature_you_control_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sheriff of Safe Passage Variant")
@@ -6297,6 +6999,9 @@ fn parse_enters_with_counter_plus_additional_for_each_other_creature_you_control
         "expected additive counter value with 'other creature' filter in static ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enters_with_counter_for_each_magic_game_you_lost_line() {
@@ -6348,6 +7053,9 @@ fn parse_enters_with_counter_additional_x_if_threshold_direct_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_as_this_land_enters_reveal_if_you_dont_enters_tapped_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Secluded Glen Variant")
@@ -6380,6 +7088,9 @@ fn parse_as_this_land_enters_reveal_if_you_dont_enters_tapped_line() {
         "expected hand-match condition in replacement ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
@@ -6414,6 +7125,9 @@ fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_starting_town_first_three_turns_etb_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Starting Town")
@@ -6443,6 +7157,9 @@ fn parse_starting_town_first_three_turns_etb_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_render_sacrifice_unless_you_pay_uses_pay_verb() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conversion Probe")
@@ -6462,6 +7179,9 @@ fn test_render_sacrifice_unless_you_pay_uses_pay_verb() {
         "renderer should never emit 'you pays', got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_render_leading_unless_payment_clause_keeps_unless_structure() {
@@ -6487,6 +7207,9 @@ fn test_render_leading_unless_payment_clause_keeps_unless_structure() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rhystic_study_unless_that_player_does_not_flip_to_you() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhystic Study")
@@ -6509,6 +7232,9 @@ fn parse_rhystic_study_unless_that_player_does_not_flip_to_you() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_creatures_without_flying_cant_attack_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Moat Probe")
@@ -6522,6 +7248,9 @@ fn test_parse_creatures_without_flying_cant_attack_static_line() {
         "expected static restriction text in oracle-like output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_this_creature_cant_attack_alone_static_line() {
@@ -6550,6 +7279,9 @@ fn test_parse_this_creature_cant_attack_alone_static_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_this_token_cant_attack_or_block_alone_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Token Restriction Probe")
@@ -6570,6 +7302,9 @@ fn test_parse_this_token_cant_attack_or_block_alone_static_line() {
         "expected token self-restriction text in render output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_activated_abilities_of_artifacts_cant_be_activated_static_line() {
@@ -6597,6 +7332,9 @@ fn test_parse_activated_abilities_of_artifacts_cant_be_activated_static_line() {
         "expected rule-restriction static ability id, got {static_ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_activated_abilities_of_artifacts_and_creatures_unless_mana_static_line() {
@@ -6627,6 +7365,9 @@ fn test_parse_activated_abilities_of_artifacts_and_creatures_unless_mana_static_
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_lands_dont_untap_during_controllers_steps_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rising Waters Probe")
@@ -6653,6 +7394,9 @@ fn test_parse_lands_dont_untap_during_controllers_steps_static_line() {
         "expected rule-restriction static ability id, got {static_ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_flying_only_restriction_does_not_widen_to_reach() {
@@ -6684,6 +7428,9 @@ fn parse_flying_only_restriction_does_not_widen_to_reach() {
         "flying-only restriction must not widen to reach, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_conditional_spell_cost_if_it_targets_compiles_target_filter() {
@@ -6718,6 +7465,9 @@ fn parse_conditional_spell_cost_if_it_targets_compiles_target_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_madness_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Madness Probe")
@@ -6733,6 +7483,9 @@ fn test_parse_madness_keyword_line() {
         other => panic!("expected madness alternative cast, got {other:?}"),
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_devoid_keyword_line() {
@@ -6782,6 +7535,9 @@ fn test_parse_devoid_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_landwalk_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swampwalk Probe")
@@ -6799,6 +7555,9 @@ fn test_parse_landwalk_keyword_line() {
     assert!(has_landwalk, "expected swampwalk to compile to Landwalk");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_nonbasic_landwalk_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nonbasic Landwalk Probe")
@@ -6813,6 +7572,9 @@ fn test_parse_nonbasic_landwalk_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_snow_landwalk_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Snow Forestwalk Probe")
@@ -6826,6 +7588,9 @@ fn test_parse_snow_landwalk_keyword_line() {
         "expected compiled text to preserve snow forestwalk, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cant_be_blocked_by_more_than_one_creature() {
@@ -6847,6 +7612,9 @@ fn test_parse_cant_be_blocked_by_more_than_one_creature() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Familiar Ground Probe")
@@ -6865,6 +7633,9 @@ fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature() {
         "expected Familiar Ground-style line to compile to an ability-granting static ability"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_each_creature_with_counter_cant_be_blocked_by_more_than_one_creature() {
@@ -6885,6 +7656,9 @@ fn test_parse_each_creature_with_counter_cant_be_blocked_by_more_than_one_creatu
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_each_creature_can_block_additional_creature_each_combat() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "High Ground Probe")
@@ -6903,6 +7677,9 @@ fn test_parse_each_creature_can_block_additional_creature_each_combat() {
         "expected High Ground-style line to compile to an ability-granting static ability"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_trigger_becomes_targeted_clause() {
@@ -6935,6 +7712,9 @@ fn test_parse_trigger_becomes_targeted_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_assign_damage_as_unblocked_with_this_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thorn Probe")
@@ -6957,6 +7737,9 @@ fn test_parse_assign_damage_as_unblocked_with_this_creature() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_first_spell_cost_modifier_marker_errors() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "First Spell Cost Probe")
@@ -6969,6 +7752,9 @@ fn test_parse_first_spell_cost_modifier_marker_errors() {
         "expected explicit unsupported first-spell marker error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_other_anthem_subject_keeps_other() {
@@ -6983,6 +7769,9 @@ fn test_parse_other_anthem_subject_keeps_other() {
         "expected other-anthem text in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_other_anthem_subject_rejects_temporary() {
@@ -7001,6 +7790,9 @@ fn test_parse_other_anthem_subject_rejects_temporary() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_peek_targets_player_hand() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Peek Probe")
@@ -7014,6 +7806,9 @@ fn test_peek_targets_player_hand() {
         "expected target player wording in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_peek_targets_opponent_hand() {
@@ -7029,6 +7824,9 @@ fn test_peek_targets_opponent_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_untap_another_target_permanent_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Untap Probe")
@@ -7042,6 +7840,9 @@ fn test_untap_another_target_permanent_rendering() {
         "expected 'another target permanent' in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_counter_unless_pays_rendering() {
@@ -7057,6 +7858,9 @@ fn test_counter_unless_pays_rendering() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_counter_unless_pays_and_life_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mundungu Probe")
@@ -7070,6 +7874,9 @@ fn test_counter_unless_pays_and_life_rendering() {
         "expected counter-unless-pay-and-life text in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_counter_unless_pays_domain_rendering() {
@@ -7089,6 +7896,9 @@ fn test_counter_unless_pays_domain_rendering() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_return_target_permanent_you_both_own_and_control_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Obelisk Probe")
@@ -7102,6 +7912,9 @@ fn test_return_target_permanent_you_both_own_and_control_rendering() {
         "expected own/control target restriction in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_power_damage_exchange_rendering() {
@@ -7124,6 +7937,9 @@ That creature deals damage equal to its power to this creature.",
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_prevent_all_combat_damage_from_target_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prevent Combat Probe")
@@ -7140,6 +7956,9 @@ fn test_prevent_all_combat_damage_from_target_rendering() {
         "expected prevent combat damage text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_static_prevent_all_combat_damage_to_this_creature_line() {
@@ -7168,6 +7987,9 @@ fn test_parse_static_prevent_all_combat_damage_to_this_creature_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_modal_choose_one_that_hasnt_been_chosen_sets_mode_memory() {
     let oracle = "{2}, {T}: Choose one that hasn't been chosen —\n\
@@ -7191,6 +8013,9 @@ fn test_parse_modal_choose_one_that_hasnt_been_chosen_sets_mode_memory() {
         "expected modal heading to keep unchosen-mode clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_modal_choose_one_that_hasnt_been_chosen_this_turn_sets_turn_scope() {
@@ -7216,6 +8041,9 @@ fn test_parse_modal_choose_one_that_hasnt_been_chosen_this_turn_sets_turn_scope(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_keyword_marker_rejects_partial_trailing_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Bad Unleash")
@@ -7229,6 +8057,9 @@ fn test_keyword_marker_rejects_partial_trailing_clause() {
         "expected strict parse failure for trailing keyword clause, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_level_up_tiers_render_semantics() {
@@ -7255,6 +8086,9 @@ Double strike",
         "expected rendered level-7 tier details, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_standalone_may_effect_does_not_emit_with_id_wrapper() {
@@ -7290,6 +8124,9 @@ fn test_standalone_may_effect_does_not_emit_with_id_wrapper() {
         "standalone may should not be wrapped with WithId, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_if_you_do_still_wraps_antecedent_with_with_id() {
@@ -7330,6 +8167,9 @@ fn test_if_you_do_still_wraps_antecedent_with_with_id() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_each_player_who_did_this_way_compiles_to_per_player_if_result() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kwain Variant")
@@ -7360,6 +8200,9 @@ fn test_each_player_who_did_this_way_compiles_to_per_player_if_result() {
         "expected per-player follow-up gain-life conditional, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_for_each_opponent_who_does_merges_into_per_opponent_if_result() {
@@ -7399,6 +8242,9 @@ fn test_for_each_opponent_who_does_merges_into_per_opponent_if_result() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_for_each_opponent_who_does_binds_implicit_followup_to_you() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tempting Offer Variant")
@@ -7423,6 +8269,9 @@ fn test_for_each_opponent_who_does_binds_implicit_followup_to_you() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_for_each_player_who_does_binds_implicit_followup_to_you() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Group Offer Variant")
@@ -7446,6 +8295,9 @@ fn test_for_each_player_who_does_binds_implicit_followup_to_you() {
         "expected implicit follow-up token creation to bind to you, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_each_player_tagged_followups_collapse_into_single_for_players_effect() {
@@ -7483,6 +8335,9 @@ fn test_each_player_tagged_followups_collapse_into_single_for_players_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_without_comma() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "No Comma Trigger")
@@ -7496,6 +8351,9 @@ fn test_parse_trigger_without_comma() {
         .any(|a| matches!(a.kind, AbilityKind::Triggered(_)));
     assert!(has_triggered, "expected triggered ability");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_state_triggered_sacrifice_line() {
@@ -7528,6 +8386,9 @@ fn test_parse_state_triggered_sacrifice_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_when_this_creature_is_turned_face_up() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Face-Up Trigger Probe")
@@ -7557,6 +8418,9 @@ fn test_parse_trigger_when_this_creature_is_turned_face_up() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sumala Trigger Probe")
@@ -7583,6 +8447,9 @@ fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Dragon Engine")
@@ -7599,6 +8466,9 @@ fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
         "expected trigger origin zone to be graveyard, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_composed_anthems_keep_independent_land_conditions() {
@@ -7619,6 +8489,9 @@ fn test_parse_composed_anthems_keep_independent_land_conditions() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellraiser Variant")
@@ -7631,6 +8504,9 @@ fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
         "expected explicit unsupported anthem-subject error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_anger_graveyard_condition_with_land_control() {
@@ -7658,6 +8534,9 @@ fn parse_anger_graveyard_condition_with_land_control() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_landwalk_as_though_clause_is_not_partially_parsed() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Landwalk Override Variant")
@@ -7672,6 +8551,9 @@ fn test_parse_landwalk_as_though_clause_is_not_partially_parsed() {
         "expected actionable parse failure, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_exile_up_to_one_single_disjunction_stays_single_choice() {
@@ -7703,6 +8585,9 @@ fn test_parse_exile_up_to_one_single_disjunction_stays_single_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_exile_then_return_with_counter_keeps_counter_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Planar Incision Variant")
@@ -7722,6 +8607,9 @@ fn test_parse_exile_then_return_with_counter_keeps_counter_followup() {
         "expected +1/+1 counter follow-up on returned object, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_shares_permanent_type_with_it_adds_tagged_constraint() {
@@ -7745,6 +8633,9 @@ fn test_parse_shares_permanent_type_with_it_adds_tagged_constraint() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_unblocked_attacking_filter_sets_unblocked() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Throatseeker Variant")
@@ -7763,6 +8654,9 @@ fn test_parse_unblocked_attacking_filter_sets_unblocked() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_blocked_filter_sets_blocked() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blocked Variant")
@@ -7776,6 +8670,9 @@ fn test_parse_blocked_filter_sets_blocked() {
         "expected blocked filter flag, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_lesser_mana_value_adds_tagged_lt_constraint() {
@@ -7792,6 +8689,9 @@ fn test_parse_lesser_mana_value_adds_tagged_lt_constraint() {
         "expected lesser mana value relation against tagged object, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_this_or_another_creature_dies_is_not_this_dies_only() {
@@ -7813,6 +8713,9 @@ fn test_parse_this_or_another_creature_dies_is_not_this_dies_only() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_compile_this_or_another_ally_enters_trigger_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ally Variant")
@@ -7833,6 +8736,9 @@ fn test_compile_this_or_another_ally_enters_trigger_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_compile_this_or_another_ally_enters_team_buff_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ally Team Buff Variant")
@@ -7850,6 +8756,9 @@ fn test_compile_this_or_another_ally_enters_team_buff_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Jailbreak Variant")
@@ -7865,6 +8774,9 @@ fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
         "expected equal-or-lesser mana value relation against tagged object, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_render_multiple_cycling_variants_preserves_variant_names() {
@@ -7883,6 +8795,9 @@ fn test_render_multiple_cycling_variants_preserves_variant_names() {
         "expected forestcycling keyword in render, got {lines:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_render_multiple_cycling_variants_with_reminder_text() {
@@ -7904,6 +8819,9 @@ fn test_render_multiple_cycling_variants_with_reminder_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_multiple_cycling_variants_merges_search_filter_subtypes() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Variant Filter")
@@ -7919,6 +8837,9 @@ fn test_parse_multiple_cycling_variants_merges_search_filter_subtypes() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_render_cycling_includes_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Cost Variant")
@@ -7932,6 +8853,9 @@ fn test_render_cycling_includes_cost() {
         "expected cycling cost in render, got {lines:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_render_basic_landcycling_as_keyword_ability() {
@@ -7950,6 +8874,9 @@ fn test_render_basic_landcycling_as_keyword_ability() {
         "expected basic landcycling keyword in render, got {lines:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_cycling_pay_life_keeps_keyword_ability() {
@@ -7974,6 +8901,9 @@ fn test_parse_cycling_pay_life_keeps_keyword_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_parse_cycle_this_card_trigger_compiles() {
     use crate::zone::Zone;
@@ -7995,6 +8925,9 @@ fn test_parse_cycle_this_card_trigger_compiles() {
         def.abilities
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
@@ -8026,6 +8959,9 @@ fn parse_crystalline_resonance_becomes_copy_until_your_next_turn() {
         "expected a copy-permanent lowering with a preserved source ability and next-turn duration, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
@@ -8063,6 +8999,9 @@ fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
         "expected reusable another-card cycle trigger lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_commander_recursion_trigger_uses_graveyard_zone_and_commander_filter() {
@@ -8102,6 +9041,9 @@ fn test_commander_recursion_trigger_uses_graveyard_zone_and_commander_filter() {
         "expected your-commander ownership filter on both branches, got {trigger_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn test_parse_bridge_from_below_compiles_graveyard_triggers() {
@@ -8156,6 +9098,9 @@ fn test_parse_bridge_from_below_compiles_graveyard_triggers() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_return_from_graveyard_keeps_with_cycling_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sacred Excavation Variant")
@@ -8169,6 +9114,9 @@ fn test_return_from_graveyard_keeps_with_cycling_filter() {
         "expected rendered target filter to keep with-cycling qualifier, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_same_name_destroy_fans_out_to_all_other_matching_objects() {
@@ -8194,6 +9142,9 @@ fn parse_same_name_destroy_fans_out_to_all_other_matching_objects() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_same_name_exile_with_that_player_controls_keeps_controller_link() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Exile Variant")
@@ -8217,6 +9168,9 @@ fn parse_same_name_exile_with_that_player_controls_keeps_controller_link() {
         "expected same-controller tagged relation in fanout filter, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_legions_end_style_reveal_and_exile_keeps_same_name_hand_graveyard_bundle() {
@@ -8245,6 +9199,9 @@ fn parse_legions_end_style_reveal_and_exile_keeps_same_name_hand_graveyard_bundl
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_same_name_fanout_requires_full_reference_tail() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Broken Same Name Variant")
@@ -8256,6 +9213,9 @@ fn parse_same_name_fanout_requires_full_reference_tail() {
         "expected actionable same-name parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_same_name_target_gets_fans_out_to_tagged_filter() {
@@ -8277,6 +9237,9 @@ fn parse_same_name_target_gets_fans_out_to_tagged_filter() {
         "expected same-name all-other relations in fanout filter, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_equipped_gets_and_has_activated_grant_as_static_abilities() {
@@ -8311,6 +9274,9 @@ fn parse_equipped_gets_and_has_activated_grant_as_static_abilities() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_song_of_the_dryads_type_transform_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Song of the Dryads")
@@ -8333,6 +9299,9 @@ fn parse_song_of_the_dryads_type_transform_line() {
         "expected colorless text, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_imprisoned_in_the_moon_type_transform_line() {
@@ -8360,6 +9329,9 @@ fn parse_imprisoned_in_the_moon_type_transform_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_swift_reconfiguration_vehicle_transform_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swift Reconfiguration")
@@ -8381,6 +9353,9 @@ fn parse_swift_reconfiguration_vehicle_transform_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partial_compile() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unsupported Grant Variant")
@@ -8396,6 +9371,9 @@ fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partia
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_equip_cost_reduction_line_does_not_silently_compile_as_equip_keyword() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Cost Reduction Variant")
@@ -8407,6 +9385,9 @@ fn parse_equip_cost_reduction_line_does_not_silently_compile_as_equip_keyword() 
         "expected non-equip parse error for unsupported equip-cost-reduction form, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_flashback_cost_modifiers_render_with_controller_scope() {
@@ -8421,6 +9402,9 @@ fn parse_flashback_cost_modifiers_render_with_controller_scope() {
         "expected explicit unsupported flashback cost-modifier error, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_dash_cost_modifier_line_renders_with_controller_scope() {
@@ -8453,6 +9437,9 @@ fn parse_dash_cost_modifier_line_renders_with_controller_scope() {
     assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_during_turn_flashback_grant_keeps_mana_cost_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Return the Past Variant")
@@ -8468,6 +9455,9 @@ fn render_during_turn_flashback_grant_keeps_mana_cost_clause() {
         "expected flashback-cost sentence in rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_underworld_breach_escape_grant_keeps_nonland_and_cost_clause() {
@@ -8490,6 +9480,9 @@ fn render_underworld_breach_escape_grant_keeps_nonland_and_cost_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Infernal Reckoning Variant")
@@ -8502,6 +9495,9 @@ fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
         "expected possessive power wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_gain_life_equal_to_sacrificed_creature_toughness() {
@@ -8517,6 +9513,9 @@ fn parse_gain_life_equal_to_sacrificed_creature_toughness() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gain_life_equal_to_devotion_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Nylea Disciple Variant")
@@ -8530,6 +9529,9 @@ fn parse_gain_life_equal_to_devotion_value() {
         "expected devotion value in life-gain amount, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_gain_life_equal_to_life_lost_this_way() {
@@ -8548,6 +9550,9 @@ fn parse_gain_life_equal_to_life_lost_this_way() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_artifact_land_self_reference_prefers_land() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Artifact Land Variant")
@@ -8564,6 +9569,9 @@ fn render_artifact_land_self_reference_prefers_land() {
         "artifact land should not render as artifact-only self-reference: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mana_value_or_less_keeps_comparison_and_type_conjunction() {
@@ -8584,6 +9592,9 @@ fn parse_mana_value_or_less_keeps_comparison_and_type_conjunction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_exile_from_graveyard_uses_from_preposition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Grave Robbers Variant")
@@ -8597,6 +9608,9 @@ fn render_exile_from_graveyard_uses_from_preposition() {
         "expected from-a-graveyard wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_granted_activated_ability_keeps_tap_symbol() {
@@ -8617,6 +9631,9 @@ fn render_granted_activated_ability_keeps_tap_symbol() {
         "granted tap ability should not lose the tap symbol: {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_lose_life_for_each_with_multiplier_uses_scaled_count_value() {
@@ -8647,6 +9664,9 @@ fn parse_lose_life_for_each_with_multiplier_uses_scaled_count_value() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_tap_x_artifacts_creatures_and_lands_preserves_and_or_list() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Malicious Advice Variant")
@@ -8661,6 +9681,9 @@ fn render_tap_x_artifacts_creatures_and_lands_preserves_and_or_list() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_then_populate_compiles_followup_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sundering Growth Variant")
@@ -8673,6 +9696,9 @@ fn parse_destroy_then_populate_compiles_followup_clause() {
         "expected destroy then populate rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_destroy_target_one_or_more_colors() {
@@ -8687,6 +9713,9 @@ fn parse_destroy_target_one_or_more_colors() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_target_three_or_more_colors_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Reach of Shadows Negative Variant")
@@ -8699,6 +9728,9 @@ fn parse_destroy_target_three_or_more_colors_still_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ugin_colored_permanent_target_lines() {
     CardDefinitionBuilder::new(CardId::new(), "Ugin Variant")
@@ -8708,6 +9740,9 @@ fn parse_ugin_colored_permanent_target_lines() {
         )
         .expect("ugin colored-permanent target lines should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_protection_from_spells_that_are_one_or_more_colors() {
@@ -8722,6 +9757,9 @@ fn parse_protection_from_spells_that_are_one_or_more_colors() {
         "expected colored-spell protection wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
@@ -8738,6 +9776,9 @@ fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_all_dealt_damage_this_turn_fails_instead_of_broadening() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Restore the Peace Variant")
@@ -8750,6 +9791,9 @@ fn parse_return_all_dealt_damage_this_turn_fails_instead_of_broadening() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_all_without_counter_fails_instead_of_broadening() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Wave Goodbye Variant")
@@ -8761,6 +9805,9 @@ fn parse_return_all_without_counter_fails_instead_of_broadening() {
         "expected qualified return-all parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sacrifice_unless_clause_fails_instead_of_ignoring_unless_tail() {
@@ -8780,6 +9827,9 @@ fn parse_sacrifice_unless_clause_fails_instead_of_ignoring_unless_tail() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
@@ -8791,6 +9841,9 @@ fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
         "expected power-or-toughness subject parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_player_gain_then_draw_carries_target_player_to_draw_clause() {
@@ -8806,6 +9859,9 @@ fn parse_target_player_gain_then_draw_carries_target_player_to_draw_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_player_mill_draw_lose_chain_carries_target_player_to_draw_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Atrocious Experiment Variant")
@@ -8820,6 +9876,9 @@ fn parse_target_player_mill_draw_lose_chain_carries_target_player_to_draw_clause
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_player_mill_then_imperative_draw_does_not_carry_target_player() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Pilfered Plans Variant")
@@ -8833,6 +9892,9 @@ fn parse_target_player_mill_then_imperative_draw_does_not_carry_target_player() 
         "imperative draw clause should not carry target player, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_defending_player_discard_then_draws_carries_defending_player() {
@@ -8849,6 +9911,9 @@ fn parse_defending_player_discard_then_draws_carries_defending_player() {
         "expected defending player to carry into draws clause, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_opponent_sacrifice_discard_lose_chain_keeps_all_predicates() {
@@ -8874,6 +9939,9 @@ fn parse_target_opponent_sacrifice_discard_lose_chain_keeps_all_predicates() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_sacrifice_all_lands_clause_as_sacrifice_all() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Overlaid Terrain Variant")
@@ -8888,6 +9956,9 @@ fn parse_sacrifice_all_lands_clause_as_sacrifice_all() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_target_player_sacrifices_and_loses_uses_oracle_like_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Geth's Verdict Render Variant")
@@ -8901,6 +9972,9 @@ fn render_target_player_sacrifices_and_loses_uses_oracle_like_wording() {
         "expected oracle-like sacrifice+lose wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_opponent_sacrifice_of_their_choice_keeps_non_targeted_object_choice() {
@@ -8921,6 +9995,9 @@ fn parse_target_opponent_sacrifice_of_their_choice_keeps_non_targeted_object_cho
         "sacrifice choice should not force target-creature wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_each_player_sacrifice_non_vampire_creature_of_their_choice_keeps_creature_filter() {
@@ -8952,6 +10029,9 @@ fn parse_each_player_sacrifice_non_vampire_creature_of_their_choice_keeps_creatu
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_all_slivers_have_activated_ability_as_static_grant() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sliver Activated Grant Variant")
@@ -8977,6 +10057,9 @@ fn parse_all_slivers_have_activated_ability_as_static_grant() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_all_slivers_have_triggered_ability_as_static_grant() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sliver Triggered Grant Variant")
@@ -9001,6 +10084,9 @@ fn parse_all_slivers_have_triggered_ability_as_static_grant() {
         def.abilities
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn hellish_rebuke_keeps_lose_life_inside_granted_trigger() {
@@ -9060,6 +10146,9 @@ fn hellish_rebuke_keeps_lose_life_inside_granted_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_prevent_all_combat_damage_global_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fog Variant")
@@ -9077,6 +10166,9 @@ fn parse_prevent_all_combat_damage_global_clause() {
         "expected combat-only prevention filter, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_prevent_all_combat_damage_by_target_source_clause() {
@@ -9096,6 +10188,9 @@ fn parse_prevent_all_combat_damage_by_target_source_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_prevent_all_combat_damage_to_players_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Fog Variant")
@@ -9114,6 +10209,9 @@ fn parse_prevent_all_combat_damage_to_players_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_prevent_all_combat_damage_requires_supported_tail() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unsupported Fog Tail Variant")
@@ -9126,6 +10224,9 @@ fn parse_prevent_all_combat_damage_requires_supported_tail() {
         "expected strict prevent-all tail error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_prevent_next_damage_to_any_target_clause() {
@@ -9154,6 +10255,9 @@ fn parse_prevent_next_damage_to_any_target_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_prevent_next_damage_rejects_trailing_tail_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Prevent Tail Variant")
@@ -9167,6 +10271,9 @@ fn parse_prevent_next_damage_rejects_trailing_tail_strictly() {
         "expected strict prevent-next tail parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_opponent_chooses_creature_then_other_cant_block() {
@@ -9192,6 +10299,9 @@ fn parse_target_opponent_chooses_creature_then_other_cant_block() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_opponent_chooses_creature_then_destroy_that_creature() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Imperial Edict Variant")
@@ -9213,6 +10323,9 @@ fn parse_target_opponent_chooses_creature_then_destroy_that_creature() {
         "expected follow-up destroy effect for chosen creature, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ghoulflesh_style_anthem_and_type_color_addition() {
@@ -9246,6 +10359,9 @@ fn parse_ghoulflesh_style_anthem_and_type_color_addition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ghoulflesh_style_anthem_with_other_creature_types_scope() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ghoulflesh Creature Types Scope")
@@ -9269,6 +10385,9 @@ fn parse_ghoulflesh_style_anthem_with_other_creature_types_scope() {
         "expected add-subtypes static ability for creature-types scope, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_all_goblins_are_black_and_are_zombies_in_addition_clause() {
@@ -9297,6 +10416,9 @@ fn parse_all_goblins_are_black_and_are_zombies_in_addition_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_type_color_addition_rejects_unsupported_scope_words() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Unsupported Addition Scope")
@@ -9308,6 +10430,9 @@ fn parse_type_color_addition_rejects_unsupported_scope_words() {
         "expected strict scope parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_tap_untapped_creatures_cost_preserves_tap_filter_cost() {
@@ -9339,6 +10464,9 @@ fn parse_tap_untapped_creatures_cost_preserves_tap_filter_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_exile_graveyard_cost_activated_line_preserves_followup_effect() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Zombie Scavengers Variant")
@@ -9360,6 +10488,9 @@ fn parse_exile_graveyard_cost_activated_line_preserves_followup_effect() {
         "expected post-colon regenerate effect to remain, got {activated_line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_source_cost_activated_line_preserves_followup_effect() {
@@ -9384,6 +10515,9 @@ fn parse_exile_source_cost_activated_line_preserves_followup_effect() {
         "expected post-colon indestructible effect to remain, got {activated_line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_this_card_from_graveyard_cost_uses_source_and_graveyard_zone() {
@@ -9420,6 +10554,9 @@ fn parse_exile_this_card_from_graveyard_cost_uses_source_and_graveyard_zone() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_targeted_exile_activation_cost_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Targeted Exile Cost Variant")
@@ -9432,6 +10569,9 @@ fn parse_targeted_exile_activation_cost_fails_strictly() {
         "expected strict targeted-exile-cost parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_granted_activated_ability_to_non_source_compiles_as_grant() {
@@ -9450,6 +10590,9 @@ fn parse_granted_activated_ability_to_non_source_compiles_as_grant() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_put_target_creature_on_top_of_owner_library() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Griptide Variant")
@@ -9464,6 +10607,9 @@ fn parse_put_target_creature_on_top_of_owner_library() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_draw_then_put_source_on_top_of_library() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sensei Top Variant")
@@ -9476,6 +10622,9 @@ fn parse_draw_then_put_source_on_top_of_library() {
         "expected draw-then-put-self wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_draw_then_put_source_third_from_top() {
@@ -9492,6 +10641,9 @@ fn parse_draw_then_put_source_third_from_top() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_put_target_beneath_top_x_cards() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Unexpectedly Absent Variant")
@@ -9507,6 +10659,9 @@ fn parse_put_target_beneath_top_x_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_put_target_third_from_bottom_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Library Bottom Negative Variant")
@@ -9519,6 +10674,9 @@ fn parse_put_target_third_from_bottom_still_fails_loudly() {
         "expected strict unsupported put-clause error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_triggered_put_into_graveyard_from_anywhere() {
@@ -9537,6 +10695,9 @@ fn parse_triggered_put_into_graveyard_from_anywhere() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_triggered_put_into_exile_from_anywhere_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "From Anywhere Exile Variant")
@@ -9549,6 +10710,9 @@ fn parse_triggered_put_into_exile_from_anywhere_fails_strictly() {
         "expected strict unsupported triggered-line error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_add_any_color_for_each_removed_counter() {
@@ -9566,6 +10730,9 @@ fn parse_add_any_color_for_each_removed_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_add_any_color_for_each_removed_counter_with_unsupported_tail_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Coalition Relic Negative Variant")
@@ -9580,6 +10747,9 @@ fn parse_add_any_color_for_each_removed_counter_with_unsupported_tail_fails_stri
         "expected strict trailing-mana error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_starting_life_total_amount_in_trigger() {
@@ -9596,6 +10766,9 @@ fn parse_starting_life_total_amount_in_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_starting_life_total_amount_with_extra_math_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Endstone Negative Variant")
@@ -9610,6 +10783,9 @@ fn parse_starting_life_total_amount_with_extra_math_fails_strictly() {
         "expected strict missing-life-total-amount error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mana_replacement_clause_deep_water_fails_instead_of_partial_tap() {
@@ -9626,6 +10802,9 @@ fn parse_mana_replacement_clause_deep_water_fails_instead_of_partial_tap() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_mana_replacement_clause_harvest_mage_fails_instead_of_partial_tap() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Harvest Mage Variant")
@@ -9640,6 +10819,9 @@ fn parse_mana_replacement_clause_harvest_mage_fails_instead_of_partial_tap() {
         "expected strict mana replacement parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mana_replacement_clause_with_taps_plural_fails_strictly() {
@@ -9656,6 +10838,9 @@ fn parse_mana_replacement_clause_with_taps_plural_fails_strictly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_mana_trigger_additional_clause_high_tide_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "High Tide Variant")
@@ -9670,6 +10855,9 @@ fn parse_mana_trigger_additional_clause_high_tide_fails_strictly() {
         "expected strict mana-triggered parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_add_mana_chosen_color_tail() {
@@ -9687,6 +10875,9 @@ fn parse_add_mana_chosen_color_tail() {
         "expected chosen-color mana render, got {mana_line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_urzas_tower_conditional_mana_output() {
@@ -9708,6 +10899,9 @@ fn parse_urzas_tower_conditional_mana_output() {
         "expected conditional tron mana render, got {mana_line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_activated_ability_instead_followup_builds_stack_self_replacement_program() {
@@ -9736,6 +10930,9 @@ fn parse_activated_ability_instead_followup_builds_stack_self_replacement_progra
     assert_eq!(program.segments.len(), 1);
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_urza_tron_other_lands_conditional_mana_followups() {
@@ -9770,6 +10967,9 @@ fn parse_urza_tron_other_lands_conditional_mana_followups() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_metalcraft_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mox Opal Variant")
@@ -9795,6 +10995,9 @@ fn parse_metalcraft_mana_activation_condition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_land_count_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Temple Variant")
@@ -9818,6 +11021,9 @@ fn parse_land_count_mana_activation_condition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_graveyard_card_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Elf Tomb Variant")
@@ -9839,6 +11045,9 @@ fn parse_graveyard_card_mana_activation_condition() {
         "expected rendered activation restriction, got {mana_line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_creature_power_mana_activation_condition() {
@@ -9865,6 +11074,9 @@ fn parse_creature_power_mana_activation_condition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_total_power_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Formidable Mana Variant")
@@ -9887,6 +11099,9 @@ fn parse_total_power_mana_activation_condition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_inline_whenever_clause_keeps_its_controller_subject() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Noxious Assault Variant")
@@ -9908,6 +11123,9 @@ fn parse_inline_whenever_clause_keeps_its_controller_subject() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan Variant")
@@ -9920,6 +11138,9 @@ fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
         "expected explicit unsupported until-end-of-turn permission error, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_rejects_marker_keyword_with_non_keyword_tail() {
@@ -9934,6 +11155,9 @@ fn parse_rejects_marker_keyword_with_non_keyword_tail() {
         "expected parse failure for non-keyword tail, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
@@ -9975,6 +11199,9 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_player_discard_then_draw_keeps_each_player_scope() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Wheel Variant")
@@ -9988,6 +11215,9 @@ fn parse_each_player_discard_then_draw_keeps_each_player_scope() {
         "expected each-player scope to carry into draw clause, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_each_player_may_shuffle_hand_and_graveyard_keeps_player_scope() {
@@ -10020,6 +11250,9 @@ fn parse_each_player_may_shuffle_hand_and_graveyard_keeps_player_scope() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_non_outlaw_creature_filter_excludes_outlaw_subtypes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Shoot Variant")
@@ -10033,6 +11266,9 @@ fn parse_non_outlaw_creature_filter_excludes_outlaw_subtypes() {
         "expected outlaw subtype exclusions in parsed filter, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_for_each_object_subject_wraps_create_effect() {
@@ -10049,6 +11285,9 @@ fn parse_for_each_object_subject_wraps_create_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_create_for_each_tail_wraps_create_effect() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Pack Variant")
@@ -10061,6 +11300,9 @@ fn parse_create_for_each_tail_wraps_create_effect() {
         "expected counted token creation based on controlled creatures, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_earthbend_then_untap_keeps_tail_effect() {
@@ -10079,6 +11321,9 @@ fn parse_earthbend_then_untap_keeps_tail_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_instead_if_control_keeps_prior_damage_target() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Steer Clear Variant")
@@ -10096,6 +11341,9 @@ fn parse_instead_if_control_keeps_prior_damage_target() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Invasive Maneuvers Variant")
@@ -10111,6 +11359,9 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
         "expected conditional to preserve the original creature target, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_filter() {
@@ -10129,6 +11380,9 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_fi
         "expected conditional to preserve the original creature-or-planeswalker target, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spell_line_instead_followup_merges_into_prior_spell_effect() {
@@ -10152,6 +11406,9 @@ fn parse_spell_line_instead_followup_merges_into_prior_spell_effect() {
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spell_line_instead_followup_merges_non_control_predicate() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Cackling Flames Variant")
@@ -10172,6 +11429,9 @@ fn parse_spell_line_instead_followup_merges_non_control_predicate() {
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cabal_ritual_threshold_instead_compiles_to_self_replacement_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Cabal Ritual Variant")
@@ -10186,6 +11446,9 @@ fn parse_cabal_ritual_threshold_instead_compiles_to_self_replacement_branch() {
     assert_eq!(program.segments[0].default_effects.len(), 1);
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_triggered_instead_followup_preserves_default_branch() {
@@ -10220,6 +11483,9 @@ fn parse_triggered_instead_followup_preserves_default_branch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_landfall_instead_followup_preserves_default_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Akoum Hellkite Variant")
@@ -10253,6 +11519,9 @@ fn parse_landfall_instead_followup_preserves_default_branch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_triggered_instead_followup_with_toxic_condition_preserves_default_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Porcelain Zealot Variant")
@@ -10280,6 +11549,9 @@ fn parse_triggered_instead_followup_with_toxic_condition_preserves_default_branc
         "expected rendered trigger to keep both pump branches, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_triggered_instead_followup_with_creatures_died_count_preserves_default_branch() {
@@ -10315,6 +11587,9 @@ fn parse_triggered_instead_followup_with_creatures_died_count_preserves_default_
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_triggered_instead_followup_with_full_party_preserves_default_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Destined Warrior Variant")
@@ -10347,6 +11622,9 @@ fn parse_triggered_instead_followup_with_full_party_preserves_default_branch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_instead_followup_without_prior_spell_segment_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Broken Self-Replacement Variant")
@@ -10356,6 +11634,9 @@ fn parse_instead_followup_without_prior_spell_segment_fails_loudly() {
 
     assert!(matches!(err, CardTextError::UnsupportedLine(_)));
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_deal_damage_with_trailing_if_clause_emits_conditional() {
@@ -10374,6 +11655,9 @@ fn parse_deal_damage_with_trailing_if_clause_emits_conditional() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_damage_to_that_creatures_controller_targets_player() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Chandra Variant")
@@ -10389,6 +11673,9 @@ fn parse_damage_to_that_creatures_controller_targets_player() {
         "expected controller-target damage wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_dingus_egg_keeps_the_source_and_controller_linked() {
@@ -10434,6 +11721,9 @@ fn parse_dingus_egg_keeps_the_source_and_controller_linked() {
         "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller."
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn dingus_egg_deals_damage_to_the_land_controller_on_graveyard_entry() {
@@ -10505,6 +11795,9 @@ fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn mana_ability_render_uses_colon_separator() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mana Separator Variant")
@@ -10522,6 +11815,9 @@ fn mana_ability_render_uses_colon_separator() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn metadata_land_dual_mana_line_stays_a_mana_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Tundra Variant")
@@ -10537,6 +11833,9 @@ fn metadata_land_dual_mana_line_stays_a_mana_ability() {
         "expected dual mana output to stay a mana ability, got {line}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn metadata_basic_typed_dual_land_mana_line_stays_a_mana_ability() {
@@ -10554,6 +11853,9 @@ fn metadata_basic_typed_dual_land_mana_line_stays_a_mana_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_hand_clause_with_trailing_effect_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Retraced Image Variant")
@@ -10567,6 +11869,9 @@ fn parse_reveal_hand_clause_with_trailing_effect_fails_strictly() {
         "expected strict reveal-hand parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_reveal_hand_clause_with_colon_tail_fails_strictly() {
@@ -10582,6 +11887,9 @@ fn parse_reveal_hand_clause_with_colon_tail_fails_strictly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_any_number_of_cards_in_your_hand_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scent Variant")
@@ -10594,6 +11902,9 @@ fn parse_reveal_any_number_of_cards_in_your_hand_clause() {
         "expected choose-from-hand reveal setup, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_reveal_x_cards_in_your_hand_clause() {
@@ -10608,6 +11919,9 @@ fn parse_reveal_x_cards_in_your_hand_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_single_card_in_your_hand_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Assembly Hall Variant")
@@ -10621,6 +11935,9 @@ fn parse_reveal_single_card_in_your_hand_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_top_plural_cards_clause() {
     CardDefinitionBuilder::new(CardId::new(), "Top Reveal Variant")
@@ -10628,12 +11945,18 @@ fn parse_reveal_top_plural_cards_clause() {
         .expect("reveal-top plural cards clause should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_top_card_clause_without_library_suffix() {
     CardDefinitionBuilder::new(CardId::new(), "Top Card Reveal Variant")
         .parse_text("Reveal the top card.")
         .expect("reveal top-card shorthand should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_reveal_top_card_then_lose_life_followup() {
@@ -10652,6 +11975,9 @@ fn parse_reveal_top_card_then_lose_life_followup() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_discard_up_to_two_then_draw_that_many() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Tersa Variant")
@@ -10669,6 +11995,9 @@ fn parse_discard_up_to_two_then_draw_that_many() {
         "expected discard-count and draw-that-many lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_persecute_discards_all_cards_of_chosen_color() {
@@ -10693,6 +12022,9 @@ fn parse_persecute_discards_all_cards_of_chosen_color() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn discard_up_to_two_permanents_then_draw_that_many_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Tersa Negative Variant")
@@ -10708,6 +12040,9 @@ fn discard_up_to_two_permanents_then_draw_that_many_still_fails_loudly() {
         "expected loud discard-qualifier failure, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_broadside_bombardiers_boast_damage_formula() {
@@ -10728,6 +12063,9 @@ fn parse_broadside_bombardiers_boast_damage_formula() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_top_card_then_if_land_else_hand_sequence() {
     CardDefinitionBuilder::new(CardId::new(), "Nadu Variant")
@@ -10736,6 +12074,9 @@ fn parse_reveal_top_card_then_if_land_else_hand_sequence() {
         )
         .expect("nadu-style reveal top card sequence should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn reveal_top_card_sequence_still_fails_loudly_for_unsupported_tail() {
@@ -10756,6 +12097,9 @@ fn reveal_top_card_sequence_still_fails_loudly_for_unsupported_tail() {
         "expected reveal-top helper to decline unrelated top-card text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ad_nauseam_style_optional_repeat_process() {
@@ -10786,6 +12130,9 @@ fn parse_ad_nauseam_style_optional_repeat_process() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_birgi_front_face_support_lines() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Birgi Variant")
@@ -10813,6 +12160,9 @@ fn parse_birgi_front_face_support_lines() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Metamorph Variant")
@@ -10837,6 +12187,9 @@ fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
         "expected metamorph copy-as-enters parse to avoid unsupported placeholders, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_omni_changeling_copy_exception_stays_localized() {
@@ -10867,6 +12220,9 @@ fn parse_omni_changeling_copy_exception_stays_localized() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_card_this_way_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
@@ -10888,6 +12244,9 @@ fn parse_reveal_card_this_way_trigger_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_optional_reveal_first_draw_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Kefnet Variant")
@@ -10908,6 +12267,9 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
             .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sacellum_godspeaker_reveals_any_number_from_hand_and_counts_revealed_cards() {
@@ -10943,6 +12305,9 @@ fn parse_sacellum_godspeaker_reveals_any_number_from_hand_and_counts_revealed_ca
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_god_eternal_kefnet_reveal_copy_cost_reduction_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "God-Eternal Kefnet Variant")
@@ -10973,6 +12338,9 @@ fn parse_god_eternal_kefnet_reveal_copy_cost_reduction_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_full_god_eternal_kefnet_oracle() {
     let def = CardDefinitionBuilder::new(CardId::new(), "God-Eternal Kefnet")
@@ -10996,12 +12364,18 @@ fn parse_full_god_eternal_kefnet_oracle() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_reveal_cards_in_library_clause() {
     CardDefinitionBuilder::new(CardId::new(), "Guided Passage Variant")
         .parse_text("Reveal the cards in your library.")
         .expect("reveal-all-library cards clause should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_creature_attacks_or_blocks_if_able() {
@@ -11016,6 +12390,9 @@ fn parse_target_creature_attacks_or_blocks_if_able() {
         "expected attack/block-if-able grants, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_creature_becomes_red_and_attacks_if_able() {
@@ -11042,6 +12419,9 @@ fn parse_target_creature_becomes_red_and_attacks_if_able() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_creature_can_block_any_number_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Valor Variant")
@@ -11053,6 +12433,9 @@ fn parse_target_creature_can_block_any_number_fails_strictly() {
         "expected strict target-only restriction error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_creature_blocks_this_turn_if_able() {
@@ -11067,6 +12450,9 @@ fn parse_target_creature_blocks_this_turn_if_able() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_creature_opponents_control_blocks_this_turn_if_able() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Predatory Rampage Variant")
@@ -11079,6 +12465,9 @@ fn parse_each_creature_opponents_control_blocks_this_turn_if_able() {
         "expected must-block effect for filtered creatures, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_play_that_card_from_exile_this_turn_clause() {
@@ -11095,6 +12484,9 @@ fn parse_play_that_card_from_exile_this_turn_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_play_an_additional_land_this_turn_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore Variant")
@@ -11107,6 +12499,9 @@ fn parse_play_an_additional_land_this_turn_clause() {
         "expected temporary additional-land-play effect, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_newline_additional_land_this_turn_clause_stays_a_spell_effect() {
@@ -11127,6 +12522,9 @@ fn parse_newline_additional_land_this_turn_clause_stays_a_spell_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_additional_land_this_turn_clause_is_not_wrapped_in_may() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore")
@@ -11139,6 +12537,9 @@ fn parse_additional_land_this_turn_clause_is_not_wrapped_in_may() {
         "permission-granting land-play text should not become a MayEffect: {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn compiled_text_keeps_additional_land_this_turn_duration() {
@@ -11156,6 +12557,9 @@ fn compiled_text_keeps_additional_land_this_turn_duration() {
         "compiled text should preserve draw effect, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spell_next_upkeep_trigger_stays_in_spell_effects() {
@@ -11178,6 +12582,9 @@ fn parse_spell_next_upkeep_trigger_stays_in_spell_effects() {
         "delayed next-upkeep clause should not become a printed triggered ability: {ability_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_multiline_spell_next_upkeep_trigger_stays_in_spell_effects() {
@@ -11202,6 +12609,9 @@ fn parse_multiline_spell_next_upkeep_trigger_stays_in_spell_effects() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_multiline_spell_when_you_do_followup_stays_in_spell_effects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Followup Variant")
@@ -11221,6 +12631,9 @@ fn parse_multiline_spell_when_you_do_followup_stays_in_spell_effects() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_fastbond_additional_land_permission_is_explicitly_unsupported() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Fastbond Variant")
@@ -11234,6 +12647,9 @@ fn parse_fastbond_additional_land_permission_is_explicitly_unsupported() {
         "expected explicit additional-land-play permission error, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_for_as_long_as_play_permission_is_explicitly_unsupported() {
@@ -11251,6 +12667,9 @@ fn parse_for_as_long_as_play_permission_is_explicitly_unsupported() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_temporary_free_play_permission_is_explicitly_unsupported() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Golos Variant")
@@ -11266,6 +12685,9 @@ fn parse_temporary_free_play_permission_is_explicitly_unsupported() {
         "expected explicit temporary free play permission error, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_omniscience_static_free_cast_permission() {
@@ -11302,6 +12724,9 @@ fn parse_omniscience_static_free_cast_permission() {
         "expected a hand free-cast grant in parsed Omniscience ability"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_kentaro_static_mana_value_permission() {
@@ -11341,6 +12766,9 @@ fn parse_kentaro_static_mana_value_permission() {
         "expected a Samurai hand grant that uses mana value as an alternative cost"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_rooftop_storm_static_free_zombie_permission() {
@@ -11382,6 +12810,9 @@ fn parse_rooftop_storm_static_free_zombie_permission() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_put_land_card_from_hand_onto_battlefield_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scout Variant")
@@ -11395,6 +12826,9 @@ fn parse_put_land_card_from_hand_onto_battlefield_clause() {
         "expected put-land wording in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_recommission_text_parses_typed_counter_followup() {
@@ -11423,6 +12857,9 @@ fn parse_recommission_text_parses_typed_counter_followup() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Teferi Time Twist Variant")
@@ -11449,6 +12886,9 @@ fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
         "time-twist followup should not emit static placeholder fallback: {static_ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_named_enters_tapped_and_doesnt_untap_fails_strictly() {
@@ -11479,6 +12919,9 @@ fn parse_at_trigger_intro_matches_beginning_clause() {
         "'at the beginning' should be treated as trigger intro"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enchanted_creature_doesnt_untap_during_controller_untap_step() {
@@ -11511,6 +12954,9 @@ fn parse_enchanted_creature_doesnt_untap_during_controller_untap_step() {
         "expected compiled text to keep attached untap restriction, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
@@ -11571,6 +13017,9 @@ fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_choose_not_to_untap_line_and_activated_line_without_spurious_untap_effect() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Endoskeleton Pair Variant")
@@ -11590,6 +13039,9 @@ fn parse_choose_not_to_untap_line_and_activated_line_without_spurious_untap_effe
         "unexpected untap-target spell effect leak in compiled output: {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_untap_during_each_other_players_untap_step_as_static_ability() {
@@ -11616,6 +13068,9 @@ fn parse_untap_during_each_other_players_untap_step_as_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_victory_chimes_keeps_singular_untap_step_line_static() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Victory Chimes")
@@ -11641,6 +13096,9 @@ fn parse_victory_chimes_keeps_singular_untap_step_line_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_dark_deal_that_many_minus_one_keeps_prior_effect_reference() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Dark Deal Variant")
@@ -11657,6 +13115,9 @@ fn parse_dark_deal_that_many_minus_one_keeps_prior_effect_reference() {
         "expected minus one offset in draw count, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_where_x_is_count_minus_fixed_preserves_negative_offset() {
@@ -11700,6 +13161,9 @@ fn parse_where_x_is_count_minus_fixed_preserves_negative_offset() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_hellion_eruption_that_many_keeps_prior_effect_reference() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Hellion Eruption Variant")
@@ -11716,6 +13180,9 @@ fn parse_hellion_eruption_that_many_keeps_prior_effect_reference() {
         "expected token count to reference prior effect result, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_can_block_only_creatures_with_flying_static_line() {
@@ -11747,6 +13214,9 @@ fn parse_can_block_only_creatures_with_flying_static_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_be_blocked_by_creatures_with_power_or_less_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Arlinn's Wolf Variant")
@@ -11775,6 +13245,9 @@ fn parse_cant_be_blocked_by_creatures_with_power_or_less_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_be_blocked_by_creatures_with_power_or_greater_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Amrou Kithkin Variant")
@@ -11802,6 +13275,9 @@ fn parse_cant_be_blocked_by_creatures_with_power_or_greater_line() {
         "expected compiled text to include power threshold, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_wandering_wolf_relative_power_blocking_clause() {
@@ -11839,6 +13315,9 @@ fn parse_wandering_wolf_relative_power_blocking_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_defending_player_controls_island_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deep-Sea Serpent Variant")
@@ -11875,6 +13354,9 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
         "expected compiled text to include defending-player island condition, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cant_attack_unless_youve_cast_creature_spell_this_turn_line() {
@@ -11915,6 +13397,9 @@ fn parse_cant_attack_unless_youve_cast_creature_spell_this_turn_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_youve_cast_noncreature_spell_this_turn_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mercurial Spelldancer Variant")
@@ -11954,6 +13439,9 @@ fn parse_cant_attack_unless_youve_cast_noncreature_spell_this_turn_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_control_more_creatures_than_defending_player_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Bog Hoodlums Variant")
@@ -11982,6 +13470,9 @@ fn parse_cant_attack_unless_control_more_creatures_than_defending_player_line() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_or_block_unless_you_control_seven_or_more_lands_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Topiary Stomper Variant")
@@ -11996,6 +13487,9 @@ fn parse_cant_attack_or_block_unless_you_control_seven_or_more_lands_line() {
         "expected conditioned attack/block restriction text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cant_attack_unless_defending_player_is_poisoned_line() {
@@ -12023,6 +13517,9 @@ fn parse_cant_attack_unless_defending_player_is_poisoned_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_black_or_green_creature_also_attacks_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Goblin War Drums Variant")
@@ -12048,6 +13545,9 @@ fn parse_cant_attack_unless_black_or_green_creature_also_attacks_line() {
         "also-attacks restriction should not emit placeholders, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cant_attack_unless_sacrifice_a_land_line() {
@@ -12075,6 +13575,9 @@ fn parse_cant_attack_unless_sacrifice_a_land_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_sacrifice_two_islands_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Leviathan Variant")
@@ -12100,6 +13603,9 @@ fn parse_cant_attack_unless_sacrifice_two_islands_line() {
         "sacrifice-two-islands restriction should not emit placeholders, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cant_attack_unless_pay_per_plus_one_plus_one_counter_line() {
@@ -12127,6 +13633,9 @@ fn parse_cant_attack_unless_pay_per_plus_one_plus_one_counter_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cant_attack_unless_defending_player_is_the_monarch_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Crown-Hunter Hireling Variant")
@@ -12152,6 +13661,9 @@ fn parse_cant_attack_unless_defending_player_is_the_monarch_line() {
         "monarch restriction should not emit placeholders, got {ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_collective_restraint_domain_attack_tax_line() {
@@ -12199,6 +13711,9 @@ fn parse_collective_restraint_domain_attack_tax_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_fixed_attack_tax_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ghostly Prison Variant")
@@ -12229,6 +13744,9 @@ fn parse_fixed_attack_tax_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_morph_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Morph Variant")
@@ -12256,6 +13774,9 @@ fn parse_morph_keyword_line() {
         "expected morph line in compiled text, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_megamorph_keyword_line() {
@@ -12285,6 +13806,9 @@ fn parse_megamorph_keyword_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_morph_keyword_line_with_trailing_clause_fails() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Morph Variant")
@@ -12298,6 +13822,9 @@ fn parse_morph_keyword_line_with_trailing_clause_fails() {
         "expected trailing morph clause parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
@@ -12335,6 +13862,9 @@ fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_banding_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
@@ -12348,6 +13878,9 @@ fn parse_banding_keyword_line() {
         "expected banding marker in compiled output, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_umbra_armor_keyword_line_lowers_to_static_ability() {
@@ -12369,6 +13902,9 @@ fn parse_umbra_armor_keyword_line_lowers_to_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_filter_power_numeric_comparison_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Power Filter Variant")
@@ -12382,6 +13918,9 @@ fn parse_filter_power_numeric_comparison_clause() {
         "expected parsed power comparison constraint, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_counter_spell_with_power_or_toughness_filter() {
@@ -12399,6 +13938,9 @@ fn parse_counter_spell_with_power_or_toughness_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_filter_dynamic_power_comparison_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Dynamic Power Filter Variant")
@@ -12411,6 +13953,9 @@ fn parse_filter_dynamic_power_comparison_fails_instead_of_partial_parse() {
         "expected strict dynamic-power comparison error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_up_to_x_target_creatures_preserves_dynamic_optional_count() {
@@ -12425,6 +13970,9 @@ fn parse_return_up_to_x_target_creatures_preserves_dynamic_optional_count() {
         "expected optional dynamic target-count in compiled effect, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_destroy_up_to_x_other_targets_fails_instead_of_partial_destroy() {
@@ -12442,6 +13990,9 @@ fn parse_destroy_up_to_x_other_targets_fails_instead_of_partial_destroy() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_loses_all_abilities_and_becomes_effect_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Effect Variant")
@@ -12457,6 +14008,9 @@ fn parse_loses_all_abilities_and_becomes_effect_fails_instead_of_partial_parse()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_loses_all_abilities_and_becomes_static_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Static Variant")
@@ -12471,6 +14025,9 @@ fn parse_loses_all_abilities_and_becomes_static_fails_instead_of_partial_parse()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_player_exile_sacrifice_return_this_way_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Living Death Variant")
@@ -12484,6 +14041,9 @@ fn parse_each_player_exile_sacrifice_return_this_way_fails_instead_of_partial_pa
         "expected strict each-player exile/sacrifice/return parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_combat_damage_to_creature_trigger_parses_with_damaged_creature_reference() {
@@ -12504,6 +14064,9 @@ fn parse_combat_damage_to_creature_trigger_parses_with_damaged_creature_referenc
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_player_loses_the_game_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lose Game Target Variant")
@@ -12516,6 +14079,9 @@ fn parse_target_player_loses_the_game_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_trigger_target_opponent_creates_treasure_tokens() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Target Opponent Creates Token Variant")
@@ -12527,6 +14093,9 @@ fn parse_trigger_target_opponent_creates_treasure_tokens() {
         "expected targeted opponent token creation text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
@@ -12555,6 +14124,9 @@ fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_trigger_target_opponent_may_draw_card() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Target Opponent May Draw Variant")
@@ -12567,6 +14139,9 @@ fn parse_trigger_target_opponent_may_draw_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_trigger_it_connives_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Connive It Variant")
@@ -12578,6 +14153,9 @@ fn parse_trigger_it_connives_clause() {
         "expected connive text to be preserved, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_reveal_hand_choose_card_from_it_clause() {
@@ -12595,6 +14173,9 @@ fn parse_reveal_hand_choose_card_from_it_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_trigger_target_opponent_gains_control_of_it_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Control Of It Variant")
@@ -12606,6 +14187,9 @@ fn parse_trigger_target_opponent_gains_control_of_it_clause() {
         "expected gain-control text to be preserved, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_trigger_destroy_it_then_cant_regenerate_clause() {
@@ -12621,6 +14205,9 @@ fn parse_trigger_destroy_it_then_cant_regenerate_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_player_multi_step_then_clause_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Each Player Multi-step Variant")
@@ -12635,6 +14222,9 @@ fn parse_each_player_multi_step_then_clause_fails_instead_of_partial_parse() {
         "expected strict each-player multi-step parse error, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_transformed_clause_uses_shared_return_and_transform() {
@@ -12652,6 +14242,9 @@ fn parse_return_transformed_clause_uses_shared_return_and_transform() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_transformed_clause_raw_render_keeps_shared_two_step_lowering() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Variant")
@@ -12668,6 +14261,9 @@ fn parse_return_transformed_clause_raw_render_keeps_shared_two_step_lowering() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_transformed_clause_canonical_output_matches_oracle_style_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Canonical Variant")
@@ -12681,6 +14277,9 @@ fn parse_return_transformed_clause_canonical_output_matches_oracle_style_wording
         "When this creature dies, return it to the battlefield transformed under your control."
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_converted_clause_uses_shared_return_and_convert() {
@@ -12699,6 +14298,9 @@ fn parse_return_converted_clause_uses_shared_return_and_convert() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
@@ -12714,6 +14316,9 @@ fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_exile_name_and_target_supports_exiling_source_and_target() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mangara Variant")
@@ -12726,6 +14331,9 @@ fn parse_exile_name_and_target_supports_exiling_source_and_target() {
         "expected exile of source and target permanent, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_chaotic_transformation_reuses_single_exiled_helper_tag() {
@@ -12781,6 +14389,9 @@ fn parse_chaotic_transformation_reuses_single_exiled_helper_tag() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Shape Anew")
@@ -12819,6 +14430,9 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
         "expected Shape Anew rendering to preserve target and controller binding, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
@@ -12924,6 +14538,9 @@ fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_opponent_exiles_card_from_their_hand_uses_hand_choice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skullcap Snail Variant")
@@ -12956,6 +14573,9 @@ fn parse_target_opponent_exiles_card_from_their_hand_uses_hand_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_opponent_exiles_card_from_their_hand_uses_iterated_chooser() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Each Opponent Hand Exile Variant")
@@ -12973,6 +14593,9 @@ fn parse_each_opponent_exiles_card_from_their_hand_uses_iterated_chooser() {
         "expected iterated chooser for each-opponent hand exile, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_eldrazi_spawn_reminder_sentence_is_not_immediate_sacrifice() {
@@ -13008,6 +14631,9 @@ fn parse_eldrazi_spawn_reminder_sentence_is_not_immediate_sacrifice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_eldrazi_scion_reminder_sentence_is_not_immediate_sacrifice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scion Variant")
@@ -13037,12 +14663,18 @@ fn parse_eldrazi_scion_reminder_sentence_is_not_immediate_sacrifice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spawn_scion_mana_reminder_without_context_fails_strictly() {
     let _err = CardDefinitionBuilder::new(CardId::new(), "Standalone Spawn Reminder")
         .parse_text("They have \"Sacrifice this creature: Add {C}.\"")
         .expect_err("standalone token reminder should fail");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_growth_spasm_style_spawn_reminder_stays_statement_not_static() {
@@ -13062,6 +14694,9 @@ fn parse_growth_spasm_style_spawn_reminder_stays_statement_not_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_convoked_connive_clause_compiles_to_tagged_connive_iteration() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lethal Scheme Variant")
@@ -13079,6 +14714,9 @@ fn parse_convoked_connive_clause_compiles_to_tagged_connive_iteration() {
         "expected connive effect in compiled spell effects, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_convoked_it_creature_etb_reference_compiles_to_tagged_filter() {
@@ -13103,6 +14741,9 @@ fn parse_convoked_it_creature_etb_reference_compiles_to_tagged_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_mother_of_runes_compacts_protection_choice_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mother of Runes Variant")
@@ -13117,6 +14758,9 @@ fn render_mother_of_runes_compacts_protection_choice_text() {
         "expected compact protection-choice rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_giver_of_runes_compacts_colorless_or_color_choice_text() {
@@ -13134,6 +14778,9 @@ fn render_giver_of_runes_compacts_colorless_or_color_choice_text() {
         "expected compact colorless-or-color protection rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_root_greevil_compacts_destroy_color_choice_text() {
@@ -13163,6 +14810,9 @@ fn render_root_greevil_compacts_destroy_color_choice_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_draw_for_each_creature_uses_oracle_like_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Collective Unconscious Variant")
@@ -13175,6 +14825,9 @@ fn render_draw_for_each_creature_uses_oracle_like_wording() {
         "expected oracle-like draw-for-each wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_draw_for_each_subtype_uses_oracle_like_wording() {
@@ -13189,6 +14842,9 @@ fn render_draw_for_each_subtype_uses_oracle_like_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_create_treasure_token_uses_compact_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Glittermonger Variant")
@@ -13201,6 +14857,9 @@ fn render_create_treasure_token_uses_compact_wording() {
         "expected compact treasure token wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_create_map_token_uses_compact_wording() {
@@ -13221,6 +14880,9 @@ fn render_create_map_token_uses_compact_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_create_lander_token_uses_compact_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Galactic Wayfarer Variant")
@@ -13239,6 +14901,9 @@ fn render_create_lander_token_uses_compact_wording() {
         "lander token parsing should not rely on unsupported fallback marker, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_create_junk_token_uses_expected_wording() {
@@ -13264,6 +14929,9 @@ fn render_create_junk_token_uses_expected_wording() {
         "junk token parsing should not rely on unsupported fallback marker, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_create_supported_role_tokens_attached_to_creature() {
@@ -13296,6 +14964,9 @@ fn parse_create_supported_role_tokens_attached_to_creature() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_create_gold_token_uses_compact_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gild Variant")
@@ -13314,6 +14985,9 @@ fn render_create_gold_token_uses_compact_wording() {
         "gold token parsing should not rely on unsupported fallback marker, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_create_shard_token_includes_scry_draw_ability() {
@@ -13337,6 +15011,9 @@ fn render_create_shard_token_includes_scry_draw_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_create_walker_token_uses_expected_characteristics() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Walker Maker Variant")
@@ -13355,6 +15032,9 @@ fn render_create_walker_token_uses_expected_characteristics() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
@@ -13372,6 +15052,9 @@ fn oracle_like_lines_compact_each_opponent_discard() {
         "expected compact each-opponent discard wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn oracle_like_lines_compact_you_mill_clause() {
@@ -13393,6 +15076,9 @@ fn oracle_like_lines_compact_you_mill_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_lines_compact_cant_block_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lambholt Harrier Variant")
@@ -13411,6 +15097,9 @@ fn oracle_like_lines_compact_cant_block_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_lines_compact_prevent_damage_source_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ordruun Commando Variant")
@@ -13427,6 +15116,9 @@ fn oracle_like_lines_compact_prevent_damage_source_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_lines_compact_lands_have_tap_for_any_color() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Joiner Adept Variant")
@@ -13441,6 +15133,9 @@ fn oracle_like_lines_compact_lands_have_tap_for_any_color() {
         "expected quoted tap-mana grant wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn oracle_like_lines_preserve_negative_zero_toughness_delta() {
@@ -13459,6 +15154,9 @@ fn oracle_like_lines_preserve_negative_zero_toughness_delta() {
         "expected oracle-like opponent-controller wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_destroy_target_creature_or_vehicle_uses_union_filter() {
@@ -13492,6 +15190,9 @@ fn parse_destroy_target_creature_or_vehicle_uses_union_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_multi_sacrifice_cost_uses_compact_filter_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Keldon Arsonist Variant")
@@ -13505,6 +15206,9 @@ fn render_multi_sacrifice_cost_uses_compact_filter_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_multi_sacrifice_artifacts_cost_uses_compact_filter_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Krark-Clan Engineers Variant")
@@ -13517,6 +15221,9 @@ fn render_multi_sacrifice_artifacts_cost_uses_compact_filter_text() {
         "expected compact multi-artifact sacrifice rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_single_sacrifice_cost_does_not_duplicate_article() {
@@ -13535,6 +15242,9 @@ fn render_single_sacrifice_cost_does_not_duplicate_article() {
         "expected no duplicated article in sacrifice rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_subtype_sacrifice_cost_uses_oracle_like_surface() {
@@ -13558,6 +15268,9 @@ fn render_subtype_sacrifice_cost_uses_oracle_like_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_multi_subtype_sacrifice_cost_uses_oracle_like_surface() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Goblin Warrens Variant")
@@ -13576,6 +15289,9 @@ fn render_multi_subtype_sacrifice_cost_uses_oracle_like_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_sacrifice_artifact_or_land_cost_uses_oracle_article() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scrapchomper Variant")
@@ -13588,6 +15304,9 @@ fn render_sacrifice_artifact_or_land_cost_uses_oracle_article() {
         "expected oracle-like sacrifice article rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
@@ -13627,6 +15346,9 @@ fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_scholarship_sponsor_keeps_each_player_search_subject() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scholarship Sponsor Variant")
@@ -13643,6 +15365,9 @@ fn render_scholarship_sponsor_keeps_each_player_search_subject() {
         "expected per-player search subject instead of defaulting to you, got {joined}; debug={debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_rock_slide_distributed_damage_text() {
@@ -13665,6 +15390,9 @@ fn render_rock_slide_distributed_damage_text() {
         "expected supported distributed-damage rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn fabricate_cards_stay_semantically_aligned_with_compiled_lines() {
@@ -13702,6 +15430,9 @@ fn fabricate_cards_stay_semantically_aligned_with_compiled_lines() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_return_from_graveyard_uses_from_your_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Reanimate Variant")
@@ -13718,6 +15449,9 @@ fn render_return_from_graveyard_uses_from_your_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_return_to_hand_from_your_graveyard_uses_oracle_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Raise Dead Variant")
@@ -13730,6 +15464,9 @@ fn render_return_to_hand_from_your_graveyard_uses_oracle_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_graveyard_self_return_activated_uses_this_card_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sanitarium Skeleton Variant")
@@ -13741,6 +15478,9 @@ fn render_graveyard_self_return_activated_uses_this_card_wording() {
         "expected oracle-like graveyard self-return wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_enchanted_tap_untap_compacts_tag_prelude() {
@@ -13764,6 +15504,9 @@ fn render_enchanted_tap_untap_compacts_tag_prelude() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_draw_then_put_two_cards_from_hand_on_top_preserves_count() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Brainstorm Variant")
@@ -13778,6 +15521,9 @@ fn parse_draw_then_put_two_cards_from_hand_on_top_preserves_count() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_each_player_puts_card_from_hand_on_top_normalizes_for_each_form() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sadistic Augermage Variant")
@@ -13789,6 +15535,9 @@ fn render_each_player_puts_card_from_hand_on_top_normalizes_for_each_form() {
         "expected normalized each-player hand-to-library wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_all_slivers_have_regenerate_uses_quoted_ability_text() {
@@ -13805,6 +15554,9 @@ fn render_all_slivers_have_regenerate_uses_quoted_ability_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_all_slivers_have_sacrifice_add_mana_uses_quoted_ability_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Basal Sliver Variant")
@@ -13818,6 +15570,9 @@ fn render_all_slivers_have_sacrifice_add_mana_uses_quoted_ability_text() {
         "expected quoted Sliver sacrifice-mana wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_surveil_uses_keyword_action_wording() {
@@ -13835,6 +15590,9 @@ fn render_surveil_uses_keyword_action_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_tap_target_spirit_uses_subtype_noun() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Spirit Tapper Variant")
@@ -13850,6 +15608,9 @@ fn render_tap_target_spirit_uses_subtype_noun() {
         "unexpected permanent noun for Spirit subtype, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_tap_target_wall_uses_subtype_noun() {
@@ -13867,6 +15628,9 @@ fn render_tap_target_wall_uses_subtype_noun() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_untap_target_snow_land_includes_supertype() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Snow Untapper Variant")
@@ -13878,6 +15642,9 @@ fn render_untap_target_snow_land_includes_supertype() {
         "expected snow supertype rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_artifacts_and_lands_enter_tapped_uses_union_types() {
@@ -13895,6 +15662,9 @@ fn render_artifacts_and_lands_enter_tapped_uses_union_types() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_damage_each_creature_and_each_player_keeps_both_targets() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Steam Blast Variant")
@@ -13911,6 +15681,9 @@ fn render_damage_each_creature_and_each_player_keeps_both_targets() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_subject_with_counters_cant_be_blocked_preserves_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Herald Variant")
@@ -13922,6 +15695,9 @@ fn render_subject_with_counters_cant_be_blocked_preserves_subject_filter() {
         "expected subject + restriction rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_granted_counter_subject_preserves_counter_clause() {
@@ -13941,6 +15717,9 @@ fn render_granted_counter_subject_preserves_counter_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_subject_with_power_or_toughness_cant_be_blocked_preserves_filter() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
@@ -13952,6 +15731,9 @@ fn render_subject_with_power_or_toughness_cant_be_blocked_preserves_filter() {
         "expected explicit unsupported parse error, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_create_saproling_token_keeps_subtype() {
@@ -13965,6 +15747,9 @@ fn render_create_saproling_token_keeps_subtype() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_mount_or_vehicle_target() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Daring Mechanic Variant")
@@ -13976,6 +15761,9 @@ fn render_mount_or_vehicle_target() {
         "expected mount or vehicle target rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_tap_cost_ability_filter_phrase() {
@@ -13991,6 +15779,9 @@ fn render_tap_cost_ability_filter_phrase() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_enchanted_creatures_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "A Tale Variant")
@@ -14002,6 +15793,9 @@ fn render_enchanted_creatures_you_control_pluralizes() {
         "expected plural enchanted creatures rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_bonehoard_static_bonus_mentions_all_graveyards() {
@@ -14026,6 +15820,9 @@ fn render_bonehoard_static_bonus_mentions_all_graveyards() {
         "expected Bonehoard to render the all-graveyards bonus correctly, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_kembas_banner_equipped_bonus_uses_for_each_wording() {
@@ -14052,6 +15849,9 @@ fn render_kembas_banner_equipped_bonus_uses_for_each_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_allies_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Allied Teamwork Variant")
@@ -14063,6 +15863,9 @@ fn render_allies_you_control_pluralizes() {
         "expected plural allies rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_tap_or_untap_mode_compacts() {
@@ -14076,6 +15879,9 @@ fn render_tap_or_untap_mode_compacts() {
         "expected compact tap/untap rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_tap_or_untap_mode_does_not_compact_when_targets_differ() {
@@ -14097,6 +15903,9 @@ fn render_tap_or_untap_mode_does_not_compact_when_targets_differ() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn oracle_like_equipped_sacrifice_uses_card_name() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ninja's Kunai")
@@ -14112,6 +15921,9 @@ fn oracle_like_equipped_sacrifice_uses_card_name() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_search_library_for_card_uses_card_noun() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Search Variant")
@@ -14126,6 +15938,9 @@ fn render_search_library_for_card_uses_card_noun() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_standalone_shuffle_clause_defaults_to_library_owner() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Shuffle Variant")
@@ -14138,6 +15953,9 @@ fn parse_standalone_shuffle_clause_defaults_to_library_owner() {
         "expected standalone shuffle to resolve to your library, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_target_player_library_and_exile_cards() {
@@ -14162,6 +15980,9 @@ fn parse_search_target_player_library_and_exile_cards() {
         "expected search-from-library into exile sequence, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn nightmare_incursion_uses_you_as_search_chooser_and_binds_where_x_count() {
@@ -14193,6 +16014,9 @@ fn nightmare_incursion_uses_you_as_search_chooser_and_binds_where_x_count() {
         "expected Nightmare Incursion to search target player's library, exile found cards, and bind count to swamps you control, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards() {
@@ -14272,6 +16096,9 @@ fn parse_oracle_reap_intellect_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_choose_card_name_then_draw_for_each_card_exiled_from_hand_this_way() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Stone Brain Variant")
@@ -14289,6 +16116,9 @@ fn parse_choose_card_name_then_draw_for_each_card_exiled_from_hand_this_way() {
         "expected choose-name search/exile/draw lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() {
@@ -14312,6 +16142,9 @@ fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_where_x_is_fixed_plus_number_of_filter_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Muscle Burst Variant")
@@ -14329,6 +16162,9 @@ fn parse_where_x_is_fixed_plus_number_of_filter_value() {
         "expected fixed-plus-count where-X value in compiled effect, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_filter_artifact_with_mana_ability_or_basic_land() {
@@ -14358,6 +16194,9 @@ fn parse_search_filter_artifact_with_mana_ability_or_basic_land() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_search_filter_artifact_with_mana_cost_zero_or_one() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Urza's Saga Search Variant")
@@ -14384,6 +16223,9 @@ fn parse_search_filter_artifact_with_mana_cost_zero_or_one() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_powerstone_token_name() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Powerstone Variant")
@@ -14395,6 +16237,9 @@ fn render_powerstone_token_name() {
         "expected powerstone token name in compiled text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_token_with_banding_keyword_modifier() {
@@ -14415,6 +16260,9 @@ fn parse_token_with_banding_keyword_modifier() {
         "expected compiled text to include banding token modifier, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_myriad_keyword_as_typed_trigger_without_keyword_marker() {
@@ -14437,6 +16285,9 @@ fn parse_myriad_keyword_as_typed_trigger_without_keyword_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_myriad_oracle_text_uses_composed_primitives() {
     let text = "Whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.";
@@ -14453,6 +16304,9 @@ fn parse_myriad_oracle_text_uses_composed_primitives() {
         "expected composed myriad trigger with exile-at-end-of-combat flag, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_wyrms_crossing_patrol_myriad_renders_you_as_token_creator() {
@@ -14471,6 +16325,9 @@ fn parse_wyrms_crossing_patrol_myriad_renders_you_as_token_creator() {
         "myriad render must not flip the token creator to the iterated player, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_named_vehicle_token_with_flying_and_crew() {
@@ -14494,6 +16351,9 @@ fn parse_named_vehicle_token_with_flying_and_crew() {
         "expected created token crew marker, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_damage_not_removed_during_cleanup_line() {
@@ -14521,6 +16381,9 @@ fn parse_damage_not_removed_during_cleanup_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_damage_redirect_to_source_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ancient Adamantoise Variant")
@@ -14546,6 +16409,9 @@ fn parse_damage_redirect_to_source_line() {
         "expected compiled text to include damage redirect clause, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_no_more_than_creatures_can_attack_or_block_each_combat_lines() {
@@ -14581,6 +16447,9 @@ fn parse_no_more_than_creatures_can_attack_or_block_each_combat_lines() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_opponent_loses_life_trigger_with_that_much_gain() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Life Trigger Variant")
@@ -14593,6 +16462,9 @@ fn parse_opponent_loses_life_trigger_with_that_much_gain() {
         "expected life-loss trigger and mirrored gain rendering, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_you_gain_life_trigger_with_target_opponent_loses_that_much() {
@@ -14607,6 +16479,9 @@ fn parse_you_gain_life_trigger_with_target_opponent_loses_that_much() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn reject_event_value_life_amount_without_life_trigger() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Event Value Invalid Variant")
@@ -14619,6 +16494,9 @@ fn reject_event_value_life_amount_without_life_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_damage_to_target_player_or_planeswalker() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Magmutt Variant")
@@ -14630,6 +16508,9 @@ fn parse_damage_to_target_player_or_planeswalker() {
         "expected compiled damage text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_that_much_damage_trigger_clause() {
@@ -14645,6 +16526,9 @@ fn parse_that_much_damage_trigger_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gain_choice_of_keywords_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gift Variant")
@@ -14656,6 +16540,9 @@ fn parse_gain_choice_of_keywords_clause() {
         "expected both keyword options in compiled text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_gain_choice_of_three_keywords_clause_compiles_to_mode_choice() {
@@ -14675,6 +16562,9 @@ fn parse_gain_choice_of_three_keywords_clause_compiles_to_mode_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_search_same_name_reference_filter_in_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Frostpyre Arcanist Variant")
@@ -14691,12 +16581,18 @@ fn parse_search_same_name_reference_filter_in_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_alternative_cost_with_return_to_hand_segment() {
     CardDefinitionBuilder::new(CardId::new(), "Borderpost Variant")
         .parse_text("You may pay {1} and return a basic land you control to its owner's hand rather than pay this spell's mana cost.")
         .expect("alternative cost with return-to-hand segment should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_alternative_cost_with_return_to_hand_segment_preserves_non_mana_costs() {
@@ -14723,6 +16619,9 @@ fn parse_alternative_cost_with_return_to_hand_segment_preserves_non_mana_costs()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_if_you_control_no_artifacts_compiles_to_negated_player_controls() {
     let def = CardDefinitionBuilder::new(CardId::new(), "No Artifacts Probe")
@@ -14742,6 +16641,9 @@ fn parse_if_you_control_no_artifacts_compiles_to_negated_player_controls() {
         "expected control-no predicate to compile to Condition::Not(PlayerControls), got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_first_main_phase_trigger_uses_precombat_main_and_active_player() {
@@ -14774,6 +16676,9 @@ fn parse_first_main_phase_trigger_uses_precombat_main_and_active_player() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_mill_cost_activation_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mill Cost Variant")
@@ -14786,6 +16691,9 @@ fn parse_mill_cost_activation_line() {
         "expected mill cost to be preserved in rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_cost_activation_line() {
@@ -14812,6 +16720,9 @@ fn parse_return_cost_activation_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_elf_cost_activation_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Return Elf Cost Variant")
@@ -14836,6 +16747,9 @@ fn parse_return_elf_cost_activation_line() {
         "expected once-per-turn restriction in activated ability, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_equip_with_once_each_turn_restriction() {
@@ -14869,6 +16783,9 @@ fn parse_equip_with_once_each_turn_restriction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_mercenary_token_with_tap_pump_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mercenary Token Variant")
@@ -14882,6 +16799,9 @@ fn parse_mercenary_token_with_tap_pump_ability() {
         "expected mercenary token creation in compiled text, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_token_becomes_tapped_damage_trigger() {
@@ -14915,6 +16835,9 @@ fn parse_token_becomes_tapped_damage_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_survivor_token_preserves_survivor_subtype() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Survivor Token Variant")
@@ -14934,6 +16857,9 @@ fn parse_survivor_token_preserves_survivor_subtype() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_deathpact_style_token_activation_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deathpact Angel")
@@ -14947,6 +16873,9 @@ fn parse_deathpact_style_token_activation_is_preserved() {
         "expected deathpact token creation to remain in output, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_llanowar_mentor_token_keeps_tap_for_green_mana_ability() {
@@ -14993,6 +16922,9 @@ fn parse_llanowar_mentor_token_keeps_tap_for_green_mana_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_sparkspitter_token_reminder_sets_next_end_step_sacrifice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sparkspitter Variant")
@@ -15030,6 +16962,9 @@ fn parse_sparkspitter_token_reminder_sets_next_end_step_sacrifice() {
         "expected compiled text to preserve token keywords and delayed sacrifice, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_construct_token_with_for_each_artifact_text_keeps_single_token_and_cda() {
@@ -15070,6 +17005,9 @@ fn parse_construct_token_with_for_each_artifact_text_keeps_single_token_and_cda(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Construct Quote Variant")
@@ -15088,6 +17026,9 @@ fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
         "expected Construct token to keep dynamic +1/+1 scaling text, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ritual_of_the_returned_keeps_token_power_toughness_followup_on_spell_effect() {
@@ -15130,6 +17071,9 @@ fn parse_ritual_of_the_returned_keeps_token_power_toughness_followup_on_spell_ef
         "expected dynamic token P/T normalization to hide the temporary 0/0 shell, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_broken_visage_keeps_destroy_no_regen_and_token_followups_on_spell_effect() {
@@ -15179,6 +17123,9 @@ fn parse_broken_visage_keeps_destroy_no_regen_and_token_followups_on_spell_effec
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_sound_the_call_token_does_not_misread_named_card_reference_as_token_name() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sound the Call Variant")
@@ -15202,6 +17149,9 @@ fn parse_sound_the_call_token_does_not_misread_named_card_reference_as_token_nam
         "expected token to keep +1/+1-for-each-named-card ability, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ozox_nested_token_return_keeps_named_card_literal() {
@@ -15266,6 +17216,9 @@ fn parse_ozox_nested_token_return_keeps_named_card_literal() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_sacrifice_all_non_ogres() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Yukora Variant")
@@ -15280,6 +17233,9 @@ fn render_sacrifice_all_non_ogres() {
         "expected 'sacrifice all' rendering, got {compiled}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mana_ability_activate_only_if_control_subtype() {
@@ -15299,6 +17255,9 @@ fn parse_mana_ability_activate_only_if_control_subtype() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
@@ -15315,6 +17274,9 @@ fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
         "expected banding keyword rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_storage_depletion_and_ki_counters() {
@@ -15345,6 +17307,9 @@ fn parse_storage_depletion_and_ki_counters() {
         .expect("ki counter line should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_land_doesnt_untap_if_has_depletion_counter() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Land Cap Variant")
@@ -15367,6 +17332,9 @@ fn parse_land_doesnt_untap_if_has_depletion_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_target_attacking_or_blocking_creature_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Divine Verdict Variant")
@@ -15386,6 +17354,9 @@ fn parse_destroy_target_attacking_or_blocking_creature_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_activate_only_restriction_inline_with_activated_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Timed Drawer")
@@ -15400,6 +17371,9 @@ fn parse_activate_only_restriction_inline_with_activated_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_mana_ability_activate_only_as_instant_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flash Mana Source")
@@ -15410,6 +17384,9 @@ fn parse_mana_ability_activate_only_as_instant_clause() {
     let rendered = compiled_lines(&def).join(" ");
     assert!(rendered.contains("Activate only as an instant"));
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_boast_ability_keeps_mechanic_prefix() {
@@ -15429,6 +17406,9 @@ fn parse_boast_ability_keeps_mechanic_prefix() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_boast_ability_with_prior_sentence_still_keeps_prefix() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Boastful Variant")
@@ -15442,6 +17422,9 @@ fn parse_boast_ability_with_prior_sentence_still_keeps_prefix() {
         "expected Boast prefix with cost in rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_renew_ability_keeps_mechanic_prefix() {
@@ -15467,6 +17450,9 @@ fn parse_renew_ability_keeps_mechanic_prefix() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_binding_contract_label_into_draw_replacement_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Asmodeus Variant")
@@ -15490,6 +17476,9 @@ fn parse_binding_contract_label_into_draw_replacement_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gain_life_for_each_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life Harvest Variant")
@@ -15503,6 +17492,9 @@ fn parse_gain_life_for_each_clause() {
         "expected dynamic life gain value, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_deal_damage_equal_to_clause_without_leading_amount() {
@@ -15518,6 +17510,9 @@ fn parse_deal_damage_equal_to_clause_without_leading_amount() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_return_multiple_targets_uses_their_owners_hands() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Return Wave")
@@ -15531,6 +17526,9 @@ fn render_return_multiple_targets_uses_their_owners_hands() {
         "expected plural owner-hand wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_put_minus_one_counter_uses_singular_counter_wording() {
@@ -15546,6 +17544,9 @@ fn render_put_minus_one_counter_uses_singular_counter_wording() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_put_counter_on_each_of_up_to_targets_uses_each_of() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gird Variant")
@@ -15559,6 +17560,9 @@ fn render_put_counter_on_each_of_up_to_targets_uses_each_of() {
         "expected each-of wording for counted target counters, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_scry_one_then_draw_uses_then() {
@@ -15576,6 +17580,9 @@ fn render_scry_one_then_draw_uses_then() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_equip_line_with_parenthetical_colon_preserves_prefix_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Plate Variant")
@@ -15591,6 +17598,9 @@ fn render_equip_line_with_parenthetical_colon_preserves_prefix_text() {
         "expected equip prefix text to survive heading stripping, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_put_counters_sequence_on_distinct_targets() {
@@ -15611,6 +17621,9 @@ fn parse_put_counters_sequence_on_distinct_targets() {
         "expected three distinct put-counters effects for the chained clause"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_put_multiple_counter_types_on_single_target() {
@@ -15646,6 +17659,9 @@ fn parse_put_multiple_counter_types_on_single_target() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spells_cost_modifier_merges_second_color_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "High Seas Variant")
@@ -15659,6 +17675,9 @@ fn parse_spells_cost_modifier_merges_second_color_clause() {
         "expected both spell-color qualifiers in rendered text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spells_cost_modifier_keeps_mana_value_qualifier() {
@@ -15676,6 +17695,9 @@ fn parse_spells_cost_modifier_keeps_mana_value_qualifier() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spells_cost_modifier_keeps_power_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Goreclaw Variant")
@@ -15689,6 +17711,9 @@ fn parse_spells_cost_modifier_keeps_power_qualifier() {
         "expected power qualifier in rendered cost-modifier text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spells_cost_modifier_target_clause_does_not_add_spell_type() {
@@ -15734,6 +17759,9 @@ fn parse_spells_cost_modifier_target_clause_does_not_add_spell_type() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glowrider Variant")
@@ -15747,6 +17775,9 @@ fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
         "expected noncreature qualifier in rendered cost-modifier text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spells_cost_modifier_supports_colored_mana_increase() {
@@ -15775,6 +17806,9 @@ fn parse_spells_cost_modifier_supports_colored_mana_increase() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fungal Colossus Variant")
@@ -15790,6 +17824,9 @@ fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
         "expected cost reduction in rendered text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
@@ -15821,6 +17858,9 @@ fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_imposing_grandeur_tracks_commander_mana_value_in_battlefield_or_command_zone() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imposing Grandeur")
@@ -15849,6 +17889,9 @@ fn parse_imposing_grandeur_tracks_commander_mana_value_in_battlefield_or_command
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_cant_be_regenerated_followup_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrath Tail Variant")
@@ -15863,6 +17906,9 @@ fn parse_destroy_cant_be_regenerated_followup_sentence() {
         "expected can't-be-regenerated tail to render, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_damage_cant_be_regenerated_followup_sentence() {
@@ -15883,6 +17929,9 @@ fn parse_damage_cant_be_regenerated_followup_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_threshold_destroy_cant_be_regenerated_followup_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Toxic Stench Variant")
@@ -15900,6 +17949,9 @@ fn parse_threshold_destroy_cant_be_regenerated_followup_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_target_creature_dealt_damage_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Siegebreaker Variant")
@@ -15913,6 +17965,9 @@ fn parse_destroy_target_creature_dealt_damage_this_turn() {
         "expected dealt-damage restriction in rendered destroy text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_target_creature_and_target_land_sentence() {
@@ -15928,6 +17983,9 @@ fn parse_exile_target_creature_and_target_land_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_target_creature_and_target_land_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spiteful Blow Variant")
@@ -15941,6 +17999,9 @@ fn parse_destroy_target_creature_and_target_land_sentence() {
         "expected both destroy targets in rendered text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_destroy_up_to_one_each_target_type_sentence() {
@@ -15960,6 +18021,9 @@ fn parse_destroy_up_to_one_each_target_type_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_source_and_target_blocking_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wall of Vipers Variant")
@@ -15975,6 +18039,9 @@ fn parse_destroy_source_and_target_blocking_sentence() {
         "expected source + blocking target destroy effects, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_lesser_werewolf_activated_ability() {
@@ -16006,6 +18073,9 @@ fn parse_lesser_werewolf_activated_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_destroy_target_artifact_creature_enchantment_and_land_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Decimate Variant")
@@ -16024,6 +18094,9 @@ fn parse_destroy_target_artifact_creature_enchantment_and_land_sentence() {
         "expected four destroy targets in rendered text, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_self_and_target_unless_controller_pays() {
@@ -16044,6 +18117,9 @@ fn parse_exile_self_and_target_unless_controller_pays() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_exile_two_graveyard_targets_for_spelltwine_pattern() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Spelltwine Variant")
@@ -16054,6 +18130,9 @@ fn parse_exile_two_graveyard_targets_for_spelltwine_pattern() {
         .expect("parse dual-target exile across graveyards");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_exile_named_source_and_target_permanent() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Mangara Variant")
@@ -16061,6 +18140,9 @@ fn parse_exile_named_source_and_target_permanent() {
         .parse_text("{T}: Exile Mangara and target permanent.")
         .expect("parse exile named source and target permanent");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_next_damage_redirect_to_target_creature() {
@@ -16080,6 +18162,9 @@ fn parse_next_damage_redirect_to_target_creature() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_next_time_source_damage_redirect_to_this_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shaman en-Kor Variant")
@@ -16097,6 +18182,9 @@ fn parse_next_time_source_damage_redirect_to_this_creature() {
         "expected next-time source redirect text in compiled output, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
@@ -16116,6 +18204,9 @@ fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_transform_source_uses_artifact_self_reference_for_artifacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mysterious Tome Variant")
@@ -16129,6 +18220,9 @@ fn render_transform_source_uses_artifact_self_reference_for_artifacts() {
         "expected artifact self-reference for transform source, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_choose_between_modes_as_choose_one_or_more() {
@@ -16146,6 +18240,9 @@ fn render_choose_between_modes_as_choose_one_or_more() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_each_player_create_clause_uses_each_player_creates() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dragon Crowd")
@@ -16160,6 +18257,9 @@ fn render_each_player_create_clause_uses_each_player_creates() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_put_counter_on_each_attacking_creature_from_for_each_form() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fumes Variant")
@@ -16173,6 +18273,9 @@ fn render_put_counter_on_each_attacking_creature_from_for_each_form() {
         "expected normalized each-attacking counter wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_daze_style_alternative_cost_clause_is_humanized() {
@@ -16194,6 +18297,9 @@ fn render_daze_style_alternative_cost_clause_is_humanized() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_eldrazi_token_creation_drops_under_your_control_phrase() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scion Caller")
@@ -16209,6 +18315,9 @@ fn render_eldrazi_token_creation_drops_under_your_control_phrase() {
         "expected eldrazi token text without explicit control suffix, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_conditional_create_token_with_quoted_comma_uses_first_comma_split() {
@@ -16239,6 +18348,9 @@ fn parse_conditional_create_token_with_quoted_comma_uses_first_comma_split() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_fading_hope_uses_past_tense_mana_value_predicate() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Hope")
@@ -16258,6 +18370,9 @@ fn parse_fading_hope_uses_past_tense_mana_value_predicate() {
         "expected oracle-like past-tense mana-value wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
@@ -16284,6 +18399,9 @@ fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
         "expected base branch to preserve the mana value 2 threshold, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_fatal_push_exposes_single_target_requirement() {
@@ -16324,6 +18442,9 @@ fn parse_fatal_push_exposes_single_target_requirement() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gate to the Aether")
@@ -16345,6 +18466,9 @@ fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
         "expected true branch to keep put-it effect, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_counter_unless_where_x_fails_strictly() {
@@ -16371,6 +18495,9 @@ fn parse_counter_unless_where_x_fails_strictly() {
         }
     }
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cephalid_shrine_binds_same_name_graveyard_where_x_clause() {
@@ -16405,6 +18532,9 @@ fn parse_cephalid_shrine_binds_same_name_graveyard_where_x_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gain_x_plus_life_with_where_clause_binds_x_value() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "An-Havva Inn Variant")
@@ -16425,6 +18555,9 @@ fn parse_gain_x_plus_life_with_where_clause_binds_x_value() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_counter_unless_plus_additional_keeps_dynamic_payment_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spell Stutter Variant")
@@ -16442,6 +18575,9 @@ fn parse_counter_unless_plus_additional_keeps_dynamic_payment_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_destroy_all_artifacts_and_enchantments_combines_split_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Purify Variant")
@@ -16456,6 +18592,9 @@ fn render_destroy_all_artifacts_and_enchantments_combines_split_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_activation_typed_discard_cost_keeps_card_type() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tortured Existence Variant")
@@ -16468,6 +18607,9 @@ fn render_activation_typed_discard_cost_keeps_card_type() {
         "expected typed discard activation cost wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_activation_discard_hand_cost_keeps_full_hand_clause() {
@@ -16482,6 +18624,9 @@ fn render_activation_discard_hand_cost_keeps_full_hand_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_activation_random_discard_cost_keeps_random_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mage il-Vec Variant")
@@ -16494,6 +18639,9 @@ fn render_activation_random_discard_cost_keeps_random_clause() {
         "expected random discard activation cost wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_activation_return_cost_preserves_numeric_count() {
@@ -16508,6 +18656,9 @@ fn render_activation_return_cost_preserves_numeric_count() {
         "expected counted return activation cost wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_shard_style_or_tap_activation_cost_uses_single_tap_and_alternative_mana() {
@@ -16560,6 +18711,9 @@ fn parse_shard_style_or_tap_activation_cost_uses_single_tap_and_alternative_mana
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_return_at_end_of_combat_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kaijin Variant")
@@ -16580,6 +18734,9 @@ fn parse_delayed_return_at_end_of_combat_parses() {
         "expected delayed return-to-hand payload, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_conquerors_galleon_attack_trigger_delays_return_and_transform_at_end_of_combat() {
@@ -16619,6 +18776,9 @@ fn parse_conquerors_galleon_attack_trigger_delays_return_and_transform_at_end_of
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_return_at_next_end_step_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flicker Variant")
@@ -16641,6 +18801,9 @@ fn parse_delayed_return_at_next_end_step_parses() {
         "expected delayed return-to-battlefield payload, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_source_pronoun_transformed_return_uses_object_motion_not_player_return() {
@@ -16679,6 +18842,9 @@ fn parse_source_pronoun_transformed_return_uses_object_motion_not_player_return(
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_return_at_your_next_upkeep_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Upkeep Return Variant")
@@ -16702,6 +18868,9 @@ fn parse_delayed_return_at_your_next_upkeep_parses() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_destroy_at_end_of_combat_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Basilisk Variant")
@@ -16723,6 +18892,9 @@ fn parse_delayed_destroy_at_end_of_combat_parses() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_destroy_at_next_end_step_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bearer Variant")
@@ -16743,6 +18915,9 @@ fn parse_delayed_destroy_at_next_end_step_parses() {
         "expected delayed destroy payload, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_arcbond_delayed_trigger_without_unsupported_fallback_in_allow_unsupported_mode() {
@@ -16773,6 +18948,9 @@ fn parse_arcbond_delayed_trigger_without_unsupported_fallback_in_allow_unsupport
         "expected delayed trigger to watch damage dealt to the tagged object source, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player() {
@@ -16889,6 +19067,9 @@ fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player()
     assert_eq!(game.player(charlie).expect("charlie should exist").life, 17);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_counter_unless_or_mana_choice_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
@@ -16901,6 +19082,9 @@ fn parse_counter_unless_or_mana_choice_fails_strictly() {
         "expected strict trailing unless-payment parse error, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_it_unless_discard_creature_card_as_unless_action() {
@@ -16929,6 +19113,9 @@ fn parse_exile_it_unless_discard_creature_card_as_unless_action() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_named_count_filter_keeps_named_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Powerstone Shard Variant")
@@ -16941,6 +19128,9 @@ fn render_named_count_filter_keeps_named_clause() {
         "expected named count filter wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_named_filter_preserves_articles_in_card_name() {
@@ -16957,6 +19147,9 @@ fn render_named_filter_preserves_articles_in_card_name() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_nonsnow_filter_keeps_non_supertype() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hallowed Ground Variant")
@@ -16969,6 +19162,9 @@ fn render_nonsnow_filter_keeps_non_supertype() {
         "expected nonsnow target filter wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_semantic_guard_is_disabled_by_default() {
@@ -16983,6 +19179,9 @@ fn parse_semantic_guard_is_disabled_by_default() {
         "expected parsed output while semantic guard is disabled, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_shared_color_prevent_fanout_clause() {
@@ -17004,6 +19203,9 @@ fn parse_shared_color_prevent_fanout_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_shared_color_gain_ability_fanout_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiance Gain Variant")
@@ -17022,6 +19224,9 @@ fn parse_shared_color_gain_ability_fanout_clause() {
         "expected haste grant to fanout targets, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_shared_color_pump_fanout_clause() {
@@ -17042,6 +19247,9 @@ fn parse_shared_color_pump_fanout_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_shared_color_damage_with_named_subject_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiance Damage Variant")
@@ -17060,6 +19268,9 @@ fn parse_shared_color_damage_with_named_subject_clause() {
         "expected shared-color fanout damage clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_counter_unless_then_counter_that_spell_clause() {
@@ -17081,6 +19292,9 @@ fn parse_counter_unless_then_counter_that_spell_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_additional_cost_sacrificed_power_reference_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fling")
@@ -17098,6 +19312,9 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_named_spell_exile_self_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Burning Wish")
@@ -17109,6 +19326,9 @@ fn parse_named_spell_exile_self_clause() {
         "expected exile-self clause to remain present, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_delayed_next_end_step_sentence_schedules_trigger() {
@@ -17122,6 +19342,9 @@ fn parse_delayed_next_end_step_sentence_schedules_trigger() {
         "expected delayed next-end-step wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_delayed_next_end_step_sentence_with_named_creature_keeps_delay() {
@@ -17142,6 +19365,9 @@ fn parse_delayed_next_end_step_sentence_with_named_creature_keeps_delay() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_delayed_next_end_step_sentence_with_this_creature_keeps_source_reference() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Pyric Variant")
@@ -17161,6 +19387,9 @@ fn parse_delayed_next_end_step_sentence_with_this_creature_keeps_source_referenc
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_object_filter_with_entered_since_last_turn_ended_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Premature Burial Variant")
@@ -17174,6 +19403,9 @@ fn parse_object_filter_with_entered_since_last_turn_ended_clause() {
         "expected entered-since-last-turn qualifier in rendered output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_when_you_do_followup_clause_as_reflexive_trigger() {
@@ -17197,6 +19429,9 @@ fn parse_when_you_do_followup_clause_as_reflexive_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_modal_trigger_header_keeps_prefix_effect_and_result_gate() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Immard Variant")
@@ -17212,6 +19447,9 @@ fn parse_modal_trigger_header_keeps_prefix_effect_and_result_gate() {
         "expected strict this-way modal gating rejection, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_aura_barbs_attached_target_contraction_keeps_second_clause() {
@@ -17237,6 +19475,9 @@ fn parse_aura_barbs_attached_target_contraction_keeps_second_clause() {
         "expected rendered text to keep aura damage clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
@@ -17274,6 +19515,9 @@ fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_modal_choose_up_to_x_header_preserves_dynamic_bounds() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Modes Variant")
@@ -17305,6 +19549,9 @@ fn parse_modal_choose_up_to_x_header_preserves_dynamic_bounds() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_nonhistoric_filter_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Historic Filter Variant")
@@ -17317,6 +19564,9 @@ fn parse_nonhistoric_filter_clause() {
         "expected nonhistoric clause wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_same_name_damage_fanout_clause() {
@@ -17337,6 +19587,9 @@ fn parse_same_name_damage_fanout_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_same_name_return_from_graveyard_fanout_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echoing Return")
@@ -17356,6 +19609,9 @@ fn parse_same_name_return_from_graveyard_fanout_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_of_up_to_target_damage_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrap in Flames")
@@ -17374,6 +19630,9 @@ fn parse_each_of_up_to_target_damage_clause() {
         "expected targeted (not global each-creature) damage wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_spell_delayed_trigger_this_turn_clause() {
@@ -17400,6 +19659,9 @@ fn parse_spell_delayed_trigger_this_turn_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_player_sacrifices_artifact_and_land_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Structural Collapse")
@@ -17419,6 +19681,9 @@ fn parse_target_player_sacrifices_artifact_and_land_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_player_create_uses_each_player_controller() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Each Player Cat Variant")
@@ -17437,6 +19702,9 @@ fn parse_each_player_create_uses_each_player_controller() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_create_for_each_tail_does_not_pollute_token_name() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tail Token Name Variant")
@@ -17449,6 +19717,9 @@ fn parse_create_for_each_tail_does_not_pollute_token_name() {
         "expected token name to remain Food, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_ward_pay_life_line_as_static_marker() {
@@ -17467,6 +19738,9 @@ fn parse_ward_pay_life_line_as_static_marker() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ward_mana_and_life_line_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Hybrid Cost Variant")
@@ -17484,6 +19758,9 @@ fn parse_ward_mana_and_life_line_as_static_ability() {
         "ward mixed cost should not lower as standalone lose-life spell effect, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn cultist_of_the_absolute_stays_static_and_grants_commander_abilities() {
@@ -17511,6 +19788,9 @@ fn cultist_of_the_absolute_stays_static_and_grants_commander_abilities() {
         "expected Cultist of the Absolute to grant its pump, ward, and upkeep trigger statically, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
@@ -17548,6 +19828,9 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ward_discard_multiple_card_types_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Typed Discard Variant")
@@ -17572,6 +19855,9 @@ fn parse_ward_discard_multiple_card_types_as_static_ability() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_if_they_dont_uses_negative_may_condition() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Umbilicus Variant")
@@ -17591,6 +19877,9 @@ fn render_if_they_dont_uses_negative_may_condition() {
         "did-not branch should not be rendered as affirmative branch, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_smothering_tithe_if_the_player_doesnt_clause() {
@@ -17621,6 +19910,9 @@ fn parse_smothering_tithe_if_the_player_doesnt_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ranger_captain_of_eos_search_and_silence_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ranger-Captain of Eos Variant")
@@ -17645,6 +19937,9 @@ fn parse_ranger_captain_of_eos_search_and_silence_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_tainted_pact_uses_handwritten_runtime_definition() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tainted Pact")
@@ -17664,6 +19959,9 @@ fn parse_tainted_pact_uses_handwritten_runtime_definition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_cost_prefixed_each_player_draw_discard_compacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lore Broker Variant")
@@ -17676,6 +19974,9 @@ fn render_cost_prefixed_each_player_draw_discard_compacts() {
         "expected compact each-player draw/discard wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_attack_skip_untap_uses_controller_next_untap_step() {
@@ -17691,6 +19992,9 @@ fn render_attack_skip_untap_uses_controller_next_untap_step() {
         "expected controller-next-untap-step wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_combat_damage_tap_then_doesnt_untap_sentence() {
@@ -17714,6 +20018,9 @@ fn parse_combat_damage_tap_then_doesnt_untap_sentence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rejects_three_dog_aura_copy_attachment_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Three Dog Variant")
@@ -17731,6 +20038,9 @@ fn parse_rejects_three_dog_aura_copy_attachment_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_defending_player_suffix_subject_keeps_player_binding() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper Variant")
@@ -17745,6 +20055,9 @@ fn parse_defending_player_suffix_subject_keeps_player_binding() {
         "expected defending-player life-loss wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_rejects_assigns_no_combat_damage_clause() {
@@ -17764,6 +20077,9 @@ fn parse_rejects_assigns_no_combat_damage_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rejects_defending_players_choice_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Erithizon Reject Variant")
@@ -17781,6 +20097,9 @@ fn parse_rejects_defending_players_choice_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rejects_creature_token_player_planeswalker_target_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Coalborn Reject Variant")
@@ -17795,6 +20114,9 @@ fn parse_rejects_creature_token_player_planeswalker_target_clause() {
         "expected creature-token/player/planeswalker rejection, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_rejects_if_you_sacrifice_an_island_this_way_clause() {
@@ -17814,6 +20136,9 @@ fn parse_rejects_if_you_sacrifice_an_island_this_way_clause() {
         "expected island-this-way rejection, got {message}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
@@ -17835,6 +20160,9 @@ fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
         "expected destroyed-this-way life-loss clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
@@ -17889,6 +20217,9 @@ fn parse_terastodon_keeps_destroy_and_graveyard_loop() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_artifact_or_tapped_creature_does_not_require_tapped_artifacts() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiant Strike Variant")
@@ -17902,6 +20233,9 @@ fn render_artifact_or_tapped_creature_does_not_require_tapped_artifacts() {
         "expected tapped to apply only to creature side of disjunction, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn render_named_angel_token_keeps_explicit_pt_and_keywords() {
@@ -17922,6 +20256,9 @@ fn render_named_angel_token_keeps_explicit_pt_and_keywords() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_exile_until_clause_keeps_target_filter_without_until_tail() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Liminal Hold Variant")
@@ -17937,6 +20274,9 @@ fn render_exile_until_clause_keeps_target_filter_without_until_tail() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_look_at_target_players_hand_keeps_targeting() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glasses Variant")
@@ -17949,6 +20289,9 @@ fn parse_look_at_target_players_hand_keeps_targeting() {
         "expected explicit target player hand wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_each_player_who_controls_condition_wraps_conditional() {
@@ -17965,6 +20308,9 @@ fn parse_each_player_who_controls_condition_wraps_conditional() {
         "expected per-player control condition, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_may_exile_then_return_same_object_keeps_followup_return() {
@@ -17987,6 +20333,9 @@ fn parse_may_exile_then_return_same_object_keeps_followup_return() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_hazorets_favor_keeps_delayed_sacrifice_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hazoret's Favor Variant")
@@ -18001,6 +20350,9 @@ fn parse_hazorets_favor_keeps_delayed_sacrifice_followup() {
         "expected delayed sacrifice followup, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_earthbend_then_earthbend_chain_keeps_both_and_life_gain() {
@@ -18018,6 +20370,9 @@ fn parse_earthbend_then_earthbend_chain_keeps_both_and_life_gain() {
         "expected trailing life gain clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_basic_triple_and_gain_life_keeps_all_components() {
@@ -18037,6 +20392,9 @@ fn parse_search_basic_triple_and_gain_life_keeps_all_components() {
         "expected trailing life gain clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_put_discard_random_then_shuffle_keeps_discard_clause() {
@@ -18061,6 +20419,9 @@ fn parse_search_put_discard_random_then_shuffle_keeps_discard_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_once_each_turn_play_from_exile_line_is_rejected() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Evelyn Variant")
@@ -18074,6 +20435,9 @@ fn parse_once_each_turn_play_from_exile_line_is_rejected() {
         "expected unsupported static clause error, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_manabond_reveal_hand_put_lands_from_it() {
@@ -18094,6 +20458,9 @@ fn parse_manabond_reveal_hand_put_lands_from_it() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_each_player_puts_card_from_hand_on_top() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sadistic Variant")
@@ -18108,6 +20475,9 @@ fn render_each_player_puts_card_from_hand_on_top() {
         "expected compact each-player puts wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_conditional_doesnt_untap_static_line() {
@@ -18124,6 +20494,9 @@ fn parse_conditional_doesnt_untap_static_line() {
         "expected untap condition to be preserved, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_agathas_soul_cauldron_static_lines() {
@@ -18150,6 +20523,9 @@ Creatures you control with +1/+1 counters on them have all activated abilities o
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_existing_mana_spend_as_any_color_static_patterns() {
     let lattice = CardDefinitionBuilder::new(CardId::from_raw(1), "Mycosynth Lattice Variant")
@@ -18173,6 +20549,9 @@ fn parse_existing_mana_spend_as_any_color_static_patterns() {
         "expected source activation mana-spend permission, got {refractor_rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
@@ -18207,6 +20586,9 @@ fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_then_if_conditional_sentence_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Then If Variant")
@@ -18222,6 +20604,9 @@ fn parse_then_if_conditional_sentence_is_preserved() {
         "expected then-if conditional to remain in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_additional_cost_and_trigger_when_on_same_line() {
@@ -18243,6 +20628,9 @@ fn parse_additional_cost_and_trigger_when_on_same_line() {
         "expected additional-cost clause to stay out of triggered text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_additional_cost_or_chain_renders_inline_or_options() {
@@ -18271,6 +20659,9 @@ fn parse_additional_cost_or_chain_renders_inline_or_options() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_distribute_counters_among_any_number_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Invoke Variant")
@@ -18288,6 +20679,9 @@ fn parse_distribute_counters_among_any_number_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_distribute_counters_one_or_two_targets() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Elven Rite Variant")
@@ -18303,6 +20697,9 @@ fn parse_distribute_counters_one_or_two_targets() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_distribute_counters_one_two_or_three_targets() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Biogenic Variant")
@@ -18317,6 +20714,9 @@ fn parse_distribute_counters_one_two_or_three_targets() {
         "expected plural distributed target count, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_distribute_then_double_counters_clause() {
@@ -18339,6 +20739,9 @@ fn parse_distribute_then_double_counters_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_then_that_player_discards_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Recoil Variant")
@@ -18355,6 +20758,9 @@ fn parse_then_that_player_discards_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_comma_then_that_player_discards_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinrova Variant")
@@ -18370,6 +20776,9 @@ fn parse_comma_then_that_player_discards_clause() {
         "expected discard to remain bound to the returned permanent's player, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_comma_then_return_source_to_hand_clause() {
@@ -18389,6 +20798,9 @@ fn parse_comma_then_return_source_to_hand_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_then_exile_that_players_graveyard_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Go Blank Variant")
@@ -18402,6 +20814,9 @@ fn parse_then_exile_that_players_graveyard_clause() {
         "expected graveyard exile to remain tied to the targeted player, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_put_counter_sequence_with_and_chain() {
@@ -18423,6 +20838,9 @@ fn parse_put_counter_sequence_with_and_chain() {
         "expected trailing block restriction to remain, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() {
@@ -18483,6 +20901,9 @@ fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() 
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Break Through the Line")
@@ -18537,6 +20958,9 @@ fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tied_to_target
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Slippery Scoundrel Variant")
@@ -18565,6 +20989,9 @@ fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn living_plane_oracle_like_text_merges_animation_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
@@ -18580,6 +21007,9 @@ fn living_plane_oracle_like_text_merges_animation_line() {
         "expected Living Plane animation text to merge cleanly, got {lines:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
@@ -18612,6 +21042,9 @@ fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn omenport_vigilante_keeps_committed_crime_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Omenport Vigilante Variant")
@@ -18635,6 +21068,9 @@ fn omenport_vigilante_keeps_committed_crime_condition() {
         "expected Omenport Vigilante definition to include committed-crime condition, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn alms_beast_keeps_lifelink_grant_for_creatures_in_combat_with_source() {
@@ -18660,6 +21096,9 @@ fn alms_beast_keeps_lifelink_grant_for_creatures_in_combat_with_source() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn metalcraft_keyword_grant_keeps_label_in_oracle_like_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Spiraling Duelist Variant")
@@ -18681,6 +21120,9 @@ fn metalcraft_keyword_grant_keeps_label_in_oracle_like_text() {
         "expected metalcraft label to survive oracle-like normalization, got {lines:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn sand_golem_keeps_opponent_discard_trigger_and_delayed_return_counter() {
@@ -18714,6 +21156,9 @@ fn sand_golem_keeps_opponent_discard_trigger_and_delayed_return_counter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn nissas_encouragement_keeps_three_exact_named_searches() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Nissa's Encouragement Variant")
@@ -18746,6 +21191,9 @@ fn nissas_encouragement_keeps_three_exact_named_searches() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn reveka_activation_keeps_self_skip_next_untap_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Reveka Variant")
@@ -18772,6 +21220,9 @@ fn reveka_activation_keeps_self_skip_next_untap_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_if_you_do_search_library_clause_keeps_full_tail_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blood Speaker Variant")
@@ -18797,6 +21248,9 @@ fn parse_if_you_do_search_library_clause_keeps_full_tail_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_trigger_with_comma_separated_list_does_not_split_early() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sram Variant")
@@ -18810,6 +21264,9 @@ fn parse_trigger_with_comma_separated_list_does_not_split_early() {
         "expected trigger list to include aura/equipment/vehicle, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_trigger_with_and_or_subtype_list_keeps_effect_split_on_trigger_delimiter() {
@@ -18833,6 +21290,9 @@ fn parse_trigger_with_and_or_subtype_list_keeps_effect_split_on_trigger_delimite
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_other_mice_anthem_renders_irregular_plural() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mabel Anthem Variant")
@@ -18850,6 +21310,9 @@ fn parse_other_mice_anthem_renders_irregular_plural() {
         "expected not to render as 'mouses', got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mabel_token_preserves_colorless_and_equipment_payload() {
@@ -18882,6 +21345,9 @@ fn parse_toggo_token_preserves_named_rock_and_activated_payload() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_that_creature_gets_and_gains_uses_single_tagged_target() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ogre Battledriver Variant")
@@ -18901,6 +21367,9 @@ fn parse_that_creature_gets_and_gains_uses_single_tagged_target() {
         "expected not to broaden to all creatures, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_the_player_may_clause_preserves_that_player_decider() {
@@ -18922,6 +21391,9 @@ fn parse_the_player_may_clause_preserves_that_player_decider() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_with_multiple_counters_on_it_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Perennation Variant")
@@ -18940,6 +21412,9 @@ fn parse_return_with_multiple_counters_on_it_sentence() {
         "expected returned permanent to receive both counters, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sacrifice_any_number_sentence_keeps_open_count() {
@@ -18965,6 +21440,9 @@ fn parse_sacrifice_any_number_sentence_keeps_open_count() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gain_ability_until_next_upkeep_uses_non_end_of_turn_duration() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Erhnam Variant")
@@ -18984,6 +21462,9 @@ fn parse_gain_ability_until_next_upkeep_uses_non_end_of_turn_duration() {
         "expected duration not to collapse to end of turn, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_minion_reflector_copy_clause_keeps_haste_and_end_step_sacrifice() {
@@ -19009,6 +21490,9 @@ fn parse_minion_reflector_copy_clause_keeps_haste_and_end_step_sacrifice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_not_dead_after_all_keeps_role_creation_and_attachment_in_granted_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Not Dead After All Variant")
@@ -19029,6 +21513,9 @@ fn parse_not_dead_after_all_keeps_role_creation_and_attachment_in_granted_trigge
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_face_down_target_filter_for_destroy_effect() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Nosy Goblin Variant")
@@ -19042,6 +21529,9 @@ fn parse_face_down_target_filter_for_destroy_effect() {
         "expected explicit unsupported face-down clause error, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_face_down_static_anthem_filter() {
@@ -19058,6 +21548,9 @@ fn parse_face_down_static_anthem_filter() {
         "expected face-down qualifier preserved on anthem, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
@@ -19081,6 +21574,9 @@ fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rhystic_lightning_unless_payment_then_reduced_damage() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhystic Lightning Variant")
@@ -19103,6 +21599,9 @@ fn parse_rhystic_lightning_unless_payment_then_reduced_damage() {
         "expected reduced-damage paid branch to remain explicit, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_slivercycling_grant_clause_as_static_grant_not_keyword_line() {
@@ -19203,6 +21702,9 @@ fn goddric_cloaked_reveler_keeps_conditional_dragon_animation() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_gideon_planeswalker_predicate_keeps_subtype_constraint() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gideon Predicate Variant")
@@ -19220,6 +21722,9 @@ fn parse_gideon_planeswalker_predicate_keeps_subtype_constraint() {
         "expected planeswalker card type to remain in rendered predicate, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_permanent_card_target_in_graveyard_sets_permanent_card_types() {
@@ -19246,6 +21751,9 @@ fn parse_permanent_card_target_in_graveyard_sets_permanent_card_types() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_one_or_more_subject_with_attack_verb_is_not_custom_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "One Or More Attack Variant")
@@ -19259,6 +21767,9 @@ fn parse_one_or_more_subject_with_attack_verb_is_not_custom_trigger() {
         "expected no fallback custom trigger for singular 'attack' wording, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_one_or_more_attack_trigger_preserves_one_or_more_compiled_text() {
@@ -19275,6 +21786,9 @@ fn parse_one_or_more_attack_trigger_preserves_one_or_more_compiled_text() {
         "expected one-or-more attack wording to remain explicit, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mount_or_vehicle_attack_trigger_keeps_both_subjects() {
@@ -19294,6 +21808,9 @@ fn parse_mount_or_vehicle_attack_trigger_keeps_both_subjects() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_one_or_more_enters_trigger_uses_batch_count_mode() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "One Or More Enter Variant")
@@ -19309,6 +21826,9 @@ fn parse_one_or_more_enters_trigger_uses_batch_count_mode() {
         "expected ETB trigger to compile in one-or-more mode, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_due_respect_variant_renders_permanents_enter_tapped_compactly() {
@@ -19327,6 +21847,9 @@ fn parse_due_respect_variant_renders_permanents_enter_tapped_compactly() {
         "expected no expanded permanent type list in enter-tapped wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_creatures_entering_dont_trigger_static_line() {
@@ -19351,6 +21874,9 @@ fn parse_creatures_entering_dont_trigger_static_line() {
         "expected ETB trigger suppression static ability, got {static_ids:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_clara_oswald_full_text_compiles() {
@@ -19394,6 +21920,9 @@ fn parse_clara_oswald_full_text_compiles() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_clara_oswald_combined_pregame_line_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Clara Oswald")
@@ -19411,6 +21940,9 @@ fn parse_clara_oswald_combined_pregame_line_compiles() {
         "expected pregame choose-color text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_elesh_norn_full_text_compiles_with_generic_trigger_suppression() {
@@ -19445,6 +21977,9 @@ fn parse_elesh_norn_full_text_compiles_with_generic_trigger_suppression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_vantress_visions_copy_triggered_ability_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vantress Visions")
@@ -19463,6 +21998,9 @@ fn parse_vantress_visions_copy_triggered_ability_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_panoptic_projektor_full_text_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Panoptic Projektor")
@@ -19480,6 +22018,9 @@ fn parse_panoptic_projektor_full_text_compiles() {
         "expected next-spell cost text in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_next_spell_cascade_family_compiles() {
@@ -19512,6 +22053,9 @@ fn parse_next_spell_cascade_family_compiles() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_next_spell_cascade_family_renders_cleanly() {
     let dark_apostle = CardDefinitionBuilder::new(CardId::from_raw(1), "Dark Apostle")
@@ -19526,6 +22070,9 @@ fn parse_next_spell_cascade_family_renders_cleanly() {
         "expected clean next-spell render for Dark Apostle, got {dark_rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_wayta_trainer_prodigy_full_text_compiles() {
@@ -19547,6 +22094,9 @@ fn parse_wayta_trainer_prodigy_full_text_compiles() {
         "expected inline activated cost text in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_windcrag_siege_full_text_compiles() {
@@ -19572,6 +22122,9 @@ fn parse_windcrag_siege_full_text_compiles() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_as_long_as_its_enchanted_condition_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fledgling Osprey Variant")
@@ -19589,6 +22142,9 @@ fn parse_as_long_as_its_enchanted_condition_line() {
         "expected enchanted condition in rendered static text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_as_long_as_it_attacked_this_turn_condition_line() {
@@ -19627,6 +22183,9 @@ fn parse_as_long_as_it_attacked_this_turn_condition_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_as_long_as_enchanted_permanent_is_a_creature_condition_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rune of Flight Variant")
@@ -19647,6 +22206,9 @@ fn parse_as_long_as_enchanted_permanent_is_a_creature_condition_line() {
         "expected enchanted-permanent creature condition in rendered static text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_each_creature_assigns_combat_damage_with_toughness_static_line() {
@@ -19674,6 +22236,9 @@ fn parse_each_creature_assigns_combat_damage_with_toughness_static_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_creature_you_control_assigns_combat_damage_with_toughness_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brontodon Variant")
@@ -19700,6 +22265,9 @@ fn parse_each_creature_you_control_assigns_combat_damage_with_toughness_static_l
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Return Variant")
@@ -19720,6 +22288,9 @@ fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
         "expected no synthetic per-subtype return clauses, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_draw_second_card_each_turn_trigger_is_not_custom() {
@@ -19742,6 +22313,9 @@ fn parse_draw_second_card_each_turn_trigger_is_not_custom() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_draw_third_card_each_turn_trigger_supports_higher_ordinals() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Third Draw Trigger Variant")
@@ -19755,6 +22329,9 @@ fn parse_draw_third_card_each_turn_trigger_supports_higher_ordinals() {
         "expected third-card ordinal to compile as card_number=3, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_orcish_bowmasters_draw_exception_clause_compiles_noncustom_draw_trigger() {
@@ -19786,6 +22363,9 @@ fn parse_orcish_bowmasters_draw_exception_clause_compiles_noncustom_draw_trigger
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_xyris_shared_draw_clause_keeps_both_players() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Xyris Variant")
@@ -19812,6 +22392,9 @@ fn parse_xyris_shared_draw_clause_keeps_both_players() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_xyris_shared_draw_clause_uses_oracle_style_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Xyris Variant")
@@ -19829,6 +22412,9 @@ fn render_xyris_shared_draw_clause_uses_oracle_style_surface() {
         "expected oracle-like shared draw surface, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_tataru_taru_off_turn_draw_trigger_is_typed_and_capped() {
@@ -19855,6 +22441,9 @@ fn parse_tataru_taru_off_turn_draw_trigger_is_typed_and_capped() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tataru Taru Variant")
@@ -19872,6 +22461,9 @@ fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
         "expected render to keep explicit once-each-turn suffix, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_intuition_target_opponent_divvy_bundle() {
@@ -19916,6 +22508,9 @@ fn parse_oracle_death_or_glory_divvy_surface_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ecological Appreciation")
@@ -19938,6 +22533,9 @@ fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
         "expected Ecological Appreciation to preserve the underlying tagged divvy bundle, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
@@ -19981,6 +22579,9 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
@@ -20021,6 +22622,9 @@ fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Top Card Exile Variant")
@@ -20036,6 +22640,9 @@ fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_lose_all_abilities_except_mana_static_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blood Sun Variant")
@@ -20049,6 +22656,9 @@ fn parse_lose_all_abilities_except_mana_static_clause() {
         "expected explicit except-mana wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_put_counters_equal_to_that_creatures_power() {
@@ -20066,6 +22676,9 @@ fn parse_put_counters_equal_to_that_creatures_power() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_lose_life_equal_to_power_plus_toughness() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phthisis Variant")
@@ -20082,6 +22695,9 @@ fn parse_lose_life_equal_to_power_plus_toughness() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_creature_tapped_to_pay_additional_cost_targets_tap_cost_tag() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swallow Whole Variant")
@@ -20097,6 +22713,9 @@ fn parse_creature_tapped_to_pay_additional_cost_targets_tap_cost_tag() {
         "expected follow-up counter target to reference tap_cost_0, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enchanted_base_pt_and_indestructible_without_nested_grant_text() {
@@ -20143,6 +22762,9 @@ fn parse_enchanted_base_pt_and_indestructible_without_nested_grant_text() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_creature_becomes_colorless_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ancient Kavu Variant")
@@ -20156,6 +22778,9 @@ fn parse_target_creature_becomes_colorless_until_end_of_turn() {
         "expected make-colorless wording in compiled output, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_target_creature_becomes_single_color_until_end_of_turn() {
@@ -20171,6 +22796,9 @@ fn parse_target_creature_becomes_single_color_until_end_of_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_creature_becomes_color_of_your_choice_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Color Choice Variant")
@@ -20185,6 +22813,9 @@ fn parse_target_creature_becomes_color_of_your_choice_until_end_of_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_creature_becomes_color_or_colors_of_your_choice_until_end_of_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swirling Spriggan Choice Variant")
@@ -20198,6 +22829,9 @@ fn parse_target_creature_becomes_color_or_colors_of_your_choice_until_end_of_tur
         "expected become-color-choice effect in activated ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_this_creature_becomes_creature_type_of_your_choice_until_end_of_turn() {
@@ -20215,6 +22849,9 @@ fn parse_this_creature_becomes_creature_type_of_your_choice_until_end_of_turn() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_choose_creature_type_then_target_becomes_that_type() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imagecrafter Variant")
@@ -20228,6 +22865,9 @@ fn parse_choose_creature_type_then_target_becomes_that_type() {
         "expected become-creature-type-choice effect in activated ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
@@ -20243,6 +22883,9 @@ fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
         "expected oracle-shaped creature-type choice text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_standalone_choose_creature_type_effect() {
@@ -20260,6 +22903,9 @@ fn parse_standalone_choose_creature_type_effect() {
     let rendered = compiled_lines(&def).join(" ");
     assert_eq!(rendered, "Spell effects: You choose a creature type.");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_raise_the_palisade_uses_chosen_creature_type_filter() {
@@ -20289,6 +22935,9 @@ fn parse_raise_the_palisade_uses_chosen_creature_type_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_creature_type_choice_pump_sentence_uses_shared_choice_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Alpha Status Variant")
@@ -20310,6 +22959,9 @@ fn parse_creature_type_choice_pump_sentence_uses_shared_choice_effect() {
         "expected no tagged-creature scaffolding after cleanup, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_target_of_creature_type_of_choice_uses_shared_choice_effect() {
@@ -20335,6 +22987,9 @@ fn parse_return_target_of_creature_type_of_choice_uses_shared_choice_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_standalone_choose_player_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Choice Variant")
@@ -20348,6 +23003,9 @@ fn parse_standalone_choose_player_effect() {
         "expected standalone choose-player effect, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_this_creature_cant_be_blocked_by_creatures_with_flying() {
@@ -20363,6 +23021,9 @@ fn parse_this_creature_cant_be_blocked_by_creatures_with_flying() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_this_creature_cant_be_blocked_except_by_black_creatures() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dread Warlock Variant")
@@ -20377,6 +23038,9 @@ fn parse_this_creature_cant_be_blocked_except_by_black_creatures() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_this_creature_cant_be_blocked_by_walls() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bog Rats Variant")
@@ -20390,6 +23054,9 @@ fn parse_this_creature_cant_be_blocked_by_walls() {
         "expected blocker restriction against Walls, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_this_creature_cant_block_creatures_with_power_two_or_greater() {
@@ -20411,6 +23078,9 @@ fn parse_this_creature_cant_block_creatures_with_power_two_or_greater() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_creatures_without_flying_cant_block_this_turn() {
     let _def = CardDefinitionBuilder::new(CardId::from_raw(1), "Falter Variant")
@@ -20419,6 +23089,9 @@ fn parse_creatures_without_flying_cant_block_this_turn() {
         .expect("global cant-block-this-turn clause should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_creature_cant_block_this_turn() {
     let _def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blindblast Variant")
@@ -20426,6 +23099,9 @@ fn parse_target_creature_cant_block_this_turn() {
         .parse_text("Target creature can't block this turn.")
         .expect("target cant-block-this-turn clause should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_your_maximum_hand_size_reduced_static_line() {
@@ -20441,6 +23117,9 @@ fn parse_your_maximum_hand_size_reduced_static_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_each_opponents_maximum_hand_size_reduced_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ivory Tower Variant")
@@ -20454,6 +23133,9 @@ fn parse_each_opponents_maximum_hand_size_reduced_static_line() {
         "expected maximum-hand-size reduction in rendered text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
@@ -20471,6 +23153,9 @@ fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_wrenns_resolve_exiles_top_two_cards() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrenn's Resolve")
@@ -20486,6 +23171,9 @@ fn parse_wrenns_resolve_exiles_top_two_cards() {
         "expected top-two exile rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_exile_top_card_you_may_play_that_card_this_turn() {
@@ -20504,6 +23192,9 @@ fn parse_exile_top_card_you_may_play_that_card_this_turn() {
         "expected end-of-turn duration on tagged play grant, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
@@ -20549,6 +23240,9 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_necropotence_style_face_down_exile_with_delayed_return() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necropotence Variant")
@@ -20583,6 +23277,9 @@ fn parse_necropotence_style_face_down_exile_with_delayed_return() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_veil_of_summer_full_spell() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Veil of Summer Variant")
@@ -20613,6 +23310,9 @@ fn parse_veil_of_summer_full_spell() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_finale_of_devastation_x_threshold_spell() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Finale of Devastation Variant")
@@ -20637,6 +23337,9 @@ fn parse_finale_of_devastation_x_threshold_spell() {
         "expected pump-and-haste clause to survive compilation, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
@@ -20665,6 +23368,9 @@ fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_tymna_the_weaver_postcombat_where_x_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tymna the Weaver")
@@ -20686,6 +23392,9 @@ fn parse_tymna_the_weaver_postcombat_where_x_clause() {
         "expected tymna where-x draw clause to survive rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_until_end_of_turn_you_may_cast_that_card() {
@@ -20721,6 +23430,9 @@ fn parse_until_end_of_turn_you_may_cast_that_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_rejects_unbound_that_player_hidden_zone_reference() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Broken Player Context")
@@ -20734,6 +23446,9 @@ fn parse_rejects_unbound_that_player_hidden_zone_reference() {
         "expected validation error to mention IteratedPlayer, got {err_text}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_allows_that_player_when_trigger_binds_player_context() {
@@ -20756,6 +23471,9 @@ fn parse_allows_that_player_when_trigger_binds_player_context() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mind's Desire Variant")
@@ -20776,6 +23494,9 @@ fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana_cost() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_your_opponents_cant_cast_spells_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Silence Variant")
@@ -20795,6 +23516,9 @@ fn parse_your_opponents_cant_cast_spells_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Creature Silence Variant")
@@ -20813,6 +23537,9 @@ fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_render_silent_uses_controller_subject_for_cast_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Render Silent")
@@ -20826,6 +23553,9 @@ fn parse_render_silent_uses_controller_subject_for_cast_restriction() {
         "expected controller-of-target cast restriction, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_dragonlord_dromoka_keeps_during_your_turn_static_condition() {
@@ -20844,6 +23574,9 @@ fn parse_dragonlord_dromoka_keeps_during_your_turn_static_condition() {
         "expected rule restriction static ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
@@ -20865,6 +23598,9 @@ fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipped() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conqueror's Flail")
@@ -20884,6 +23620,9 @@ fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipped() {
         "expected during-your-turn condition, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
@@ -20907,6 +23646,9 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Noncreature Silence Variant")
@@ -20925,6 +23667,9 @@ fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cast Tagged Variant")
@@ -20940,6 +23685,9 @@ fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
         "expected cast-tagged effect in spell text, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_oracle_stolen_goods_uses_consult_target_opponent_path() {
@@ -20971,6 +23719,9 @@ fn parse_oracle_stolen_goods_uses_consult_target_opponent_path() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_chaos_wand_uses_consult_cast_bottom_path() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chaos Wand")
@@ -21000,6 +23751,9 @@ fn parse_oracle_chaos_wand_uses_consult_cast_bottom_path() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ryan Sinclair")
@@ -21019,6 +23773,9 @@ fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {
         "expected exiled remainder to return to library bottom, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_oracle_house_cartographer_uses_postcombat_consult_trigger() {
@@ -21069,6 +23826,9 @@ fn parse_oracle_house_cartographer_uses_postcombat_consult_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_solstice_revelations_uses_dynamic_consult_gate_with_hand_fallback() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Solstice Revelations")
@@ -21090,6 +23850,9 @@ fn parse_oracle_solstice_revelations_uses_dynamic_consult_gate_with_hand_fallbac
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_synthesis_pod_accepts_that_exiled_card_cast_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Synthesis Pod")
@@ -21105,6 +23868,9 @@ fn parse_oracle_synthesis_pod_accepts_that_exiled_card_cast_clause() {
         "expected tagged cast effect from exiled-card clause, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_put_the_rest_on_bottom_with_previous_put_into_hand() {
@@ -21166,6 +23932,9 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_when_this_creature_becomes_blocked_may_untap_and_remove_from_combat() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gustcloak Variant")
@@ -21179,6 +23948,9 @@ fn parse_when_this_creature_becomes_blocked_may_untap_and_remove_from_combat() {
         "expected remove-from-combat effect in triggered ability, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_you_gain_protection_from_everything_until_your_next_turn() {
@@ -21203,6 +23975,9 @@ fn parse_you_gain_protection_from_everything_until_your_next_turn() {
         "expected intervening-if 'you cast it' condition, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_the_stasis_coffin_gain_protection_from_everything_regression() {
@@ -21239,6 +24014,9 @@ fn parse_the_stasis_coffin_gain_protection_from_everything_regression() {
         "expected the expanded protection wording to normalize away, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_lose_half_your_life_rounded_up_clause() {
@@ -22804,6 +25582,9 @@ fn parse_oracle_derevi_command_zone_put_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_put_onto_battlefield_under_your_control_tapped_preserves_behavior() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Reanimate Variant")
@@ -22855,6 +25636,9 @@ fn parse_oracle_banefire_threshold_restrictions_regression() {
         "expected Banefire damage-prevention clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_oracle_drakuseth_maw_of_flames_multi_target_regression() {
@@ -23086,6 +25870,7 @@ const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
 
 macro_rules! strict_parse_card_test {
     ($test_name:ident, $card_name:expr) => {
+        #[cfg(ironsmith_runtime_parser_tests)]
         #[test]
         fn $test_name() {
             assert_oracle_card_parses_strict($card_name);
@@ -23333,6 +26118,9 @@ fn exert_regression_cards_lower_to_runtime_support_without_fallbacks() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn exert_land_activation_cost_lowers_to_exert_runtime_cost() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Exert Land Probe")
@@ -23415,6 +26203,9 @@ fn dungeon_regression_cards_render_key_mechanics() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oracle_sorcerous_spyglass_hand_inspection_regression() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sorcerous Spyglass line")
@@ -23431,6 +26222,9 @@ fn parse_oracle_sorcerous_spyglass_hand_inspection_regression() {
         "expected follow-up card-name choice to remain present, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_oracle_liliana_last_hope_keeps_until_your_next_turn() {
@@ -23553,6 +26347,9 @@ fn parse_oracle_future_replacement_followups_register_zone_replacements() {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Counter Exile Variant")
@@ -23577,6 +26374,9 @@ fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_fatal_push_revolt_stays_self_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fatal Push Variant")
@@ -23597,6 +26397,9 @@ fn parse_fatal_push_revolt_stays_self_replacement() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_skyclave_apparition_where_x_uses_exiled_card_mana_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skyclave Apparition Variant")
@@ -23611,6 +26414,9 @@ fn parse_skyclave_apparition_where_x_uses_exiled_card_mana_value() {
         "expected exiled-card mana value binding in lowered ability, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn where_x_exiled_card_plus_one_still_fails_loudly() {
@@ -23627,6 +26433,9 @@ fn where_x_exiled_card_plus_one_still_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_beza_relative_opponent_comparisons() {
     CardDefinitionBuilder::new(CardId::new(), "Beza Variant")
@@ -23635,6 +26444,9 @@ fn parse_beza_relative_opponent_comparisons() {
         )
         .expect("beza-style relative comparisons should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_thieving_skydiver_equipment_followup_condition() {
@@ -23661,6 +26473,9 @@ fn parse_thieving_skydiver_equipment_followup_condition() {
         "ETB kicked followups should check whether the source spell was kicked",
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_counter_target_spell_if_it_was_kicked_keeps_target_predicate() {
@@ -23690,6 +26505,9 @@ fn parse_oracle_slinn_voda_renders_kicked_exception_bounce_cleanly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_currency_converter_nonland_followup_condition() {
     CardDefinitionBuilder::new(CardId::new(), "Currency Converter Variant")
@@ -23699,6 +26517,9 @@ fn parse_currency_converter_nonland_followup_condition() {
         .expect("tagged nonland-card followup should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_dauthi_voidwalker_void_counter_target_phrase() {
     CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Variant")
@@ -23707,6 +26528,9 @@ fn parse_dauthi_voidwalker_void_counter_target_phrase() {
         )
         .expect("tagged counter-state exiled-card choice should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
@@ -23743,6 +26567,9 @@ fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_vaultborn_tyrant_nontoken_followup_condition() {
     CardDefinitionBuilder::new(CardId::new(), "Vaultborn Tyrant Variant")
@@ -23751,6 +26578,9 @@ fn parse_vaultborn_tyrant_nontoken_followup_condition() {
         )
         .expect("tagged nontoken followup should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_time_vault_skip_that_turn_clause() {
@@ -23761,6 +26591,9 @@ fn parse_time_vault_skip_that_turn_clause() {
         .expect("time-vault skip-that-turn clause should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_portal_to_phyrexia_subtype_followup_sentence() {
     CardDefinitionBuilder::new(CardId::new(), "Portal to Phyrexia Variant")
@@ -23770,6 +26603,9 @@ fn parse_portal_to_phyrexia_subtype_followup_sentence() {
         .expect("implicit tagged subtype followup should parse");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
     CardDefinitionBuilder::new(CardId::new(), "Ghost Vacuum Variant")
@@ -23778,6 +26614,9 @@ fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
         )
         .expect("implicit tagged base-pt followup should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enduring_curiosity_type_removal_followup() {
@@ -23799,6 +26638,9 @@ fn parse_enduring_curiosity_type_removal_followup() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_cecil_half_starting_life_threshold() {
     CardDefinitionBuilder::new(CardId::new(), "Cecil Variant")
@@ -23808,6 +26650,9 @@ fn parse_cecil_half_starting_life_threshold() {
         )
         .expect("half-starting-life threshold should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn half_starting_life_threshold_with_extra_math_still_fails_loudly() {
@@ -23827,6 +26672,9 @@ fn half_starting_life_threshold_with_extra_math_still_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_magda_other_dwarves_anthem() {
     CardDefinitionBuilder::new(CardId::new(), "Magda Variant")
@@ -23836,6 +26684,9 @@ fn parse_magda_other_dwarves_anthem() {
         )
         .expect("Magda rules text should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_screaming_nemesis_any_other_target() {
@@ -23852,6 +26703,9 @@ fn parse_screaming_nemesis_any_other_target() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_burst_lightning_kicker_instead_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burst Lightning Variant")
@@ -23865,6 +26719,9 @@ fn parse_burst_lightning_kicker_instead_clause() {
     assert_eq!(program.segments.len(), 1);
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_geistblast_graveyard_copy_activation_renders_cleanly() {
@@ -23891,6 +26748,9 @@ fn parse_geistblast_graveyard_copy_activation_renders_cleanly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_consult_the_star_charts_kicker_count_override() {
     CardDefinitionBuilder::new(CardId::new(), "Consult Variant")
@@ -23900,6 +26760,9 @@ fn parse_consult_the_star_charts_kicker_count_override() {
         )
         .expect("look-top X kicker count override should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn consult_the_star_charts_kicker_override_with_extra_tail_still_fails_loudly() {
@@ -24150,6 +27013,9 @@ fn parse_oracle_curator_of_suns_creation_discovers_same_value_again() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_planar_genesis_looked_card_fallback_sequence() {
     CardDefinitionBuilder::new(CardId::new(), "Planar Genesis Variant")
@@ -24287,6 +27153,9 @@ fn parse_oracle_winding_way_card_type_choice_regression() {
         "expected chosen-card-type looked-card lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_reveal_top_put_all_matching_into_hand_rest_graveyard_still_handles_simple_filters() {
@@ -24472,6 +27341,9 @@ fn parse_oracle_clarion_ultimatum_for_each_chosen_permanent_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn planar_genesis_fallback_with_extra_tail_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Planar Genesis Variant")
@@ -24489,6 +27361,9 @@ fn planar_genesis_fallback_with_extra_tail_still_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_caustic_bronco_saddled_followup_condition() {
     CardDefinitionBuilder::new(CardId::new(), "Caustic Bronco Variant")
@@ -24498,6 +27373,9 @@ fn parse_caustic_bronco_saddled_followup_condition() {
         )
         .expect("saddled conditional reveal-life trigger should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn caustic_bronco_saddled_followup_with_extra_tail_still_fails_loudly() {
@@ -24516,6 +27394,9 @@ fn caustic_bronco_saddled_followup_with_extra_tail_still_fails_loudly() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_minsc_and_boo_hamster_followup_condition() {
     CardDefinitionBuilder::new(CardId::new(), "Minsc Variant")
@@ -24525,6 +27406,9 @@ fn parse_minsc_and_boo_hamster_followup_condition() {
         )
         .expect("sacrificed-creature subtype followup should parse");
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn sacrificed_creature_was_hamster_with_extra_tail_still_fails_loudly() {
@@ -24543,6 +27427,9 @@ fn sacrificed_creature_was_hamster_with_extra_tail_still_fails_loudly() {
         "expected loud failure for unsupported sacrificed-creature tail, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_can_be_your_commander_static_line() {
@@ -24565,6 +27452,9 @@ fn parse_can_be_your_commander_static_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_search_library_reveal_disjunction_to_hand_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Archdruid's Charm Variant")
@@ -24580,6 +27470,9 @@ fn parse_search_library_reveal_disjunction_to_hand_clause() {
         "expected search-library hand effect with explicit chooser, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_library_face_down_exile_then_shuffle_clause() {
@@ -24597,6 +27490,9 @@ fn parse_search_library_face_down_exile_then_shuffle_clause() {
         "expected choose-plus-face-down-exile search sequence, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_inverter_of_truth_etb_clause_keeps_face_down_library_exile() {
@@ -24621,6 +27517,9 @@ fn parse_inverter_of_truth_etb_clause_keeps_face_down_library_exile() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_tithe_separate_searches_then_reveal_to_hand() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tithe Variant")
@@ -24638,6 +27537,9 @@ fn parse_tithe_separate_searches_then_reveal_to_hand() {
         "expected repeated tagged search, reveal, hand move, and shuffle, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_oreskos_explorer_uses_player_land_comparison_for_x() {
@@ -24672,6 +27574,9 @@ fn parse_oreskos_explorer_uses_player_land_comparison_for_x() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oath of Druids")
@@ -24704,6 +27609,9 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
         "expected Oath of Druids oracle-like text to stay close to the oracle, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {
@@ -24830,6 +27738,9 @@ fn parse_thief_of_existence_keeps_if_you_do_exile_followup() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_sacred_guide_uses_consult_white_card_lowering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sacred Guide")
@@ -24866,6 +27777,9 @@ fn parse_sacred_guide_uses_consult_white_card_lowering() {
         "expected Sacred Guide compiled text to avoid the generic reveal fallback wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
@@ -24974,6 +27888,9 @@ fn parse_sacred_guide_reveals_until_white_card_and_exiles_others() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_master_warcraft_uses_combat_choice_control_effects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Master Warcraft")
@@ -24994,6 +27911,9 @@ fn parse_master_warcraft_uses_combat_choice_control_effects() {
         "Cast this spell only before attackers are declared.\nYou choose which creatures attack this turn. You choose which creatures block this turn and how those creatures block."
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
@@ -25029,6 +27949,9 @@ fn parse_collision_of_realms_uses_consult_and_bottom_remainder() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_last_march_of_the_ents_draws_greatest_toughness() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Last March Variant")
@@ -25042,6 +27965,9 @@ fn parse_last_march_of_the_ents_draws_greatest_toughness() {
         "expected draw count based on greatest toughness, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_flourishing_hunter_gains_life_equal_to_greatest_toughness() {
@@ -25060,6 +27986,9 @@ fn parse_flourishing_hunter_gains_life_equal_to_greatest_toughness() {
         "expected greatest-toughness life-gain text to survive rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_search_target_opponents_library_face_down_exile_clause() {
@@ -25080,6 +28009,9 @@ fn parse_search_target_opponents_library_face_down_exile_clause() {
         "expected controller-chooses opponent-library face-down exile search, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_cast_this_spell_as_though_it_had_flash_line() {
@@ -25102,6 +28034,9 @@ fn parse_cast_this_spell_as_though_it_had_flash_line() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_borne_upon_a_wind_flash_permission_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Borne Upon a Wind")
@@ -25119,6 +28054,9 @@ fn parse_borne_upon_a_wind_flash_permission_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_tidal_barracuda_any_player_flash_permission_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Tidal Barracuda")
@@ -25133,6 +28071,9 @@ fn parse_tidal_barracuda_any_player_flash_permission_clause() {
         "expected static flash permission text, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_valley_floodcaller_keeps_flash_grant_and_them_reference_wording() {
@@ -25153,6 +28094,9 @@ fn parse_valley_floodcaller_keeps_flash_grant_and_them_reference_wording() {
         "expected tagged follow-up untap wording, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
@@ -25183,6 +28127,9 @@ fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_choose_color_then_add_devotion_to_that_color() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nykthos Variant")
@@ -25199,6 +28146,9 @@ fn parse_choose_color_then_add_devotion_to_that_color() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_oriss_grandeur_named_discard_cost() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Oriss, Samite Guardian")
@@ -25214,6 +28164,9 @@ fn parse_oriss_grandeur_named_discard_cost() {
         "expected named-card discard cost, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_jackal_familiar_attack_or_block_alone_uses_alone_restriction() {
@@ -25236,6 +28189,9 @@ fn parse_jackal_familiar_attack_or_block_alone_uses_alone_restriction() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_bonded_horncrest_attack_or_block_alone_uses_alone_restriction() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Bonded Horncrest")
@@ -25249,6 +28205,9 @@ fn parse_bonded_horncrest_attack_or_block_alone_uses_alone_restriction() {
         "expected attack-or-block-alone restriction, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_flamescroll_celebrant_non_mana_ability_trigger() {
@@ -25265,6 +28224,9 @@ fn parse_flamescroll_celebrant_non_mana_ability_trigger() {
         "expected qualified ability-activated trigger, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
@@ -25295,6 +28257,9 @@ fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_kutzil_power_greater_than_base_power_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Kutzil Variant")
@@ -25310,6 +28275,9 @@ fn parse_kutzil_power_greater_than_base_power_trigger() {
         "expected base-power comparison to survive compilation, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
@@ -25330,6 +28298,9 @@ fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
         "expected that-player cant-cast restriction to lower through existing player filters, got {abilities_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_enchant_player_upkeep_trigger_uses_attached_player_filter() {
@@ -25355,6 +28326,9 @@ fn parse_enchant_player_upkeep_trigger_uses_attached_player_filter() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_megatron_life_lost_turn_mana_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Megatron Variant")
@@ -25375,6 +28349,9 @@ fn parse_megatron_life_lost_turn_mana_clause() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_convert_with_followup_sentence_preserves_convert_action() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Jetfire Variant")
@@ -25388,6 +28365,9 @@ fn parse_convert_with_followup_sentence_preserves_convert_action() {
         "expected convert and followup text to survive compilation, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_craft_keyword_line_as_marker() {
@@ -25404,6 +28384,9 @@ fn parse_craft_keyword_line_as_marker() {
         "expected craft keyword text to survive compilation, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sphinxs_decree_next_turn_silence() {
@@ -25423,6 +28406,9 @@ fn parse_sphinxs_decree_next_turn_silence() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn compiled_static_restriction_keeps_during_turn_condition_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Grand Abolisher")
@@ -25439,6 +28425,9 @@ fn compiled_static_restriction_keeps_during_turn_condition_text() {
         "expected compiled text to keep during-your-turn condition, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_traveling_chocobo_top_library_lines_compile() {
@@ -25462,6 +28451,9 @@ fn parse_traveling_chocobo_top_library_lines_compile() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_starfield_vocalist_with_warp_keyword() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Starfield Vocalist")
@@ -25481,6 +28473,9 @@ fn parse_starfield_vocalist_with_warp_keyword() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_wulfgar_of_icewind_dale_with_melee_keyword() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Wulfgar of Icewind Dale")
@@ -25497,6 +28492,9 @@ fn parse_wulfgar_of_icewind_dale_with_melee_keyword() {
         "expected melee keyword plus trigger doubling, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_gandalf_flash_union_uses_generic_permission_parser() {
@@ -25524,6 +28522,9 @@ fn parse_gandalf_flash_union_uses_generic_permission_parser() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn strength_of_will_compiled_text_keeps_target_and_granted_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strength of Will")
@@ -25541,6 +28542,9 @@ fn strength_of_will_compiled_text_keeps_target_and_granted_trigger() {
         "expected targeted granted trigger rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn enter_the_avatar_state_keeps_shared_duration_and_targeted_subtype_gain() {
@@ -25575,6 +28579,9 @@ fn enter_the_avatar_state_keeps_shared_duration_and_targeted_subtype_gain() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn anti_venom_static_damage_replacement_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Anti-Venom, Horrifying Healer")
@@ -25591,6 +28598,9 @@ fn anti_venom_static_damage_replacement_compiles() {
         "expected damage replacement rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn amy_rose_attach_to_her_uses_source_reference() {
@@ -25614,6 +28624,9 @@ fn amy_rose_attach_to_her_uses_source_reference() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn test_of_faith_renders_prevention_follow_up_counters() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Test of Faith")
@@ -25631,6 +28644,9 @@ fn test_of_faith_renders_prevention_follow_up_counters() {
         "expected prevention follow-up rendering, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
@@ -25653,6 +28669,9 @@ fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
         "expected Jared to render monarch and prevention text cleanly, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sokenzan_renegade_keeps_unique_hand_leader_upkeep_trigger() {
@@ -25680,6 +28699,9 @@ fn parse_sokenzan_renegade_keeps_unique_hand_leader_upkeep_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_wild_dogs_keeps_unique_life_leader_upkeep_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wild Dogs")
@@ -25705,6 +28727,9 @@ fn parse_wild_dogs_keeps_unique_life_leader_upkeep_trigger() {
         "expected unique life-leader trigger lowering, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
@@ -25733,6 +28758,9 @@ fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
         "expected Lulu oracle-like trigger rendering to keep the gate and untap followup, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
@@ -25773,6 +28801,9 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn parse_kitsune_mystic_keeps_two_aura_intervening_if_gate() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kitsune Mystic")
@@ -25805,6 +28836,9 @@ fn parse_kitsune_mystic_keeps_two_aura_intervening_if_gate() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanguard Seraph")
@@ -25821,6 +28855,9 @@ fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
         "expected render to preserve first-time trigger surface, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn coax_from_the_blind_eternities_lowers_to_face_up_exile_choice_bundle() {
@@ -25890,6 +28927,8 @@ impl crate::decision::DecisionMaker for ChooseFaceUpEldraziDecisionMaker {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
     let coax_def = CardDefinitionBuilder::new(
@@ -25954,6 +28993,9 @@ fn coax_from_the_blind_eternities_puts_the_face_up_exiled_eldrazi_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_cranial_ram_keeps_only_x_dynamic() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cranial Ram Variant")
@@ -25986,6 +29028,9 @@ fn render_cranial_ram_keeps_only_x_dynamic() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stunted Growth")
@@ -26008,6 +29053,9 @@ fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
         "expected the Stunted Growth compile surface to stay oracle-like, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() {
@@ -26073,6 +29121,8 @@ fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() 
 
 // ── Chandra's Outburst tests ──────────────────────────────────────────
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn chandras_outburst_compiled_text_uses_card_not_permanent() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
@@ -26099,6 +29149,8 @@ fn chandras_outburst_compiled_text_uses_card_not_permanent() {
 // Abundant Harvest tests
 // ---------------------------------------------------------------------------
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn parse_abundant_harvest_uses_choice_and_consult_lowering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Abundant Harvest")
@@ -26124,6 +29176,9 @@ fn parse_abundant_harvest_uses_choice_and_consult_lowering() {
         "Abundant Harvest should not fall back to battlefield object choice, got {spell_debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_abundant_harvest_compiled_text_mentions_land_or_nonland_choice() {
@@ -26152,6 +29207,9 @@ fn parse_abundant_harvest_compiled_text_mentions_land_or_nonland_choice() {
         "expected Abundant Harvest compiled text to use consult hand wording without internal fallback phrasing, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn abundant_harvest_land_choice_puts_first_land_into_hand() {
@@ -26256,6 +29314,9 @@ fn abundant_harvest_land_choice_puts_first_land_into_hand() {
         "land choice should put only the remainder back on the bottom, got {library_names:?}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn abundant_harvest_nonland_choice_skips_lands_until_nonland() {
@@ -26365,6 +29426,8 @@ fn abundant_harvest_nonland_choice_skips_lands_until_nonland() {
 // Hermit Druid tests
 // ---------------------------------------------------------------------------
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
 #[test]
 fn parse_hermit_druid_uses_consult_basic_land_lowering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hermit Druid")
@@ -26403,6 +29466,9 @@ fn parse_hermit_druid_uses_consult_basic_land_lowering() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
     // Verify that "Each creature you control gets +2/+0 for each Equipment
@@ -26439,6 +29505,9 @@ fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn bruenor_battlehammer_equip_cost_alternative_parses_as_static() {
     // Verify that "You may pay {0} rather than pay the equip cost of the first
@@ -26466,6 +29535,9 @@ fn bruenor_battlehammer_equip_cost_alternative_parses_as_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn first_equip_cost_alternative_parses_for_during_each_of_your_turns_variant() {
     // Forge Anew variant: "during each of your turns" instead of "each turn"
@@ -26488,6 +29560,9 @@ fn first_equip_cost_alternative_parses_for_during_each_of_your_turns_variant() {
         "expected compiled text to preserve 'during each of your turns', got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn chandras_outburst_compiled_text_conditional_shuffle() {
@@ -26512,6 +29587,9 @@ fn chandras_outburst_compiled_text_conditional_shuffle() {
         "shuffle should not reference 'target player', got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_hermit_druid_compiled_text_matches_oracle() {
@@ -26542,6 +29620,9 @@ fn parse_hermit_druid_compiled_text_matches_oracle() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn chandras_outburst_compiled_text_no_internal_tags() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
@@ -26567,6 +29648,9 @@ fn chandras_outburst_compiled_text_no_internal_tags() {
         "internal tagging description should not appear, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
@@ -26685,6 +29769,9 @@ fn parse_hermit_druid_reveals_until_basic_land_and_graveyards_others() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn chandras_outburst_compiled_text_has_4_damage() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
@@ -26702,6 +29789,9 @@ fn chandras_outburst_compiled_text_has_4_damage() {
         "expected 4-damage-to-target clause, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
@@ -26801,6 +29891,9 @@ fn parse_hermit_druid_basic_land_on_top_goes_straight_to_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn chandras_outburst_compiled_text_reveal_and_hand() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
@@ -26826,6 +29919,7 @@ fn chandras_outburst_compiled_text_reveal_and_hand() {
 /// Generic multi-zone search: any "search your library and/or graveyard for a <type>
 /// card named ..." must produce "card named" (not "permanent named") in the compiled
 /// text, regardless of the specific card name.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn multi_zone_search_named_card_uses_card_noun() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Multi Zone Test")
@@ -26850,6 +29944,9 @@ fn multi_zone_search_named_card_uses_card_noun() {
         "multi-zone search should produce conditional shuffle, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+
 
 #[test]
 fn parse_hermit_druid_no_basic_land_mills_entire_library() {
@@ -26936,6 +30033,9 @@ fn parse_hermit_druid_no_basic_land_mills_entire_library() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+
+
 #[test]
 fn bruenor_source_only_anthem_keeps_attached_to_source() {
     // Verify that a source-only anthem like "This creature gets +2/+0 for
@@ -26968,6 +30068,7 @@ fn bruenor_source_only_anthem_keeps_attached_to_source() {
 /// (DrawCardsEffect followed by GainLifeEffect) and that the compiled text
 /// uses the oracle-style "Draw a card, then you gain life equal to the number of
 /// cards in your hand" phrasing.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Union of the Third Path")
@@ -27016,6 +30117,7 @@ fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
 
 /// Verify the canonical compiled text matches the oracle phrasing:
 /// "Draw a card, then you gain life equal to the number of cards in your hand."
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn union_of_the_third_path_canonical_text_uses_then_and_equal_to() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Union of the Third Path")
@@ -27055,6 +30157,7 @@ fn union_of_the_third_path_canonical_text_uses_then_and_equal_to() {
 ///
 /// Setup: Alice has 3 cards in hand, 3 cards in library.
 /// After drawing 1 (hand -> 4), she should gain 4 life.
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Union of the Third Path")

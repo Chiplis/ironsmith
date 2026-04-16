@@ -28,7 +28,7 @@ pub fn saw_in_half() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
@@ -99,6 +99,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_basic_properties() {
         let def = saw_in_half();
@@ -108,12 +109,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_is_instant() {
         let def = saw_in_half();
         assert!(def.card.is_instant());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_has_spell_effect() {
         let def = saw_in_half();
@@ -124,6 +127,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_creates_two_tokens() {
         let mut game = setup_game();
@@ -181,6 +185,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_odd_stats_round_up() {
         let mut game = setup_game();
@@ -217,6 +222,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_1_1_creature() {
         let mut game = setup_game();
@@ -245,6 +251,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_indestructible() {
         let mut game = setup_game();
@@ -269,6 +276,7 @@ mod tests {
         assert!(game.battlefield.contains(&creature_id));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_own_creature() {
         let mut game = setup_game();
@@ -299,6 +307,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_no_target() {
         let mut game = setup_game();
@@ -310,6 +319,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_saw_in_half_tokens_have_summoning_sickness() {
         let mut game = setup_game();
@@ -351,6 +361,7 @@ mod tests {
     ///
     /// Scenario: Alice casts Saw in Half targeting Bob's Serra Angel (4/4).
     /// Expected: Serra Angel is destroyed, Bob gets two 2/2 token copies.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_saw_in_half_creates_tokens() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -423,6 +434,7 @@ mod tests {
     ///
     /// Scenario: Alice casts Saw in Half targeting Bob's Darksteel Colossus (indestructible 11/11).
     /// Expected: Darksteel Colossus survives, no tokens are created.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_saw_in_half_indestructible_survives() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

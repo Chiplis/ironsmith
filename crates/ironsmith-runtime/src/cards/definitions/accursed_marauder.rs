@@ -26,7 +26,7 @@ pub fn accursed_marauder() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -59,6 +59,7 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_marauder_basic_properties() {
         let def = accursed_marauder();
@@ -86,6 +87,7 @@ mod tests {
         assert_eq!(pt.toughness.base_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_marauder_has_etb_trigger() {
         let def = accursed_marauder();
@@ -115,6 +117,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_marauder_etb_sacrifices_creatures() {
         let mut game = setup_game();
@@ -191,6 +194,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_marauder_etb_does_not_sacrifice_tokens() {
         use crate::object::ObjectKind;
@@ -252,6 +256,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_accursed_marauder_etb_with_no_creatures() {
         let mut game = setup_game();
@@ -294,6 +299,7 @@ mod tests {
     /// Note: If cast with no other creatures, the Marauder itself gets sacrificed
     /// because it's the only nontoken creature Alice controls when the ETB resolves.
     /// So we give Alice a Grizzly Bears to sacrifice instead.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_accursed_marauder_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

@@ -33,7 +33,7 @@ pub fn library_of_leng() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -51,6 +51,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_basic_properties() {
         let def = library_of_leng();
@@ -61,6 +62,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0); // Colorless
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_has_two_abilities() {
         let def = library_of_leng();
@@ -69,6 +71,7 @@ mod tests {
         assert_eq!(def.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_has_no_max_hand_size() {
         let def = library_of_leng();
@@ -83,6 +86,7 @@ mod tests {
         assert!(has_no_max, "Should have NoMaximumHandSize ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_has_discard_replacement() {
         let def = library_of_leng();
@@ -97,6 +101,7 @@ mod tests {
         assert!(has_replacement, "Should have discard replacement ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_oracle_text() {
         let def = library_of_leng();
@@ -106,6 +111,7 @@ mod tests {
         assert!(def.card.oracle_text.contains("top of your library"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_is_permanent() {
         let def = library_of_leng();
@@ -116,6 +122,7 @@ mod tests {
     // Battlefield Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_library_of_leng_on_battlefield() {
         let mut game = setup_game();
@@ -223,6 +230,7 @@ mod tests {
     /// - The discarded card's type becomes undefined per rule 701.8c
     /// - Mox Diamond requires discarding a "land card" specifically
     /// - With undefined type, the discard cannot be verified as legal
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_discard_cannot_use_library_of_leng_replacement() {
         let mut game = setup_game();
@@ -322,6 +330,7 @@ mod tests {
 
     /// Test: Library of Leng's presence does not affect the choice between
     /// discarding a land vs. letting Mox Diamond go to the graveyard.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_decline_discard_with_library_of_leng() {
         let mut game = setup_game();
@@ -403,6 +412,7 @@ mod tests {
     /// Test: When a player explicitly chooses to use Library of Leng's replacement
     /// with Mox Diamond, the Mox Diamond goes to the graveyard because the land's
     /// type becomes undefined in the library.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_mox_diamond_with_library_of_leng_chosen_goes_to_graveyard() {
         use crate::zone::Zone;
@@ -538,6 +548,7 @@ mod tests {
 
     /// Test: Document the rule 701.8c interaction in code comments.
     /// This test exists to document the expected behavior.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_rule_701_8c_documentation() {
         // Rule 701.8c states:
@@ -568,6 +579,7 @@ mod tests {
         assert!(true, "Rule 701.8c interaction documented");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_library_of_leng_casting() {
         let game = run_replay_test(

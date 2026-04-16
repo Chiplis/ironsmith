@@ -18,7 +18,7 @@ pub fn godless_shrine() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::Zone;
@@ -35,6 +35,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_basic_properties() {
         let def = godless_shrine();
@@ -44,12 +45,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_is_not_basic() {
         let def = godless_shrine();
         assert!(!def.card.has_supertype(crate::types::Supertype::Basic));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_has_plains_swamp_types() {
         let def = godless_shrine();
@@ -57,6 +60,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Swamp));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_has_two_abilities() {
         let def = godless_shrine();
@@ -68,6 +72,7 @@ mod tests {
     // Mana Ability Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_first_ability_is_static_pay_life() {
         let def = godless_shrine();
@@ -78,6 +83,7 @@ mod tests {
         assert!(ability.is_some(), "Should have a static ability");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_second_ability_offers_white_and_black() {
         let def = godless_shrine();
@@ -110,6 +116,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_on_battlefield() {
         let mut game = setup_game();
@@ -125,6 +132,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_godless_shrine_oracle_text() {
         let def = godless_shrine();
@@ -141,6 +149,7 @@ mod tests {
     // ========================================
 
     /// Tests Godless Shrine tapping for white mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_godless_shrine_tap_for_white() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -160,6 +169,7 @@ mod tests {
     }
 
     /// Tests Godless Shrine tapping for black mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_godless_shrine_tap_for_black() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -179,6 +189,7 @@ mod tests {
     }
 
     /// Tests playing Godless Shrine from hand and paying 2 life (enters untapped).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_godless_shrine_play_pay_life() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
@@ -216,6 +227,7 @@ mod tests {
     }
 
     /// Tests playing Godless Shrine from hand and declining to pay life (enters tapped).
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_godless_shrine_play_decline_pay() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

@@ -24,13 +24,14 @@ Flying, trample, protection from instants.";
         .expect("Emrakul text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::game_state::{PlayerControlDuration, PlayerControlStart};
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_emrakul_compiled_text_preserves_cost_reduction_and_after_that_turn() {
         let rendered = crate::compiled_text::compiled_lines(&emrakul_the_promised_end())
@@ -44,6 +45,7 @@ mod tests {
         assert!(rendered.contains("takes an extra turn"));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_emrakul_uses_stack_cost_reduction_and_delayed_extra_turn_effect() {
         let def = emrakul_the_promised_end();

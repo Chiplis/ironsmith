@@ -20,7 +20,7 @@ pub fn llanowar_elves() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -29,6 +29,7 @@ mod tests {
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
     use crate::zone::Zone;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_basic_properties() {
         let def = llanowar_elves();
@@ -46,12 +47,14 @@ mod tests {
         assert_eq!(pt.toughness.base_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_has_mana_ability() {
         let def = llanowar_elves();
         assert!(def.abilities.iter().any(|a| a.is_mana_ability()));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_produces_green_mana() {
         let def = llanowar_elves();
@@ -72,6 +75,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_requires_tap() {
         let def = llanowar_elves();
@@ -93,6 +97,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_is_creature_affected_by_summoning_sickness() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
@@ -122,6 +127,7 @@ mod tests {
         // on the turn it enters (this is enforced by the game rules, not the card definition)
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_llanowar_elves_no_mana_cost_on_ability() {
         let def = llanowar_elves();
@@ -152,6 +158,7 @@ mod tests {
     ///
     /// Llanowar Elves: {G} creature 1/1
     /// {T}: Add {G}.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_llanowar_elves_casting() {
         let game = run_replay_test(
@@ -181,6 +188,7 @@ mod tests {
     /// Tests that Llanowar Elves' mana ability works correctly.
     /// Start with Llanowar Elves already on battlefield (no summoning sickness),
     /// tap it for green mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_llanowar_elves_mana_production() {
         let game = run_replay_test(

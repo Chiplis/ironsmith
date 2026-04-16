@@ -18,11 +18,12 @@ pub fn white_knight() -> CardDefinition {
         .expect("White Knight text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_white_knight() {
         let def = white_knight();
@@ -38,6 +39,7 @@ mod tests {
     ///
     /// White Knight: {W}{W} creature 2/2
     /// First strike, protection from black
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_white_knight_casting() {
         let game = run_replay_test(

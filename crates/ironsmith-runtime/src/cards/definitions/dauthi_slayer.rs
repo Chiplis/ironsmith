@@ -24,7 +24,7 @@ pub fn dauthi_slayer() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -32,6 +32,7 @@ mod tests {
     use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dauthi_slayer() {
         let def = dauthi_slayer();
@@ -54,6 +55,7 @@ mod tests {
         }));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_dauthi_slayer_casting() {
         let game = run_replay_test(

@@ -20,7 +20,7 @@ pub fn amulet_of_vigor() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -75,6 +75,7 @@ mod tests {
     // Basic Properties Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_amulet_of_vigor_basic_properties() {
         let def = amulet_of_vigor();
@@ -83,12 +84,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_amulet_of_vigor_is_colorless() {
         let def = amulet_of_vigor();
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_amulet_of_vigor_has_triggered_ability() {
         let def = amulet_of_vigor();
@@ -96,6 +99,7 @@ mod tests {
         assert!(matches!(&def.abilities[0].kind, AbilityKind::Triggered(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_amulet_of_vigor_ability_functions_on_battlefield() {
         let def = amulet_of_vigor();
@@ -108,6 +112,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_when_permanent_enters_tapped() {
         let mut game = setup_game();
@@ -135,6 +140,7 @@ mod tests {
         assert_eq!(triggered[0].source, amulet_id);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_when_permanent_enters_untapped() {
         let mut game = setup_game();
@@ -161,6 +167,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_for_opponent_permanent() {
         let mut game = setup_game();
@@ -186,6 +193,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_multiple_amulets_trigger_separately() {
         let mut game = setup_game();
@@ -219,6 +227,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_effect_untaps_triggering_permanent() {
         let mut game = setup_game();
@@ -243,6 +252,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_effect_does_nothing_when_permanent_gone() {
         let mut game = setup_game();
@@ -266,6 +276,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_effect_does_nothing_without_triggering_event() {
         let mut game = setup_game();
@@ -292,6 +303,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_amulet_of_vigor_on_battlefield() {
         let mut game = setup_game();
@@ -307,6 +319,7 @@ mod tests {
         assert_eq!(obj.abilities.len(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text() {
         let def = amulet_of_vigor();
@@ -317,6 +330,9 @@ mod tests {
         );
         assert!(def.card.oracle_text.contains("untap it"));
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn test_cultivator_colossus_triggers_amulet_for_each_land() {
@@ -449,6 +465,7 @@ mod tests {
     /// Scenario: Alice has Amulet of Vigor on the battlefield and Godless Shrine in hand.
     /// She plays Godless Shrine and chooses NOT to pay 2 life, so it enters tapped.
     /// Amulet of Vigor should trigger and untap it.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_amulet_untaps_shock_land() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

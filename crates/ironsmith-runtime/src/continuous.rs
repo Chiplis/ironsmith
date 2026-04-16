@@ -396,7 +396,7 @@ pub enum Modification {
 }
 
 impl Modification {
-    pub fn try_from_compiled<StaticModel, AbilityModel, Error>(
+    pub fn try_from_model<StaticModel, AbilityModel, Error>(
         modification: ironsmith_core::CompiledContinuousModification<StaticModel, AbilityModel>,
         mut convert_static_ability: impl FnMut(StaticModel) -> Result<StaticAbility, Error>,
         mut convert_ability: impl FnMut(AbilityModel) -> Result<Ability, Error>,

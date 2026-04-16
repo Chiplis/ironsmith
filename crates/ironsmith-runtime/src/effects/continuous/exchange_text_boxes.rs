@@ -156,6 +156,8 @@ mod tests {
         object_id
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
     #[test]
     fn exchange_text_boxes_swaps_oracle_text_and_current_abilities() {
         let mut game = setup_game();
@@ -214,6 +216,9 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
+
+
     #[test]
     fn exchange_text_boxes_enables_swapped_attack_trigger() {
         let mut game = setup_game();
@@ -259,6 +264,9 @@ mod tests {
             "the original trigger source should lose that trigger after the exchange"
         );
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+
 
     #[test]
     fn exchange_text_boxes_swapped_static_abilities_generate_effects() {

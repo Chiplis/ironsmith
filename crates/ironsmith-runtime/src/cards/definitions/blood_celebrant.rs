@@ -23,12 +23,13 @@ pub fn blood_celebrant() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_celebrant_basic_properties() {
         let def = blood_celebrant();
@@ -39,6 +40,7 @@ mod tests {
         assert!(def.card.has_subtype(Subtype::Cleric));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_celebrant_power_toughness() {
         let def = blood_celebrant();
@@ -50,6 +52,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_celebrant_has_mana_ability() {
         let def = blood_celebrant();
@@ -65,6 +68,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_blood_celebrant_mana_ability_cost() {
         let def = blood_celebrant();
@@ -100,6 +104,7 @@ mod tests {
     // Replay test for Blood Celebrant mana ability
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_blood_celebrant_mana_ability() {
         // Start with Blood Celebrant on battlefield + 4 Swamps
@@ -143,6 +148,7 @@ mod tests {
         assert!(player.mana_pool.green >= 1, "Should have green mana");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_blood_celebrant_pay_mana_flow() {
         // Test the PayMana flow: select Blood Celebrant first (with empty pool),

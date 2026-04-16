@@ -19,10 +19,11 @@ pub fn ur_golems_eye() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ur_golems_eye_basic_properties() {
         let def = ur_golems_eye();

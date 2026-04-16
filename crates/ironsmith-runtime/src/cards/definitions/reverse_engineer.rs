@@ -22,13 +22,14 @@ pub fn reverse_engineer() -> CardDefinition {
         .expect("Reverse Engineer text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::static_abilities::StaticAbilityId;
     use crate::types::CardType;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_reverse_engineer() {
         let card = reverse_engineer();

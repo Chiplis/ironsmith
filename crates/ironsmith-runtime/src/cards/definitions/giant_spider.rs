@@ -18,13 +18,14 @@ pub fn giant_spider() -> CardDefinition {
         .expect("Giant Spider text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_giant_spider() {
         let def = giant_spider();
@@ -42,6 +43,7 @@ mod tests {
     ///
     /// Giant Spider: {3}{G} creature 2/4
     /// Reach
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_giant_spider_casting() {
         let game = run_replay_test(

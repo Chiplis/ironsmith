@@ -748,7 +748,7 @@ impl WasmGame {
         source_name: &str,
         parse_block: &str,
     ) -> Result<CardDefinition, String> {
-        ironsmith::compiler_integration::compile_to_runtime_definition(
+        ironsmith_registry::compile_to_runtime_definition(
             source_name,
             parse_block.to_string(),
             false,
@@ -970,7 +970,7 @@ impl WasmGame {
 
             let parse_block = Self::build_custom_face_parse_block(face)?;
             let mut definition =
-                ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+                ironsmith_registry::compile_builder_to_runtime_definition(
                     builder,
                     parse_block,
                     false,

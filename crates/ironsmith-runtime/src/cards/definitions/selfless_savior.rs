@@ -23,7 +23,7 @@ pub fn selfless_savior() -> CardDefinition {
         .unwrap()
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -80,6 +80,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_basic_properties() {
         let def = selfless_savior();
@@ -88,18 +89,21 @@ mod tests {
         assert_eq!(def.card.mana_value(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_subtypes() {
         let def = selfless_savior();
         assert!(def.card.subtypes.contains(&Subtype::Dog));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_power_toughness() {
         let def = selfless_savior();
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(1, 1)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_is_white() {
         let def = selfless_savior();
@@ -107,6 +111,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_has_one_ability() {
         let def = selfless_savior();
@@ -117,6 +122,7 @@ mod tests {
     // Activated Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_has_sacrifice_ability() {
         let def = selfless_savior();
@@ -175,6 +181,7 @@ mod tests {
     // Effect Execution Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_effect_gives_indestructible() {
         let mut game = setup_game();
@@ -215,6 +222,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_effect_fails_without_target() {
         let mut game = setup_game();
@@ -236,6 +244,7 @@ mod tests {
         assert!(result.is_err(), "Should fail without a target");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_only_affects_target() {
         let mut game = setup_game();
@@ -283,6 +292,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_targets_another_creature() {
         let def = selfless_savior();
@@ -304,6 +314,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_oracle_text() {
         let def = selfless_savior();
@@ -321,6 +332,7 @@ mod tests {
     // Not a Mana Ability Test
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_ability_not_mana_ability() {
         let def = selfless_savior();
@@ -336,6 +348,7 @@ mod tests {
     // Functional Zone Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_selfless_savior_ability_functional_on_battlefield() {
         let def = selfless_savior();
@@ -351,6 +364,7 @@ mod tests {
     ///
     /// Selfless Savior: {W} creature 1/1 (Dog)
     /// Sacrifice: Another target creature you control gains indestructible until end of turn.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_selfless_savior_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

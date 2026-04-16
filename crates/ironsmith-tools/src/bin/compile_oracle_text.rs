@@ -527,6 +527,7 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith::ids::CardId;
     use ironsmith_tools::CardPayload;
 
     #[test]

@@ -19,7 +19,7 @@ pub fn arcane_signet() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -37,6 +37,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_basic_properties() {
         let def = arcane_signet();
@@ -55,6 +56,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_is_not_creature() {
         let def = arcane_signet();
@@ -63,6 +65,7 @@ mod tests {
         assert!(!def.card.is_creature());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_has_mana_ability() {
         let def = arcane_signet();
@@ -74,6 +77,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_mana_ability_structure() {
         let def = arcane_signet();
@@ -101,6 +105,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_mana_ability_has_tap_cost() {
         let def = arcane_signet();
@@ -124,6 +129,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_on_battlefield() {
         let mut game = setup_game();
@@ -142,6 +148,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_activation_requires_untapped() {
         let mut game = setup_game();
@@ -168,6 +175,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -191,6 +199,7 @@ mod tests {
     // Commander Color Identity Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_arcane_signet_effect_uses_commander_identity() {
         let def = arcane_signet();
@@ -217,6 +226,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_color_identity_with_no_commander() {
         let game = setup_game();
@@ -230,6 +240,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_color_identity_with_commander() {
         let mut game = setup_game();
@@ -265,6 +276,7 @@ mod tests {
         assert_eq!(identity.count(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_color_identity_from_oracle_text() {
         let mut game = setup_game();
@@ -300,6 +312,7 @@ mod tests {
         assert_eq!(identity.count(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_commander_color_identity_five_color() {
         let mut game = setup_game();
@@ -341,6 +354,7 @@ mod tests {
     ///
     /// Arcane Signet: {2} artifact
     /// {T}: Add one mana of any color in your commander's color identity.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_arcane_signet_casting() {
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};

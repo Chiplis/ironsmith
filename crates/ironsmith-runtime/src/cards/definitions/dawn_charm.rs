@@ -28,7 +28,7 @@ pub fn dawn_charm() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::EffectExecutor;
@@ -110,6 +110,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_basic_properties() {
         let def = dawn_charm();
@@ -118,12 +119,14 @@ mod tests {
         assert_eq!(def.card.mana_value(), 2);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_is_instant() {
         let def = dawn_charm();
         assert!(def.card.is_instant());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_is_white() {
         let def = dawn_charm();
@@ -131,6 +134,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_has_modal_effect() {
         let def = dawn_charm();
@@ -145,6 +149,7 @@ mod tests {
     // Mode 1: Prevent Combat Damage Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_1_prevents_combat_damage() {
         let mut game = setup_game();
@@ -169,6 +174,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_1_prevents_combat_damage_to_player() {
         let mut game = setup_game();
@@ -197,6 +203,7 @@ mod tests {
         assert_eq!(remaining, 0, "Combat damage should be prevented");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_1_does_not_prevent_noncombat_damage() {
         let mut game = setup_game();
@@ -229,6 +236,7 @@ mod tests {
     // Mode 2: Regenerate Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_2_regenerates_creature() {
         let mut game = setup_game();
@@ -261,6 +269,7 @@ mod tests {
     // Mode 3: Counter Spell Targeting You Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_3_counters_spell_targeting_you() {
         let mut game = setup_game();
@@ -291,6 +300,7 @@ mod tests {
         assert_eq!(game.player(bob).unwrap().graveyard.len(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_3_fails_on_spell_targeting_permanent() {
         let mut game = setup_game();
@@ -318,6 +328,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_3_fails_on_spell_targeting_opponent() {
         let mut game = setup_game();
@@ -342,6 +353,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_3_does_not_counter_uncounterable() {
         let mut game = setup_game();
@@ -379,6 +391,7 @@ mod tests {
         assert_eq!(game.stack.len(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_mode_3_with_multiple_targets_including_you() {
         let mut game = setup_game();
@@ -411,6 +424,7 @@ mod tests {
     // Oracle Text Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_dawn_charm_oracle_text() {
         let def = dawn_charm();
@@ -428,6 +442,7 @@ mod tests {
     // Replay Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_dawn_charm_casting() {
         use crate::ids::PlayerId;

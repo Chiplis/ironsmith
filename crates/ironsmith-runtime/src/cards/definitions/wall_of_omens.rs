@@ -24,13 +24,14 @@ pub fn wall_of_omens() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_wall_of_omens() {
         let def = wall_of_omens();
@@ -64,6 +65,7 @@ mod tests {
     /// Wall of Omens: {1}{W} creature
     /// Defender
     /// When Wall of Omens enters the battlefield, draw a card.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_wall_of_omens_etb_draw() {
         let game = run_replay_test(

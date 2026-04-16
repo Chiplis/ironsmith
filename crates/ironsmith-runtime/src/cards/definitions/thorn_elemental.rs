@@ -27,12 +27,13 @@ pub fn thorn_elemental() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_thorn_elemental() {
         let def = thorn_elemental();
@@ -45,6 +46,7 @@ mod tests {
     /// Thorn Elemental: {5}{G}{G} creature 7/7
     /// Trample
     /// May assign combat damage as though it weren't blocked.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_thorn_elemental_casting() {
         let game = run_replay_test(

@@ -124,6 +124,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn detain_prevents_attack_block_and_activated_abilities_until_your_next_turn() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -162,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn detain_all_matching_permanents_hits_noncreatures_and_skips_lands() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -63,7 +63,7 @@ fn convert_counter_removed_from_trigger(
     crate::triggers::Trigger::counter_removed_from(trigger.filter)
 }
 
-pub(crate) fn convert_trigger(
+pub(crate) fn interpret_trigger_model(
     trigger: ironsmith_core::trigger_model::Trigger,
 ) -> Result<crate::triggers::Trigger, TriggerModelConversionError> {
     use ironsmith_core::trigger_model::{DamagedBySource, TriggerKind};
@@ -346,9 +346,10 @@ pub(crate) fn convert_trigger(
             let id: &'static str = Box::leak(id.into_boxed_str());
             crate::triggers::Trigger::custom(id, label)
         }
-        TriggerKind::Either { left, right } => {
-            crate::triggers::Trigger::either(convert_trigger(*left)?, convert_trigger(*right)?)
-        }
+        TriggerKind::Either { left, right } => crate::triggers::Trigger::either(
+            interpret_trigger_model(*left)?,
+            interpret_trigger_model(*right)?,
+        ),
         TriggerKind::ZoneChange(zone_change) => convert_zone_change_trigger(zone_change),
         TriggerKind::CounterPutOn(counter_put_on) => convert_counter_put_on_trigger(counter_put_on),
         TriggerKind::CounterRemovedFrom(counter_removed_from) => {
@@ -388,9 +389,9 @@ impl super::Trigger {
         }
     }
 
-    pub fn from_compiler_model(
+    pub fn from_model(
         trigger: ironsmith_core::trigger_model::Trigger,
     ) -> Result<Self, TriggerModelConversionError> {
-        convert_trigger(trigger)
+        interpret_trigger_model(trigger)
     }
 }

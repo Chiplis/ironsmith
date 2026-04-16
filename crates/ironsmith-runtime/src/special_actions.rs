@@ -2187,6 +2187,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn krrik_can_pay_black_mana_ability_cost_with_life() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -2225,6 +2226,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn yasharn_blocks_blood_celebrant_mana_ability() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

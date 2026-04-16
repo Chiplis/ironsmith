@@ -9,7 +9,7 @@ handwritten-parse-support = []
 
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core" }
-ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", features = ["compiler-integration"] }
+ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime" }
 ironsmith-compiler = { path = "../ironsmith-compiler" }
 
 [build-dependencies]

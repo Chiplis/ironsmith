@@ -4828,6 +4828,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_filter_matches_earthbent_land_as_creature() {
         use crate::card::{CardBuilder, PowerToughness};

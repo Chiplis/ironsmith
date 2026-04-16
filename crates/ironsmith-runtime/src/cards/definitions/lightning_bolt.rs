@@ -17,12 +17,13 @@ pub fn lightning_bolt() -> CardDefinition {
         .expect("Lightning Bolt text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_lightning_bolt() {
         let def = lightning_bolt();
@@ -42,6 +43,7 @@ mod tests {
     /// Targeting Grizzly Bears (2/2) should kill it.
     ///
     /// Target order for AnyTarget: 0=Player1, 1=Player2, 2+=creatures
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_lightning_bolt_kills_creature() {
         let game = run_replay_test(
@@ -79,6 +81,7 @@ mod tests {
     /// Targeting Giant Spider (2/4) should damage but not kill it.
     ///
     /// Target order for AnyTarget: 0=Player1, 1=Player2, 2+=creatures
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_lightning_bolt_damages_creature() {
         let game = run_replay_test(

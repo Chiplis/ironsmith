@@ -1,6 +1,7 @@
 //! Registry ownership crate for the split workspace.
 
 pub mod cards;
+mod compiler_runtime;
 
 mod generated_registry {
     include!(concat!(env!("OUT_DIR"), "/generated_registry.rs"));
@@ -14,6 +15,7 @@ mod generated_meld_counterparts {
 mod registry_impl;
 
 pub use registry_impl::*;
+pub use compiler_runtime::*;
 
 pub use ironsmith::ability;
 pub use ironsmith::alternative_cast;

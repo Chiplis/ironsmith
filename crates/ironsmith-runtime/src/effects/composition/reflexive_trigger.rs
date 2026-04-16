@@ -118,6 +118,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn reflexive_targets_are_normalized_per_requirement() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

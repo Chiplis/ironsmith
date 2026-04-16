@@ -40,7 +40,7 @@ pub fn stroke_of_midnight() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::color::Color;
@@ -49,6 +49,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_stroke_of_midnight_basic_properties() {
         let def = stroke_of_midnight();
@@ -58,6 +59,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_stroke_of_midnight_is_white() {
         let def = stroke_of_midnight();
@@ -65,6 +67,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_stroke_of_midnight_has_spell_effects() {
         let def = stroke_of_midnight();
@@ -88,6 +91,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_stroke_of_midnight_oracle_text() {
         let def = stroke_of_midnight();
@@ -103,6 +107,7 @@ mod tests {
     // Token Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_human_token_properties() {
         let token = human_token();

@@ -12,7 +12,6 @@ doctest = false
 
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core" }
-ironsmith-compiler = { path = "../ironsmith-compiler", optional = true }
 stacker = "0.1"
 rand = "0.9.2"
 rayon = "1.10"
@@ -30,18 +29,12 @@ js-sys = { version = "0.3", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-[dev-dependencies]
-ironsmith-compiler = { path = "../ironsmith-compiler" }
-
 [features]
 default = ["serialization", "engine-integration-tests"]
 serialization = ["dep:serde", "dep:serde_json"]
 generated-registry = []
 engine-integration-tests = []
 handwritten-parse-support = []
-compiler-integration = ["dep:ironsmith-compiler"]
-parser-tests = ["compiler-integration"]
-parser-tests-full = ["parser-tests", "handwritten-parse-support"]
 wasm = [
     "serialization",
     "generated-registry",

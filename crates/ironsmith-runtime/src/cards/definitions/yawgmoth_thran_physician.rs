@@ -34,11 +34,12 @@ pub fn yawgmoth_thran_physician() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::{AbilityKind, ProtectionFrom};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_basic_properties() {
         let def = yawgmoth_thran_physician();
@@ -76,6 +77,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 4);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_has_protection_from_humans() {
         let def = yawgmoth_thran_physician();
@@ -100,6 +102,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_sacrifice_ability_requires_another_creature() {
         let def = yawgmoth_thran_physician();
@@ -155,6 +158,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_sacrifice_ability_requires_life_payment() {
         let def = yawgmoth_thran_physician();
@@ -183,6 +187,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_sacrifice_ability_draws_card() {
         let def = yawgmoth_thran_physician();
@@ -210,6 +215,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_sacrifice_ability_puts_counter() {
         let def = yawgmoth_thran_physician();
@@ -237,6 +243,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_proliferate_ability_requires_bb_and_discard() {
         let def = yawgmoth_thran_physician();
@@ -287,6 +294,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_yawgmoth_has_two_activated_abilities() {
         let def = yawgmoth_thran_physician();

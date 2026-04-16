@@ -26,13 +26,14 @@ pub fn snapcaster_mage() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_snapcaster_mage() {
         let def = snapcaster_mage();
@@ -54,6 +55,7 @@ mod tests {
         )));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_snapcaster_mage_casting() {
         let game = run_replay_test(

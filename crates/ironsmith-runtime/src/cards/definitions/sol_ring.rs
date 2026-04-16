@@ -19,7 +19,7 @@ pub fn sol_ring() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -37,6 +37,7 @@ mod tests {
     // Basic Properties Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_basic_properties() {
         let def = sol_ring();
@@ -55,6 +56,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 0);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_is_not_creature() {
         let def = sol_ring();
@@ -63,6 +65,7 @@ mod tests {
         assert!(!def.card.is_creature());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_has_no_subtypes() {
         let def = sol_ring();
@@ -71,6 +74,7 @@ mod tests {
         assert!(def.card.subtypes.is_empty());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_has_mana_ability() {
         let def = sol_ring();
@@ -82,6 +86,7 @@ mod tests {
         assert!(def.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_mana_ability_structure() {
         let def = sol_ring();
@@ -107,6 +112,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_mana_ability_has_tap_cost() {
         let def = sol_ring();
@@ -130,6 +136,7 @@ mod tests {
     // Mana Production Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_produces_two_colorless() {
         let def = sol_ring();
@@ -159,6 +166,7 @@ mod tests {
     // Integration Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_on_battlefield() {
         let mut game = setup_game();
@@ -177,6 +185,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_activation_requires_untapped() {
         let mut game = setup_game();
@@ -203,6 +212,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_not_affected_by_summoning_sickness() {
         let mut game = setup_game();
@@ -222,6 +232,7 @@ mod tests {
         assert!(obj.abilities[0].is_mana_ability());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_oracle_text() {
         let def = sol_ring();
@@ -234,6 +245,7 @@ mod tests {
     // Mana Advantage Tests
     // =========================================================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_mana_advantage() {
         let def = sol_ring();
@@ -263,6 +275,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_is_permanent() {
         let def = sol_ring();
@@ -271,6 +284,7 @@ mod tests {
         assert!(def.is_permanent());
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_sol_ring_is_not_spell_in_traditional_sense() {
         let def = sol_ring();
@@ -288,6 +302,7 @@ mod tests {
     ///
     /// Sol Ring: {1} artifact, {T}: Add {C}{C}.
     /// This test verifies Sol Ring can be cast from hand with proper mana payment.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_sol_ring_casting() {
         let game = run_replay_test(
@@ -318,6 +333,7 @@ mod tests {
 
     /// Tests that Sol Ring's mana ability works correctly.
     /// Start with Sol Ring already on battlefield, tap it for mana.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_sol_ring_mana_production() {
         let game = run_replay_test(

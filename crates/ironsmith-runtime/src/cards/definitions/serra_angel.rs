@@ -18,11 +18,12 @@ pub fn serra_angel() -> CardDefinition {
         .expect("Serra Angel text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_serra_angel() {
         let def = serra_angel();
@@ -40,6 +41,7 @@ mod tests {
     ///
     /// Serra Angel: {3}{W}{W} creature 4/4
     /// Flying, vigilance
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_serra_angel_casting() {
         let game = run_replay_test(

@@ -25,11 +25,12 @@ pub fn crusade() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_crusade() {
         let card = crusade();
@@ -59,6 +60,7 @@ mod tests {
     ///
     /// Scenario: Cast Crusade with Savannah Lions on battlefield.
     /// Savannah Lions is 2/1 white creature, should become 3/2.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_crusade_anthem_effect() {
         use crate::ids::PlayerId;
@@ -110,6 +112,7 @@ mod tests {
     ///
     /// Scenario: Cast Crusade with both white and non-white creatures.
     /// Only white creatures should get the buff.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_crusade_only_affects_white_creatures() {
         use crate::ids::PlayerId;

@@ -23,7 +23,7 @@ pub fn frogmite() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -31,6 +31,7 @@ mod tests {
     use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_frogmite() {
         let card = frogmite();
@@ -54,6 +55,7 @@ mod tests {
         assert!(has_affinity, "Frogmite should have affinity for artifacts");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_frogmite_casting_with_affinity() {
         let game = run_replay_test(
@@ -98,6 +100,7 @@ mod tests {
     }
 
     /// Tests casting Frogmite for free with 4+ artifacts.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_frogmite_casting_free() {
         let game = run_replay_test(

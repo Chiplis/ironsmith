@@ -1222,6 +1222,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn battlefield_controlled_candidates_respect_continuous_control_changes() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -1259,6 +1260,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn battlefield_permanent_candidates_include_noncreatures() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -1286,6 +1288,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn battlefield_union_candidates_do_not_assume_creature_only() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -1328,6 +1331,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn simple_mana_analysis_respects_continuous_control_changes() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -1358,6 +1362,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn spell_target_legality_cache_key_includes_caster() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();

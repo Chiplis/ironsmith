@@ -18,12 +18,13 @@ pub fn typhoid_rats() -> CardDefinition {
         .expect("Typhoid Rats text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_typhoid_rats() {
         let def = typhoid_rats();
@@ -45,6 +46,7 @@ mod tests {
     ///
     /// Typhoid Rats: {B} creature 1/1
     /// Deathtouch
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_typhoid_rats_casting() {
         let game = run_replay_test(

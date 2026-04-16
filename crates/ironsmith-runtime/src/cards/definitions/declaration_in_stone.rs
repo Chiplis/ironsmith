@@ -22,7 +22,7 @@ pub fn declaration_in_stone() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
@@ -44,6 +44,7 @@ mod tests {
         )
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn declaration_in_stone_compiles_same_name_exile_and_nontoken_investigate_followup() {
         let def = declaration_in_stone();
@@ -101,6 +102,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn declaration_in_stone_exiles_same_name_creatures_and_only_counts_nontokens_for_investigate() {
         let declaration = declaration_in_stone();

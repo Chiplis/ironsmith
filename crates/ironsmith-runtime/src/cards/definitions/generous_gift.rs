@@ -42,7 +42,7 @@ pub fn generous_gift() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::color::Color;
@@ -51,6 +51,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_generous_gift_basic_properties() {
         let def = generous_gift();
@@ -60,6 +61,7 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_generous_gift_is_white() {
         let def = generous_gift();
@@ -67,6 +69,7 @@ mod tests {
         assert_eq!(def.card.colors().count(), 1);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_generous_gift_has_spell_effects() {
         let def = generous_gift();
@@ -90,6 +93,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_generous_gift_oracle_text() {
         let def = generous_gift();
@@ -101,6 +105,7 @@ mod tests {
     // Token Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_elephant_token_properties() {
         let token = elephant_token();
@@ -122,6 +127,7 @@ mod tests {
     ///
     /// Generous Gift: {2}{W} Instant
     /// Destroy target permanent. Its controller creates a 3/3 green Elephant creature token.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_generous_gift_destroy_creature() {
         use crate::ids::PlayerId;
@@ -173,6 +179,7 @@ mod tests {
 
     /// Tests casting Generous Gift on an opponent's creature.
     /// The destroyed permanent's controller gets the Elephant token.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_generous_gift_destroy_opponent_creature() {
         use crate::ids::PlayerId;

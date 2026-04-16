@@ -25,7 +25,7 @@ pub fn braids_arisen_nightmare() -> CardDefinition {
         .expect("Braids, Arisen Nightmare text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
@@ -43,6 +43,7 @@ mod tests {
     // Basic Property Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_basic_properties() {
         let def = braids_arisen_nightmare();
@@ -52,18 +53,21 @@ mod tests {
         assert_eq!(def.card.mana_value(), 3);
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_is_legendary() {
         let def = braids_arisen_nightmare();
         assert!(def.card.has_supertype(Supertype::Legendary));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_is_nightmare() {
         let def = braids_arisen_nightmare();
         assert!(def.card.has_subtype(Subtype::Nightmare));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_power_toughness() {
         use crate::card::PtValue;
@@ -73,6 +77,7 @@ mod tests {
         assert_eq!(pt.toughness, PtValue::Fixed(3));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_is_black() {
         let def = braids_arisen_nightmare();
@@ -80,6 +85,7 @@ mod tests {
         assert!(!def.card.colors().contains(Color::White));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_mana_cost() {
         let def = braids_arisen_nightmare();
@@ -87,6 +93,7 @@ mod tests {
         // {1}{B}{B} = 1 generic + 2 black
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_has_one_ability() {
         let def = braids_arisen_nightmare();
@@ -97,6 +104,7 @@ mod tests {
     // Triggered Ability Structure Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ability_is_triggered() {
         let def = braids_arisen_nightmare();
@@ -104,6 +112,7 @@ mod tests {
         assert!(matches!(ability.kind, AbilityKind::Triggered(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_is_beginning_of_end_step() {
         let def = braids_arisen_nightmare();
@@ -119,6 +128,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_has_composed_effects() {
         let def = braids_arisen_nightmare();
@@ -167,6 +177,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_trigger_has_no_targets() {
         let def = braids_arisen_nightmare();
@@ -179,6 +190,7 @@ mod tests {
         }
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_ability_functions_on_battlefield() {
         let def = braids_arisen_nightmare();
@@ -191,6 +203,7 @@ mod tests {
     // On Battlefield Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_on_battlefield() {
         let mut game = setup_game();
@@ -211,6 +224,7 @@ mod tests {
         assert!(matches!(obj.abilities[0].kind, AbilityKind::Triggered(_)));
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_creature_stats() {
         let mut game = setup_game();
@@ -229,6 +243,7 @@ mod tests {
     // Trigger Detection Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_triggers_at_your_end_step() {
         use crate::events::phase::BeginningOfEndStepEvent;
@@ -255,6 +270,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_does_not_trigger_at_opponent_end_step() {
         use crate::events::phase::BeginningOfEndStepEvent;
@@ -286,6 +302,7 @@ mod tests {
     // Integration Tests
     // ========================================
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_doesnt_trigger_from_graveyard() {
         use crate::events::phase::BeginningOfEndStepEvent;
@@ -311,6 +328,7 @@ mod tests {
         assert_eq!(triggered.len(), 0, "Braids in graveyard should not trigger");
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_multiple_braids_trigger_separately() {
         use crate::events::phase::BeginningOfEndStepEvent;
@@ -338,6 +356,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_opponent_braids_does_not_affect_your_end_step() {
         use crate::events::phase::BeginningOfEndStepEvent;
@@ -377,6 +396,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_oracle_like_text_is_emittable() {
         let def = braids_arisen_nightmare();
@@ -393,6 +413,7 @@ mod tests {
         );
     }
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_braids_raw_effects_match_if_you_do_structure() {
         let def = braids_arisen_nightmare();

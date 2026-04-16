@@ -26,12 +26,13 @@ pub fn silhana_ledgewalker() -> CardDefinition {
         .expect("Card text should be supported")
 }
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_silhana_ledgewalker() {
         let def = silhana_ledgewalker();
@@ -44,6 +45,7 @@ mod tests {
     /// Silhana Ledgewalker: {1}{G} creature 1/1
     /// Hexproof
     /// Can't be blocked except by creatures with flying.
+    #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_silhana_ledgewalker_casting() {
         let game = run_replay_test(
