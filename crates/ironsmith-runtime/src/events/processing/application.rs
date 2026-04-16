@@ -1,6 +1,6 @@
-use crate::filter::ObjectFilterExt as _;
 use super::TraitApplyResult;
 use crate::events::{Event, EventKind};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, Target};
 use crate::ids::PlayerId;
 use crate::object::CounterType;
@@ -127,9 +127,7 @@ pub(super) fn apply_trait_replacement(
             TraitApplyResult::Modified(event.rewrap(modified))
         }
 
-        ReplacementAction::Additionally(_effects) => {
-            TraitApplyResult::Modified(event)
-        }
+        ReplacementAction::Additionally(_effects) => TraitApplyResult::Modified(event),
 
         ReplacementAction::EnterAsCopy {
             source,
@@ -618,9 +616,7 @@ fn apply_trait_redirect(
     let selected = match which {
         RedirectWhich::First => redirectable.first(),
         RedirectWhich::Index(idx) => redirectable.get(*idx),
-        RedirectWhich::ByDescription(desc) => {
-            redirectable.iter().find(|t| t.description == *desc)
-        }
+        RedirectWhich::ByDescription(desc) => redirectable.iter().find(|t| t.description == *desc),
     }?;
     let new_event_box = event
         .inner()

@@ -2200,6 +2200,9 @@ fn bind_unresolved_it_in_restriction(
 
 #[cfg(test)]
 mod tests {
+    use super::super::reference_model::{
+        RefState as ModelRefState, ReferenceImports as ModelReferenceImports,
+    };
     use super::*;
     use crate::cards::TextSpan;
     use crate::cards::builders::IfResultPredicate;
@@ -2246,7 +2249,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2295,7 +2298,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::with_last_object_tag("seeded"),
+            &ModelReferenceImports::with_last_object_tag("seeded"),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2303,13 +2306,13 @@ mod tests {
 
         assert_eq!(
             annotated.effects[0].out_env.last_player_filter,
-            RefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+            ModelRefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
                 "seeded"
             )))
         );
         assert_eq!(
             annotated.effects[1].in_env.last_player_filter,
-            RefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+            ModelRefState::Known(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
                 "seeded"
             )))
         );
@@ -2330,7 +2333,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig {
                 allow_life_event_value: false,
                 ..Default::default()
@@ -2370,7 +2373,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2378,7 +2381,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            RefState::Known(TagKey::from("destroyed_0"))
+            ModelRefState::Known(TagKey::from("destroyed_0"))
         );
     }
 
@@ -2403,7 +2406,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2411,7 +2414,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            RefState::Known(TagKey::from("destroyed_0"))
+            ModelRefState::Known(TagKey::from("destroyed_0"))
         );
     }
 
@@ -2433,7 +2436,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2441,7 +2444,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            RefState::Known(TagKey::from("amassed_0"))
+            ModelRefState::Known(TagKey::from("amassed_0"))
         );
     }
 
@@ -2460,7 +2463,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2485,7 +2488,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports {
+            &ModelReferenceImports {
                 last_object_tag: Some(TagKey::from("seeded")),
                 ..Default::default()
             },
@@ -2496,7 +2499,7 @@ mod tests {
 
         assert_eq!(
             annotated.final_env.last_object_tag,
-            RefState::Known(TagKey::from("seeded"))
+            ModelRefState::Known(TagKey::from("seeded"))
         );
     }
 
@@ -2542,7 +2545,7 @@ mod tests {
 
         let annotated = annotate_effect_sequence(
             &effects,
-            &ReferenceImports::default(),
+            &ModelReferenceImports::default(),
             EffectReferenceResolutionConfig::default(),
             IdGenContext::default(),
         )
@@ -2550,7 +2553,7 @@ mod tests {
 
         assert!(matches!(
             annotated.final_env.last_object_tag,
-            RefState::Ambiguous
+            ModelRefState::Ambiguous
         ));
     }
 }

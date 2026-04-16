@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 
 use ironsmith_tools::{
     CardStatusDb, TAGGER_BASE_URL, TaggerClient, build_local_tag_rows, default_cards_path,
-    default_db_path,
-    fetch_all_oracle_tag_card_names, load_canonical_cards,
+    default_db_path, fetch_all_oracle_tag_card_names, load_canonical_cards,
 };
 
 #[derive(Debug)]

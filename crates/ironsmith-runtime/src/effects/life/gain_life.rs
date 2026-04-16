@@ -3,9 +3,9 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::events::processing::process_life_gain_with_event;
-use crate::events::LifeGainEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::LifeGainEvent;
+use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;

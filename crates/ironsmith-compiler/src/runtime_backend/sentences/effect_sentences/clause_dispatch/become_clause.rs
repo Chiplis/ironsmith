@@ -20,8 +20,8 @@ use super::helpers::{
     parse_subtype_word_or_plural, push_unique_card_type, push_unique_subtype, render_lower_words,
     strip_base_power_toughness_subject_tokens, subject_references_base_power_toughness,
 };
-use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::effect::{Until, Value};
+use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 

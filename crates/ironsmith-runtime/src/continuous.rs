@@ -79,6 +79,14 @@ pub enum PtSublayer {
     Switching = 3,
 }
 
+impl From<ironsmith_core::CompiledPtSublayer> for PtSublayer {
+    fn from(value: ironsmith_core::CompiledPtSublayer) -> Self {
+        match value {
+            ironsmith_core::CompiledPtSublayer::Setting => Self::Setting,
+        }
+    }
+}
+
 /// Distinguishes how a continuous effect was created, which affects how it applies.
 ///
 /// # MTG Rules Context
@@ -223,6 +231,21 @@ pub enum EffectTarget {
     /// Applies to whatever creature the source (equipment/aura) is attached to
     /// Used for equipment grants like "Equipped creature has haste"
     AttachedTo(ObjectId),
+}
+
+impl From<crate::target::ChooseSpec> for EffectTarget {
+    fn from(_value: crate::target::ChooseSpec) -> Self {
+        Self::AllPermanents
+    }
+}
+
+impl From<ironsmith_core::CompiledContinuousEffectTarget> for EffectTarget {
+    fn from(value: ironsmith_core::CompiledContinuousEffectTarget) -> Self {
+        match value {
+            ironsmith_core::CompiledContinuousEffectTarget::Source => Self::Source,
+            ironsmith_core::CompiledContinuousEffectTarget::Filter(filter) => Self::Filter(filter),
+        }
+    }
 }
 
 /// The modification a continuous effect makes.
@@ -373,6 +396,57 @@ pub enum Modification {
 }
 
 impl Modification {
+    pub fn try_from_compiled<StaticModel, AbilityModel, Error>(
+        modification: ironsmith_core::CompiledContinuousModification<StaticModel, AbilityModel>,
+        mut convert_static_ability: impl FnMut(StaticModel) -> Result<StaticAbility, Error>,
+        mut convert_ability: impl FnMut(AbilityModel) -> Result<Ability, Error>,
+        mut convert_removed_ability: impl FnMut(AbilityModel) -> Result<StaticAbility, Error>,
+    ) -> Result<Self, Error> {
+        Ok(match modification {
+            ironsmith_core::CompiledContinuousModification::AddAbility(ability) => {
+                Self::AddAbility(convert_static_ability(ability)?)
+            }
+            ironsmith_core::CompiledContinuousModification::AddAbilityGeneric(ability) => {
+                Self::AddAbilityGeneric(convert_ability(ability)?)
+            }
+            ironsmith_core::CompiledContinuousModification::RemoveAbility(ability) => {
+                Self::RemoveAbility(convert_removed_ability(ability)?)
+            }
+            ironsmith_core::CompiledContinuousModification::AddCardTypes(card_types) => {
+                Self::AddCardTypes(card_types)
+            }
+            ironsmith_core::CompiledContinuousModification::RemoveCardTypes(card_types) => {
+                Self::RemoveCardTypes(card_types)
+            }
+            ironsmith_core::CompiledContinuousModification::AddSubtypes(subtypes) => {
+                Self::AddSubtypes(subtypes)
+            }
+            ironsmith_core::CompiledContinuousModification::SetColors(colors) => {
+                Self::SetColors(colors)
+            }
+            ironsmith_core::CompiledContinuousModification::SetPowerToughness {
+                power,
+                toughness,
+                sublayer,
+            } => Self::SetPowerToughness {
+                power,
+                toughness,
+                sublayer: sublayer.into(),
+            },
+            ironsmith_core::CompiledContinuousModification::SetPower { power, sublayer } => {
+                Self::SetPower {
+                    value: power,
+                    sublayer: sublayer.into(),
+                }
+            }
+            ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::DoesntUntap,
+            ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
+            ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
+                Self::SwitchPowerToughness
+            }
+        })
+    }
+
     /// Returns which layer this modification applies in.
     pub fn layer(&self) -> Layer {
         match self {

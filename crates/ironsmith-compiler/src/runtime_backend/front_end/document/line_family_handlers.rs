@@ -108,10 +108,10 @@ pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     if (matches!(
-        crate::cards::builders::compiler::grammar::structure::classify_statement_line_family_lexed(
+        crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens
         ),
-        Some(crate::cards::builders::compiler::grammar::structure::StatementLineFamily::PactNextUpkeep)
+        Some(crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep)
     ) || looks_like_statement_line_lexed(ctx.line))
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
@@ -157,10 +157,10 @@ pub(super) fn run_unsupported_line_family(
             RewriteLineCst::Unsupported(UnsupportedLineCst {
                 info: ctx.line.info.clone(),
                 reason_code: if matches!(
-                    crate::cards::builders::compiler::grammar::structure::classify_statement_line_family_lexed(
+                    crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
                         &ctx.line.tokens
                     ),
-                    Some(crate::cards::builders::compiler::grammar::structure::StatementLineFamily::PactNextUpkeep)
+                    Some(crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep)
                 ) {
                     "statement-line-not-yet-supported"
                 } else {

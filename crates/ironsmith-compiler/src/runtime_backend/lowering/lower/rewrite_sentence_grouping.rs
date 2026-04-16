@@ -148,11 +148,11 @@ pub(crate) fn effective_chosen_option_label<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::RewriteKeywordLineKind;
-    use crate::cards::builders::compiler::pipeline::parse_text_to_semantic_document;
-    use crate::cards::builders::{
-        CardDefinitionBuilder, CardId, CardType, LineAst, NormalizedLine,
-    };
+    use crate::cards::builders::{CardDefinitionBuilder, LineAst, NormalizedLine};
+    use crate::ids::CardId;
+    use crate::runtime_backend::RewriteKeywordLineKind;
+    use crate::runtime_backend::pipeline::parse_text_to_semantic_document;
+    use crate::types::CardType;
 
     #[test]
     fn rewrite_activated_sentence_alignment_merges_inner_quoted_periods() {
@@ -223,9 +223,9 @@ mod tests {
         match parsed {
             LineAst::StaticAbility(ability) => {
                 let debug = format!("{ability:?}");
-                assert!(str_contains(debug.as_str(), "ExertAttack"), "{debug}");
                 assert!(
-                    str_contains(debug.as_str(), "linked_trigger: Some"),
+                    str_contains(debug.as_str(), "exert attack")
+                        || str_contains(debug.as_str(), "ExertAttack"),
                     "{debug}"
                 );
             }

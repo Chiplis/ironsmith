@@ -4,9 +4,9 @@ use super::super::dispatch_entry::{
     parse_if_this_spell_was_kicked_counted_looked_cards_into_hand,
     parse_if_you_dont_put_card_from_among_them_into_your_hand,
 };
-use crate::cards::builders::compiler::effect_sentences;
-use crate::cards::builders::compiler::effect_sentences::SentenceInput;
 use crate::cards::builders::{CardTextError, EffectAst};
+use crate::runtime_backend::effect_sentences;
+use crate::runtime_backend::effect_sentences::SentenceInput;
 
 pub(super) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
     sentences: &[SentenceInput],

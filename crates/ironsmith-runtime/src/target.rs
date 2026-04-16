@@ -4,7 +4,7 @@
 //! targeting legality/evaluation behavior in runtime-only modules.
 
 pub use crate::filter::{
-    Comparison, FilterContext, ObjectFilter, ObjectRef, PlayerFilter, PlayerFilterExt,
-    PtReference, TaggedObjectConstraint, TaggedOpbjectRelation,
+    Comparison, FilterContext, ObjectFilter, ObjectRef, PlayerFilter, PlayerFilterExt, PtReference,
+    TaggedObjectConstraint, TaggedOpbjectRelation,
 };
 pub use ironsmith_core::ChooseSpec;

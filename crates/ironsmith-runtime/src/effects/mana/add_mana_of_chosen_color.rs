@@ -9,40 +9,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 use crate::target::PlayerFilter;
-
-/// Effect that adds mana of a previously chosen color.
-///
-/// If `fixed_option` is provided, the player chooses between that fixed color
-/// and the chosen color (used for "Add {B} or one mana of the chosen color.").
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaOfChosenColorEffect {
-    /// Number of mana to add.
-    pub amount: Value,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-    /// Optional fixed color alternative.
-    pub fixed_option: Option<Color>,
-}
-
-impl AddManaOfChosenColorEffect {
-    /// Create a new add mana of chosen color effect.
-    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-            fixed_option: None,
-        }
-    }
-
-    /// Create a new add mana effect with a fixed-color alternative.
-    pub fn with_fixed_option(amount: impl Into<Value>, player: PlayerFilter, fixed: Color) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-            fixed_option: Some(fixed),
-        }
-    }
-}
+pub type AddManaOfChosenColorEffect = ironsmith_core::AddManaOfChosenColorEffect;
 
 impl EffectExecutor for AddManaOfChosenColorEffect {
     fn execute(

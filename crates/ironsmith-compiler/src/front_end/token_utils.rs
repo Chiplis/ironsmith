@@ -52,11 +52,15 @@ pub fn slice_contains_str(items: &[&str], expected: &str) -> bool {
 }
 
 pub fn slice_contains_any<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    expected.iter().any(|candidate| slice_contains(items, candidate))
+    expected
+        .iter()
+        .any(|candidate| slice_contains(items, candidate))
 }
 
 pub fn slice_contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    expected.iter().all(|candidate| slice_contains(items, candidate))
+    expected
+        .iter()
+        .all(|candidate| slice_contains(items, candidate))
 }
 
 pub fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
@@ -64,7 +68,9 @@ pub fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
 }
 
 pub fn slice_starts_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    patterns.iter().any(|pattern| slice_starts_with(items, pattern))
+    patterns
+        .iter()
+        .any(|pattern| slice_starts_with(items, pattern))
 }
 
 pub fn iter_contains<I, T>(items: I, expected: &T) -> bool
@@ -107,7 +113,9 @@ pub fn find_str_by(items: &[&str], mut predicate: impl FnMut(&str) -> bool) -> O
 }
 
 pub fn find_any_str_index(items: &[&str], expected: &[&str]) -> Option<usize> {
-    find_index(items, |item| expected.iter().any(|candidate| *item == *candidate))
+    find_index(items, |item| {
+        expected.iter().any(|candidate| *item == *candidate)
+    })
 }
 
 pub fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
@@ -232,7 +240,9 @@ pub fn word_view_has_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool 
 }
 
 pub fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
-    prefixes.iter().any(|prefix| word_view_has_prefix(words, prefix))
+    prefixes
+        .iter()
+        .any(|prefix| word_view_has_prefix(words, prefix))
 }
 
 pub fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -348,7 +358,9 @@ pub fn strip_leading_if_you_do_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToke
     else {
         return tokens;
     };
-    let start = words.token_index_after_words(prefix_len).unwrap_or(tokens.len());
+    let start = words
+        .token_index_after_words(prefix_len)
+        .unwrap_or(tokens.len());
     &tokens[start..]
 }
 
@@ -436,7 +448,9 @@ pub fn parse_leading_may_action_lexed<'a>(
             if !words.slice_eq(verb_word_idx, &[*verb]) {
                 continue;
             }
-            let tail_start = words.token_index_after_words(verb_word_idx + 1).unwrap_or(tokens.len());
+            let tail_start = words
+                .token_index_after_words(verb_word_idx + 1)
+                .unwrap_or(tokens.len());
             return Some(LeadingMayActionMatch {
                 actor,
                 verb,
@@ -469,7 +483,9 @@ pub fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option<&str>)
     Some((first, words.next()))
 }
 
-pub fn parse_common_sentence_head(tokens: &[OwnedLexToken]) -> Option<(CommonSentenceHead, &[OwnedLexToken])> {
+pub fn parse_common_sentence_head(
+    tokens: &[OwnedLexToken],
+) -> Option<(CommonSentenceHead, &[OwnedLexToken])> {
     let words = TokenWordView::new(tokens);
     let (head, _) = lexed_head_words(tokens)?;
     let consumed_words = match head {
@@ -477,16 +493,23 @@ pub fn parse_common_sentence_head(tokens: &[OwnedLexToken]) -> Option<(CommonSen
         "each" => (CommonSentenceHead::ForEach, 1usize),
         "if" => (CommonSentenceHead::If, 1usize),
         "until" => (CommonSentenceHead::Until, 1usize),
-        "where" if words.starts_with(&["where", "x", "is"]) => (CommonSentenceHead::WhereXIs, 3usize),
+        "where" if words.starts_with(&["where", "x", "is"]) => {
+            (CommonSentenceHead::WhereXIs, 3usize)
+        }
         "target" => (CommonSentenceHead::Target, 1usize),
         "up" if words.starts_with(&["up", "to"]) => (CommonSentenceHead::CountPrefix, 2usize),
-        "one" if words.starts_with(&["one", "or", "more"]) || words.starts_with(&["one", "or", "both"]) => {
+        "one"
+            if words.starts_with(&["one", "or", "more"])
+                || words.starts_with(&["one", "or", "both"]) =>
+        {
             (CommonSentenceHead::CountPrefix, 3usize)
         }
         "a" | "an" => (CommonSentenceHead::CountPrefix, 1usize),
         _ => return None,
     };
-    let rest_start = words.token_index_after_words(consumed_words.1).unwrap_or(tokens.len());
+    let rest_start = words
+        .token_index_after_words(consumed_words.1)
+        .unwrap_or(tokens.len());
     Some((consumed_words.0, &tokens[rest_start..]))
 }
 
@@ -498,11 +521,15 @@ pub fn split_lexed_once_on_delimiter(
     Some((&tokens[..split_idx], &tokens[split_idx + 1..]))
 }
 
-pub fn split_lexed_once_on_comma(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+pub fn split_lexed_once_on_comma(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
-pub fn split_lexed_once_on_period(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+pub fn split_lexed_once_on_period(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     split_lexed_once_on_delimiter(tokens, TokenKind::Period)
 }
 
@@ -519,9 +546,14 @@ pub fn split_lexed_once_on_comma_then(
     None
 }
 
-pub fn parse_turn_duration_prefix(tokens: &[OwnedLexToken]) -> Option<(TurnDurationPhrase, &[OwnedLexToken])> {
+pub fn parse_turn_duration_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(TurnDurationPhrase, &[OwnedLexToken])> {
     const PHRASES: &[(&[&str], TurnDurationPhrase)] = &[
-        (&["until", "your", "next", "turn"], TurnDurationPhrase::UntilYourNextTurn),
+        (
+            &["until", "your", "next", "turn"],
+            TurnDurationPhrase::UntilYourNextTurn,
+        ),
         (
             &["until", "the", "end", "of", "your", "next", "turn"],
             TurnDurationPhrase::UntilYourNextTurn,
@@ -530,24 +562,37 @@ pub fn parse_turn_duration_prefix(tokens: &[OwnedLexToken]) -> Option<(TurnDurat
             &["until", "end", "of", "your", "next", "turn"],
             TurnDurationPhrase::UntilYourNextTurn,
         ),
-        (&["until", "the", "end", "of", "turn"], TurnDurationPhrase::UntilEndOfTurn),
-        (&["until", "end", "of", "turn"], TurnDurationPhrase::UntilEndOfTurn),
+        (
+            &["until", "the", "end", "of", "turn"],
+            TurnDurationPhrase::UntilEndOfTurn,
+        ),
+        (
+            &["until", "end", "of", "turn"],
+            TurnDurationPhrase::UntilEndOfTurn,
+        ),
         (&["this", "turn"], TurnDurationPhrase::ThisTurn),
     ];
 
     let words = TokenWordView::new(tokens);
     for (phrase, kind) in PHRASES {
         if words.starts_with(phrase) {
-            let rest_start = words.token_index_after_words(phrase.len()).unwrap_or(tokens.len());
+            let rest_start = words
+                .token_index_after_words(phrase.len())
+                .unwrap_or(tokens.len());
             return Some((*kind, &tokens[rest_start..]));
         }
     }
     None
 }
 
-pub fn parse_turn_duration_suffix(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], TurnDurationPhrase)> {
+pub fn parse_turn_duration_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], TurnDurationPhrase)> {
     const PHRASES: &[(&[&str], TurnDurationPhrase)] = &[
-        (&["until", "your", "next", "turn"], TurnDurationPhrase::UntilYourNextTurn),
+        (
+            &["until", "your", "next", "turn"],
+            TurnDurationPhrase::UntilYourNextTurn,
+        ),
         (
             &["until", "the", "end", "of", "your", "next", "turn"],
             TurnDurationPhrase::UntilYourNextTurn,
@@ -556,15 +601,23 @@ pub fn parse_turn_duration_suffix(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLe
             &["until", "end", "of", "your", "next", "turn"],
             TurnDurationPhrase::UntilYourNextTurn,
         ),
-        (&["until", "the", "end", "of", "turn"], TurnDurationPhrase::UntilEndOfTurn),
-        (&["until", "end", "of", "turn"], TurnDurationPhrase::UntilEndOfTurn),
+        (
+            &["until", "the", "end", "of", "turn"],
+            TurnDurationPhrase::UntilEndOfTurn,
+        ),
+        (
+            &["until", "end", "of", "turn"],
+            TurnDurationPhrase::UntilEndOfTurn,
+        ),
         (&["this", "turn"], TurnDurationPhrase::ThisTurn),
     ];
 
     let words = TokenWordView::new(tokens);
     for (phrase, kind) in PHRASES {
         if words.len() >= phrase.len() && words.slice_eq(words.len() - phrase.len(), phrase) {
-            let rest_token_end = words.token_index_for_word_index(words.len() - phrase.len()).unwrap_or(tokens.len());
+            let rest_token_end = words
+                .token_index_for_word_index(words.len() - phrase.len())
+                .unwrap_or(tokens.len());
             return Some((&tokens[..rest_token_end], *kind));
         }
     }

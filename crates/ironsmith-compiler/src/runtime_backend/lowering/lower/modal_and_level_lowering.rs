@@ -42,6 +42,22 @@ pub(crate) fn try_merge_modal_into_remove_mode(
         remove_mode.effects.push(modal_effect);
     }
 
+    #[cfg(not(test))]
+    effects.push(crate::effect::Effect::new(
+        crate::effects::ChooseModeEffect {
+            modes,
+            min: choose_mode.min.clone(),
+            max: choose_mode.max.clone(),
+            allow_repeat: choose_mode.allow_repeat,
+            choose_count: choose_mode.choose_count.clone(),
+            min_choose_count: choose_mode.min_choose_count.clone(),
+            allow_repeated_modes: choose_mode.allow_repeated_modes,
+            disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
+            disallow_previously_chosen_modes_this_turn: choose_mode
+                .disallow_previously_chosen_modes_this_turn,
+        },
+    ));
+    #[cfg(feature = "serialization")]
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             modes,
@@ -162,11 +178,18 @@ pub(crate) fn rewrite_lower_parsed_modal(
         let choose_both = if max_both == 1 {
             with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()))
         } else {
-            with_unchosen_requirement(crate::effect::Effect::choose_up_to(
-                max_both,
-                1,
+            #[cfg(not(feature = "serialization"))]
+            let choose_up_to = crate::effect::Effect::choose_up_to(
+                crate::effect::Value::Fixed(max_both),
                 compiled_modes.clone(),
-            ))
+            );
+            #[cfg(feature = "serialization")]
+            let choose_up_to = crate::effect::Effect::choose_up_to(
+                crate::effect::Value::Fixed(max_both),
+                crate::effect::Value::Fixed(1),
+                compiled_modes.clone(),
+            );
+            with_unchosen_requirement(choose_up_to)
         };
         let choose_one =
             with_unchosen_requirement(crate::effect::Effect::choose_one(compiled_modes.clone()));
@@ -188,11 +211,12 @@ pub(crate) fn rewrite_lower_parsed_modal(
             compiled_modes,
         ))
     } else {
-        with_unchosen_requirement(crate::effect::Effect::choose_up_to(
-            max.clone(),
-            min.clone(),
-            compiled_modes,
-        ))
+        #[cfg(not(feature = "serialization"))]
+        let choose_up_to = crate::effect::Effect::choose_up_to(max.clone(), compiled_modes);
+        #[cfg(feature = "serialization")]
+        let choose_up_to =
+            crate::effect::Effect::choose_up_to(max.clone(), min.clone(), compiled_modes);
+        with_unchosen_requirement(choose_up_to)
     };
 
     let mut combined_effects = prefix_effects;

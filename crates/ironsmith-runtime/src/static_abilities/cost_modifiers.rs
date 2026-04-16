@@ -2,10 +2,10 @@
 //!
 //! These abilities modify the costs of spells being cast.
 
-use crate::filter::ObjectFilterExt as _;
 use super::{StaticAbility, StaticAbilityId, StaticAbilityKind, text_utils::join_with_and};
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
 use crate::mana::ManaCost;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -785,56 +785,7 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ThisSpellCostCondition {
-    Always,
-    YourTurn,
-    NotYourTurn,
-    YouLifeTotalOrLess(i32),
-    OpponentHasNoCardsInHand,
-    OpponentControlsLandsOrMore(u32),
-    OpponentControlsAtLeastNMoreCreaturesThanYou(u32),
-    TotalCreatureCardsInAllGraveyardsOrMore(u32),
-    OpponentCastSpellsThisTurnOrMore(u32),
-    OpponentDrewCardsThisTurnOrMore(u32),
-    YouWereDealtDamageByCreaturesThisTurnOrMore(u32),
-    ConditionExpr {
-        condition: crate::ConditionExpr,
-        display: String,
-    },
-    TargetsPlayer(PlayerFilter),
-    TargetsObject(ObjectFilter),
-    YouCastSpellsThisTurnOrMore {
-        count: u32,
-        card_types: Vec<CardType>,
-    },
-    YouGainedLifeThisTurnOrMore(u32),
-    OpponentHasPoisonCountersOrMore(u32),
-    OpponentHasCardsInGraveyardOrMore(u32),
-    DistinctCardTypesInYourGraveyardOrMore(u32),
-    LifeTotalLessThanStarting,
-    IsNight,
-    YouSacrificedArtifactThisTurn,
-    YouCommittedCrimeThisTurn,
-    CreatureLeftBattlefieldUnderYourControlThisTurn,
-    YouHaveCardsInYourGraveyardOrMore(u32),
-    YouHaveCardsOfTypesInYourGraveyardOrMore {
-        count: u32,
-        card_types: Vec<CardType>,
-    },
-    OnlyCreatureCardsInHandNamed(String),
-    NoCardsInHandMatching {
-        filter: ObjectFilter,
-        display: String,
-    },
-    CardInYourGraveyardMatching {
-        filter: ObjectFilter,
-        display: String,
-    },
-    NotStartingPlayer,
-    CreatureCardPutIntoYourGraveyardThisTurn,
-    CreatureIsAttackingYou,
-}
+pub use ironsmith_core::ThisSpellCostCondition;
 
 pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) -> Option<String> {
     match condition {

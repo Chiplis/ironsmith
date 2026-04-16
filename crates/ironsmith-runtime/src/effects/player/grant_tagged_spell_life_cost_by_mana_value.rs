@@ -14,20 +14,8 @@ use crate::zone::Zone;
 
 /// Grants a temporary alternative casting method to tagged exiled spells:
 /// "pay life equal to its mana value rather than paying its mana cost".
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantTaggedSpellLifeCostByManaValueEffect {
-    pub tag: TagKey,
-    pub player: PlayerFilter,
-}
-
-impl GrantTaggedSpellLifeCostByManaValueEffect {
-    pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
-        Self {
-            tag: tag.into(),
-            player,
-        }
-    }
-}
+pub type GrantTaggedSpellLifeCostByManaValueEffect =
+    ironsmith_core::GrantTaggedSpellLifeCostByManaValueEffect;
 
 impl EffectExecutor for GrantTaggedSpellLifeCostByManaValueEffect {
     fn execute(

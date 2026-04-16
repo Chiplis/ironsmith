@@ -14,12 +14,19 @@ pub fn lander_token_definition() -> CardDefinition {
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Lander]);
-    builder
-        .clone()
-        .parse_text(
-            "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
-        )
-        .unwrap_or_else(|_| builder.build())
+    #[cfg(any(test, feature = "handwritten-parse-support"))]
+    {
+        builder
+            .clone()
+            .parse_text(
+                "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+            )
+            .unwrap_or_else(|_| builder.build())
+    }
+    #[cfg(not(any(test, feature = "handwritten-parse-support")))]
+    {
+        builder.build()
+    }
 }
 
 #[cfg(test)]

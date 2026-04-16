@@ -25,7 +25,7 @@ fn prevention_put_counters_follow_up(
     if put.distributed || put.target_count.is_some() {
         return None;
     }
-    if !matches!(put.count, Value::EventValue(EventValueSpec::Amount)) {
+    if !matches!(put.amount, Value::EventValue(EventValueSpec::Amount)) {
         return None;
     }
     if !matches!(put.target, ChooseSpec::AnyTarget) {
@@ -52,7 +52,14 @@ fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Z
 }
 
 fn choose_search_zones(choose: &crate::effects::ChooseObjectsEffect) -> Option<Vec<Zone>> {
-    choose.search_zones().ok()
+    let primary_zone = choose.filter.zone.or(choose.zone)?;
+    let mut zones = vec![primary_zone];
+    for zone in &choose.additional_zones {
+        if !zones.contains(zone) {
+            zones.push(*zone);
+        }
+    }
+    Some(zones)
 }
 
 fn normalize_search_descriptor_for_origin(descriptor: &str, searched_library: bool) -> String {
@@ -2549,7 +2556,7 @@ pub(super) fn activated_ability_has_source_tap_cost(
             || cost.effect_ref().is_some_and(|effect| {
                 effect
                     .downcast_ref::<crate::effects::TapEffect>()
-                    .is_some_and(|tap| matches!(tap.spec, ChooseSpec::Source))
+                    .is_some_and(|tap| matches!(tap.target, ChooseSpec::Source))
             })
     })
 }
@@ -2562,7 +2569,7 @@ pub(super) fn activated_ability_has_source_untap_cost(
             || cost.effect_ref().is_some_and(|effect| {
                 effect
                     .downcast_ref::<crate::effects::UntapEffect>()
-                    .is_some_and(|untap| matches!(untap.spec, ChooseSpec::Source))
+                    .is_some_and(|untap| matches!(untap.target, ChooseSpec::Source))
             })
     })
 }
@@ -2756,12 +2763,12 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     }
     if let Some(effect) = cost.effect_ref() {
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
-            && matches!(tap.spec, ChooseSpec::Source)
+            && matches!(tap.target, ChooseSpec::Source)
         {
             return "{T}".to_string();
         }
         if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>()
-            && matches!(untap.spec, ChooseSpec::Source)
+            && matches!(untap.target, ChooseSpec::Source)
         {
             return "{Q}".to_string();
         }
@@ -2939,7 +2946,7 @@ pub(super) fn describe_for_each_double_counters(
     if !matches!(put.target.base(), ChooseSpec::Iterated) {
         return None;
     }
-    let Value::CountersOn(source, Some(counter_type)) = &put.count else {
+    let Value::CountersOn(source, Some(counter_type)) = &put.amount else {
         return None;
     };
     if !matches!(source.base(), ChooseSpec::Iterated) {
@@ -2956,14 +2963,14 @@ pub(super) fn describe_for_each_double_counters(
         let plural = pluralize_noun_phrase(filter_text);
         return Some(format!(
             "Double the number of {} counters on each of those {}",
-            describe_counter_type(*counter_type),
+            describe_counter_type(counter_type.clone()),
             plural
         ));
     }
 
     Some(format!(
         "Double the number of {} counters on each {}",
-        describe_counter_type(*counter_type),
+        describe_counter_type(counter_type.clone()),
         filter_text
     ))
 }
@@ -2979,7 +2986,8 @@ pub(super) fn describe_for_each_put_counters_then_untap(
     if put.distributed || put.target_count.is_some() {
         return None;
     }
-    if !matches!(put.target, ChooseSpec::Iterated) || !matches!(untap.spec, ChooseSpec::Iterated) {
+    if !matches!(put.target, ChooseSpec::Iterated) || !matches!(untap.target, ChooseSpec::Iterated)
+    {
         return None;
     }
 
@@ -2987,7 +2995,7 @@ pub(super) fn describe_for_each_put_counters_then_untap(
     let filter_text = strip_indefinite_article(&description);
     Some(format!(
         "Put {} on each {}, then untap them",
-        describe_put_counter_phrase(&put.count, put.counter_type),
+        describe_put_counter_phrase(&put.amount, put.counter_type),
         filter_text
     ))
 }
@@ -3640,7 +3648,7 @@ pub(super) fn describe_choose_then_tap_cost(
     if choose_primary_zone(choose) != Some(Zone::Battlefield) || choose.is_search {
         return None;
     }
-    if !tap_uses_chosen_tag(&tap.spec, choose.tag.as_str()) {
+    if !tap_uses_chosen_tag(&tap.target, choose.tag.as_str()) {
         return None;
     }
 
@@ -3737,28 +3745,25 @@ pub(super) fn describe_tagged_this_way_action(filter: &ObjectFilter) -> Option<&
         if tag == "__it__" && filter.zone == Some(Zone::Exile) {
             return Some("exiled");
         }
-        if tag.starts_with("exiled_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "exiled")
-        {
+        if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled") {
             Some("exiled")
         } else if tag.starts_with("revealed_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "revealed")
+            || crate::cards::is_sentence_helper_tag(tag, "revealed")
         {
             Some("revealed")
         } else if tag.starts_with("destroyed_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "destroyed")
+            || crate::cards::is_sentence_helper_tag(tag, "destroyed")
         {
             Some("destroyed")
         } else if tag.starts_with("sacrificed_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "sacrificed")
+            || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
             Some("sacrificed")
         } else if tag.starts_with("discarded_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "discarded")
+            || crate::cards::is_sentence_helper_tag(tag, "discarded")
         {
             Some("discarded")
-        } else if tag.starts_with("milled_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "milled")
+        } else if tag.starts_with("milled_") || crate::cards::is_sentence_helper_tag(tag, "milled")
         {
             Some("milled")
         } else {
@@ -5845,7 +5850,7 @@ pub(super) fn describe_may_enlist(may: &crate::effects::MayEffect) -> Option<Str
         && choose.tag.as_str() == "enlisted_creature"
         && let Some(tap) =
             unwrap_effect(&may.effects[2]).downcast_ref::<crate::effects::TapEffect>()
-        && matches!(&tap.spec, ChooseSpec::Tagged(tag) if tag.as_str() == "enlisted_creature")
+        && matches!(&tap.target, ChooseSpec::Tagged(tag) if tag.as_str() == "enlisted_creature")
         && let Some(modify) = unwrap_effect(&may.effects[3])
             .downcast_ref::<crate::effects::ModifyPowerToughnessForEachEffect>()
         && matches!(&modify.target, ChooseSpec::Tagged(tag) if tag.as_str() == "enlist_attacker")
@@ -7404,10 +7409,7 @@ pub(super) fn describe_tap_or_untap_mode(
         return None;
     }
     let is_choose_one = matches!(choose_mode.choose_count, Value::Fixed(1))
-        && choose_mode
-            .min_choose_count
-            .as_ref()
-            .is_none_or(|value| matches!(value, Value::Fixed(1)));
+        && matches!(choose_mode.min_choose_count, Value::Fixed(1));
     if !is_choose_one {
         return None;
     }
@@ -7434,9 +7436,9 @@ pub(super) fn describe_tap_or_untap_mode(
         let effect = &mode.effects[0];
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
             saw_tap = true;
-            let candidate = describe_choose_spec(&tap.spec);
+            let candidate = describe_choose_spec(&tap.target);
             tap_target = Some(candidate.clone());
-            tap_is_all = matches!(tap.spec.base(), ChooseSpec::All(_));
+            tap_is_all = matches!(tap.target.base(), ChooseSpec::All(_));
             if let Some(existing) = &shared_target {
                 if existing != &candidate {
                     shared_target = None;
@@ -7448,9 +7450,9 @@ pub(super) fn describe_tap_or_untap_mode(
         }
         if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
             saw_untap = true;
-            let candidate = describe_choose_spec(&untap.spec);
+            let candidate = describe_choose_spec(&untap.target);
             untap_target = Some(candidate.clone());
-            untap_is_all = matches!(untap.spec.base(), ChooseSpec::All(_));
+            untap_is_all = matches!(untap.target.base(), ChooseSpec::All(_));
             if let Some(existing) = &shared_target {
                 if existing != &candidate {
                     shared_target = None;
@@ -7485,10 +7487,7 @@ pub(super) fn describe_put_or_remove_counter_mode(
         return None;
     }
     let is_choose_one = matches!(choose_mode.choose_count, Value::Fixed(1))
-        && choose_mode
-            .min_choose_count
-            .as_ref()
-            .is_none_or(|value| matches!(value, Value::Fixed(1)));
+        && matches!(choose_mode.min_choose_count, Value::Fixed(1));
     if !is_choose_one {
         return None;
     }
@@ -7610,9 +7609,9 @@ pub(super) fn describe_conditional_choose_both_instead(
 
     // Pattern: "Choose one. If <condition>, you may choose both instead."
     if choose_true.choose_count != Value::Fixed(2)
-        || choose_true.min_choose_count.as_ref() != Some(&Value::Fixed(1))
+        || choose_true.min_choose_count != Value::Fixed(1)
         || choose_false.choose_count != Value::Fixed(1)
-        || choose_false.min_choose_count.is_some()
+        || choose_false.min_choose_count != choose_false.choose_count
     {
         return None;
     }
@@ -7659,7 +7658,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             let filter_text = strip_indefinite_article(&description);
             return format!(
                 "Put {} on each {}",
-                describe_put_counter_phrase(&put.count, put.counter_type),
+                describe_put_counter_phrase(&put.amount, put.counter_type),
                 filter_text
             );
         }
@@ -7677,15 +7676,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
         let tag = for_each_tagged.tag.as_str();
         let subject = if tag.starts_with("destroyed_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "destroyed")
+            || crate::cards::is_sentence_helper_tag(tag, "destroyed")
         {
             "For each object destroyed this way".to_string()
-        } else if tag.starts_with("exiled_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "exiled")
+        } else if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled")
         {
             "For each object exiled this way".to_string()
         } else if tag.starts_with("sacrificed_")
-            || crate::cards::builders::is_sentence_helper_tag(tag, "sacrificed")
+            || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
             "For each object sacrificed this way".to_string()
         } else if tag.is_empty() {
@@ -7987,11 +7985,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Hand => {
                 if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
                     && (tag.as_str().starts_with("revealed_")
-                        || crate::cards::builders::is_sentence_helper_tag(tag.as_str(), "revealed")
+                        || crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed")
                         || tag.as_str().starts_with("searched_")
-                        || crate::cards::builders::is_sentence_helper_tag(tag.as_str(), "searched")
+                        || crate::cards::is_sentence_helper_tag(tag.as_str(), "searched")
                         || tag.as_str().starts_with("milled_")
-                        || crate::cards::builders::is_sentence_helper_tag(tag.as_str(), "milled")
+                        || crate::cards::is_sentence_helper_tag(tag.as_str(), "milled")
                         || tag.as_str().starts_with("discarded_"))
                 {
                     format!(
@@ -8074,7 +8072,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 };
                 if let crate::target::ChooseSpec::Tagged(tag) = &move_to_zone.target
                     && (tag.as_str().starts_with("exiled_")
-                        || crate::cards::builders::is_sentence_helper_tag(tag.as_str(), "exiled"))
+                        || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
                     format!("Return {target} to the battlefield{tapped_suffix}{controller_suffix}")
                 } else {
@@ -8487,7 +8485,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if put_counters.distributed {
             return format!(
                 "Distribute {} among {}",
-                describe_put_counter_phrase(&put_counters.count, put_counters.counter_type),
+                describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type),
                 describe_choose_spec(&put_counters.target)
             );
         }
@@ -8499,7 +8497,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             target = format!("each of {target}");
         }
-        if let Value::Count(filter) = &put_counters.count
+        if let Value::Count(filter) = &put_counters.amount
             && matches!(
                 put_counters.counter_type,
                 crate::object::CounterType::PlusOnePlusOne
@@ -8509,22 +8507,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!(
                 "Put a {} counter on {target} for each {}",
                 describe_counter_type(put_counters.counter_type),
-                describe_for_each_count_filter(filter)
+                describe_for_each_count_filter(&filter)
             );
         }
-        if let Value::CountersOn(spec, Some(counter_type)) = &put_counters.count
+        if let Value::CountersOn(spec, Some(counter_type)) = &put_counters.amount
             && is_graveyard_same_stable_tagged_spec(spec)
         {
             return format!(
                 "Put its {} counters on {target}",
-                describe_counter_type(*counter_type),
+                describe_counter_type(counter_type.clone()),
             );
         }
         if matches!(
             put_counters.counter_type,
             crate::object::CounterType::PlusOnePlusOne
                 | crate::object::CounterType::MinusOneMinusOne
-        ) && let Value::Add(left, right) = &put_counters.count
+        ) && let Value::Add(left, right) = &put_counters.amount
             && left == right
         {
             let per_text = match left.as_ref() {
@@ -8556,7 +8554,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!(
             "Put {} on {}",
-            describe_put_counter_phrase(&put_counters.count, put_counters.counter_type),
+            describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type),
             target
         );
     }
@@ -9162,10 +9160,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
-        return format!("Tap {}", describe_choose_spec(&tap.spec));
+        return format!("Tap {}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
-        return format!("Untap {}", describe_choose_spec(&untap.spec));
+        return format!("Untap {}", describe_choose_spec(&untap.target));
     }
     if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {
         return format!("Phase out {}", describe_choose_spec(&phase_out.spec));
@@ -9991,7 +9989,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let mut header = describe_mode_choice_header(
             &choose_mode.choose_count,
-            choose_mode.min_choose_count.as_ref(),
+            Some(&choose_mode.min_choose_count),
         );
         if choose_mode.disallow_previously_chosen_modes {
             header = if choose_mode.disallow_previously_chosen_modes_this_turn {
@@ -10622,15 +10620,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 format!("{article} {subtype}")
             };
             let verb = if plural_subject { "become" } else { "becomes" };
-            if become_basic.until == Until::EndOfTurn {
+            if become_basic.duration == Until::EndOfTurn {
                 return format!("{target} {verb} {subtype_text} until end of turn");
             }
             return format!(
                 "{target} {verb} {subtype_text} {}",
-                describe_until(&become_basic.until),
+                describe_until(&become_basic.duration),
             );
         }
-        if become_basic.until == Until::EndOfTurn {
+        if become_basic.duration == Until::EndOfTurn {
             return format!(
                 "{} becomes the basic land type of your choice until end of turn",
                 target
@@ -10639,7 +10637,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!(
             "{} becomes the basic land type of your choice {}",
             target,
-            describe_until(&become_basic.until)
+            describe_until(&become_basic.duration)
         );
     }
     if let Some(investigate) = effect.downcast_ref::<crate::effects::InvestigateEffect>() {
@@ -11509,7 +11507,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "{} becomes the color of {} choice {}",
             describe_choose_spec(&become_color.target),
             describe_possessive_player_filter(&become_color.chooser),
-            describe_until(&become_color.until)
+            describe_until(&become_color.duration)
         );
     }
     if let Some(become_type) =
@@ -11533,12 +11531,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if become_type.excluded_subtypes.is_empty() {
             return format!(
                 "{choice_text}. {subject_text} becomes that type {}",
-                describe_until(&become_type.until)
+                describe_until(&become_type.duration)
             );
         }
         return format!(
             "{choice_text}. {subject_text} becomes that type {}",
-            describe_until(&become_type.until)
+            describe_until(&become_type.duration)
         );
     }
     if effect
@@ -11566,7 +11564,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return parts.join(" ");
     }
     if let Some(clash) = effect.downcast_ref::<crate::effects::ClashEffect>() {
-        return match clash.opponent_mode() {
+        return match &clash.opponent_mode {
             crate::effects::ClashOpponentMode::AnyOpponent => "Clash with an opponent".to_string(),
             crate::effects::ClashOpponentMode::TargetOpponent => {
                 "Clash with target opponent".to_string()
@@ -11744,48 +11742,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         let helper_tag = grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str() == "__it__"
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "exiled",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "revealed",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "looked",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "chosen",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "searched",
-            );
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
         let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str() == "__it__"
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "exiled",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "revealed",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "looked",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "chosen",
-            )
-            || crate::cards::builders::is_sentence_helper_tag(
-                grant_play_tagged.tag.as_str(),
-                "searched",
-            ) {
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "revealed")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
+        {
             "that card".to_string()
         } else {
             format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
@@ -13254,10 +13223,7 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>())
     {
-        let min = choose_mode
-            .min_choose_count
-            .clone()
-            .unwrap_or_else(|| choose_mode.choose_count.clone());
+        let min = choose_mode.min_choose_count.clone();
         if choose_mode.choose_count == Value::Fixed(1) && min == Value::Fixed(1) {
             let mut options = Vec::new();
             for mode in &choose_mode.modes {

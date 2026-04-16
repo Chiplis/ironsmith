@@ -8,8 +8,8 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::normalize_object_selection;
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{CardId, ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -23,24 +23,10 @@ use crate::types::{CardType, Subtype};
 /// then chooses an Army creature you control and puts N +1/+1 counters on it.
 /// For amass with a subtype (e.g., "amass Orcs"), that Army also gains the
 /// subtype in addition to its other types if it doesn't already have it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AmassEffect {
-    /// Optional explicit subtype for amass variants (e.g., Orc).
-    /// `None` represents classic "amass N", which defaults to Zombie.
-    pub subtype: Option<Subtype>,
-    /// Number of +1/+1 counters to put on the chosen Army creature.
-    pub amount: u32,
-}
+pub type AmassEffect = ironsmith_core::AmassEffect;
 
-impl AmassEffect {
-    /// Create a new amass effect.
-    pub fn new(subtype: Option<Subtype>, amount: u32) -> Self {
-        Self { subtype, amount }
-    }
-
-    fn token_subtype(&self) -> Subtype {
-        self.subtype.unwrap_or(Subtype::Zombie)
-    }
+fn amass_token_subtype(effect: &AmassEffect) -> Subtype {
+    effect.subtype.unwrap_or(Subtype::Zombie)
 }
 
 fn army_creature_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
@@ -74,7 +60,7 @@ impl EffectExecutor for AmassEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let amass_subtype = self.token_subtype();
+        let amass_subtype = amass_token_subtype(self);
         let mut outcomes = Vec::new();
 
         let mut army_candidates = army_creature_candidates(game, ctx.controller);
@@ -158,8 +144,8 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::effect::{Effect, Value};
-    use crate::events::DamageEvent;
     use crate::effects::{ResolvedTarget, execute_effect};
+    use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::tag::TagKey;
     use crate::zone::Zone;

@@ -5,10 +5,10 @@
 //! - Minimum blockers (menace)
 //! - Attack restrictions (defender, summoning sickness)
 
-use crate::filter::ObjectFilterExt as _;
 use crate::ability::{ProtectionFrom, extract_static_abilities};
 use crate::color::Color;
 use crate::derived_view::DerivedGameView;
+use crate::filter::ObjectFilterExt as _;
 use crate::object::Object;
 use crate::static_abilities::{LandwalkKind, StaticAbilityId};
 use crate::target::FilterContext;

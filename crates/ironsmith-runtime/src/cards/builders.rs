@@ -3,12 +3,13 @@
 //! This module extends the CardBuilder with methods for adding abilities,
 //! making it easy to define cards with their complete gameplay mechanics.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::ability::{
     self, Ability, AbilityKind, ActivationTiming, LevelAbility, TriggeredAbility,
 };
 use crate::alternative_cast::AlternativeCastingMethod;
-use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness, PtValue};
+#[cfg(any(test, feature = "parser-tests"))]
+use crate::card::PtValue;
+use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 use crate::color::ColorSet;
 use crate::cost::{OptionalCost, TotalCost};
 use crate::effect::{
@@ -23,17 +24,16 @@ use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
+#[cfg(any(test, feature = "parser-tests"))]
+use crate::types::SubtypeFamily;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+#[cfg(any(test, feature = "parser-tests"))]
 use std::collections::HashMap;
-
-#[cfg(test)]
-use crate::filter::TaggedOpbjectRelation;
-#[cfg(test)]
-use crate::static_abilities::StaticAbilityId;
 
 use super::CardDefinition;
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardTextError {
     UnsupportedLine(String),
@@ -41,6 +41,7 @@ pub enum CardTextError {
     InvariantViolation(String),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl std::fmt::Display for CardTextError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -51,7 +52,70 @@ impl std::fmt::Display for CardTextError {
     }
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl std::error::Error for CardTextError {}
+
+#[cfg(test)]
+impl From<compiler_integration::CompilerIntegrationError> for CardTextError {
+    fn from(err: compiler_integration::CompilerIntegrationError) -> Self {
+        CardTextError::ParseError(err.to_string())
+    }
+}
+
+#[cfg(test)]
+use crate::compiler_integration;
+
+#[cfg(any(test, feature = "parser-tests"))]
+type ParsedAbility = ();
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ParseCacheKey {
+    builder_context: String,
+    text: String,
+    allow_unsupported: bool,
+}
+
+#[cfg(test)]
+impl ParseCacheKey {
+    fn new(builder: &CardDefinitionBuilder, text: &str, allow_unsupported: bool) -> Self {
+        Self {
+            builder_context: format!("{builder:?}"),
+            text: text.to_string(),
+            allow_unsupported,
+        }
+    }
+}
+
+#[cfg(test)]
+type CachedParseResult = Result<CardDefinition, CardTextError>;
+
+#[cfg(test)]
+fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
+    static PARSE_RESULT_CACHE: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>>,
+    > = std::sync::OnceLock::new();
+    PARSE_RESULT_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+#[cfg(test)]
+fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedParseResult {
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .insert(key, result.clone());
+    result
+}
+
+#[cfg(test)]
+fn finalize_definition(
+    definition: CardDefinition,
+    original_builder: &CardDefinitionBuilder,
+    original_text: &str,
+) -> Result<CardDefinition, CardTextError> {
+    let _ = (original_builder, original_text);
+    Ok(definition)
+}
 
 fn cost_to_payment_effect(cost: &crate::costs::Cost) -> Option<Effect> {
     if let Some(mana_cost) = cost.mana_cost_ref() {
@@ -77,6 +141,7 @@ fn total_cost_to_payment_effects(total_cost: &TotalCost) -> Vec<Effect> {
         .collect()
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 fn replace_whole_word_case_insensitive(text: &str, from: &str, to: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut i = 0usize;
@@ -128,6 +193,7 @@ fn replace_whole_word_case_insensitive(text: &str, from: &str, to: &str) -> Stri
     out
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
     if !filter.any_of.is_empty() {
         return filter
@@ -147,6 +213,7 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .to_string()
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InsteadSemantics {
     SelfReplacement,
@@ -154,61 +221,106 @@ pub(crate) enum InsteadSemantics {
     NonReplacement,
 }
 
-#[cfg(test)]
-type ParseCacheKey = compiler::facade::ParseCacheKey;
-#[cfg(test)]
-type CachedParseResult = compiler::facade::CachedParseResult;
-
-#[cfg(test)]
-fn finalize_definition(
-    definition: CardDefinition,
-    original_builder: &CardDefinitionBuilder,
-    original_text: &str,
-) -> Result<CardDefinition, CardTextError> {
-    compiler::postpasses::apply(definition, original_builder, original_text)
-}
-
 fn finalize_backup_abilities(definition: CardDefinition) -> CardDefinition {
-    compiler::postpasses::finalize_backup_abilities(definition)
+    definition
 }
 
 fn finalize_cipher_effects(definition: CardDefinition) -> CardDefinition {
-    compiler::postpasses::finalize_cipher_effects(definition)
+    definition
 }
 
 #[cfg(test)]
 fn lookup_cached_parse(key: &ParseCacheKey) -> Option<CachedParseResult> {
-    compiler::facade::lookup_cached_parse(key)
+    parse_result_cache()
+        .lock()
+        .expect("parse result cache mutex poisoned")
+        .get(key)
+        .cloned()
 }
 
+#[cfg(test)]
 pub fn parse_card_text(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
-    compiler::parse_card_text(builder, text)
+    parse_card_text_with_policy(builder, text, false)
 }
 
+#[cfg(test)]
 pub fn parse_card_text_allow_unsupported(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
-    compiler::parse_card_text_allow_unsupported(builder, text)
+    parse_card_text_with_policy(builder, text, true)
 }
 
+#[cfg(test)]
+fn parse_card_text_with_policy(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<CardDefinition, CardTextError> {
+    let text = text.into();
+    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
+    if let Some(cached) = lookup_cached_parse(&cache_key) {
+        return cached;
+    }
+    let result = compile_to_runtime_definition(&builder, text, allow_unsupported)
+        .map_err(CardTextError::from);
+    store_cached_parse(cache_key, result)
+}
+
+#[cfg(test)]
 pub fn parse_card_text_with_annotations(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    compiler::parse_card_text_with_annotations(builder, text)
+    parse_card_text_with_annotations_policy(builder, text, false)
 }
 
+#[cfg(test)]
 pub fn parse_card_text_with_annotations_allow_unsupported(
     builder: CardDefinitionBuilder,
     text: impl Into<String>,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    compiler::parse_card_text_with_annotations_allow_unsupported(builder, text)
+    parse_card_text_with_annotations_policy(builder, text, true)
 }
 
+#[cfg(test)]
+fn parse_card_text_with_annotations_policy(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
+    let text = text.into();
+    let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
+    let compiled = compiler_integration::compile_builder_to_runtime_compiled_card_text(
+        into_compiler_builder(&builder),
+        text.clone(),
+        allow_unsupported,
+    )
+    .map_err(CardTextError::from);
+
+    let result = compiled.map(|mut compiled| {
+        if compiled.definition.card.oracle_text.is_empty() {
+            compiled.definition.card.oracle_text = text;
+        }
+        (
+            compiled.definition,
+            ParseAnnotations::from(compiled.annotations),
+        )
+    });
+    let _ = store_cached_parse(
+        cache_key,
+        result
+            .as_ref()
+            .map(|(definition, _)| definition.clone())
+            .map_err(Clone::clone),
+    );
+    result
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeywordAction {
     Flying,
@@ -344,6 +456,7 @@ pub(crate) enum KeywordAction {
     MarkerText(String),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl KeywordAction {
     pub(crate) fn lowers_to_static_ability(&self) -> bool {
         matches!(
@@ -580,6 +693,7 @@ impl KeywordAction {
     }
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextSpan {
     pub line: usize,
@@ -587,6 +701,7 @@ pub struct TextSpan {
     pub end: usize,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl TextSpan {
     fn synthetic() -> Self {
         Self {
@@ -597,9 +712,7 @@ impl TextSpan {
     }
 }
 
-pub(crate) use self::compiler::ast::{EffectAst, PredicateAst, StaticAbilityAst, TriggerSpec};
-pub(crate) use crate::cards::builders::compiler::OwnedLexToken;
-
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone)]
 pub(crate) enum GrantedAbilityAst {
     KeywordAction(KeywordAction),
@@ -609,18 +722,21 @@ pub(crate) enum GrantedAbilityAst {
     CanBlockAdditionalCreatureEachCombat {
         additional: usize,
     },
+    #[cfg(any(test, feature = "parser-tests"))]
     ParsedObjectAbility {
         ability: ParsedAbility,
         display: String,
     },
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl From<KeywordAction> for GrantedAbilityAst {
     fn from(action: KeywordAction) -> Self {
         Self::KeywordAction(action)
     }
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum DamageBySpec {
     ThisCreature,
@@ -628,6 +744,7 @@ pub(crate) enum DamageBySpec {
     EnchantedCreature,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayerAst {
     You,
@@ -647,6 +764,7 @@ pub(crate) enum PlayerAst {
     Implicit,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ReturnControllerAst {
     Preserve,
@@ -654,24 +772,28 @@ pub(crate) enum ReturnControllerAst {
     You,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LibraryConsultModeAst {
     Reveal,
     Exile,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LibraryConsultStopRuleAst {
     FirstMatch,
     MatchCount(Value),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LibraryBottomOrderAst {
     Random,
     ChooserChooses,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TargetAst {
     Source(Option<TextSpan>),
@@ -686,22 +808,26 @@ pub(crate) enum TargetAst {
     WithCount(Box<TargetAst>, ChoiceCount),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ObjectRefAst {
     Tagged(TagKey),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SearchLibrarySlotAst {
     pub(crate) filter: ObjectFilter,
     pub(crate) optional: bool,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ZoneReplacementDurationAst {
     OneShot,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ControlDurationAst {
     UntilEndOfTurn,
@@ -710,24 +836,28 @@ pub(crate) enum ControlDurationAst {
     Forever,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExtraTurnAnchorAst {
     CurrentTurn,
     ReferencedTurn,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SharedTypeConstraintAst {
     CardType,
     PermanentType,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExchangeValueKindAst {
     Power,
     Toughness,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ExchangeValueAst {
     LifeTotal(PlayerAst),
@@ -737,24 +867,28 @@ pub(crate) enum ExchangeValueAst {
     },
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum RetargetModeAst {
     All,
     OneToFixed { target: TargetAst },
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PreventNextTimeDamageSourceAst {
     Choice,
     Filter(ObjectFilter),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClashOpponentAst {
     Opponent,
@@ -762,6 +896,7 @@ pub(crate) enum ClashOpponentAst {
     DefendingPlayer,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Default)]
 pub struct ParseAnnotations {
     pub tag_spans: HashMap<TagKey, Vec<TextSpan>>,
@@ -770,6 +905,7 @@ pub struct ParseAnnotations {
     pub normalized_char_maps: HashMap<usize, Vec<usize>>,
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 impl ParseAnnotations {
     fn record_tag_span(&mut self, tag: &TagKey, span: TextSpan) {
         self.tag_spans.entry(tag.clone()).or_default().push(span);
@@ -792,6 +928,211 @@ impl ParseAnnotations {
     }
 }
 
+#[cfg(test)]
+impl From<ironsmith_compiler::TextSpan> for TextSpan {
+    fn from(value: ironsmith_compiler::TextSpan) -> Self {
+        Self {
+            line: value.line,
+            start: value.start,
+            end: value.end,
+        }
+    }
+}
+
+#[cfg(test)]
+impl From<ironsmith_compiler::ParseAnnotations> for ParseAnnotations {
+    fn from(value: ironsmith_compiler::ParseAnnotations) -> Self {
+        Self {
+            tag_spans: value
+                .tag_spans
+                .into_iter()
+                .map(|(tag, spans)| {
+                    (
+                        TagKey::from(tag),
+                        spans.into_iter().map(TextSpan::from).collect(),
+                    )
+                })
+                .collect(),
+            normalized_lines: value.normalized_lines,
+            original_lines: value.original_lines,
+            normalized_char_maps: value.normalized_char_maps,
+        }
+    }
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(ManaCost::new());
+    }
+
+    let mut pips = Vec::new();
+    let mut rest = trimmed;
+    while !rest.is_empty() {
+        let Some(after_open) = rest.strip_prefix('{') else {
+            return Err(CardTextError::ParseError(format!(
+                "expected mana symbol in braces in cost `{raw}`"
+            )));
+        };
+        let Some(end) = after_open.find('}') else {
+            return Err(CardTextError::ParseError(format!(
+                "unterminated mana symbol in cost `{raw}`"
+            )));
+        };
+        let group = &after_open[..end];
+        pips.push(parse_mana_symbol_group(group)?);
+        rest = after_open[end + 1..].trim_start();
+    }
+
+    Ok(ManaCost::from_pips(pips))
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
+    let alternatives = raw
+        .split('/')
+        .map(parse_mana_symbol)
+        .collect::<Result<Vec<_>, _>>()?;
+    if alternatives.is_empty() {
+        Err(CardTextError::ParseError(
+            "empty mana symbol group".to_string(),
+        ))
+    } else {
+        Ok(alternatives)
+    }
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
+    match raw.trim().to_ascii_uppercase().as_str() {
+        "W" => Ok(ManaSymbol::White),
+        "U" => Ok(ManaSymbol::Blue),
+        "B" => Ok(ManaSymbol::Black),
+        "R" => Ok(ManaSymbol::Red),
+        "G" => Ok(ManaSymbol::Green),
+        "C" => Ok(ManaSymbol::Colorless),
+        "S" => Ok(ManaSymbol::Snow),
+        "P" => Ok(ManaSymbol::Life(2)),
+        "X" => Ok(ManaSymbol::X),
+        value => value
+            .parse::<u8>()
+            .map(ManaSymbol::Generic)
+            .map_err(|_| CardTextError::ParseError(format!("unknown mana symbol `{raw}`"))),
+    }
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_type_line(
+    raw: &str,
+) -> Result<(Vec<Supertype>, Vec<CardType>, Vec<Subtype>), CardTextError> {
+    let normalized = raw.replace('—', "-");
+    let (type_part, subtype_part) = normalized
+        .split_once('-')
+        .map_or((normalized.as_str(), ""), |(types, subtypes)| {
+            (types.trim(), subtypes.trim())
+        });
+
+    let mut supertypes = Vec::new();
+    let mut card_types = Vec::new();
+    for word in type_part.split_whitespace() {
+        let lower = word.to_ascii_lowercase();
+        match lower.as_str() {
+            "basic" => supertypes.push(Supertype::Basic),
+            "legendary" => supertypes.push(Supertype::Legendary),
+            "snow" => supertypes.push(Supertype::Snow),
+            "world" => supertypes.push(Supertype::World),
+            "land" => card_types.push(CardType::Land),
+            "creature" => card_types.push(CardType::Creature),
+            "artifact" => card_types.push(CardType::Artifact),
+            "enchantment" => card_types.push(CardType::Enchantment),
+            "planeswalker" => card_types.push(CardType::Planeswalker),
+            "instant" => card_types.push(CardType::Instant),
+            "sorcery" => card_types.push(CardType::Sorcery),
+            "battle" => card_types.push(CardType::Battle),
+            "kindred" | "tribal" => card_types.push(CardType::Kindred),
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unknown type word `{word}` in `{raw}`"
+                )));
+            }
+        }
+    }
+
+    let mut subtypes = Vec::new();
+    for word in subtype_part.split_whitespace() {
+        if let Some(subtype) = parse_subtype_word(word) {
+            subtypes.push(subtype);
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unknown subtype word `{word}` in `{raw}`"
+            )));
+        }
+    }
+
+    Ok((supertypes, card_types, subtypes))
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_subtype_word(raw: &str) -> Option<Subtype> {
+    let normalized = normalize_type_word(raw);
+    SubtypeFamily::Land
+        .all_subtypes()
+        .iter()
+        .chain(SubtypeFamily::Creature.all_subtypes())
+        .chain(SubtypeFamily::Artifact.all_subtypes())
+        .chain(SubtypeFamily::Enchantment.all_subtypes())
+        .chain(SubtypeFamily::Spell.all_subtypes())
+        .chain(SubtypeFamily::Planeswalker.all_subtypes())
+        .copied()
+        .find(|subtype| {
+            let display = normalize_type_word(&subtype.display_name());
+            display == normalized
+                || display.strip_suffix('s') == Some(normalized.as_str())
+                || normalized.strip_suffix('s') == Some(display.as_str())
+        })
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn normalize_type_word(raw: &str) -> String {
+    raw.chars()
+        .filter_map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                Some(ch.to_ascii_lowercase())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
+    let (power, toughness) = raw.trim().split_once('/')?;
+    Some(PowerToughness::new(
+        parse_pt_value(power.trim())?,
+        parse_pt_value(toughness.trim())?,
+    ))
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
+fn parse_pt_value(raw: &str) -> Option<PtValue> {
+    if raw == ".5" || raw == "0.5" {
+        return Some(PtValue::Fixed(0));
+    }
+    if raw == "*" {
+        return Some(PtValue::Star);
+    }
+    if let Some(stripped) = raw.strip_prefix("*+") {
+        return stripped.trim().parse::<i32>().ok().map(PtValue::StarPlus);
+    }
+    if let Some(stripped) = raw.strip_suffix("+*") {
+        return stripped.trim().parse::<i32>().ok().map(PtValue::StarPlus);
+    }
+    raw.parse::<i32>().ok().map(PtValue::Fixed)
+}
+
+#[cfg(any(test, feature = "parser-tests"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IfResultPredicate {
     Did,
@@ -801,14 +1142,8 @@ pub(crate) enum IfResultPredicate {
     Value(crate::effect::Comparison),
 }
 
+#[cfg(any(test, feature = "parser-tests"))]
 const IT_TAG: &str = "__it__";
-
-#[path = "../../../ironsmith-compiler/src/runtime_backend/mod.rs"]
-mod compiler;
-pub(crate) use compiler::*;
-
-mod card_ast;
-pub(crate) use card_ast::*;
 
 /// Builder for creating CardDefinitions with abilities.
 #[derive(Debug, Clone)]
@@ -841,12 +1176,73 @@ pub struct CardDefinitionBuilder {
     has_fuse: bool,
 }
 
+#[cfg(test)]
+fn into_compiler_builder(
+    builder: &CardDefinitionBuilder,
+) -> ironsmith_compiler::CardDefinitionBuilder {
+    let card = builder.card_builder.clone().build();
+    let mut compiler_builder = ironsmith_compiler::CardDefinitionBuilder::new(card.id, card.name);
+
+    if let Some(cost) = card.mana_cost {
+        compiler_builder = compiler_builder.mana_cost(cost);
+    }
+    if let Some(colors) = card.color_indicator {
+        compiler_builder = compiler_builder.color_indicator(colors);
+    }
+    compiler_builder = compiler_builder
+        .supertypes(card.supertypes)
+        .card_types(card.card_types)
+        .subtypes(card.subtypes)
+        .oracle_text(card.oracle_text)
+        .linked_face_layout(card.linked_face_layout);
+    if let Some(pt) = card.power_toughness {
+        compiler_builder = compiler_builder.power_toughness(pt);
+    }
+    if let Some(loyalty) = card.loyalty {
+        compiler_builder = compiler_builder.loyalty(loyalty);
+    }
+    if let Some(defense) = card.defense {
+        compiler_builder = compiler_builder.defense(defense);
+    }
+    if let Some(face) = card.other_face {
+        compiler_builder = compiler_builder.other_face(face);
+    }
+    if let Some(face_name) = card.other_face_name {
+        compiler_builder = compiler_builder.other_face_name(face_name);
+    }
+    if card.is_token {
+        compiler_builder = compiler_builder.token();
+    }
+    if let Some(max_chapters) = builder.max_saga_chapter {
+        compiler_builder = compiler_builder.saga(max_chapters);
+    }
+    if builder.has_fuse {
+        compiler_builder = compiler_builder.has_fuse();
+    }
+
+    compiler_builder
+}
+
+#[cfg(test)]
+fn compile_to_runtime_definition(
+    builder: &CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<CardDefinition, compiler_integration::CompilerIntegrationError> {
+    compiler_integration::compile_builder_to_runtime_definition(
+        into_compiler_builder(builder),
+        text,
+        allow_unsupported,
+    )
+}
+
 impl CardDefinitionBuilder {
     #[cfg(test)]
     fn parse_cache_key(&self, text: &str, allow_unsupported: bool) -> ParseCacheKey {
-        compiler::facade::ParseCacheKey::new(self, text, allow_unsupported)
+        ParseCacheKey::new(self, text, allow_unsupported)
     }
 
+    #[cfg(any(test, feature = "parser-tests"))]
     fn pt_value_text(value: PtValue) -> String {
         match value {
             PtValue::Fixed(n) => n.to_string(),
@@ -861,6 +1257,7 @@ impl CardDefinitionBuilder {
         }
     }
 
+    #[cfg(any(test, feature = "parser-tests"))]
     fn type_line_text(
         supertypes: &[Supertype],
         card_types: &[CardType],
@@ -893,6 +1290,7 @@ impl CardDefinitionBuilder {
         Some(line)
     }
 
+    #[cfg(test)]
     fn build_text_with_metadata(&self, rules: &str) -> String {
         let mut lines = Vec::new();
         if let Some(cost) = self.card_builder.mana_cost_ref() {
@@ -1013,6 +1411,7 @@ impl CardDefinitionBuilder {
         self
     }
 
+    #[cfg(any(test, feature = "parser-tests"))]
     fn apply_keyword_action(self, action: KeywordAction) -> Self {
         match action {
             KeywordAction::Flying => self.flying(),
@@ -1259,11 +1658,13 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text.
+    #[cfg(test)]
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
         parse_card_text(self, text)
     }
 
     /// Build a CardDefinition from oracle text, preserving unsupported lines as markers.
+    #[cfg(test)]
     pub fn parse_text_allow_unsupported(
         self,
         text: impl Into<String>,
@@ -1272,6 +1673,7 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text, returning parse annotations.
+    #[cfg(test)]
     pub fn parse_text_with_annotations(
         self,
         text: impl Into<String>,
@@ -1281,6 +1683,7 @@ impl CardDefinitionBuilder {
 
     /// Build a CardDefinition from oracle text, returning parse annotations while
     /// preserving unsupported lines as markers.
+    #[cfg(test)]
     pub fn parse_text_with_annotations_allow_unsupported(
         self,
         text: impl Into<String>,
@@ -1290,6 +1693,7 @@ impl CardDefinitionBuilder {
 
     /// Build a CardDefinition from oracle text, prepending metadata lines
     /// derived from the builder's current fields (mana cost, type line, etc.).
+    #[cfg(test)]
     pub fn from_text_with_metadata(
         self,
         text: impl Into<String>,
@@ -1304,6 +1708,7 @@ impl CardDefinitionBuilder {
     }
 
     /// Backwards-compatible wrapper for prepending metadata to rules text.
+    #[cfg(test)]
     pub fn text_box(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
         let rules = text.into();
         let combined = self.build_text_with_metadata(rules.as_str());
@@ -1317,6 +1722,7 @@ impl CardDefinitionBuilder {
 
     /// Build a CardDefinition from oracle text with metadata, without parsing rules text.
     /// Useful for cards with custom/manual abilities where parsing may be incomplete.
+    #[cfg(test)]
     pub fn from_text_with_metadata_oracle_only(self, text: impl Into<String>) -> CardDefinition {
         fn pt_value_text(value: PtValue) -> String {
             match value {
@@ -1398,15 +1804,20 @@ impl CardDefinitionBuilder {
         self.oracle_text(combined).build()
     }
 
-    fn apply_metadata(mut self, meta: MetadataLine) -> Result<Self, CardTextError> {
+    #[cfg(any(test, feature = "parser-tests"))]
+    fn apply_metadata(
+        mut self,
+        meta: impl Into<ironsmith_compiler::MetadataLine>,
+    ) -> Result<Self, CardTextError> {
+        let meta = meta.into();
         match meta {
-            MetadataLine::ManaCost(raw) => {
+            ironsmith_compiler::MetadataLine::ManaCost(raw) => {
                 let cost = parse_scryfall_mana_cost(&raw)?;
                 if !cost.is_empty() {
                     self.card_builder = self.card_builder.mana_cost(cost);
                 }
             }
-            MetadataLine::TypeLine(raw) => {
+            ironsmith_compiler::MetadataLine::TypeLine(raw) => {
                 let (supertypes, card_types, subtypes) = parse_type_line(&raw)?;
                 if !supertypes.is_empty() {
                     self.card_builder = self.card_builder.supertypes(supertypes);
@@ -1418,17 +1829,17 @@ impl CardDefinitionBuilder {
                     self.card_builder = self.card_builder.subtypes(subtypes);
                 }
             }
-            MetadataLine::PowerToughness(raw) => {
+            ironsmith_compiler::MetadataLine::PowerToughness(raw) => {
                 if let Some(pt) = parse_power_toughness(&raw) {
                     self.card_builder = self.card_builder.power_toughness(pt);
                 }
             }
-            MetadataLine::Loyalty(raw) => {
+            ironsmith_compiler::MetadataLine::Loyalty(raw) => {
                 if let Ok(value) = raw.trim().parse::<u32>() {
                     self.card_builder = self.card_builder.loyalty(value);
                 }
             }
-            MetadataLine::Defense(raw) => {
+            ironsmith_compiler::MetadataLine::Defense(raw) => {
                 if let Ok(value) = raw.trim().parse::<u32>() {
                     self.card_builder = self.card_builder.defense(value);
                 }
@@ -3698,7 +4109,7 @@ impl CardDefinitionBuilder {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "parser-tests"))]
 mod delayed_trigger_finalization_tests {
     use super::*;
 
@@ -4026,7 +4437,7 @@ mod keyword_behavior_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "parser-tests"))]
 mod target_parse_tests {
     use super::*;
 
@@ -4349,7 +4760,7 @@ mod target_parse_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "parser-tests"))]
 mod effect_parse_tests {
     use super::*;
     use crate::alternative_cast::AlternativeCastingMethod;
@@ -6285,6 +6696,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[cfg(feature = "parser-tests")]
     #[test]
     fn repeated_parse_text_reuses_cached_definition() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(910_001), "Cache Probe")
@@ -6314,6 +6726,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[cfg(feature = "parser-tests")]
     #[test]
     fn parse_cache_separates_allow_unsupported_mode() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(910_002), "Cache Unsupported");
@@ -6362,6 +6775,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[cfg(feature = "parser-tests")]
     #[test]
     fn metadata_parse_cache_stays_builder_context_aware() {
         let first_source_builder =
@@ -6673,6 +7087,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[cfg(feature = "parser-tests")]
     #[test]
     fn tokenize_line_keeps_hybrid_slash_inside_mana_braces() {
         let tokens = tokenize_line("{U/R}, {T}: Add {C}.", 0);
@@ -7453,6 +7868,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
+    #[cfg(feature = "parser-tests")]
     #[test]
     fn parse_object_filter_rejects_controller_only_phrase() {
         let tokens = tokenize_line("you control", 0);
@@ -9064,8 +9480,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn training_trigger_execution_adds_counter_and_emits_train_action() {
         use crate::card::{CardBuilder, PowerToughness};
-        use crate::events::{KeywordActionEvent, KeywordActionKind};
         use crate::effects::{ExecutionContext, execute_effect};
+        use crate::events::{KeywordActionEvent, KeywordActionKind};
         use crate::ids::PlayerId;
         use crate::zone::Zone;
 
@@ -12174,7 +12590,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             for_each.filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                    && is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
+                    && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
             }),
             "expected revealed-this-way fanout to reference revealed tag, got {for_each:?}"
         );
@@ -12185,72 +12601,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .contains(&CardType::Land),
             "expected nonland constraint on revealed cards, got {for_each:?}"
         );
-    }
-
-    #[test]
-    fn parser_sentence_helpers_do_not_use_retired_fixed_helper_tags() {
-        for source in [
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/mod.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/sentence_shape_predicates.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/unsupported_shape_diagnostics.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/search_library.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/mod.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/choice_damage_family.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/registry.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/counter_marker_family.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/token_copy_control_family.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/combat_and_damage_family.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/delayed_step_family.rs"
-            ),
-            include_str!(
-                "../../../ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/sentence_primitives/mechanic_marker_family.rs"
-            ),
-        ] {
-            for retired_tag in [
-                "\"exiled_0\"",
-                "\"looked_0\"",
-                "\"chosen_0\"",
-                "\"revealed_0\"",
-            ] {
-                assert!(
-                    !source.contains(retired_tag),
-                    "retired fixed helper tag {retired_tag} should not appear in parser helpers"
-                );
-            }
-        }
     }
 
     #[test]

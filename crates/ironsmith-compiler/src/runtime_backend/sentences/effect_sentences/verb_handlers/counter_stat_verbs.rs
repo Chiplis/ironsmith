@@ -11,7 +11,7 @@ pub(crate) fn parse_counter_target_phrase(
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-ability target clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -457,14 +457,14 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
     if grammar::words_match_prefix(&filter_tokens, &["for", "each"]).is_none() {
         return Err(CardTextError::ParseError(format!(
             "unsupported additional counter payment tail (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
     let dynamic = parse_dynamic_cost_modifier_value(&filter_tokens)?.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported additional counter payment filter (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     Ok(Some(scale_value_multiplier(dynamic, multiplier)))
@@ -476,7 +476,7 @@ pub(crate) fn parse_reveal(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     // Many effects split "reveal it/that card/those cards" into a standalone clause.
     // The engine does not model hidden information, so this compiles to a semantic no-op
     // that still allows parsing and auditing to proceed.
@@ -570,7 +570,7 @@ pub(crate) fn parse_life_amount(
     tokens: &[OwnedLexToken],
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words == ["that", "much", "life"] {
         // "that much life" binds to the triggering event amount.
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
@@ -587,13 +587,13 @@ pub(crate) fn parse_life_amount(
 pub(crate) fn parse_life_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["life", "equal", "to"]).is_none() {
         return Ok(None);
     }
 
     let amount_tokens = &tokens[1..];
-    let amount_words = crate::cards::builders::compiler::token_word_refs(amount_tokens);
+    let amount_words = crate::runtime_backend::token_word_refs(amount_tokens);
 
     if let Some(value) = parse_add_mana_equal_amount_value(amount_tokens) {
         return Ok(Some(value));
@@ -648,7 +648,7 @@ pub(crate) fn parse_life_amount_from_trailing(
 
     if let Some(where_value) = parse_where_x_value_clause(trailing) {
         if value_contains_unbound_x(base_amount) {
-            let clause = crate::cards::builders::compiler::token_word_refs(trailing).join(" ");
+            let clause = crate::runtime_backend::token_word_refs(trailing).join(" ");
             return Ok(Some(replace_unbound_x_with_value(
                 base_amount.clone(),
                 &where_value,
@@ -714,7 +714,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 }
 
 fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.first().copied() != Some("half")
         || !grammar::contains_word(tokens, "life")
         || grammar::contains_word(tokens, "lost")

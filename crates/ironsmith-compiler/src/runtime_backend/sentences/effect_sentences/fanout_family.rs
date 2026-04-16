@@ -99,7 +99,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         if idx + 3 < tokens.len()
@@ -109,7 +109,7 @@ pub(crate) fn find_same_name_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -175,7 +175,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in same-name fanout clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -184,14 +184,14 @@ pub(crate) fn parse_same_name_fanout_filter(
     if cleaned_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing base object filter in same-name fanout clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&cleaned_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported same-name fanout filter (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -215,7 +215,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     let Some(first_word) = words_all.first().copied() else {
         return Ok(None);
     };
@@ -223,11 +223,10 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     let deal_tokens: Option<&[OwnedLexToken]> = if first_word == "deal" {
         Some(tokens)
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
-        let subject_words: Vec<&str> =
-            crate::cards::builders::compiler::token_word_refs(&tokens[..verb_idx])
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
+        let subject_words: Vec<&str> = crate::runtime_backend::token_word_refs(&tokens[..verb_idx])
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
         if is_source_reference_words(&subject_words) {
             Some(&tokens[verb_idx..])
         } else {
@@ -238,7 +237,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     };
 
     if let Some(deal_tokens) = deal_tokens {
-        let deal_words = crate::cards::builders::compiler::token_word_refs(deal_tokens);
+        let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
         let (amount, used) =
             if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
                 (Value::EventValue(EventValueSpec::Amount), 2usize)
@@ -437,7 +436,7 @@ pub(crate) fn find_shares_color_reference_span(
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'it' in shares-color clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -458,14 +457,14 @@ pub(crate) fn parse_shared_color_fanout_filter(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object phrase in shared-color fanout clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
     let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported shared-color fanout filter (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -509,7 +508,7 @@ fn split_full_shared_color_target(target: &TargetAst) -> Option<(TargetAst, Obje
 fn parse_explicit_shared_color_gets_or_gains(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     let find_and_each_other =
         |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
 
@@ -626,7 +625,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         return Ok(Some(effects));
     }
 
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     let Some((verb, verb_idx)) = find_verb(tokens) else {
         return Ok(None);
     };
@@ -782,7 +781,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         idx += 1;
 
         let Some(this_turn_rel) = find_phrase_start_words(
-            &crate::cards::builders::compiler::token_word_refs(&tokens[idx..]),
+            &crate::runtime_backend::token_word_refs(&tokens[idx..]),
             &["this", "turn"],
         ) else {
             return Ok(None);
@@ -1022,13 +1021,13 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing modifier in same-name gets clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             ))
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in same-name gets clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     let first_target = parse_target_phrase(&first_target_tokens)?;

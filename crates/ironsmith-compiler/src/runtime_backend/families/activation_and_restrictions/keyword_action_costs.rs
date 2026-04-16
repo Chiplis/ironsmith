@@ -1106,7 +1106,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
     trigger_tokens: &[OwnedLexToken],
     effects_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    let trigger_words = crate::cards::builders::compiler::token_word_refs(trigger_tokens);
+    let trigger_words = crate::runtime_backend::token_word_refs(trigger_tokens);
     let references_enchanted_controller = find_window_by(&trigger_words, 3, |window| {
         window[0] == "enchanted"
             && matches!(
@@ -1164,7 +1164,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
 pub(crate) fn maybe_strip_leading_damage_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if tokens.len() < 2 {
         return None;
     }
@@ -1179,7 +1179,7 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
         if !matches!(words.get(subject_len).copied(), Some("deal" | "deals")) {
             continue;
         }
-        if crate::cards::builders::compiler::front_end::shared::util::is_source_reference_words(
+        if crate::runtime_backend::front_end::shared::util::is_source_reference_words(
             &words[..subject_len],
         ) {
             return Some(&tokens[subject_len..]);
@@ -1193,7 +1193,7 @@ pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[OwnedLexToken]) -> b
         return false;
     }
 
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty() {
         return false;
     }
@@ -1228,12 +1228,12 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
         return false;
     }
 
-    let prefix_words = crate::cards::builders::compiler::token_word_refs(trigger_prefix_tokens);
+    let prefix_words = crate::runtime_backend::token_word_refs(trigger_prefix_tokens);
     if !(slice_contains(&prefix_words, &"discard") || slice_contains(&prefix_words, &"discards")) {
         return false;
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
     if tail_words.is_empty() {
         return false;
     }
@@ -1249,8 +1249,7 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     }
 
     find_index(tail_tokens, |token| token.is_comma()).is_some_and(|comma_idx| {
-        let before_words =
-            crate::cards::builders::compiler::token_word_refs(&tail_tokens[..comma_idx]);
+        let before_words = crate::runtime_backend::token_word_refs(&tail_tokens[..comma_idx]);
         slice_contains(&before_words, &"card") || slice_contains(&before_words, &"cards")
     })
 }
@@ -1259,7 +1258,7 @@ pub(crate) fn looks_like_trigger_type_list_tail(tokens: &[OwnedLexToken]) -> boo
     if tokens.is_empty() {
         return false;
     }
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty() {
         return false;
     }
@@ -1278,7 +1277,7 @@ pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[OwnedLexToken]) -> bo
     if tokens.is_empty() {
         return false;
     }
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty() {
         return false;
     }
@@ -1291,7 +1290,7 @@ pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[OwnedLexToken]) -> 
     if tokens.is_empty() {
         return false;
     }
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 3 {
         return false;
     }

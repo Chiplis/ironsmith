@@ -10,41 +10,31 @@ use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::events::PermanentTappedEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::triggers::TriggerEvent;
+pub type CrewCostEffect = ironsmith_core::CrewCostEffect;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct CrewCostEffect {
-    pub required_power: u32,
+fn crew_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            let Some(obj) = game.object(id) else {
+                return false;
+            };
+            game.current_is_creature(id) && obj.controller == controller && !game.is_tapped(id)
+        })
+        .collect()
 }
 
-impl CrewCostEffect {
-    pub fn new(required_power: u32) -> Self {
-        Self { required_power }
-    }
-
-    fn crew_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|&id| {
-                let Some(obj) = game.object(id) else {
-                    return false;
-                };
-                game.current_is_creature(id) && obj.controller == controller && !game.is_tapped(id)
-            })
-            .collect()
-    }
-
-    fn object_power(game: &GameState, object_id: ObjectId) -> i32 {
-        game.calculated_characteristics(object_id)
-            .and_then(|calc| calc.power)
-            .or_else(|| game.object(object_id).and_then(|obj| obj.power()))
-            .unwrap_or(0)
-    }
+fn object_power(game: &GameState, object_id: ObjectId) -> i32 {
+    game.calculated_characteristics(object_id)
+        .and_then(|calc| calc.power)
+        .or_else(|| game.object(object_id).and_then(|obj| obj.power()))
+        .unwrap_or(0)
 }
 
 impl EffectExecutor for CrewCostEffect {
@@ -58,7 +48,7 @@ impl EffectExecutor for CrewCostEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller = ctx.controller;
-        let mut candidates = Self::crew_candidates(game, controller);
+        let mut candidates = crew_candidates(game, controller);
         if candidates.is_empty() && self.required_power > 0 {
             return Err(ExecutionError::Impossible(
                 "No untapped creatures available to crew".to_string(),
@@ -69,7 +59,7 @@ impl EffectExecutor for CrewCostEffect {
         let max = Some(candidates.len());
         let chosen = {
             // Prefer higher-power candidates in fallback selection.
-            candidates.sort_by_key(|id| -Self::object_power(game, *id));
+            candidates.sort_by_key(|id| -object_power(game, *id));
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose creatures to crew",
@@ -87,20 +77,20 @@ impl EffectExecutor for CrewCostEffect {
         // If the decision maker picked a set that doesn't meet the requirement,
         // greedily add remaining candidates until it does (or we exhaust options).
         let required = self.required_power as i32;
-        let mut total_power: i32 = chosen.iter().map(|id| Self::object_power(game, *id)).sum();
+        let mut total_power: i32 = chosen.iter().map(|id| object_power(game, *id)).sum();
         if total_power < required {
             let mut remaining: Vec<ObjectId> = candidates
                 .iter()
                 .copied()
                 .filter(|id| !chosen.contains(id))
                 .collect();
-            remaining.sort_by_key(|id| -Self::object_power(game, *id));
+            remaining.sort_by_key(|id| -object_power(game, *id));
             for id in remaining {
                 if total_power >= required {
                     break;
                 }
                 chosen.push(id);
-                total_power += Self::object_power(game, id);
+                total_power += object_power(game, id);
             }
         }
 
@@ -155,11 +145,8 @@ impl CostExecutableEffect for CrewCostEffect {
         if self.required_power == 0 {
             return Ok(());
         }
-        let candidates = Self::crew_candidates(game, controller);
-        let total: i32 = candidates
-            .iter()
-            .map(|id| Self::object_power(game, *id))
-            .sum();
+        let candidates = crew_candidates(game, controller);
+        let total: i32 = candidates.iter().map(|id| object_power(game, *id)).sum();
         if total >= self.required_power as i32 {
             Ok(())
         } else {

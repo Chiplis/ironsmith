@@ -1,10 +1,11 @@
 //! If effect implementation.
 
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate};
+use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+pub type IfEffect = ironsmith_core::IfEffect<crate::effect::Effect>;
 
 /// Effect that branches based on a prior effect's result.
 ///
@@ -31,40 +32,6 @@ use crate::target::ChooseSpec;
 ///     ),
 /// ];
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct IfEffect {
-    /// The effect ID to check (must have been executed with WithId earlier).
-    pub condition: EffectId,
-    /// How to evaluate success.
-    pub predicate: EffectPredicate,
-    /// Effects to execute if predicate is true.
-    pub then: Vec<Effect>,
-    /// Effects to execute if predicate is false.
-    pub else_: Vec<Effect>,
-}
-
-impl IfEffect {
-    /// Create a new If effect.
-    pub fn new(
-        condition: EffectId,
-        predicate: EffectPredicate,
-        then: Vec<Effect>,
-        else_: Vec<Effect>,
-    ) -> Self {
-        Self {
-            condition,
-            predicate,
-            then,
-            else_,
-        }
-    }
-
-    /// Create an "if ... then" effect with no else clause.
-    pub fn if_then(condition: EffectId, predicate: EffectPredicate, then: Vec<Effect>) -> Self {
-        Self::new(condition, predicate, then, vec![])
-    }
-}
-
 impl EffectExecutor for IfEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())

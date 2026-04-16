@@ -1,8 +1,8 @@
 //! "Whenever a counter is put on [filter]" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::other::{CounterPlacedEvent, MarkersChangedEvent};
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::object::CounterType;
 use crate::target::{ObjectFilter, PlayerFilter};

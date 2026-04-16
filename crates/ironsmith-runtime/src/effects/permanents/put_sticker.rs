@@ -1,8 +1,8 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_from_spec;
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;

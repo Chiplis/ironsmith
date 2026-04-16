@@ -1,9 +1,9 @@
 //! "Whenever [filter] attacks you or a planeswalker you control" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::combat_state::AttackTarget;
 use crate::events::EventKind;
 use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent};
+use crate::filter::ObjectFilterExt as _;
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;

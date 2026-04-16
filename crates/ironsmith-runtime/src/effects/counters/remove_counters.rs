@@ -7,6 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::RemoveCountersEffect;
 
 /// Effect that removes counters from a target permanent.
 ///
@@ -26,37 +27,6 @@ use crate::target::ChooseSpec;
 ///     ChooseSpec::creature(),
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct RemoveCountersEffect {
-    /// The type of counter to remove.
-    pub counter_type: CounterType,
-    /// How many counters to remove.
-    pub count: Value,
-    /// Which permanent to target.
-    pub target: ChooseSpec,
-}
-
-impl RemoveCountersEffect {
-    /// Create a new remove counters effect.
-    pub fn new(counter_type: CounterType, count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self {
-            counter_type,
-            count: count.into(),
-            target,
-        }
-    }
-
-    /// Create an effect that removes +1/+1 counters from target creature.
-    pub fn plus_one_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self::new(CounterType::PlusOnePlusOne, count, target)
-    }
-
-    /// Create an effect that removes -1/-1 counters from target creature.
-    pub fn minus_one_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self::new(CounterType::MinusOneMinusOne, count, target)
-    }
-}
-
 impl EffectExecutor for RemoveCountersEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)

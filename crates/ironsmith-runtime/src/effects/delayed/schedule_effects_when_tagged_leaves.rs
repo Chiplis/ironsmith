@@ -15,39 +15,12 @@ use super::trigger_queue::{
 
 /// Determines which object should be treated as the source when the delayed
 /// trigger resolves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaggedLeavesAbilitySource {
-    /// Use the watched tagged object as the source (default).
-    WatchedObject,
-    /// Use the object executing this scheduling effect as the source.
-    CurrentSource,
-}
+pub use ironsmith_core::TaggedLeavesAbilitySource;
 
 /// Schedules one delayed trigger per tagged object:
 /// "When that object leaves the battlefield, execute these effects."
-#[derive(Debug, Clone, PartialEq)]
-pub struct ScheduleEffectsWhenTaggedLeavesEffect {
-    pub tag: TagKey,
-    pub effects: Vec<Effect>,
-    pub controller: PlayerFilter,
-    pub ability_source: TaggedLeavesAbilitySource,
-}
-
-impl ScheduleEffectsWhenTaggedLeavesEffect {
-    pub fn new(tag: impl Into<TagKey>, effects: Vec<Effect>, controller: PlayerFilter) -> Self {
-        Self {
-            tag: tag.into(),
-            effects,
-            controller,
-            ability_source: TaggedLeavesAbilitySource::WatchedObject,
-        }
-    }
-
-    pub fn with_current_source_as_ability_source(mut self) -> Self {
-        self.ability_source = TaggedLeavesAbilitySource::CurrentSource;
-        self
-    }
-}
+pub type ScheduleEffectsWhenTaggedLeavesEffect =
+    ironsmith_core::ScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 
 impl EffectExecutor for ScheduleEffectsWhenTaggedLeavesEffect {
     fn execute(

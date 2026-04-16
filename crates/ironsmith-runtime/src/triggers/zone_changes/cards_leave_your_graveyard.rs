@@ -1,8 +1,8 @@
 //! "Whenever one or more cards leave your graveyard" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::zones::ZoneChangeEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

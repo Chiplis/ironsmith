@@ -31,7 +31,10 @@ mod tests {
     fn parsed_restrictions_bucket_values() {
         let mut restrictions = ParsedRestrictions::default();
         restrictions.push(RestrictionBucket::Activation, "Activate only as a sorcery");
-        restrictions.push(RestrictionBucket::Trigger, "This ability triggers only once each turn");
+        restrictions.push(
+            RestrictionBucket::Trigger,
+            "This ability triggers only once each turn",
+        );
 
         assert_eq!(restrictions.activation, vec!["Activate only as a sorcery"]);
         assert_eq!(

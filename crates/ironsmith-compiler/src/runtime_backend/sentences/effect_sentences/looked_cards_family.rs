@@ -12,10 +12,10 @@ use super::search_library::{
     normalize_search_library_filter, parse_search_library_disjunction_filter,
 };
 use crate::cards::builders::IT_TAG;
-use crate::cards::builders::compiler::grammar::primitives::TokenWordView;
 use crate::cards::builders::{
     CardTextError, EffectAst, ObjectFilter, PlayerAst, TagKey, TextSpan, parse_object_filter_lexed,
 };
+use crate::runtime_backend::grammar::primitives::TokenWordView;
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
@@ -313,7 +313,7 @@ fn title_case_words(words: &[&str]) -> String {
 }
 
 fn parse_named_card_filter_segment(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let mut segment_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let mut segment_words = crate::runtime_backend::token_word_refs(tokens);
     while segment_words.first().is_some_and(|word| is_article(word)) {
         segment_words.remove(0);
     }

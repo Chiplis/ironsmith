@@ -3,14 +3,14 @@
 //! Special actions include playing lands, turning face-down creatures face up,
 //! suspending/foretelling cards, and activating mana abilities.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPaymentResult};
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::events::processing::{EventOutcome, execute_discard};
 use crate::events::cause::EventCause;
 use crate::events::permanents::SacrificeEvent;
+use crate::events::processing::{EventOutcome, execute_discard};
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
@@ -605,12 +605,12 @@ fn perform_turn_face_up(
         })?;
 
     // Pay the morph/megamorph turn-face-up cost.
-    let action_provenance =
-        game.provenance_graph_mut()
-            .alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {
-                source: permanent_id,
-                controller: player,
-            });
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: permanent_id,
+            controller: player,
+        },
+    );
     let adjusted_cost = adjust_total_cost_mana_components_for_reason(
         game,
         player,
@@ -708,12 +708,12 @@ fn perform_suspend(
         suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
     };
 
-    let action_provenance =
-        game.provenance_graph_mut()
-            .alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {
-                source: card_id,
-                controller: player,
-            });
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: card_id,
+            controller: player,
+        },
+    );
     let total_cost = adjust_total_cost_mana_components_for_reason(
         game,
         player,
@@ -807,12 +807,12 @@ fn perform_foretell(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let action_provenance =
-        game.provenance_graph_mut()
-            .alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {
-                source: card_id,
-                controller: player,
-            });
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: card_id,
+            controller: player,
+        },
+    );
     let foretell_action_cost = adjust_total_cost_mana_components_for_reason(
         game,
         player,
@@ -896,12 +896,12 @@ fn perform_plot(
         plot_cost(object).ok_or(ActionError::NoSuchAbility)?
     };
 
-    let action_provenance =
-        game.provenance_graph_mut()
-            .alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {
-                source: card_id,
-                controller: player,
-            });
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: card_id,
+            controller: player,
+        },
+    );
     let total_cost = adjust_total_cost_mana_components_for_reason(
         game,
         player,

@@ -9,24 +9,12 @@
 
 use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExertCostEffect {
-    pub display_text: String,
-}
-
-impl ExertCostEffect {
-    pub fn new(display_text: impl Into<String>) -> Self {
-        Self {
-            display_text: display_text.into(),
-        }
-    }
-}
+pub type ExertCostEffect = ironsmith_core::ExertCostEffect;
 
 impl EffectExecutor for ExertCostEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

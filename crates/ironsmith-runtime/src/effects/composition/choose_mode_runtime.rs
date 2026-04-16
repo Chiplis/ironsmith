@@ -104,10 +104,7 @@ pub(crate) fn run_choose_mode(
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
     let max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;
-    let min_modes = match &effect.min_choose_count {
-        Some(min_val) => resolve_value(game, min_val, ctx)?.max(0) as usize,
-        None => max_modes,
-    };
+    let min_modes = resolve_value(game, &effect.min_choose_count, ctx)?.max(0) as usize;
 
     if effect.modes.is_empty() || max_modes == 0 {
         return Ok(EffectOutcome::resolved());

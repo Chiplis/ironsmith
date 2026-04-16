@@ -124,10 +124,10 @@ pub use life::matchers::*;
 pub use permanents::matchers::*;
 pub use zones::matchers::*;
 
-pub use crate::snapshot::ObjectSnapshot;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::provenance::ProvNodeId;
+pub use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
 
 /// The target of damage.

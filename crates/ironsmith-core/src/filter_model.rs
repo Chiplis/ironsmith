@@ -225,7 +225,11 @@ impl PlayerFilter {
             }
             Self::Target(inner) => format!("target {}", inner.description()),
             Self::Excluding { base, excluded } => {
-                format!("{} other than {}", base.description(), excluded.description())
+                format!(
+                    "{} other than {}",
+                    base.description(),
+                    excluded.description()
+                )
             }
             Self::ControllerOf(_) => "that object's controller".to_string(),
             Self::OwnerOf(_) => "that object's owner".to_string(),
@@ -1300,7 +1304,10 @@ impl ObjectFilter {
                 Subtype::Rogue,
                 Subtype::Warlock,
             ];
-            if outlaw_pack.iter().all(|subtype| remaining.contains(subtype)) {
+            if outlaw_pack
+                .iter()
+                .all(|subtype| remaining.contains(subtype))
+            {
                 parts.push("non-outlaw".to_string());
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
@@ -1427,7 +1434,9 @@ impl ObjectFilter {
                 CardType::Battle,
             ];
             self.card_types.len() == required.len()
-                && required.iter().all(|card_type| self.card_types.contains(card_type))
+                && required
+                    .iter()
+                    .all(|card_type| self.card_types.contains(card_type))
         };
         let stack_source_ability = matches!(self.zone, Some(Zone::Stack))
             && matches!(
@@ -1522,7 +1531,10 @@ impl ObjectFilter {
                 Subtype::Rogue,
                 Subtype::Warlock,
             ];
-            if outlaw_pack.iter().all(|subtype| remaining.contains(subtype)) {
+            if outlaw_pack
+                .iter()
+                .all(|subtype| remaining.contains(subtype))
+            {
                 parts.push("outlaw".to_string());
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
@@ -1648,10 +1660,16 @@ impl ObjectFilter {
             }
         }
         if let Some(ref mana_value) = self.mana_value {
-            parts.push(format!("with mana value {}", describe_comparison(mana_value)));
+            parts.push(format!(
+                "with mana value {}",
+                describe_comparison(mana_value)
+            ));
         }
         if let Some(ref color_count) = self.color_count {
-            parts.push(format!("with color count {}", describe_comparison(color_count)));
+            parts.push(format!(
+                "with color count {}",
+                describe_comparison(color_count)
+            ));
         }
         if let Some(mana_value_parity) = self.mana_value_parity {
             parts.push(mana_value_parity.describe_axis("mana value"));
@@ -1855,7 +1873,11 @@ impl ObjectFilter {
             }
             if !target_fragments.is_empty() {
                 let target_text = if target_fragments.len() == 2 {
-                    let joiner = if self.targets_only_any_of { "or" } else { "and" };
+                    let joiner = if self.targets_only_any_of {
+                        "or"
+                    } else {
+                        "and"
+                    };
                     format!("{} {} {}", target_fragments[0], joiner, target_fragments[1])
                 } else {
                     target_fragments[0].clone()
@@ -2152,14 +2174,21 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!("the number of colors among {}", filter.description())
             }
             Value::CountersOnSource(counter_type) => {
-                format!("the number of {} counters on this", counter_type.description())
+                format!(
+                    "the number of {} counters on this",
+                    counter_type.description()
+                )
             }
             Value::CountersOn(_, Some(counter_type)) => {
                 format!("the number of {} counters", counter_type.description())
             }
             Value::CountersOn(_, None) => "the number of counters".to_string(),
             Value::Add(left, right) => {
-                format!("{} plus {}", describe_value_expr(left), describe_value_expr(right))
+                format!(
+                    "{} plus {}",
+                    describe_value_expr(left),
+                    describe_value_expr(right)
+                )
             }
             _ => "a dynamic value".to_string(),
         }
@@ -2215,7 +2244,10 @@ mod tests {
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {
-        assert_eq!(ObjectRef::tagged("destroyed"), ObjectRef::Tagged(TagKey::from("destroyed")));
+        assert_eq!(
+            ObjectRef::tagged("destroyed"),
+            ObjectRef::Tagged(TagKey::from("destroyed"))
+        );
         assert_eq!(
             ObjectRef::specific(ObjectId::from_raw(7)),
             ObjectRef::Specific(ObjectId::from_raw(7))
@@ -2224,8 +2256,14 @@ mod tests {
 
     #[test]
     fn player_filter_builders_and_descriptions_are_stable() {
-        assert_eq!(PlayerFilter::target_player().description(), "target a player");
-        assert_eq!(PlayerFilter::target_opponent().description(), "target an opponent");
+        assert_eq!(
+            PlayerFilter::target_player().description(),
+            "target a player"
+        );
+        assert_eq!(
+            PlayerFilter::target_opponent().description(),
+            "target an opponent"
+        );
         assert_eq!(
             PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending).description(),
             "an opponent other than the defending player"
@@ -2258,7 +2296,10 @@ mod tests {
             .relation,
             TaggedOpbjectRelation::IsTaggedObject
         );
-        assert_eq!(StackObjectKind::SpellOrAbility, StackObjectKind::SpellOrAbility);
+        assert_eq!(
+            StackObjectKind::SpellOrAbility,
+            StackObjectKind::SpellOrAbility
+        );
     }
 
     #[test]

@@ -15,133 +15,119 @@ use crate::target::ChooseSpec;
 /// Effect that asks a player to pay a mana cost.
 ///
 /// Returns `Count(1)` when paid, `Impossible` when the player can't pay.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PayManaEffect {
-    /// Mana cost to pay.
-    pub cost: ManaCost,
-    /// Which player pays it.
-    pub player: ChooseSpec,
-}
+pub type PayManaEffect = ironsmith_core::PayManaEffect;
 
-impl PayManaEffect {
-    /// Create a new pay-mana effect.
-    pub fn new(cost: ManaCost, player: ChooseSpec) -> Self {
-        Self { cost, player }
-    }
+fn try_pay_interactively(
+    effect: &PayManaEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+) -> bool {
+    const MAX_PAYMENT_STEPS: usize = 32;
 
-    fn try_pay_interactively(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        player_id: PlayerId,
-    ) -> bool {
-        const MAX_PAYMENT_STEPS: usize = 32;
-
-        for _ in 0..MAX_PAYMENT_STEPS {
-            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                player_id,
-                Some(ctx.source),
-                &self.cost,
-                crate::costs::PaymentReason::Effect,
-            );
-            let can_pay_now = game.can_pay_mana_cost_with_reason(
-                player_id,
-                Some(ctx.source),
-                &adjusted_cost,
-                0,
-                crate::costs::PaymentReason::Effect,
-            );
-            let mana_abilities =
-                get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
-
-            if !can_pay_now && mana_abilities.is_empty() {
-                return false;
-            }
-
-            let mut choices = Vec::new();
-            let mut options = Vec::new();
-
-            if can_pay_now {
-                choices.push(PayManaChoice::PayNow);
-                options.push(SelectableOption::new(choices.len() - 1, "Pay mana cost"));
-            }
-
-            for (permanent_id, ability_index, description) in mana_abilities {
-                choices.push(PayManaChoice::ActivateManaAbility {
-                    permanent_id,
-                    ability_index,
-                });
-                options.push(SelectableOption::new(
-                    choices.len() - 1,
-                    format!(
-                        "Tap {}: {}",
-                        describe_permanent(game, permanent_id),
-                        description
-                    ),
-                ));
-            }
-
-            if choices.is_empty() {
-                return false;
-            }
-
-            let source_name = game
-                .object(ctx.source)
-                .map(|obj| obj.name.clone())
-                .unwrap_or_else(|| "effect".to_string());
-            let decision_ctx =
-                SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
-            let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return false;
-            }
-            let Some(selected_idx) = selected.first().copied() else {
-                return false;
-            };
-            let Some(choice) = choices.get(selected_idx).copied() else {
-                return false;
-            };
-
-            match choice {
-                PayManaChoice::PayNow => {
-                    return game.try_pay_mana_cost_with_reason(
-                        player_id,
-                        Some(ctx.source),
-                        &adjusted_cost,
-                        0,
-                        crate::costs::PaymentReason::Effect,
-                    );
-                }
-                PayManaChoice::ActivateManaAbility {
-                    permanent_id,
-                    ability_index,
-                } => {
-                    let action = SpecialAction::ActivateManaAbility {
-                        permanent_id,
-                        ability_index,
-                    };
-
-                    if perform(action, game, player_id, &mut ctx.decision_maker).is_err() {
-                        return false;
-                    }
-                }
-            }
-        }
-
+    for _ in 0..MAX_PAYMENT_STEPS {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
             player_id,
             Some(ctx.source),
-            &self.cost,
+            &effect.cost,
             crate::costs::PaymentReason::Effect,
         );
-        game.try_pay_mana_cost_with_reason(
+        let can_pay_now = game.can_pay_mana_cost_with_reason(
             player_id,
             Some(ctx.source),
             &adjusted_cost,
             0,
             crate::costs::PaymentReason::Effect,
-        )
+        );
+        let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
+
+        if !can_pay_now && mana_abilities.is_empty() {
+            return false;
+        }
+
+        let mut choices = Vec::new();
+        let mut options = Vec::new();
+
+        if can_pay_now {
+            choices.push(PayManaChoice::PayNow);
+            options.push(SelectableOption::new(choices.len() - 1, "Pay mana cost"));
+        }
+
+        for (permanent_id, ability_index, description) in mana_abilities {
+            choices.push(PayManaChoice::ActivateManaAbility {
+                permanent_id,
+                ability_index,
+            });
+            options.push(SelectableOption::new(
+                choices.len() - 1,
+                format!(
+                    "Tap {}: {}",
+                    describe_permanent(game, permanent_id),
+                    description
+                ),
+            ));
+        }
+
+        if choices.is_empty() {
+            return false;
+        }
+
+        let source_name = game
+            .object(ctx.source)
+            .map(|obj| obj.name.clone())
+            .unwrap_or_else(|| "effect".to_string());
+        let decision_ctx =
+            SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
+        let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
+        if ctx.decision_maker.awaiting_choice() {
+            return false;
+        }
+        let Some(selected_idx) = selected.first().copied() else {
+            return false;
+        };
+        let Some(choice) = choices.get(selected_idx).copied() else {
+            return false;
+        };
+
+        match choice {
+            PayManaChoice::PayNow => {
+                return game.try_pay_mana_cost_with_reason(
+                    player_id,
+                    Some(ctx.source),
+                    &adjusted_cost,
+                    0,
+                    crate::costs::PaymentReason::Effect,
+                );
+            }
+            PayManaChoice::ActivateManaAbility {
+                permanent_id,
+                ability_index,
+            } => {
+                let action = SpecialAction::ActivateManaAbility {
+                    permanent_id,
+                    ability_index,
+                };
+
+                if perform(action, game, player_id, &mut ctx.decision_maker).is_err() {
+                    return false;
+                }
+            }
+        }
     }
+
+    let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+        player_id,
+        Some(ctx.source),
+        &effect.cost,
+        crate::costs::PaymentReason::Effect,
+    );
+    game.try_pay_mana_cost_with_reason(
+        player_id,
+        Some(ctx.source),
+        &adjusted_cost,
+        0,
+        crate::costs::PaymentReason::Effect,
+    )
 }
 
 impl EffectExecutor for PayManaEffect {
@@ -151,7 +137,7 @@ impl EffectExecutor for PayManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        if self.try_pay_interactively(game, ctx, player_id) {
+        if try_pay_interactively(self, game, ctx, player_id) {
             Ok(EffectOutcome::count(1))
         } else {
             Ok(EffectOutcome::impossible())

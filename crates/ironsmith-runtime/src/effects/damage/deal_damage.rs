@@ -6,17 +6,18 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot;
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
+use crate::events::DamageTarget;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
-use crate::events::DamageTarget;
+use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::AttackEventTarget;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
+pub use ironsmith_core::DealDamageEffect;
 
 /// Effect that deals damage to a target creature, planeswalker, or player.
 ///
@@ -36,33 +37,6 @@ use crate::types::CardType;
 ///     source_is_combat: false,
 /// };
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct DealDamageEffect {
-    /// The amount of damage to deal.
-    pub amount: Value,
-    /// The target specification.
-    pub target: ChooseSpec,
-    /// Whether this damage is combat damage.
-    pub source_is_combat: bool,
-}
-
-impl DealDamageEffect {
-    /// Create a new deal damage effect.
-    pub fn new(amount: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self {
-            amount: amount.into(),
-            target,
-            source_is_combat: false,
-        }
-    }
-
-    /// Set whether this is combat damage.
-    pub fn with_combat(mut self, is_combat: bool) -> Self {
-        self.source_is_combat = is_combat;
-        self
-    }
-}
-
 pub(crate) fn apply_processed_damage_outcome(
     game: &mut GameState,
     source: crate::ids::ObjectId,

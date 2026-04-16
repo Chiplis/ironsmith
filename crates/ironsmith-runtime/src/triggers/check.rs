@@ -711,10 +711,7 @@ fn add_ring_designation_triggers(
         && let Some(damage_event) = trigger_event.downcast::<crate::events::damage::DamageEvent>()
         && damage_event.is_combat
         && damage_event.amount > 0
-        && matches!(
-            damage_event.target,
-            crate::events::DamageTarget::Player(_)
-        )
+        && matches!(damage_event.target, crate::events::DamageTarget::Player(_))
         && let Some(source_obj) = game.object(damage_event.source)
         && game.ring_level(source_obj.controller) >= 4
         && game.current_ring_bearer(source_obj.controller) == Some(damage_event.source)
@@ -1630,11 +1627,11 @@ mod tests {
     use crate::cards::CardDefinitionBuilder;
     use crate::combat_state::AttackTarget;
     use crate::events::DamageEvent;
+    use crate::events::DamageTarget;
     use crate::events::cause::EventCause;
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
     use crate::events::other::BecameMonstrousEvent;
     use crate::events::spells::SpellCastEvent;
-    use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;

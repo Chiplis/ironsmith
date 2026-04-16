@@ -1,6 +1,6 @@
 use crate::front_end::{
-    KeywordLineCst, MetadataLineCst, OwnedLexToken, StatementLineCst, StaticLineCst,
-    UnsupportedLineCst, LineInfo,
+    KeywordLineCst, LineInfo, MetadataLineCst, OwnedLexToken, StatementLineCst, StaticLineCst,
+    UnsupportedLineCst,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,8 +94,7 @@ mod tests {
     use super::*;
     use crate::diagnostics::TextSpan;
     use crate::front_end::{
-        KeywordLineKindCst, OwnedLexToken, lex_line, make_line_info,
-        normalize_trimmed_line,
+        KeywordLineKindCst, OwnedLexToken, lex_line, make_line_info, normalize_trimmed_line,
     };
 
     fn sample_line_info(raw: &str) -> LineInfo {
@@ -151,7 +150,10 @@ mod tests {
             chosen_option_label: Some("A".to_string()),
         };
 
-        assert_eq!(line.intervening_if.as_deref(), Some("if you control a Wizard"));
+        assert_eq!(
+            line.intervening_if.as_deref(),
+            Some("if you control a Wizard")
+        );
         assert_eq!(line.max_triggers_per_turn, Some(1));
     }
 }

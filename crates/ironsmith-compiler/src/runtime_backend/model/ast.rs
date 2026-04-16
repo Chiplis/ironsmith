@@ -12,13 +12,13 @@ use crate::zone::Zone;
 
 use super::super::{
     ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
-    GrantedAbilityAst, IfResultPredicate, KeywordAction, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
-    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
-    ZoneReplacementDurationAst,
+    IfResultPredicate, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
+    LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst, PreventNextTimeDamageSourceAst,
+    PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SearchLibrarySlotAst,
+    SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
 use super::semantic::ParsedAbility;
+use crate::runtime_backend::GrantedAbilityAst;
 
 #[derive(Debug, Clone)]
 pub(crate) enum StaticAbilityAst {

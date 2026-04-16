@@ -1,9 +1,9 @@
 //! "Whenever this permanent deals damage to [filter]" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::DamageEvent;
-use crate::events::EventKind;
 use crate::events::DamageTarget;
+use crate::events::EventKind;
+use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

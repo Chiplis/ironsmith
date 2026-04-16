@@ -1,5 +1,5 @@
-use crate::filter::ObjectFilterExt as _;
 use super::*;
+use crate::filter::ObjectFilterExt as _;
 use crate::text_cleanup::strip_parenthetical_text;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -2268,42 +2268,53 @@ fn when_you_do_deal_subject_from_oracle(def: &CardDefinition, oracle_line: &str)
 }
 
 fn intrinsic_probe_render_lines(def: &CardDefinition, oracle_line: &str) -> Vec<String> {
-    static CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
-
-    let type_signature = def
-        .card
-        .card_types
-        .iter()
-        .map(|card_type| format!("{card_type:?}"))
-        .collect::<Vec<_>>()
-        .join("|");
-    let cache_key = format!("{type_signature}::{oracle_line}");
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(cached) = cache.lock().expect("intrinsic probe cache").get(&cache_key) {
-        return cached.clone();
+    #[cfg(not(any(test, feature = "handwritten-parse-support")))]
+    {
+        let _ = (def, oracle_line);
+        return Vec::new();
     }
 
-    let mut builder =
-        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Oracle Surface Probe");
-    if !def.card.card_types.is_empty() {
-        builder = builder.card_types(def.card.card_types.clone());
+    #[cfg(any(test, feature = "handwritten-parse-support"))]
+    {
+        static CACHE: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
+
+        let type_signature = def
+            .card
+            .card_types
+            .iter()
+            .map(|card_type| format!("{card_type:?}"))
+            .collect::<Vec<_>>()
+            .join("|");
+        let cache_key = format!("{type_signature}::{oracle_line}");
+        let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Some(cached) = cache.lock().expect("intrinsic probe cache").get(&cache_key) {
+            return cached.clone();
+        }
+
+        let mut builder = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Oracle Surface Probe",
+        );
+        if !def.card.card_types.is_empty() {
+            builder = builder.card_types(def.card.card_types.clone());
+        }
+        let rendered = builder
+            .parse_text(oracle_line.to_string())
+            .ok()
+            .map(|probe| {
+                compiled_lines(&probe)
+                    .into_iter()
+                    .map(|line| canonicalize_intrinsic_render_line(&line))
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        cache
+            .lock()
+            .expect("intrinsic probe cache")
+            .insert(cache_key, rendered.clone());
+        rendered
     }
-    let rendered = builder
-        .parse_text(oracle_line.to_string())
-        .ok()
-        .map(|probe| {
-            compiled_lines(&probe)
-                .into_iter()
-                .map(|line| canonicalize_intrinsic_render_line(&line))
-                .filter(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    cache
-        .lock()
-        .expect("intrinsic probe cache")
-        .insert(cache_key, rendered.clone());
-    rendered
 }
 
 fn canonicalize_intrinsic_render_line(line: &str) -> String {

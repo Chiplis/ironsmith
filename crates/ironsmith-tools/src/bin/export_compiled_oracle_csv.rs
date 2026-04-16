@@ -5,9 +5,7 @@ use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::panic::{self, AssertUnwindSafe};
 
-use ironsmith::cards::{
-    CardDefinition, generated_definition_has_unimplemented_content,
-};
+use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::compiled_text::canonical_compiled_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::strip_reminder_text_for_comparison;

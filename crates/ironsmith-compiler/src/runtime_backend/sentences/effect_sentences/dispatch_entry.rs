@@ -543,7 +543,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         let mut sentence_tokens = strip_embedded_token_rules_text(sentence);
         sentence_tokens = trim_edge_punctuation(&sentence_tokens);
         if sentence_tokens.is_empty()
-            || crate::cards::builders::compiler::token_word_refs(&sentence_tokens).is_empty()
+            || crate::runtime_backend::token_word_refs(&sentence_tokens).is_empty()
         {
             sentence_idx += 1;
             continue;
@@ -592,7 +592,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             }];
             carried_context = None;
         }
-        if crate::cards::builders::compiler::token_word_refs(&parse_plan.tokens)
+        if crate::runtime_backend::token_word_refs(&parse_plan.tokens)
             .first()
             .copied()
             == Some("you")
@@ -605,7 +605,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         {
             return Err(CardTextError::ParseError(format!(
                 "sentence parsed to no semantic effects (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(&parse_plan.tokens).join(" ")
+                crate::runtime_backend::token_word_refs(&parse_plan.tokens).join(" ")
             )));
         }
         for effect in &mut sentence_effects {
@@ -1483,7 +1483,7 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     tokens: &[OwnedLexToken],
     effects: &mut [EffectAst],
 ) -> Result<(), CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let has_deal_x = find_window_by(&clause_words, 3, |window| {
         (window[0] == "deal" || window[0] == "deals") && window[1] == "x" && window[2] == "damage"
     })
@@ -1812,7 +1812,7 @@ pub(crate) fn strip_otherwise_sentence_prefix(
 pub(crate) fn rewrite_otherwise_referential_subject(
     tokens: Vec<OwnedLexToken>,
 ) -> Vec<OwnedLexToken> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(&tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(&tokens);
     let is_referential_get = clause_words.len() >= 3
         && clause_words[0] == "that"
         && matches!(clause_words[1], "creature" | "permanent")
@@ -1869,7 +1869,7 @@ fn token_copy_followup_container_effects_mut(
 pub(crate) fn parse_token_copy_followup_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1914,7 +1914,7 @@ pub(crate) fn parse_token_copy_followup_sentence(
 pub(crate) fn parse_token_copy_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

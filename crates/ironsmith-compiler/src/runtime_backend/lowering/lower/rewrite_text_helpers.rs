@@ -326,7 +326,14 @@ pub(crate) fn extract_previous_replacement_target(
         return Some(destroy.spec.clone());
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
-        return Some(destroy.spec.clone());
+        #[cfg(not(feature = "serialization"))]
+        {
+            return destroy.target.clone();
+        }
+        #[cfg(feature = "serialization")]
+        {
+            return Some(destroy.spec.clone());
+        }
     }
     if let Some(modify) = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>() {
         return Some(modify.target.clone());
@@ -367,7 +374,19 @@ pub(crate) fn rewrite_replacement_effect_target(
         ));
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
-        && effect_target_uses_it_reference(&destroy.spec)
+        && {
+            #[cfg(not(feature = "serialization"))]
+            {
+                destroy
+                    .target
+                    .as_ref()
+                    .is_some_and(effect_target_uses_it_reference)
+            }
+            #[cfg(feature = "serialization")]
+            {
+                effect_target_uses_it_reference(&destroy.spec)
+            }
+        }
     {
         return Some(crate::effect::Effect::new(
             crate::effects::DestroyNoRegenerationEffect::with_spec(previous_target.clone()),

@@ -26,8 +26,8 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
-    use crate::effects::cards::ImprintFromHandEffect;
     use crate::effects::ExecutionContext;
+    use crate::effects::cards::ImprintFromHandEffect;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
     use crate::mana::ManaSymbol;

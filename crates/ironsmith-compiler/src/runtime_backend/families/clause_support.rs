@@ -911,7 +911,7 @@ pub(crate) fn parse_triggered_line_lexed(
         let total_token_count = tokens.len().saturating_sub(start_idx);
         let period_count = tokens
             .iter()
-            .filter(|t| t.kind == crate::cards::builders::compiler::lexer::TokenKind::Period)
+            .filter(|t| t.kind == crate::runtime_backend::lexer::TokenKind::Period)
             .count();
         if period_count >= 2 && total_token_count > 15 && effect_count * 4 < total_token_count {
             return Err(CardTextError::ParseError(format!(

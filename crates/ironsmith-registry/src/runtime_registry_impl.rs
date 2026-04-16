@@ -1,7 +1,14 @@
 //! Registry-owned runtime card-loading implementation bridged into runtime.
 
 use super::{generated_meld_counterparts, generated_registry, *};
+use crate::ability::Ability;
 use crate::ability::AbilityKind;
+use crate::cards::CardDefinition;
+#[cfg(all(feature = "handwritten-parse-support", not(test)))]
+use crate::cards::CardDefinitionBuilder;
+#[cfg(all(feature = "handwritten-parse-support", not(test)))]
+use crate::cards::definitions::*;
+use crate::ids::CardId;
 use crate::static_abilities::StaticAbilityId;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -39,7 +46,10 @@ impl CardRegistry {
         let mut registry = Self::new();
         // Non-test builds are populated from the registry DB via generated parser output.
         generated_registry::register_generated_parser_cards(&mut registry);
+        #[cfg(all(feature = "handwritten-parse-support", not(test)))]
         registry.register_builtin_handwritten_cards_if(|_| true);
+        #[cfg(test)]
+        super::register_builtin_handwritten_cards_if_for_runtime_tests(&mut registry, |_| true);
 
         registry
     }
@@ -104,39 +114,61 @@ impl CardRegistry {
                 continue;
             }
 
-            let Ok(definition) =
-                compile_generated_parser_card_allow_unsupported(&resolved_name, &parse_block)
-            else {
-                continue;
-            };
+            #[cfg(all(feature = "handwritten-parse-support", not(test)))]
+            {
+                let Ok(definition) =
+                    compile_generated_parser_card_allow_unsupported(&resolved_name, &parse_block)
+                else {
+                    continue;
+                };
 
-            if !resolved_name.eq_ignore_ascii_case(normalized) {
-                // Flavor/printed aliases should still resolve to their canonical card even if the
-                // canonical generated definition currently needs the unsupported fallback marker.
-                // We keep that fallback visible on the definition rather than pretending support.
-                self.register_explicit(definition);
-                self.register_alias(normalized, &resolved_name);
-                continue;
-            }
+                if !resolved_name.eq_ignore_ascii_case(normalized) {
+                    // Flavor/printed aliases should still resolve to their canonical card even if the
+                    // canonical generated definition currently needs the unsupported fallback marker.
+                    // We keep that fallback visible on the definition rather than pretending support.
+                    self.register_explicit(definition);
+                    self.register_alias(normalized, &resolved_name);
+                    continue;
+                }
 
-            self.register(definition);
-            if self.get(&resolved_name).is_some() {
-                self.register_alias(normalized, &resolved_name);
+                self.register(definition);
+                if self.get(&resolved_name).is_some() {
+                    self.register_alias(normalized, &resolved_name);
+                }
             }
         }
 
         // Prefer handwritten definitions for overlapping cards and provide
         // fallbacks for cards whose generated parser definition is unavailable.
-        let requested_keys = requested_names
-            .iter()
-            .map(|name| normalize_card_constructor_key(name))
-            .collect::<std::collections::HashSet<_>>();
-        self.register_builtin_handwritten_cards_if(|constructor_key| {
-            requested_keys.contains(constructor_key)
-                || constructor_key
-                    .strip_prefix("basic_")
-                    .is_some_and(|stripped| requested_keys.contains(stripped))
-        });
+        #[cfg(all(feature = "handwritten-parse-support", not(test)))]
+        {
+            let requested_keys = requested_names
+                .iter()
+                .map(|name| normalize_card_constructor_key(name))
+                .collect::<std::collections::HashSet<_>>();
+            self.register_builtin_handwritten_cards_if(|constructor_key| {
+                requested_keys.contains(constructor_key)
+                    || constructor_key
+                        .strip_prefix("basic_")
+                        .is_some_and(|stripped| requested_keys.contains(stripped))
+            });
+        }
+        #[cfg(test)]
+        {
+            let requested_keys = requested_names
+                .iter()
+                .map(|name| normalize_card_constructor_key(name))
+                .collect::<std::collections::HashSet<_>>();
+            super::register_builtin_handwritten_cards_if_for_runtime_tests(
+                self,
+                |constructor_key| {
+                    requested_keys.contains(constructor_key)
+                        || constructor_key
+                            .strip_prefix("basic_")
+                            .is_some_and(|stripped| requested_keys.contains(stripped))
+                },
+            );
+        }
     }
 
     /// Ensure every generated parser definition is loaded into this registry.
@@ -144,7 +176,6 @@ impl CardRegistry {
         #[cfg(test)]
         {
             generated_registry::register_generated_parser_cards(self);
-            self.register_builtin_handwritten_cards_if(|_| true);
         }
         #[cfg(not(test))]
         {
@@ -195,10 +226,6 @@ impl CardRegistry {
 
     /// Incrementally parse/register generated cards and return the next cursor position.
     pub fn preload_generated_cards_chunk(&mut self, cursor: usize, chunk_size: usize) -> usize {
-        #[cfg(test)]
-        {
-            self.register_builtin_handwritten_cards_if(|_| true);
-        }
         generated_registry::register_generated_parser_cards_chunk(self, cursor, chunk_size)
     }
 
@@ -222,6 +249,7 @@ impl CardRegistry {
         registry
     }
 
+    #[cfg(all(feature = "handwritten-parse-support", not(test)))]
     fn register_builtin_handwritten_cards_if<F>(&mut self, mut include_constructor_key: F)
     where
         F: FnMut(&str) -> bool,
@@ -478,6 +506,7 @@ impl CardRegistry {
     }
 }
 
+#[cfg(all(feature = "handwritten-parse-support", not(test)))]
 fn compile_generated_parser_card_allow_unsupported(
     name: &str,
     parse_block: &str,
@@ -500,9 +529,7 @@ fn compile_generated_parser_card_allow_unsupported(
     }
 }
 
-pub fn unsupported_generated_definition_error(
-    definition: &CardDefinition,
-) -> Option<String> {
+pub fn unsupported_generated_definition_error(definition: &CardDefinition) -> Option<String> {
     if !generated_definition_has_unimplemented_content(definition) {
         return None;
     }
@@ -527,6 +554,7 @@ pub fn reject_unsupported_generated_definition(
     Ok(definition)
 }
 
+#[cfg(all(feature = "handwritten-parse-support", not(test)))]
 fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
     let requested_key = normalize_card_constructor_key(name);
     if requested_key.is_empty() {
@@ -544,7 +572,8 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
     let targeted_match = registry
         .get(name)
         .cloned()
-        .or_else(|| loose_name_match(&registry, name).cloned());
+        .or_else(|| loose_name_match(&registry, name).cloned())
+        .or_else(|| first_face_lookup(&registry, name).cloned());
     if targeted_match.is_some() {
         return targeted_match;
     }
@@ -557,6 +586,47 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
         .get(name)
         .cloned()
         .or_else(|| loose_name_match(&registry, name).cloned())
+        .or_else(|| first_face_lookup(&registry, name).cloned())
+}
+
+#[cfg(test)]
+fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
+    let requested_key = normalize_card_constructor_key(name);
+    if requested_key.is_empty() {
+        return None;
+    }
+
+    let mut registry = CardRegistry::new();
+    super::register_builtin_handwritten_cards_if_for_runtime_tests(
+        &mut registry,
+        |constructor_key| {
+            requested_key == constructor_key
+                || constructor_key
+                    .strip_prefix("basic_")
+                    .is_some_and(|stripped| stripped == requested_key)
+        },
+    );
+
+    let targeted_match = registry
+        .get(name)
+        .cloned()
+        .or_else(|| loose_name_match(&registry, name).cloned())
+        .or_else(|| first_face_lookup(&registry, name).cloned());
+    if targeted_match.is_some() {
+        return targeted_match;
+    }
+
+    super::register_builtin_handwritten_cards_if_for_runtime_tests(&mut registry, |_| true);
+    registry
+        .get(name)
+        .cloned()
+        .or_else(|| loose_name_match(&registry, name).cloned())
+        .or_else(|| first_face_lookup(&registry, name).cloned())
+}
+
+#[cfg(not(any(test, feature = "handwritten-parse-support")))]
+fn try_compile_builtin_card_by_name(_name: &str) -> Option<CardDefinition> {
+    None
 }
 
 fn normalize_card_constructor_key(name: &str) -> String {
@@ -599,6 +669,21 @@ fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&
     registry.cards.iter().find_map(|(name, definition)| {
         (normalize_card_loose_lookup_name(name) == requested_key).then_some(definition)
     })
+}
+
+fn first_face_lookup<'a>(
+    registry: &'a CardRegistry,
+    requested: &str,
+) -> Option<&'a CardDefinition> {
+    let (front_face, _) = requested.split_once("//")?;
+    let front_face = front_face.trim();
+    if front_face.is_empty() {
+        return None;
+    }
+
+    registry
+        .get(front_face)
+        .or_else(|| loose_name_match(registry, front_face))
 }
 
 /// A lazily-constructed singleton registry for effect/runtime lookups.

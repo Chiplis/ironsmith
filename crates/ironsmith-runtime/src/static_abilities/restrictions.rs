@@ -3,9 +3,9 @@
 //! These abilities modify game rules like preventing life gain,
 //! preventing searching, etc.
 
-use crate::effect::RestrictionExt as _;
 use super::{StaticAbility, StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
+use crate::effect::RestrictionExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;

@@ -11,28 +11,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 use crate::target::PlayerFilter;
-
-/// Effect that adds a mana pattern repeated by `amount`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddScaledManaEffect {
-    /// The base mana pattern to repeat (e.g., [`ManaSymbol::Black`]).
-    pub mana: Vec<ManaSymbol>,
-    /// Number of repetitions to add.
-    pub amount: Value,
-    /// Which player receives the mana.
-    pub player: PlayerFilter,
-}
-
-impl AddScaledManaEffect {
-    /// Create a new scaled add-mana effect.
-    pub fn new(mana: Vec<ManaSymbol>, amount: Value, player: PlayerFilter) -> Self {
-        Self {
-            mana,
-            amount,
-            player,
-        }
-    }
-}
+pub type AddScaledManaEffect = ironsmith_core::AddScaledManaEffect;
 
 impl EffectExecutor for AddScaledManaEffect {
     fn execute(

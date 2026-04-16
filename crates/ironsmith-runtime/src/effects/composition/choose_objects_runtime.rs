@@ -1,14 +1,14 @@
 //! Runtime orchestration for `ChooseObjectsEffect`.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
 use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_to_list, resolve_value,
 };
-use crate::events::SearchLibraryEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::SearchLibraryEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::{ObjectFilter, PlayerFilter};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -16,7 +16,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-use super::choose_objects::ChooseObjectsEffect;
+use super::choose_objects::{ChooseObjectsEffect, search_zones, top_only_selection_limit};
 
 fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
     filter
@@ -372,7 +372,7 @@ fn effective_search_zones(
     game: &GameState,
     chooser_id: PlayerId,
 ) -> Result<Vec<Zone>, ExecutionError> {
-    let mut zones = effect.search_zones()?;
+    let mut zones = search_zones(effect)?;
     if effect.is_search && zones.contains(&Zone::Library) && !game.can_search_library(chooser_id) {
         zones.retain(|zone| *zone != Zone::Library);
     }
@@ -398,7 +398,7 @@ fn collect_candidates_in_zone(
     } else {
         ctx.filter_context(game)
     };
-    let top_only_limit = effect.top_only_selection_limit(ctx.x_value);
+    let top_only_limit = top_only_selection_limit(effect, ctx.x_value);
     let mut hidden_zone_filter = effect.filter.clone();
     if matches!(search_zone, Zone::Hand | Zone::Graveyard | Zone::Library) {
         hidden_zone_filter.owner = None;
@@ -711,7 +711,7 @@ pub(crate) fn run_choose_objects(
 ) -> Result<EffectOutcome, ExecutionError> {
     let chooser_id = resolve_player_filter(game, &effect.chooser, ctx)?;
 
-    let search_zones = effect.search_zones()?;
+    let search_zones = search_zones(effect)?;
 
     if effect.is_search
         && search_zones == vec![Zone::Library]
@@ -802,7 +802,10 @@ pub(crate) fn run_choose_objects(
     };
 
     let description = if effect.is_search
-        && matches!(effect.description, "Choose" | "card" | "cards" | "objects")
+        && matches!(
+            effect.description.as_str(),
+            "Choose" | "card" | "cards" | "objects"
+        )
         && let Some(prompt) = friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
     {
         prompt
@@ -821,7 +824,7 @@ pub(crate) fn run_choose_objects(
         };
         describe_choose_from_filter(&effect.filter, min, max, verb)
     } else {
-        effect.description.to_string()
+        effect.description.clone()
     };
     let chosen: Vec<ObjectId> = if effect.count.is_random() {
         let mut randomized = candidates.clone();

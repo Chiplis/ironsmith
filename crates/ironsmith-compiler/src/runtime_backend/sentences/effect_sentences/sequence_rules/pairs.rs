@@ -4,22 +4,22 @@ use super::super::dispatch_entry::{
     parse_consult_traversal_sentence, parse_looked_card_choice_filter,
     parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
 };
-use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::contains_word_sequence;
-use crate::cards::builders::compiler::effect_sentences;
-use crate::cards::builders::compiler::effect_sentences::SentenceInput;
-use crate::cards::builders::compiler::lexer::TokenWordView;
-use crate::cards::builders::compiler::token_index_for_word_index;
-use crate::cards::builders::compiler::token_primitives::{
-    find_index, parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
-    word_view_has_any_prefix,
-};
-use crate::cards::builders::compiler::util::trim_commas;
-use crate::cards::builders::compiler::util::{helper_tag_for_tokens, is_article};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
     ReturnControllerAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
+use crate::runtime_backend::activation_and_restrictions::activated_line_core::contains_word_sequence;
+use crate::runtime_backend::effect_sentences;
+use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::lexer::TokenWordView;
+use crate::runtime_backend::token_index_for_word_index;
+use crate::runtime_backend::token_primitives::{
+    find_index, parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
+    word_view_has_any_prefix,
+};
+use crate::runtime_backend::util::trim_commas;
+use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
 use crate::target::{ChooseSpec, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -100,7 +100,7 @@ pub(super) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     };
 
     let second_words: Vec<&str> =
-        crate::cards::builders::compiler::token_word_refs(sentences[sentence_idx + 1].lowered())
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered())
             .into_iter()
             .filter(|word| !is_article(word))
             .collect();
@@ -135,7 +135,7 @@ pub(super) fn parse_delayed_dies_exile_top_power_choose_play(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    if crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+    if crate::runtime_backend::grammar::primitives::words_match_prefix(
         &first_tokens,
         &["when", "that", "creature", "dies", "this", "turn"],
     )
@@ -149,7 +149,7 @@ pub(super) fn parse_delayed_dies_exile_top_power_choose_play(
         return Ok(None);
     };
     let action_tokens = trim_commas(&first_tokens[comma_idx + 1..]);
-    let action_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&action_tokens)
+    let action_words: Vec<&str> = crate::runtime_backend::token_word_refs(&action_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -167,7 +167,7 @@ pub(super) fn parse_delayed_dies_exile_top_power_choose_play(
     }
 
     let second_words: Vec<&str> =
-        crate::cards::builders::compiler::token_word_refs(sentences[sentence_idx + 1].lowered())
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered())
             .into_iter()
             .filter(|word| !is_article(word))
             .collect();
@@ -225,7 +225,7 @@ pub(super) fn parse_target_gains_flashback_until_eot_with_targets_mana_cost(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words = crate::cards::builders::compiler::token_word_refs(&first_tokens);
+    let first_words = crate::runtime_backend::token_word_refs(&first_tokens);
     let Some(gain_idx) = find_index(&first_words, |word| matches!(*word, "gain" | "gains")) else {
         return Ok(None);
     };
@@ -243,7 +243,7 @@ pub(super) fn parse_target_gains_flashback_until_eot_with_targets_mana_cost(
     let target = effect_sentences::parse_target_phrase(&target_tokens)?;
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
     let valid_followup = second_words.as_slice()
         == [
             "the",
@@ -414,7 +414,7 @@ pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     } else {
         return Ok(None);
     };
-    let filter_words = crate::cards::builders::compiler::token_word_refs(&filter_tokens);
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     if contains_word_sequence(&filter_words, &["chosen", "type"])
         || contains_word_sequence(&filter_words, &["that", "type"])
     {
@@ -461,21 +461,21 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
     }
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
     let (zone, battlefield_tapped) =
-        if crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        if crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
             &["put", "that", "card", "into", "your", "hand"],
         )
         .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "into", "your", "hand"],
             )
             .is_some()
         {
             (Zone::Hand, false)
-        } else if crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        } else if crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
             &[
                 "put",
@@ -488,39 +488,39 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
             ],
         )
         .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "onto", "the", "battlefield", "tapped"],
             )
             .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "that", "card", "onto", "battlefield", "tapped"],
             )
             .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "onto", "battlefield", "tapped"],
             )
             .is_some()
         {
             (Zone::Battlefield, true)
-        } else if crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        } else if crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
             &["put", "that", "card", "onto", "the", "battlefield"],
         )
         .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "onto", "the", "battlefield"],
             )
             .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "that", "card", "onto", "battlefield"],
             )
             .is_some()
-            || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+            || crate::runtime_backend::grammar::primitives::words_match_prefix(
                 &second_tokens,
                 &["put", "it", "onto", "battlefield"],
             )
@@ -531,11 +531,8 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
             return Ok(None);
         };
 
-    if !crate::cards::builders::compiler::grammar::primitives::contains_word(&second_tokens, "rest")
-        && !crate::cards::builders::compiler::grammar::primitives::contains_word(
-            &second_tokens,
-            "other",
-        )
+    if !crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "rest")
+        && !crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "other")
     {
         return Ok(None);
     }
@@ -572,7 +569,7 @@ pub(super) fn parse_consult_match_move_all_to_graveyard(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
     let puts_all = slice_starts_with(&second_words, &["put", "all"])
         || slice_starts_with(&second_words, &["puts", "all"])
         || slice_starts_with(&second_words, &["that", "player", "puts", "all"]);
@@ -617,26 +614,20 @@ pub(super) fn parse_consult_match_into_hand_exile_others(
     }
 
     let second_tokens = trim_commas(second);
-    let moves_to_hand = crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+    let moves_to_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "into", "your", "hand"],
     )
     .is_some()
-        || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
             &["put", "it", "into", "your", "hand"],
         )
         .is_some();
-    let exiles_rest = crate::cards::builders::compiler::grammar::primitives::contains_word(
-        &second_tokens,
-        "exile",
-    ) && crate::cards::builders::compiler::grammar::primitives::contains_word(
-        &second_tokens,
-        "other",
-    ) && crate::cards::builders::compiler::grammar::primitives::contains_word(
-        &second_tokens,
-        "cards",
-    );
+    let exiles_rest =
+        crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "exile")
+            && crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "other")
+            && crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "cards");
     if !moves_to_hand || !exiles_rest {
         return Ok(None);
     }
@@ -696,17 +687,17 @@ pub(super) fn parse_consult_match_into_hand_others_graveyard(
     }
 
     let second_tokens = trim_commas(second);
-    let moves_to_hand = crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+    let moves_to_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "into", "your", "hand"],
     )
     .is_some()
-        || crate::cards::builders::compiler::grammar::primitives::words_match_prefix(
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,
             &["put", "it", "into", "your", "hand"],
         )
         .is_some();
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_tokens);
+    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
     let others_to_graveyard = (contains_word_sequence(&second_words, &["other", "cards"])
         || contains_word_sequence(&second_words, &["all", "other"]))
         && slice_contains(&second_words, &"graveyard");

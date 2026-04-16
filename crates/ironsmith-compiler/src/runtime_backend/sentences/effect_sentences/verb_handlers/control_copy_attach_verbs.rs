@@ -4,7 +4,7 @@ pub(crate) fn parse_lose_life(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
     if clause_words.len() == 2
         && clause_words[1] == "life"
@@ -77,7 +77,7 @@ pub(crate) fn parse_gain_life(
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
@@ -86,7 +86,7 @@ pub(crate) fn parse_gain_life(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing life-gain clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -97,7 +97,7 @@ pub(crate) fn parse_gain_control(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let has_dynamic_power_bound = grammar::contains_word(tokens, "power")
         && grammar::contains_word(tokens, "number")
         && grammar::words_find_phrase(tokens, &["you", "control"]).is_some();
@@ -267,7 +267,7 @@ pub(crate) fn parse_put_into_hand(
             token.is_word("hand") || token.is_word("hands")
         })?;
         let tail_tokens = trim_commas(&tokens[hand_idx + 1..]);
-        let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+        let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
         parse_delayed_return_timing_words(&tail_words)
     }
 
@@ -287,7 +287,7 @@ pub(crate) fn parse_put_into_hand(
         mut target: TargetAst,
         target_tokens: &[OwnedLexToken],
     ) -> TargetAst {
-        let target_words = crate::cards::builders::compiler::token_word_refs(target_tokens);
+        let target_words = crate::runtime_backend::token_word_refs(target_tokens);
         let has_graveyard = target_words
             .iter()
             .any(|word| matches!(*word, "graveyard" | "graveyards"));
@@ -342,11 +342,11 @@ pub(crate) fn parse_put_into_hand(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
     fn parse_counted_those_cards_target(tokens: &[OwnedLexToken]) -> Option<u32> {
         let tokens = trim_commas(tokens);
-        let words = crate::cards::builders::compiler::token_word_refs(&tokens);
+        let words = crate::runtime_backend::token_word_refs(&tokens);
         if words.first().copied() != Some("put") {
             return None;
         }
@@ -712,7 +712,7 @@ pub(crate) fn parse_put_into_hand(
                 )));
             }
 
-            let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+            let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             let is_rest_target =
                 target_words.as_slice() == ["the", "rest"] || target_words.as_slice() == ["rest"];
             if is_rest_target {
@@ -775,7 +775,7 @@ pub(crate) fn parse_put_into_hand(
             } else {
                 None
             };
-            let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+            let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             if zone == Zone::Graveyard
                 && matches!(target_words.as_slice(), ["the", "rest"] | ["rest"])
             {
@@ -858,7 +858,7 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let destination_words: Vec<&str> =
-            crate::cards::builders::compiler::token_word_refs(dest_slice)
+            crate::runtime_backend::token_word_refs(dest_slice)
                 .into_iter()
                 .filter(|word| !is_article(word))
                 .collect();

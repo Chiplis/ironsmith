@@ -12,14 +12,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::card::LinkedFaceLayout;
-use crate::cards::{
-    CardDefinition, CardDefinitionBuilder, generated_definition_has_unimplemented_content,
-};
-use crate::compiled_text::canonical_compiled_lines;
-use crate::ids::CardId;
-use crate::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
-use crate::text_cleanup::strip_parenthetical_text;
+use ironsmith::card::LinkedFaceLayout;
+use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
+use ironsmith::compiled_text::canonical_compiled_lines;
+use ironsmith::ids::CardId;
+use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
+use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
@@ -45,6 +43,55 @@ query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
   }
 }
 "#;
+
+fn strip_parenthetical_text(text: &str) -> String {
+    text.lines()
+        .map(strip_parenthetical_text_from_line)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn strip_parenthetical_text_from_line(line: &str) -> String {
+    let mut stripped = String::with_capacity(line.len());
+    let mut depth = 0usize;
+
+    for ch in line.chars() {
+        match ch {
+            '(' => {
+                if depth == 0 {
+                    while stripped.ends_with([' ', '\t']) {
+                        stripped.pop();
+                    }
+                }
+                depth += 1;
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+            }
+            _ if depth == 0 => stripped.push(ch),
+            _ => {}
+        }
+    }
+
+    tighten_spacing(&stripped)
+}
+
+fn tighten_spacing(line: &str) -> String {
+    let collapsed = line
+        .replace('\u{00a0}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut tightened = String::with_capacity(collapsed.len());
+    for ch in collapsed.chars() {
+        if matches!(ch, '.' | ',' | ';' | ':' | '!' | '?') && tightened.ends_with(' ') {
+            tightened.pop();
+        }
+        tightened.push(ch);
+    }
+    tightened.trim().to_string()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardPayload {
@@ -1694,8 +1741,11 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAttempt {
     with_allow_unsupported(allow_unsupported, || {
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            CardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name)
-                .parse_text(parse_input.to_string())
+            ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+                CompilerCardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name),
+                parse_input.to_string(),
+                allow_unsupported,
+            )
         }));
         match result {
             Ok(Ok(definition)) => ParseAttempt {
@@ -1830,9 +1880,25 @@ fn definition_from_payload(
     card_id: CardId,
 ) -> Result<CardDefinition, String> {
     let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
-    let mut definition = CardDefinitionBuilder::new(card_id, parse_name)
-        .parse_text(payload.parse_input.clone())
-        .map_err(|err| format!("{err:?}"))?;
+    let builder = CompilerCardDefinitionBuilder::new(card_id, parse_name);
+    let mut definition =
+        match ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+            builder.clone(),
+            payload.parse_input.clone(),
+            false,
+        ) {
+            Ok(definition) => definition,
+            Err(parse_input_err) => {
+                ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+                    builder,
+                    payload.oracle_text.clone(),
+                    false,
+                )
+                .map_err(|oracle_err| {
+                    format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
+                })?
+            }
+        };
     decorate_definition_from_payload(&mut definition, payload);
     Ok(definition)
 }
@@ -1899,7 +1965,7 @@ pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_compare::report_embedding_config;
+    use ironsmith::semantic_compare::report_embedding_config;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_path(name: &str) -> PathBuf {
@@ -2035,9 +2101,12 @@ mod tests {
     #[test]
     fn compilation_snapshot_uses_embedding_backed_similarity() {
         let oracle = "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.";
-        let definition = CardDefinitionBuilder::new(CardId::new(), "House Cartographer")
-            .parse_text(oracle)
-            .expect("house cartographer should parse");
+        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+            CompilerCardDefinitionBuilder::new(CardId::new(), "House Cartographer"),
+            oracle,
+            false,
+        )
+        .expect("house cartographer should parse");
         let compiled = canonical_compiled_lines(&definition);
         let snapshot = CompilationSnapshot::from_definition_result(
             "House Cartographer",
@@ -2066,9 +2135,12 @@ mod tests {
     #[test]
     fn compilation_snapshot_uses_same_normalized_text_as_default_cli_surface() {
         let oracle = "Enlist (As this creature attacks, you may tap a nonattacking creature you control without summoning sickness. When you do, add its power to this creature's until end of turn.)\nWhen this creature enters, create a 1/1 white Soldier creature token.";
-        let definition = CardDefinitionBuilder::new(CardId::new(), "Argivian Cavalier")
-            .parse_text(oracle)
-            .expect("argivian cavalier should parse");
+        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+            CompilerCardDefinitionBuilder::new(CardId::new(), "Argivian Cavalier"),
+            oracle,
+            false,
+        )
+        .expect("argivian cavalier should parse");
 
         let snapshot = CompilationSnapshot::from_definition_result(
             "Argivian Cavalier",
@@ -2094,9 +2166,12 @@ mod tests {
     #[test]
     fn compilation_snapshot_strips_parenthetical_text_from_stored_surfaces() {
         let oracle = "Flying (This creature can't be blocked except by creatures with flying or reach.)\nCycling {2} ({2}, Discard this card: Draw a card.)";
-        let definition = CardDefinitionBuilder::new(CardId::new(), "Reminder Bird")
-            .parse_text(oracle)
-            .expect("reminder bird should parse");
+        let definition = ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+            CompilerCardDefinitionBuilder::new(CardId::new(), "Reminder Bird"),
+            oracle,
+            false,
+        )
+        .expect("reminder bird should parse");
 
         let snapshot = CompilationSnapshot::from_definition_result(
             "Reminder Bird",

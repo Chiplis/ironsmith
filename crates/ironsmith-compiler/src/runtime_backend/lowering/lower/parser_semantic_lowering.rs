@@ -620,7 +620,7 @@ fn lower_rewrite_static_to_chunk_impl(
             return Ok(LineAst::Ability(level_up));
         }
     }
-    let token_words = crate::cards::builders::compiler::lexer::token_word_refs(&lexed);
+    let token_words = crate::runtime_backend::lexer::token_word_refs(&lexed);
     if word_refs_have_suffix(
         token_words.as_slice(),
         &["untap", "during", "your", "untap", "step"],

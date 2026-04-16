@@ -8,22 +8,7 @@ use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantNextSpellAbilityEffect {
-    pub player: PlayerFilter,
-    pub filter: ObjectFilter,
-    pub ability: StaticAbility,
-}
-
-impl GrantNextSpellAbilityEffect {
-    pub fn new(player: PlayerFilter, filter: ObjectFilter, ability: StaticAbility) -> Self {
-        Self {
-            player,
-            filter,
-            ability,
-        }
-    }
-}
+pub type GrantNextSpellAbilityEffect = ironsmith_core::GrantNextSpellAbilityEffect<StaticAbility>;
 
 impl EffectExecutor for GrantNextSpellAbilityEffect {
     fn execute(

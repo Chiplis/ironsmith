@@ -1,43 +1,12 @@
-use crate::filter::ObjectFilterExt as _;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChooseSpellCastHistoryEffect {
-    pub chooser: PlayerFilter,
-    pub cast_by: PlayerFilter,
-    pub filter: ObjectFilter,
-    pub tag: TagKey,
-    pub description: String,
-}
-
-impl ChooseSpellCastHistoryEffect {
-    pub fn new(
-        chooser: PlayerFilter,
-        cast_by: PlayerFilter,
-        filter: ObjectFilter,
-        tag: impl Into<TagKey>,
-    ) -> Self {
-        Self {
-            chooser,
-            cast_by,
-            filter,
-            tag: tag.into(),
-            description: "Choose one of those spells".to_string(),
-        }
-    }
-
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
-        self.description = description.into();
-        self
-    }
-}
+pub type ChooseSpellCastHistoryEffect = ironsmith_core::ChooseSpellCastHistoryEffect;
 
 impl EffectExecutor for ChooseSpellCastHistoryEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

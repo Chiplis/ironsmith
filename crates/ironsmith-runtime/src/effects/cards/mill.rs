@@ -4,8 +4,8 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::PlayerFilter;
@@ -24,28 +24,7 @@ use crate::zone::Zone;
 /// // Mill 3 cards
 /// let effect = MillEffect::new(3, PlayerFilter::You);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct MillEffect {
-    /// How many cards to mill.
-    pub count: Value,
-    /// Which player mills.
-    pub player: PlayerFilter,
-}
-
-impl MillEffect {
-    /// Create a new mill effect.
-    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player,
-        }
-    }
-
-    /// Create an effect where you mill cards.
-    pub fn you(count: impl Into<Value>) -> Self {
-        Self::new(count, PlayerFilter::You)
-    }
-}
+pub type MillEffect = ironsmith_core::MillEffect;
 
 impl EffectExecutor for MillEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

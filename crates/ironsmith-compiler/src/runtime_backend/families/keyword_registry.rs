@@ -166,7 +166,15 @@ pub(super) fn lower_additional_cost_choice(
         line,
         "additional cost-choice",
         parse_additional_cost_choice_options_lexed(effect_tokens)?,
-    )?;
+    )?
+    .into_iter()
+    .map(
+        |option| crate::runtime_backend::semantic::AdditionalCostChoiceOptionAst {
+            description: option.description,
+            effects: option.effects,
+        },
+    )
+    .collect();
     Ok(LineAst::AdditionalCostChoice { options })
 }
 

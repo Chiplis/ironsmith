@@ -186,9 +186,21 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
             Effect::new(
                 crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
-                    crate::continuous::Modification::SetPower {
-                        value: power.clone(),
-                        sublayer: crate::continuous::PtSublayer::Setting,
+                    {
+                        #[cfg(not(feature = "serialization"))]
+                        {
+                            crate::continuous::Modification::SetPower {
+                                power: power.clone(),
+                                sublayer: crate::continuous::PtSublayer::Setting,
+                            }
+                        }
+                        #[cfg(feature = "serialization")]
+                        {
+                            crate::continuous::Modification::SetPower {
+                                value: power.clone(),
+                                sublayer: crate::continuous::PtSublayer::Setting,
+                            }
+                        }
                     },
                     duration.clone(),
                 )
@@ -367,14 +379,14 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let mut apply = crate::effects::ApplyContinuousEffect::new(
                 crate::continuous::EffectTarget::Filter(resolved_filter),
-                crate::continuous::Modification::RemoveAbility(abilities[0].clone()),
+                crate::continuous::Modification::RemoveAbility(abilities[0].clone().into()),
                 duration.clone(),
             )
             .lock_filter_at_resolution();
 
             for ability in abilities.iter().skip(1) {
                 apply = apply.with_additional_modification(
-                    crate::continuous::Modification::RemoveAbility(ability.clone()),
+                    crate::continuous::Modification::RemoveAbility(ability.clone().into()),
                 );
             }
 
@@ -478,13 +490,13 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
-                    crate::continuous::Modification::RemoveAbility(first_ability.clone()),
+                    crate::continuous::Modification::RemoveAbility(first_ability.clone().into()),
                     duration.clone(),
                 );
 
                 for ability in abilities.iter().skip(1) {
                     apply = apply.with_additional_modification(
-                        crate::continuous::Modification::RemoveAbility(ability.clone()),
+                        crate::continuous::Modification::RemoveAbility(ability.clone().into()),
                     );
                 }
 

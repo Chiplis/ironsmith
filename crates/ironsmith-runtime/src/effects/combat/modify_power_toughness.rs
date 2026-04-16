@@ -28,50 +28,7 @@ use crate::types::CardType;
 /// // Target creature gets -2/-2 until end of turn
 /// let effect = ModifyPowerToughnessEffect::new(ChooseSpec::creature(), -2, -2, Until::EndOfTurn);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ModifyPowerToughnessEffect {
-    /// Which creature to modify.
-    pub target: ChooseSpec,
-    /// Power modifier.
-    pub power: Value,
-    /// Toughness modifier.
-    pub toughness: Value,
-    /// Duration for the modification.
-    pub duration: Until,
-}
-
-impl ModifyPowerToughnessEffect {
-    /// Create a new modify power/toughness effect with explicit duration.
-    pub fn new(
-        target: ChooseSpec,
-        power: impl Into<Value>,
-        toughness: impl Into<Value>,
-        duration: Until,
-    ) -> Self {
-        Self {
-            target,
-            power: power.into(),
-            toughness: toughness.into(),
-            duration,
-        }
-    }
-
-    /// Create a pump effect (+X/+X) with explicit duration.
-    pub fn pump(target: ChooseSpec, amount: impl Into<Value>, duration: Until) -> Self {
-        let val = amount.into();
-        Self::new(target, val.clone(), val, duration)
-    }
-
-    /// Create a shrink effect (-X/-X) with explicit duration.
-    pub fn shrink(target: ChooseSpec, amount: i32, duration: Until) -> Self {
-        Self::new(target, -amount, -amount, duration)
-    }
-
-    /// Modify the source creature with explicit duration.
-    pub fn source(power: impl Into<Value>, toughness: impl Into<Value>, duration: Until) -> Self {
-        Self::new(ChooseSpec::Source, power, toughness, duration)
-    }
-}
+pub type ModifyPowerToughnessEffect = ironsmith_core::ModifyPowerToughnessEffect;
 
 impl EffectExecutor for ModifyPowerToughnessEffect {
     fn execute(

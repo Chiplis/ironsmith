@@ -4,6 +4,7 @@ use crate::effect::{Effect, EffectId, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+pub type WithIdEffect = ironsmith_core::WithIdEffect<crate::effect::Effect>;
 
 /// Effect that executes an inner effect and stores its result with an ID.
 ///
@@ -23,24 +24,6 @@ use crate::game_state::GameState;
 ///     Effect::sacrifice(ObjectFilter::creature(), 1),
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct WithIdEffect {
-    /// The ID to store the result under.
-    pub id: EffectId,
-    /// The effect to execute.
-    pub effect: Box<Effect>,
-}
-
-impl WithIdEffect {
-    /// Create a new WithId effect.
-    pub fn new(id: EffectId, effect: Effect) -> Self {
-        Self {
-            id,
-            effect: Box::new(effect),
-        }
-    }
-}
-
 impl EffectExecutor for WithIdEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect

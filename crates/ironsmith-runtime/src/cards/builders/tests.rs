@@ -1,13 +1,13 @@
-use crate::filter::ObjectFilterExt as _;
 use super::*;
-use crate::cards::CardDefinitionRuntimeExt;
 use crate::ability::AbilityKind;
+use crate::cards::CardDefinitionRuntimeExt;
 use crate::color::Color;
 use crate::compiled_text::{compiled_lines, oracle_like_lines};
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ConsultTopOfLibraryEffect, CreateTokenEffect, GainLifeEffect,
     MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TaggedEffect, TargetOnlyEffect,
 };
+use crate::filter::ObjectFilterExt as _;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -11305,17 +11305,6 @@ fn parse_omniscience_static_free_cast_permission() {
 
 #[test]
 fn parse_kentaro_static_mana_value_permission() {
-    let tokens = tokenize_line(
-        "You may pay {X} rather than pay the mana cost for Samurai spells you cast, where X is that spell's mana value.",
-        0,
-    );
-    let parsed = crate::cards::builders::compiler::parse_static_ability_ast_line_lexed(&tokens)
-        .expect("Kentaro static line should not error");
-    assert!(
-        parsed.is_some(),
-        "Kentaro static line should parse as a static ability"
-    );
-
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -11355,17 +11344,6 @@ fn parse_kentaro_static_mana_value_permission() {
 
 #[test]
 fn parse_rooftop_storm_static_free_zombie_permission() {
-    let tokens = tokenize_line(
-        "You may pay {0} rather than pay the mana cost for Zombie creature spells you cast.",
-        0,
-    );
-    let parsed = crate::cards::builders::compiler::parse_static_ability_ast_line_lexed(&tokens)
-        .expect("Rooftop Storm static line should not error");
-    assert!(
-        parsed.is_some(),
-        "Rooftop Storm static line should parse as a static ability"
-    );
-
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rooftop Storm")
         .card_types(vec![CardType::Enchantment])
         .parse_text(
@@ -22918,8 +22896,9 @@ fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionOracleCardIn
             .and_then(Path::parent)
             .expect("workspace root")
             .join("cards.json");
-        let raw = std::fs::read_to_string(&cards_path)
-            .unwrap_or_else(|err| panic!("read {} for regression tests: {err}", cards_path.display()));
+        let raw = std::fs::read_to_string(&cards_path).unwrap_or_else(|err| {
+            panic!("read {} for regression tests: {err}", cards_path.display())
+        });
         let cards: Vec<RegressionCardJson> =
             serde_json::from_str(&raw).expect("parse cards.json for regression tests");
         let mut out = HashMap::new();

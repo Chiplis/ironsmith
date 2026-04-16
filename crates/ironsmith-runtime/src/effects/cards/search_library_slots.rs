@@ -11,8 +11,8 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
@@ -21,73 +21,8 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct SearchLibrarySlot {
-    pub filter: ObjectFilter,
-    pub required: bool,
-}
-
-impl SearchLibrarySlot {
-    pub fn optional(filter: ObjectFilter) -> Self {
-        Self {
-            filter,
-            required: false,
-        }
-    }
-
-    pub fn required(filter: ObjectFilter) -> Self {
-        Self {
-            filter,
-            required: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SearchLibrarySlotsEffect {
-    pub slots: Vec<SearchLibrarySlot>,
-    pub destination: Zone,
-    pub chooser: PlayerFilter,
-    pub player: PlayerFilter,
-    pub reveal: bool,
-    pub progress_tag: TagKey,
-}
-
-impl SearchLibrarySlotsEffect {
-    pub fn new(
-        slots: Vec<SearchLibrarySlot>,
-        destination: Zone,
-        chooser: PlayerFilter,
-        player: PlayerFilter,
-        reveal: bool,
-        progress_tag: impl Into<TagKey>,
-    ) -> Self {
-        Self {
-            slots,
-            destination,
-            chooser,
-            player,
-            reveal,
-            progress_tag: progress_tag.into(),
-        }
-    }
-
-    pub fn to_hand(
-        slots: Vec<SearchLibrarySlot>,
-        player: PlayerFilter,
-        reveal: bool,
-        progress_tag: impl Into<TagKey>,
-    ) -> Self {
-        Self::new(
-            slots,
-            Zone::Hand,
-            player.clone(),
-            player,
-            reveal,
-            progress_tag,
-        )
-    }
-}
+pub type SearchLibrarySlot = ironsmith_core::SearchLibrarySlot;
+pub type SearchLibrarySlotsEffect = ironsmith_core::SearchLibrarySlotsEffect;
 
 impl EffectExecutor for SearchLibrarySlotsEffect {
     fn execute(
@@ -144,13 +79,13 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                 continue;
             }
 
-            let chosen_card = if slot.required {
+            let chosen_card = if slot.optional {
                 make_decision_with_fallback(
                     game,
                     &mut ctx.decision_maker,
                     chooser_id,
                     Some(ctx.source),
-                    SearchSpec::mandatory(ctx.source, matching_cards, self.reveal),
+                    SearchSpec::new(ctx.source, matching_cards, self.reveal),
                     FallbackStrategy::FirstOption,
                 )
             } else {
@@ -159,7 +94,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                     &mut ctx.decision_maker,
                     chooser_id,
                     Some(ctx.source),
-                    SearchSpec::new(ctx.source, matching_cards, self.reveal),
+                    SearchSpec::mandatory(ctx.source, matching_cards, self.reveal),
                     FallbackStrategy::FirstOption,
                 )
             };

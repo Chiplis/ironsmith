@@ -30,9 +30,9 @@ pub(crate) fn parse_cycling_line_lexed(
         return Ok(None);
     }
 
-    let base_cost_words = crate::cards::builders::compiler::token_word_refs(first_cost_tokens);
+    let base_cost_words = crate::runtime_backend::token_word_refs(first_cost_tokens);
     if cycling_groups.iter().skip(1).any(|(_, cost_tokens)| {
-        crate::cards::builders::compiler::token_word_refs(cost_tokens) != base_cost_words
+        crate::runtime_backend::token_word_refs(cost_tokens) != base_cost_words
     }) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mixed cycling costs (clause: '{clause_text}')",
@@ -76,12 +76,12 @@ pub(crate) fn parse_cycling_line_lexed(
         .unwrap_or_else(|| base_cost_words.join(" "));
     let render_text = if let Some(group) = parse_cycling_keyword_group_text(tokens) {
         group
-    } else if crate::cards::builders::compiler::token_word_refs(first_keyword_tokens).is_empty() {
+    } else if crate::runtime_backend::token_word_refs(first_keyword_tokens).is_empty() {
         cost_text
     } else {
         format!(
             "{} {cost_text}",
-            crate::cards::builders::compiler::token_word_refs(first_keyword_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(first_keyword_tokens).join(" ")
         )
     };
 
@@ -241,11 +241,11 @@ pub(crate) fn parse_cycling_keyword_group_text(tokens: &[OwnedLexToken]) -> Opti
 
     let mut parts = Vec::new();
     for (keyword_tokens, cost_tokens) in groups {
-        let keyword = crate::cards::builders::compiler::token_word_refs(&keyword_tokens).join(" ");
+        let keyword = crate::runtime_backend::token_word_refs(&keyword_tokens).join(" ");
         if keyword.is_empty() {
             continue;
         }
-        let cost_words = crate::cards::builders::compiler::token_word_refs(&cost_tokens);
+        let cost_words = crate::runtime_backend::token_word_refs(&cost_tokens);
         let cost = if cost_words.len() >= 3 && cost_words[0] == "pay" && cost_words[2] == "life" {
             format!("pay {} life", cost_words[1])
         } else {
@@ -411,7 +411,7 @@ pub(crate) fn parse_equip_line(
             ));
         }
         let total_cost = parse_activation_cost(&cost_tokens)?;
-        let tail_words = crate::cards::builders::compiler::token_word_refs(&cost_tokens);
+        let tail_words = crate::runtime_backend::token_word_refs(&cost_tokens);
         if tail_words.is_empty() {
             return Err(CardTextError::ParseError(
                 "equip missing activation cost".to_string(),

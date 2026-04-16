@@ -2,8 +2,8 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::events::DamageEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::DamageEvent;
 use crate::events::DamageTarget;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;

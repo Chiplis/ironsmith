@@ -1,6 +1,5 @@
 //! Search library effect implementation.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, SearchSelectionMode};
@@ -9,96 +8,16 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
-/// Effect that searches a player's library for a card.
-///
-/// The player can choose which matching card to find, or "fail to find" for hidden searches.
-/// The library is always shuffled after searching.
-///
-/// # Fields
-///
-/// * `filter` - Filter for which cards can be found
-/// * `destination` - Where to put the found card
-/// * `chooser` - Which player makes the search decision
-/// * `player` - Whose library to search
-/// * `reveal` - Whether the found card must be revealed
-///
-/// # Example
-///
-/// ```ignore
-/// // Search for a basic land and put it onto the battlefield
-/// let effect = SearchLibraryEffect::new(
-///     ObjectFilter::basic_land(),
-///     Zone::Battlefield,
-///     PlayerFilter::You,
-///     true,
-/// );
-///
-/// // Tutor effect (search for any card)
-/// let effect = SearchLibraryEffect::to_hand(ObjectFilter::default(), PlayerFilter::You, true);
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct SearchLibraryEffect {
-    /// Filter for which cards can be found.
-    pub filter: ObjectFilter,
-    /// Where to put the found card.
-    pub destination: Zone,
-    /// Which player makes the search decision.
-    pub chooser: PlayerFilter,
-    /// Whose library to search.
-    pub player: PlayerFilter,
-    /// Whether the found card must be revealed.
-    pub reveal: bool,
-    /// Search phrasing that determines fail-to-find behavior.
-    pub search_mode: SearchSelectionMode,
-}
-
-impl SearchLibraryEffect {
-    /// Create a new search library effect.
-    pub fn new(
-        filter: ObjectFilter,
-        destination: Zone,
-        chooser: PlayerFilter,
-        player: PlayerFilter,
-        reveal: bool,
-    ) -> Self {
-        Self {
-            filter,
-            destination,
-            chooser,
-            player,
-            reveal,
-            search_mode: SearchSelectionMode::Exact,
-        }
-    }
-
-    pub fn with_search_mode(mut self, search_mode: SearchSelectionMode) -> Self {
-        self.search_mode = search_mode;
-        self
-    }
-
-    /// Search for a card and put it into your hand.
-    pub fn to_hand(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Hand, player.clone(), player, reveal)
-    }
-
-    /// Search for a card and put it onto the battlefield.
-    pub fn to_battlefield(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Battlefield, player.clone(), player, reveal)
-    }
-
-    /// Search for a card and put it on top of your library.
-    pub fn to_library_top(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Library, player.clone(), player, reveal)
-    }
-}
+pub type SearchLibraryEffect = ironsmith_core::SearchLibraryEffect;
 
 impl EffectExecutor for SearchLibraryEffect {
     fn execute(

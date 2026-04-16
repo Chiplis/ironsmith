@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-use ironsmith::cards::builders::CardTextError;
+use ironsmith_compiler::CardTextError;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
 
 #[derive(Debug, Clone)]

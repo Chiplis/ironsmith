@@ -9,55 +9,19 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
+pub type TagMatchingObjectsEffect = ironsmith_core::TagMatchingObjectsEffect;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TagMatchingObjectsEffect {
-    pub filter: ObjectFilter,
-    pub zone: Option<Zone>,
-    pub additional_zones: Vec<Zone>,
-    pub tag: TagKey,
-}
-
-impl TagMatchingObjectsEffect {
-    pub fn new(filter: ObjectFilter, tag: impl Into<TagKey>) -> Self {
-        Self {
-            filter,
-            zone: None,
-            additional_zones: Vec::new(),
-            tag: tag.into(),
+fn effect_zones(effect: &TagMatchingObjectsEffect) -> Vec<Zone> {
+    let mut zones = Vec::new();
+    if let Some(zone) = effect.zone.or(effect.filter.zone) {
+        zones.push(zone);
+    }
+    for zone in &effect.additional_zones {
+        if !zones.contains(zone) {
+            zones.push(*zone);
         }
     }
-
-    pub fn in_zone(mut self, zone: Zone) -> Self {
-        self.zone = Some(zone);
-        self.additional_zones.clear();
-        self
-    }
-
-    pub fn in_zones(mut self, zones: Vec<Zone>) -> Self {
-        let mut iter = zones.into_iter();
-        if let Some(first) = iter.next() {
-            self.zone = Some(first);
-            self.additional_zones = iter.collect();
-        } else {
-            self.zone = None;
-            self.additional_zones.clear();
-        }
-        self
-    }
-
-    fn zones(&self) -> Vec<Zone> {
-        let mut zones = Vec::new();
-        if let Some(zone) = self.zone.or(self.filter.zone) {
-            zones.push(zone);
-        }
-        for zone in &self.additional_zones {
-            if !zones.contains(zone) {
-                zones.push(*zone);
-            }
-        }
-        zones
-    }
+    zones
 }
 
 impl EffectExecutor for TagMatchingObjectsEffect {
@@ -67,7 +31,7 @@ impl EffectExecutor for TagMatchingObjectsEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut object_ids = Vec::new();
-        for zone in self.zones() {
+        for zone in effect_zones(self) {
             let mut filter = self.filter.clone();
             filter.zone = Some(zone);
             for object_id in resolve_objects_from_spec(game, &ChooseSpec::All(filter), ctx)? {

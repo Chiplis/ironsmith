@@ -47,17 +47,22 @@ mod tests {
     #[test]
     fn anthem_value_scaled_collapses_zero() {
         assert_eq!(
-            AnthemValue::scaled(0, AnthemCountExpression::MatchingFilter(ObjectFilter::creature())),
+            AnthemValue::scaled(
+                0,
+                AnthemCountExpression::MatchingFilter(ObjectFilter::creature())
+            ),
             AnthemValue::Fixed(0)
         );
     }
 
     #[test]
     fn anthem_value_reports_affected_object_dependency() {
-        assert!(AnthemValue::scaled(
-            1,
-            AnthemCountExpression::AttachedToAffected(ObjectFilter::artifact())
-        )
-        .uses_affected_object());
+        assert!(
+            AnthemValue::scaled(
+                1,
+                AnthemCountExpression::AttachedToAffected(ObjectFilter::artifact())
+            )
+            .uses_affected_object()
+        );
     }
 }

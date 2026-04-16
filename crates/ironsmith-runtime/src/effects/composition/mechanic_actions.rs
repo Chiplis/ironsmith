@@ -13,10 +13,10 @@ use crate::effects::zones::apply_zone_change;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::events::processing::EventOutcome;
-use crate::events::permanents::SacrificeEvent;
-use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::permanents::SacrificeEvent;
+use crate::events::processing::EventOutcome;
+use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
@@ -512,67 +512,7 @@ pub struct BolsterEffect {
     pub amount: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PopulateEffect {
-    pub count: Value,
-    pub enters_tapped: bool,
-    pub enters_attacking: bool,
-    pub has_haste: bool,
-    pub sacrifice_at_next_end_step: bool,
-    pub exile_at_next_end_step: bool,
-    pub exile_at_end_of_combat: bool,
-    pub sacrifice_at_end_of_combat: bool,
-}
-
-impl PopulateEffect {
-    pub fn new(count: impl Into<Value>) -> Self {
-        Self {
-            count: count.into(),
-            enters_tapped: false,
-            enters_attacking: false,
-            has_haste: false,
-            sacrifice_at_next_end_step: false,
-            exile_at_next_end_step: false,
-            exile_at_end_of_combat: false,
-            sacrifice_at_end_of_combat: false,
-        }
-    }
-
-    pub fn enters_tapped(mut self, value: bool) -> Self {
-        self.enters_tapped = value;
-        self
-    }
-
-    pub fn attacking(mut self, value: bool) -> Self {
-        self.enters_attacking = value;
-        self
-    }
-
-    pub fn haste(mut self, value: bool) -> Self {
-        self.has_haste = value;
-        self
-    }
-
-    pub fn sacrifice_at_next_end_step(mut self, value: bool) -> Self {
-        self.sacrifice_at_next_end_step = value;
-        self
-    }
-
-    pub fn exile_at_next_end_step(mut self, value: bool) -> Self {
-        self.exile_at_next_end_step = value;
-        self
-    }
-
-    pub fn exile_at_end_of_combat(mut self, value: bool) -> Self {
-        self.exile_at_end_of_combat = value;
-        self
-    }
-
-    pub fn sacrifice_at_end_of_combat(mut self, value: bool) -> Self {
-        self.sacrifice_at_end_of_combat = value;
-        self
-    }
-}
+pub type PopulateEffect = ironsmith_core::PopulateEffect;
 
 impl EffectExecutor for PopulateEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -1178,8 +1118,8 @@ mod tests {
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
-    use crate::events::{CardRevealedEvent, EventKind, KeywordActionEvent, KeywordActionKind};
     use crate::effects::ExecutionContext;
+    use crate::events::{CardRevealedEvent, EventKind, KeywordActionEvent, KeywordActionKind};
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::static_abilities::StaticAbilityId;

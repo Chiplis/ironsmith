@@ -5,17 +5,7 @@ use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
-
-/// How to register the replacement effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplacementApplyMode {
-    /// Register as a one-shot effect (consumed after one use).
-    OneShot,
-    /// Register until cleanup of the current turn.
-    UntilEndOfTurn,
-    /// Register as a resolution effect (persists until removed).
-    Resolution,
-}
+pub use ironsmith_core::ReplacementApplyMode;
 
 /// Effect that registers a replacement effect with the game state.
 #[derive(Debug, Clone)]

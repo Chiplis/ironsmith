@@ -933,6 +933,9 @@ pub(crate) fn collect_tag_spans_from_target(
     if let TargetAst::Tagged(tag, Some(span)) = target {
         let mapped =
             super::map_span_to_original(*span, &ctx.normalized, &ctx.original, &ctx.char_map);
+        #[cfg(not(feature = "serialization"))]
+        annotations.record_tag_span(tag.as_str(), mapped);
+        #[cfg(feature = "serialization")]
         annotations.record_tag_span(tag, mapped);
     }
     if let TargetAst::Object(filter, _, Some(it_span)) = target
@@ -943,6 +946,12 @@ pub(crate) fn collect_tag_spans_from_target(
     {
         let mapped =
             super::map_span_to_original(*it_span, &ctx.normalized, &ctx.original, &ctx.char_map);
-        annotations.record_tag_span(&TagKey::from(IT_TAG), mapped);
+        #[cfg(not(feature = "serialization"))]
+        annotations.record_tag_span(IT_TAG, mapped);
+        #[cfg(feature = "serialization")]
+        {
+            let it_tag = TagKey::from(IT_TAG);
+            annotations.record_tag_span(&it_tag, mapped);
+        }
     }
 }

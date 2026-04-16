@@ -21,7 +21,7 @@ pub(crate) fn parse_spell_filter_with_grammar_entrypoint_lexed(
 }
 
 pub(crate) fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
-    let words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

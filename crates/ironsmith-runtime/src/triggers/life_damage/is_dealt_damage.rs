@@ -1,9 +1,9 @@
 //! "Whenever [target] is dealt damage" trigger.
 
-use crate::filter::ObjectFilterExt as _;
-use crate::events::{DamageEvent, EventKind};
-use crate::filter::PlayerFilterExt;
 use crate::events::DamageTarget;
+use crate::events::{DamageEvent, EventKind};
+use crate::filter::ObjectFilterExt as _;
+use crate::filter::PlayerFilterExt;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

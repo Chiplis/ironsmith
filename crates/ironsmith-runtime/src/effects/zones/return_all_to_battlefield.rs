@@ -9,25 +9,7 @@ use crate::effects::helpers::resolve_objects_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
-
-/// Effect that returns all matching cards to the battlefield.
-///
-/// This is used by clauses like "Return all creature cards from all graveyards
-/// to the battlefield tapped under their owners' control."
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReturnAllToBattlefieldEffect {
-    /// Filter used to select cards to return.
-    pub filter: ObjectFilter,
-    /// Whether the returned permanents enter tapped.
-    pub tapped: bool,
-}
-
-impl ReturnAllToBattlefieldEffect {
-    /// Create a new return-all effect.
-    pub fn new(filter: ObjectFilter, tapped: bool) -> Self {
-        Self { filter, tapped }
-    }
-}
+pub type ReturnAllToBattlefieldEffect = ironsmith_core::ReturnAllToBattlefieldEffect;
 
 impl EffectExecutor for ReturnAllToBattlefieldEffect {
     fn execute(

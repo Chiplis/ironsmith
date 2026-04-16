@@ -14,13 +14,13 @@ use super::super::token_primitives::find_index;
 use super::super::util::{parse_subject, span_from_tokens, trim_commas, words};
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
 use super::zone_handlers::parse_exile_top_library_clause;
-use crate::cards::builders::compiler::effect_sentences;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
 use crate::effect::Value;
+use crate::runtime_backend::effect_sentences;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::Subtype;
 use crate::zone::Zone;
@@ -30,7 +30,7 @@ pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
 ) -> Result<
     Option<(
         Vec<EffectAst>,
-        crate::cards::builders::compiler::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec,
+        crate::runtime_backend::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec,
     )>,
     CardTextError,
 >{
@@ -125,7 +125,7 @@ fn parse_exile_top_library_then_play_bundle(
 }
 
 fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("return") {
         return false;
     }
@@ -317,7 +317,7 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     };
     let choose_tag = TagKey::from(IT_TAG);
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(second);
+    let second_words = crate::runtime_backend::token_word_refs(second);
     if second_words.len() < 5
         || !word_is(second_words.first().copied(), "for")
         || !word_is(second_words.get(1).copied(), "each")
@@ -1044,7 +1044,7 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     }
     if sentences.len() == 3
         && {
-            let first_words = crate::cards::builders::compiler::token_word_refs(sentences[0]);
+            let first_words = crate::runtime_backend::token_word_refs(sentences[0]);
             let choice_words = if first_words.first().copied() == Some("you") {
                 &first_words[1..]
             } else {
@@ -1061,7 +1061,7 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
                 sentences[2],
             )
     {
-        let first_words = crate::cards::builders::compiler::token_word_refs(sentences[0]);
+        let first_words = crate::runtime_backend::token_word_refs(sentences[0]);
         let choice_words = if first_words.first().copied() == Some("you") {
             &first_words[1..]
         } else {

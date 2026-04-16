@@ -151,12 +151,42 @@ pub(crate) fn materialize_prepared_triggered_effects(
 ) -> Result<(LoweredEffects, Option<Condition>), CardTextError> {
     let mut lowered = materialize_prepared_effects_with_trigger_context(&prepared.prepared)?;
     strip_erroneous_meld_player_exile_effect(&mut lowered);
+    dedupe_adjacent_target_only_effects(&mut lowered);
     let intervening_if = prepared
         .intervening_if
         .as_ref()
         .map(compile_prepared_predicate_for_lowering)
         .transpose()?;
     Ok((lowered, intervening_if))
+}
+
+fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
+    let flattened = lowered.effects.flattened_default_effects();
+    if flattened.len() < 2 {
+        return;
+    }
+
+    let mut rewritten = Vec::with_capacity(flattened.len());
+    for effect in flattened {
+        let duplicate_target_only = rewritten.last().is_some_and(|previous: &Effect| {
+            let Some(previous_target) = previous.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            else {
+                return false;
+            };
+            let Some(current_target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            else {
+                return false;
+            };
+            previous_target == current_target
+        });
+        if !duplicate_target_only {
+            rewritten.push(effect.clone());
+        }
+    }
+
+    if rewritten.len() != flattened.len() {
+        lowered.effects = crate::resolution::ResolutionProgram::from_effects(rewritten);
+    }
 }
 
 fn strip_erroneous_meld_player_exile_effect(lowered: &mut LoweredEffects) {
@@ -203,7 +233,16 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
         if idx + 1 < effects.len()
             && let Some(with_id) = effects[idx].downcast_ref::<crate::effects::WithIdEffect>()
             && let Some(if_effect) = effects[idx + 1].downcast_ref::<crate::effects::IfEffect>()
-            && if_effect.condition == with_id.id
+            && {
+                #[cfg(not(feature = "serialization"))]
+                {
+                    if_effect.condition == with_id.id
+                }
+                #[cfg(feature = "serialization")]
+                {
+                    if_effect.condition == with_id.id
+                }
+            }
             && if_effect.predicate == EffectPredicate::Happened
             && if_effect.else_.is_empty()
             && let Some(zone_replacements) =
@@ -212,7 +251,16 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
             rewritten.push(Effect::with_id(
                 with_id.id.0,
                 Effect::new(crate::effects::LocalRewriteEffect::new(
-                    (*with_id.effect).clone(),
+                    {
+                        #[cfg(not(feature = "serialization"))]
+                        {
+                            (*with_id.effect).clone()
+                        }
+                        #[cfg(feature = "serialization")]
+                        {
+                            (*with_id.effect).clone()
+                        }
+                    },
                     zone_replacements,
                 )),
             ));
@@ -232,7 +280,7 @@ fn extract_local_zone_replacement_followups(
     antecedent: &Effect,
 ) -> Option<Vec<crate::effects::RegisterZoneReplacementEffect>> {
     let mut replacements = Vec::new();
-    let antecedent_target = antecedent.0.get_target_spec().cloned();
+    let antecedent_target = antecedent.target_spec().cloned();
     for effect in effects {
         let mut register = effect
             .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?

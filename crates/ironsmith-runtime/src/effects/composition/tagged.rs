@@ -8,6 +8,7 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
+pub type TaggedEffect = ironsmith_core::TaggedEffect<crate::effect::Effect>;
 
 use super::tagging_runtime::{
     apply_tagged_runtime_state, capture_all_effect_target_snapshots, capture_tagged_runtime_state,
@@ -39,24 +40,6 @@ use super::tagging_runtime::{
 ///     ),
 /// ]
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct TaggedEffect {
-    /// The tag name to store the target under.
-    pub tag: TagKey,
-    /// The effect to execute.
-    pub effect: Box<Effect>,
-}
-
-impl TaggedEffect {
-    /// Create a new tagged effect.
-    pub fn new(tag: impl Into<TagKey>, effect: Effect) -> Self {
-        Self {
-            tag: tag.into(),
-            effect: Box::new(effect),
-        }
-    }
-}
-
 impl EffectExecutor for TaggedEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect

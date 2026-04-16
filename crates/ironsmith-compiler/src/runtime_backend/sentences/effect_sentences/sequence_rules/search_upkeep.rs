@@ -82,7 +82,7 @@ pub(super) fn try_parse(
     }
 
     let lose_tokens = trim_commas(third);
-    let lose_words = crate::cards::builders::compiler::token_word_refs(&lose_tokens);
+    let lose_words = crate::runtime_backend::token_word_refs(&lose_tokens);
     let valid_lose_clause = lose_words == ["if", "you", "dont", "you", "lose", "the", "game"]
         || lose_words == ["if", "you", "don't", "you", "lose", "the", "game"]
         || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"];

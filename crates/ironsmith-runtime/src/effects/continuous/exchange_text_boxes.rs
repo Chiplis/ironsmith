@@ -113,8 +113,8 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::effect::ChoiceCount;
-    use crate::events::combat::CreatureAttackedEvent;
     use crate::effects::ResolvedTarget;
+    use crate::events::combat::CreatureAttackedEvent;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::provenance::ProvNodeId;
     use crate::triggers::{AttackEventTarget, TriggerEvent, check_triggers};

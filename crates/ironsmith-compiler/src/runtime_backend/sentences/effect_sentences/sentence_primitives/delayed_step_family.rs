@@ -123,7 +123,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             trim_commas(&segments[1]),
         )
     };
-    let upkeep_words = crate::cards::builders::compiler::token_word_refs(&upkeep_tokens);
+    let upkeep_words = crate::runtime_backend::token_word_refs(&upkeep_tokens);
     let pay_idx = if grammar::words_match_prefix(
         &upkeep_tokens,
         &[
@@ -187,7 +187,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             })?
     };
 
-    let lose_words = crate::cards::builders::compiler::token_word_refs(&lose_tokens);
+    let lose_words = crate::runtime_backend::token_word_refs(&lose_tokens);
     let valid_lose_clause = lose_words == ["if", "you", "dont", "you", "lose", "the", "game"]
         || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"]
         || lose_words == ["if", "you", "don't", "you", "lose", "the", "game"];
@@ -405,7 +405,7 @@ pub(crate) fn try_build_unless(
         if contains_word_window(&action_words, &["mana", "cost"]) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
 
@@ -465,7 +465,7 @@ pub(crate) fn try_build_unless(
             if !remaining_words.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing unless-payment clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
         }
@@ -561,7 +561,7 @@ pub(crate) fn try_build_unless(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::runtime_backend::lexer::lex_line;
 
     #[test]
     fn try_build_unless_prefers_action_only_parse_for_explicit_player_or_choice() {
@@ -597,7 +597,7 @@ mod tests {
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() == ["venture", "into", "the", "dungeon"] {
         return Ok(Some(vec![EffectAst::VentureIntoDungeon {
             player: crate::cards::builders::PlayerAst::You,

@@ -1,8 +1,8 @@
 //! "Whenever [filter] attacks" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::combat::CreatureAttackedEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;

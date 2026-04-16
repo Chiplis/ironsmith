@@ -1819,6 +1819,14 @@ pub(crate) fn lower_activation_cost_cst(
             }
             ActivationCostSegmentCst::ExileTopLibrary { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                #[cfg(not(feature = "serialization"))]
+                costs.push(Cost::validated_effect(Effect::exile_top_of_library_player(
+                    *count as i32,
+                    PlayerFilter::You,
+                    crate::tag::TagKey::from("__cost_exiled_top__"),
+                    None,
+                )));
+                #[cfg(feature = "serialization")]
                 costs.push(Cost::validated_effect(Effect::exile_top_of_library_player(
                     *count as i32,
                     PlayerFilter::You,

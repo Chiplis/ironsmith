@@ -9,15 +9,7 @@ use crate::grant::Grantable;
 use crate::grant_registry::GrantSource;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
-
-/// Duration for play-from-exile permissions granted from tagged cards.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GrantPlayTaggedDuration {
-    /// Permission expires at end of the current turn.
-    UntilEndOfTurn,
-    /// Permission expires at end of the granted player's next turn.
-    UntilYourNextTurnEnd,
-}
+pub use ironsmith_core::GrantPlayTaggedDuration;
 
 /// Grant temporary permission to cast or play cards tagged in the current context.
 #[derive(Debug, Clone, PartialEq)]

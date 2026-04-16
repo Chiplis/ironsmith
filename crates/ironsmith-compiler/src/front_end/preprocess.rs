@@ -109,11 +109,14 @@ fn build_char_map(original: &str, normalized: &str) -> Vec<usize> {
         }
 
         if normalized_char == ' ' {
-            while original_idx < original_chars.len() && !original_chars[original_idx].is_whitespace()
+            while original_idx < original_chars.len()
+                && !original_chars[original_idx].is_whitespace()
             {
                 original_idx += 1;
             }
-            while original_idx < original_chars.len() && original_chars[original_idx].is_whitespace() {
+            while original_idx < original_chars.len()
+                && original_chars[original_idx].is_whitespace()
+            {
                 original_idx += 1;
             }
             map.push(original_idx.saturating_sub(1));

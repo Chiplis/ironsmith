@@ -1,7 +1,7 @@
 //! Reflexive trigger effect implementation.
 
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate};
+use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};

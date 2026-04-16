@@ -1,7 +1,7 @@
 use super::*;
 
 pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let mut out = Vec::with_capacity(words.len());
     let mut idx = 0usize;
     while idx < words.len() {
@@ -75,7 +75,7 @@ pub(crate) fn parse_cant_restrictions(
             let Some(restriction) = parse_cant_restriction_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant restriction segment (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(segment).join(" ")
+                    crate::runtime_backend::token_word_refs(segment).join(" ")
                 )));
             };
             restrictions.push(restriction);
@@ -529,7 +529,7 @@ pub(crate) fn strip_static_restriction_condition(
                 }
                 _ => Err(CardTextError::ParseError(format!(
                     "unsupported static condition clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))),
             }
         })?;
@@ -624,7 +624,7 @@ pub(crate) fn parse_player_restriction_subject(
         let target = parse_target_phrase(subject_tokens)?;
         if let TargetAst::Player(player, span) = &target {
             return Ok(Some((
-                target_ast_player_filter(player.clone(), *span),
+                target_ast_player_filter(player.clone(), span.clone()),
                 Some(target),
             )));
         }
@@ -768,7 +768,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported target restriction subject (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
             ensure_it_tagged_constraint(&mut filter);
@@ -785,7 +785,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported subject in negated restriction clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             };
             (filter, None, None)
@@ -795,7 +795,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
     if remainder_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing restriction tail in negated restriction clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let remainder_words_storage = normalize_cant_words(&remainder_tokens);
@@ -846,7 +846,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
                     ))
                 })?;
             Restriction::block_specific_attacker(blocker_filter, filter)
@@ -864,7 +864,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             None => {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported negated restriction tail (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
         },
@@ -873,7 +873,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             Some(ActivatedAbilityScope::TapCostOnly) | None => {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported negated restriction tail (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
         },
@@ -886,7 +886,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
                     ))
                 })?;
             Restriction::block_specific_attacker(filter, attacker_filter)
@@ -914,7 +914,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported negated restriction tail (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
     };
@@ -1021,7 +1021,7 @@ pub(crate) fn parse_activated_ability_subject(
         let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported target restriction subject (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             ))
         })?;
         ensure_it_tagged_constraint(&mut filter);
@@ -1037,7 +1037,7 @@ pub(crate) fn parse_activated_ability_subject(
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported subject in negated restriction clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -1186,7 +1186,7 @@ pub(crate) fn parse_subject_object_filter(
         return Ok(Some(ObjectFilter::tagged(TagKey::from(IT_TAG))));
     }
 
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     if find_window_by(&words_all, 3, |window| {
         window == ["power", "or", "toughness"] || window == ["toughness", "or", "power"]
     })
@@ -1207,7 +1207,7 @@ pub(crate) fn parse_subject_object_filter(
     let target = parse_target_phrase(tokens).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported subject target phrase (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
 

@@ -1,5 +1,5 @@
-use crate::filter::ObjectFilterExt as _;
 use super::*;
+use crate::filter::ObjectFilterExt as _;
 
 pub(super) fn strip_render_heading(line: &str) -> String {
     let Some((prefix, rest)) = line.split_once(':') else {

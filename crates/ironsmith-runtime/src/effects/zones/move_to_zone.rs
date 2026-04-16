@@ -3,8 +3,8 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
-use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -14,92 +14,8 @@ use super::{
     maybe_prompt_for_split_result_order, move_to_battlefield_with_options,
     take_recorded_zone_change,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BattlefieldController {
-    Preserve,
-    Owner,
-    You,
-}
-
-/// Effect that moves a target object to a specified zone.
-///
-/// This is a generic zone change effect used for various purposes like
-/// putting cards on top/bottom of library, moving to exile, etc.
-///
-/// # Fields
-///
-/// * `target` - Which object to move (resolved from `ChooseSpec`)
-/// * `zone` - The destination zone
-/// * `to_top` - If moving to library, whether to put on top (vs bottom)
-///
-/// # Example
-///
-/// ```ignore
-/// // Put target card on top of its owner's library
-/// let effect = MoveToZoneEffect::new(ChooseSpec::card(), Zone::Library, true);
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct MoveToZoneEffect {
-    /// The targeting specification (for UI/validation purposes).
-    pub target: ChooseSpec,
-    /// The destination zone.
-    pub zone: Zone,
-    /// If moving to library, put on top (true) or bottom (false).
-    pub to_top: bool,
-    /// Controller override when the destination is the battlefield.
-    pub battlefield_controller: BattlefieldController,
-    /// If moving to the battlefield, the permanent enters tapped.
-    pub enters_tapped: bool,
-}
-
-impl MoveToZoneEffect {
-    /// Create a new move to zone effect.
-    pub fn new(target: ChooseSpec, zone: Zone, to_top: bool) -> Self {
-        Self {
-            target,
-            zone,
-            to_top,
-            battlefield_controller: BattlefieldController::Preserve,
-            enters_tapped: false,
-        }
-    }
-
-    /// Create an effect to put a card on top of its owner's library.
-    pub fn to_top_of_library(target: ChooseSpec) -> Self {
-        Self::new(target, Zone::Library, true)
-    }
-
-    /// Create an effect to put a card on bottom of its owner's library.
-    pub fn to_bottom_of_library(target: ChooseSpec) -> Self {
-        Self::new(target, Zone::Library, false)
-    }
-
-    /// Create an effect to move a card to exile.
-    pub fn to_exile(target: ChooseSpec) -> Self {
-        Self::new(target, Zone::Exile, false)
-    }
-
-    /// Create an effect to move a card to graveyard.
-    pub fn to_graveyard(target: ChooseSpec) -> Self {
-        Self::new(target, Zone::Graveyard, false)
-    }
-
-    pub fn under_owner_control(mut self) -> Self {
-        self.battlefield_controller = BattlefieldController::Owner;
-        self
-    }
-
-    pub fn under_you_control(mut self) -> Self {
-        self.battlefield_controller = BattlefieldController::You;
-        self
-    }
-
-    pub fn tapped(mut self) -> Self {
-        self.enters_tapped = true;
-        self
-    }
-}
+pub use ironsmith_core::BattlefieldController;
+pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect;
 
 impl EffectExecutor for MoveToZoneEffect {
     fn execute(
@@ -257,8 +173,8 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::effect::Effect;
-    use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
     use crate::effects::ExecutionContext;
+    use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

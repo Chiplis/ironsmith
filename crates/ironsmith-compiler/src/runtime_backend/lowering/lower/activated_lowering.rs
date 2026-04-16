@@ -42,19 +42,19 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
                     .is_some_and(|effect| effect.count.is_dynamic_x())
                 || effect
                     .downcast_ref::<crate::effects::SacrificeEffect>()
-                    .is_some_and(|effect| value_uses_x(&effect.count))
+                    .is_some_and(|_| false)
                 || effect
                     .downcast_ref::<crate::effects::DiscardEffect>()
-                    .is_some_and(|effect| value_uses_x(&effect.count))
+                    .is_some_and(|_| false)
                 || effect
                     .downcast_ref::<crate::effects::MillEffect>()
-                    .is_some_and(|effect| value_uses_x(&effect.count))
+                    .is_some_and(|_| false)
                 || effect
                     .downcast_ref::<crate::effects::PayEnergyEffect>()
                     .is_some_and(|effect| value_uses_x(&effect.amount))
                 || effect
                     .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                    .is_some_and(|effect| value_uses_x(&effect.count))
+                    .is_some_and(|_| false)
         })
     })
 }

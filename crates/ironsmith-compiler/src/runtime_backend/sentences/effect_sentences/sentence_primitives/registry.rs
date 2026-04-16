@@ -83,7 +83,7 @@ fn run_sentence_primitive(
                 return Err(CardTextError::ParseError(format!(
                     "primitive '{}' produced empty effects (clause: '{}')",
                     primitive.id,
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             Ok(Some(effects))
@@ -94,7 +94,7 @@ fn run_sentence_primitive(
                 eprintln!(
                     "[parser-flow] stage=parse_effect_sentence:primitive-error primitive={} clause='{}' error={err:?}",
                     primitive.id,
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 );
             }
             Err(err)
@@ -106,9 +106,9 @@ fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = tokens.to_vec();
     for token in &mut normalized {
         match token.kind {
-            crate::cards::builders::compiler::lexer::TokenKind::Word
-            | crate::cards::builders::compiler::lexer::TokenKind::Number
-            | crate::cards::builders::compiler::lexer::TokenKind::Tilde => {
+            crate::runtime_backend::lexer::TokenKind::Word
+            | crate::runtime_backend::lexer::TokenKind::Number
+            | crate::runtime_backend::lexer::TokenKind::Tilde => {
                 let replacement = token.parser_text().to_string();
                 let _ = token.replace_word(replacement);
             }
@@ -236,7 +236,7 @@ pub(crate) fn parse_sentence_exile_source_with_counters_lexed(
 pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 6 {
         return Ok(None);
     }
@@ -307,8 +307,7 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
         )));
     }
 
-    let trailing_words =
-        crate::cards::builders::compiler::token_word_refs(&synthetic_tokens[used + 1..]);
+    let trailing_words = crate::runtime_backend::token_word_refs(&synthetic_tokens[used + 1..]);
     if !trailing_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing shared draw clause (clause: '{}')",
@@ -337,8 +336,8 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::lex_line;
     use crate::effect::EventValueSpec;
+    use crate::runtime_backend::lexer::lex_line;
 
     #[test]
     fn shared_draw_sentence_accepts_that_player() {
@@ -432,7 +431,7 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
         return Ok(None);
     }
 
-    let words = crate::cards::builders::compiler::token_word_refs(&stripped);
+    let words = crate::runtime_backend::token_word_refs(&stripped);
     let Some(the_idx) = words.iter().position(|word| *word == "the") else {
         return Ok(None);
     };
@@ -514,7 +513,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     let Some((_before_deal, after_deal)) = deal_split else {
         return Ok(None);
     };
-    let tail_words = crate::cards::builders::compiler::token_word_refs(after_deal);
+    let tail_words = crate::runtime_backend::token_word_refs(after_deal);
     if tail_words.len() != 20 {
         return Ok(None);
     }
@@ -531,7 +530,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     let card_type = parse_card_type(tail_words[14]).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported spell type in historical half-damage sentence (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     Ok(Some(vec![
@@ -561,7 +560,7 @@ pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
         clause_tokens.remove(0);
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(&clause_tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
     let (player, mut effects) = match clause_words.as_slice() {
         [
             "that",
@@ -679,7 +678,7 @@ pub(crate) fn parse_sentence_draw_for_each_card_exiled_from_hand_this_way(
 pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 11 || grammar::words_match_prefix(tokens, &["you", "and"]).is_none() {
         return Ok(None);
     }
@@ -705,7 +704,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
-    let draw_words = crate::cards::builders::compiler::token_word_refs(&draw_tokens);
+    let draw_words = crate::runtime_backend::token_word_refs(&draw_tokens);
     let (draw_count, after_draw_words) = if let Some((draw_count, used_words)) =
         parse_half_rounded_down_draw_count_words(&draw_words)
     {
@@ -730,7 +729,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
 
         (
             draw_count,
-            crate::cards::builders::compiler::token_word_refs(&draw_tokens[draw_used + 1..]),
+            crate::runtime_backend::token_word_refs(&draw_tokens[draw_used + 1..]),
         )
     };
     if after_draw_words.first() != Some(&"and")
@@ -760,8 +759,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
         )));
     }
 
-    let trailing_words =
-        crate::cards::builders::compiler::token_word_refs(&lose_tokens[lose_used + 1..]);
+    let trailing_words = crate::runtime_backend::token_word_refs(&lose_tokens[lose_used + 1..]);
     if !trailing_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing shared draw/lose clause (clause: '{}')",
@@ -813,11 +811,11 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     if object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object in delayed next-end-step clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let object_words = crate::cards::builders::compiler::token_word_refs(&object_tokens);
+    let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
     let filter = if matches!(
         object_words.as_slice(),
         ["it"]

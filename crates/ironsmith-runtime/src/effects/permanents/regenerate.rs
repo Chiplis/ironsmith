@@ -2,8 +2,8 @@
 
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyReplacementEffect, EffectExecutor};
-use crate::events::permanents::matchers::RegenerationShieldMatcher;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::events::permanents::matchers::RegenerationShieldMatcher;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::ChooseSpec;

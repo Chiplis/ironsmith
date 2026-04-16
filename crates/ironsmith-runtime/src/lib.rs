@@ -1,3 +1,6 @@
+#[cfg(test)]
+extern crate self as ironsmith;
+
 pub mod ability;
 pub mod alternative_cast;
 pub mod card;
@@ -5,6 +8,8 @@ pub mod cards;
 pub mod color;
 pub mod combat_state;
 pub mod compiled_text;
+#[cfg(any(feature = "compiler-integration", test))]
+pub mod compiler_integration;
 pub mod condition_eval;
 pub mod continuous;
 pub mod cost;
@@ -46,8 +51,6 @@ pub mod tag;
 pub mod target;
 pub mod targeting;
 pub(crate) mod text_cleanup;
-#[cfg(feature = "tooling")]
-pub mod tooling;
 pub(crate) mod trigger_identity;
 pub mod triggers;
 pub mod turn;
@@ -67,22 +70,6 @@ pub mod engine {
             CardCatalog, CardDefinition, CardRegistry, CombatState, EffectContext, GameSession,
             GameState, ManaSymbol, PlayerId, TriggerQueue, Zone, execute_turn_with,
         };
-    }
-}
-
-/// Preferred import surface for parser/compiler consumers.
-pub mod compiler {
-    /// High-signal compiler and compiled-text types for external consumers.
-    pub mod prelude {
-        pub use crate::cards::builders::{CardTextError, ParseAnnotations, TextSpan};
-        pub use crate::cards::{
-            CardDefinition, CardDefinitionBuilder, CardRegistry,
-            generated_definition_has_unimplemented_content,
-        };
-        pub use crate::compiled_text::{
-            canonical_compiled_lines, compiled_lines, raw_compiled_lines,
-        };
-        pub use crate::ids::CardId;
     }
 }
 
@@ -118,11 +105,11 @@ pub use events::processing::{
     process_zone_change_full,
     process_zone_change_with_event,
 };
-pub use filter::{
-    Comparison, FilterContext, ObjectFilter, PlayerFilter, PlayerFilterExt,
-    TaggedObjectConstraint, TaggedOpbjectRelation,
-};
 pub use events::{DamageTarget as GameEventDamageTarget, ObjectSnapshot};
+pub use filter::{
+    Comparison, FilterContext, ObjectFilter, PlayerFilter, PlayerFilterExt, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
+};
 pub use game_state::{CantEffectTracker, GameState, Phase, StackEntry, Step, Target, TurnState};
 pub use ids::{CardId, ObjectId, PlayerId};
 pub use mana::{ManaCost, ManaSymbol};
@@ -143,7 +130,7 @@ pub use types::{CardType, Subtype, Supertype};
 pub use zone::Zone;
 
 // Phase 4 exports
-pub use cards::{CardDefinition, CardDefinitionBuilder, CardRegistry};
+pub use cards::{CardDefinition, CardRegistry};
 pub use combat_state::{
     AttackTarget, AttackerInfo, CombatError, CombatState, attackers_targeting_planeswalker,
     attackers_targeting_player, declare_attackers, declare_blockers, end_combat, get_attack_target,
@@ -181,9 +168,9 @@ pub use rules::{
     calculate_trample_excess, can_attack, can_block, check_state_based_actions, has_vigilance,
     is_lethal, minimum_blockers, must_attack,
 };
+pub use session::{CardCatalog, GameSession};
 pub use snapshot::ObjectSnapshot as UnifiedObjectSnapshot;
 pub use special_actions::{ActionError, SpecialAction};
-pub use session::{CardCatalog, GameSession};
 pub use targeting::{
     PendingWardCost, TargetingInvalidReason, TargetingResult, WardCost, WardPaymentResult,
     can_target_object, collect_ward_costs, get_ward_cost, has_protection_from_source,
@@ -259,3 +246,6 @@ pub use events::{
     // Helper functions
     downcast_event,
 };
+
+#[cfg(test)]
+pub(crate) use cards::CardDefinitionBuilder;

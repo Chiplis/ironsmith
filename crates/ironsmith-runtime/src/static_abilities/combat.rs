@@ -3,14 +3,14 @@
 //! These abilities modify combat rules like blocking restrictions,
 //! attack requirements, etc.
 
-use crate::effect::RestrictionExt as _;
-use crate::filter::ObjectFilterExt as _;
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
+use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
-use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::permanents::SacrificeEvent;
+use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::{EventKind, KeywordActionEvent};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;

@@ -8,7 +8,7 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported move clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -19,7 +19,7 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     let Some((from_tokens, to_tokens)) = split else {
         return Err(CardTextError::ParseError(format!(
             "missing move destination (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
 
@@ -33,7 +33,7 @@ pub(crate) fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut parsed_that_many_minus_one = false;
     let mut parsed_that_many_plus_one = false;
     let mut consumed_embedded_card_keyword = false;
@@ -47,7 +47,7 @@ pub(crate) fn parse_draw(
                 .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
             {
                 let trailing = trim_commas(&rest[1..]);
-                let trailing_words = crate::cards::builders::compiler::token_word_refs(&trailing);
+                let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
                 if trailing_words.as_slice() == ["minus", "one"] {
                     value = Value::EventValueOffset(EventValueSpec::Amount, -1);
                     parsed_that_many_minus_one = true;
@@ -146,7 +146,7 @@ pub(crate) fn parse_draw(
     };
 
     if !tail.is_empty() {
-        let tail_words = crate::cards::builders::compiler::token_word_refs(&tail);
+        let tail_words = crate::runtime_backend::token_word_refs(&tail);
         if !((parsed_that_many_minus_one && tail_words.as_slice() == ["minus", "one"])
             || (parsed_that_many_plus_one && tail_words.as_slice() == ["plus", "one"]))
         {
@@ -161,7 +161,7 @@ pub(crate) fn parse_draw(
                     let dynamic = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported draw for-each clause (clause: '{}')",
-                            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                            crate::runtime_backend::token_word_refs(tokens).join(" ")
                         ))
                     })?;
                     match count {
@@ -169,7 +169,7 @@ pub(crate) fn parse_draw(
                         _ => {
                             return Err(CardTextError::ParseError(format!(
                                 "unsupported multiplied draw count (clause: '{}')",
-                                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                                crate::runtime_backend::token_word_refs(tokens).join(" ")
                             )));
                         }
                     }
@@ -298,7 +298,7 @@ fn parse_draw_for_each_player_condition(
         }
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let (start, opponents_only) = if let Some((prefix, _)) =
         grammar::words_match_any_prefix(tokens, FOR_EACH_OPPONENT_WHO_PREFIXES)
     {
@@ -320,7 +320,7 @@ fn parse_draw_for_each_player_condition(
     };
 
     let inner_tokens = trim_commas(&tokens[start..]);
-    let inner_words = crate::cards::builders::compiler::token_word_refs(&inner_tokens);
+    let inner_words = crate::runtime_backend::token_word_refs(&inner_tokens);
     if inner_words.first().copied() != Some("who") {
         return Ok(None);
     }
@@ -383,7 +383,7 @@ pub(crate) fn parse_draw_trailing_clause(
     tokens: &[OwnedLexToken],
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let tail_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(tokens);
     if tail_words.as_slice() == ["instead"] {
         return Ok(Some(draw_effect));
     }
@@ -467,7 +467,7 @@ pub(crate) fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedR
 }
 
 pub(crate) fn parse_draw_as_many_cards_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let starts_as_many = clause_words.len() >= 4
         && clause_words[0] == "as"
         && clause_words[1] == "many"
@@ -544,7 +544,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if super::super::grammar::primitives::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
             "missing conditional counter target or predicate (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -559,7 +559,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing pays keyword (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
 
@@ -598,7 +598,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         let mut x_value = None;
         if mana.is_empty() {
             let payment_tokens = trim_commas(&unless_tokens[pays_idx + 1..]);
-            let payment_words = crate::cards::builders::compiler::token_word_refs(&payment_tokens);
+            let payment_words = crate::runtime_backend::token_word_refs(&payment_tokens);
             // "unless its controller pays mana equal to ..." uses a dynamic generic payment.
             if payment_words.first().copied() == Some("mana")
                 && let Some(value) = parse_equal_to_aggregate_filter_value(&payment_tokens)
@@ -609,7 +609,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             } else {
                 return Err(CardTextError::ParseError(format!(
                     "missing mana cost (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
         }
@@ -617,7 +617,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         if let Some(trailing_idx) = trailing_start {
             let trailing_tokens = trim_commas(&unless_tokens[trailing_idx..]);
             let trailing_words =
-                crate::cards::builders::compiler::token_word_refs(&trailing_tokens);
+                crate::runtime_backend::token_word_refs(&trailing_tokens);
             if trailing_tokens
                 .first()
                 .is_some_and(|token| token.is_word("and"))
@@ -633,7 +633,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        crate::runtime_backend::token_word_refs(tokens).join(" "),
                         trailing_words.join(" ")
                     )));
                 }
@@ -649,10 +649,10 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 && trailing_words
                     .iter()
                     .any(|word| matches!(*word, "graveyard" | "graveyards"))
-                && (crate::cards::builders::compiler::token_primitives::contains_window(
+                && (crate::runtime_backend::token_primitives::contains_window(
                     &trailing_words,
                     &["same", "name", "as", "the", "spell"],
-                ) || crate::cards::builders::compiler::token_primitives::contains_window(
+                ) || crate::runtime_backend::token_primitives::contains_window(
                     &trailing_words,
                     &["same", "name", "as", "that", "spell"],
                 ))
@@ -669,7 +669,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        crate::runtime_backend::token_word_refs(tokens).join(" "),
                         trailing_words.join(" ")
                     )));
                 }
@@ -679,7 +679,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        crate::runtime_backend::token_word_refs(tokens).join(" "),
                         trailing_words.join(" ")
                     )));
                 }
@@ -693,21 +693,21 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     } else {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                            crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                            crate::runtime_backend::token_word_refs(tokens).join(" "),
                             trailing_words.join(" ")
                         )));
                     }
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                        crate::runtime_backend::token_word_refs(tokens).join(" "),
                         trailing_words.join(" ")
                     )));
                 }
             } else if !trailing_words.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+                    crate::runtime_backend::token_word_refs(tokens).join(" "),
                     trailing_words.join(" ")
                 )));
             }
@@ -716,7 +716,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         if mana.is_empty() && life.is_none() && additional_generic.is_none() && x_value.is_none() {
             return Err(CardTextError::ParseError(format!(
                 "missing mana cost (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
 

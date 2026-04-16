@@ -41,7 +41,7 @@ pub enum LibraryConsultModeAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LibraryConsultStopRuleAst<Value> {
+pub enum LibraryConsultStopRuleAst<Value = crate::effect::Value> {
     FirstMatch,
     MatchCount(Value),
 }
@@ -58,7 +58,7 @@ pub enum ObjectRefAst<Tag = TagKey> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SearchLibrarySlotAst<Filter> {
+pub struct SearchLibrarySlotAst<Filter = crate::target::ObjectFilter> {
     pub filter: Filter,
     pub optional: bool,
 }
@@ -95,13 +95,23 @@ pub enum ExchangeValueKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExchangeValueAst<Player, Target> {
+pub enum ExchangeValueAst<
+    Player = PlayerAst,
+    Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
+> {
     LifeTotal(Player),
-    Stat { target: Target, kind: ExchangeValueKindAst },
+    Stat {
+        target: Target,
+        kind: ExchangeValueKindAst,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TargetAst<PlayerFilter, ObjectFilter, Tag = TagKey> {
+pub enum TargetAst<
+    PlayerFilter = crate::target::PlayerFilter,
+    ObjectFilter = crate::target::ObjectFilter,
+    Tag = TagKey,
+> {
     Source(Option<TextSpan>),
     AnyTarget(Option<TextSpan>),
     AnyOtherTarget(Option<TextSpan>),
@@ -115,13 +125,15 @@ pub enum TargetAst<PlayerFilter, ObjectFilter, Tag = TagKey> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RetargetModeAst<Target> {
+pub enum RetargetModeAst<
+    Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
+> {
     All,
     OneToFixed { target: Target },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PreventNextTimeDamageSourceAst<Filter> {
+pub enum PreventNextTimeDamageSourceAst<Filter = crate::target::ObjectFilter> {
     Choice,
     Filter(Filter),
 }

@@ -1,7 +1,7 @@
 //! Grant abilities to a target creature until a duration.
 
 use crate::continuous::{EffectTarget, Modification};
-use crate::effect::{Effect, EffectOutcome, Until};
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
@@ -10,26 +10,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
 
 /// Effect that grants one or more abilities to a target creature.
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantAbilitiesTargetEffect {
-    /// Which creature to grant abilities to.
-    pub target: ChooseSpec,
-    /// Abilities to grant.
-    pub abilities: Vec<StaticAbility>,
-    /// Duration for the granted abilities.
-    pub duration: Until,
-}
-
-impl GrantAbilitiesTargetEffect {
-    /// Create a new grant abilities to target effect.
-    pub fn new(target: ChooseSpec, abilities: Vec<StaticAbility>, duration: Until) -> Self {
-        Self {
-            target,
-            abilities,
-            duration,
-        }
-    }
-}
+pub type GrantAbilitiesTargetEffect = ironsmith_core::GrantAbilitiesTargetEffect<StaticAbility>;
 
 impl EffectExecutor for GrantAbilitiesTargetEffect {
     fn execute(

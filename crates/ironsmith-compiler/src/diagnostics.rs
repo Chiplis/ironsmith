@@ -34,7 +34,9 @@ impl ParseAnnotations {
     }
 
     pub fn record_normalized_line(&mut self, line_index: usize, line: impl Into<String>) {
-        self.normalized_lines.entry(line_index).or_insert(line.into());
+        self.normalized_lines
+            .entry(line_index)
+            .or_insert(line.into());
     }
 
     pub fn record_original_line(&mut self, line_index: usize, line: impl Into<String>) {
@@ -73,7 +75,14 @@ mod tests {
     #[test]
     fn parse_annotations_records_each_kind_of_note() {
         let mut annotations = ParseAnnotations::default();
-        annotations.record_tag_span("it", TextSpan { line: 1, start: 3, end: 5 });
+        annotations.record_tag_span(
+            "it",
+            TextSpan {
+                line: 1,
+                start: 3,
+                end: 5,
+            },
+        );
         annotations.record_normalized_line(1, "draw a card");
         annotations.record_original_line(1, "Draw a card.");
         annotations.record_char_map(1, vec![0, 1, 2]);

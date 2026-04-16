@@ -18,9 +18,9 @@ use crate::tag::TagKey;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
-    AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectRef,
-    ParityRequirement, PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation,
+    AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectRef, ParityRequirement,
+    PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
 };
 
 fn normalize_name_for_match(name: &str) -> String {
@@ -522,11 +522,7 @@ impl ComparisonRuntimeExt for Comparison {
 }
 
 trait ParityRequirementRuntimeExt {
-    fn resolve(
-        self,
-        game: &crate::game_state::GameState,
-        source: Option<ObjectId>,
-    ) -> Option<Self>
+    fn resolve(self, game: &crate::game_state::GameState, source: Option<ObjectId>) -> Option<Self>
     where
         Self: Sized;
 
@@ -774,14 +770,20 @@ impl PlayerFilterExt for PlayerFilter {
                 ctx.iterated_player.is_some_and(|p| p == player)
                     && inner.matches_player(player, ctx)
             }
-            PlayerFilter::ControllerOf(object_ref) => resolve_player_filter_object_ref(object_ref, ctx)
-                .is_some_and(|snapshot| snapshot.controller == player),
+            PlayerFilter::ControllerOf(object_ref) => {
+                resolve_player_filter_object_ref(object_ref, ctx)
+                    .is_some_and(|snapshot| snapshot.controller == player)
+            }
             PlayerFilter::OwnerOf(object_ref) => resolve_player_filter_object_ref(object_ref, ctx)
                 .is_some_and(|snapshot| snapshot.owner == player),
-            PlayerFilter::AliasedControllerOf(object_ref) => resolve_player_filter_object_ref(object_ref, ctx)
-                .is_some_and(|snapshot| snapshot.controller == player),
-            PlayerFilter::AliasedOwnerOf(object_ref) => resolve_player_filter_object_ref(object_ref, ctx)
-                .is_some_and(|snapshot| snapshot.owner == player),
+            PlayerFilter::AliasedControllerOf(object_ref) => {
+                resolve_player_filter_object_ref(object_ref, ctx)
+                    .is_some_and(|snapshot| snapshot.controller == player)
+            }
+            PlayerFilter::AliasedOwnerOf(object_ref) => {
+                resolve_player_filter_object_ref(object_ref, ctx)
+                    .is_some_and(|snapshot| snapshot.owner == player)
+            }
         }
     }
 }

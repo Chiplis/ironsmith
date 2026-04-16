@@ -3,11 +3,12 @@
 use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::PermanentTappedEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::TapEffect;
 
 /// Effect that taps permanents.
 ///
@@ -22,55 +23,6 @@ use crate::triggers::TriggerEvent;
 /// // Tap all creatures (non-targeted - cannot fizzle)
 /// let effect = TapEffect::all(ObjectFilter::creature());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct TapEffect {
-    /// What to tap - can be targeted, all matching, source, etc.
-    pub spec: ChooseSpec,
-}
-
-impl TapEffect {
-    /// Create a tap effect with a custom spec.
-    pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
-    }
-
-    /// Create a targeted tap effect (single target).
-    ///
-    /// This is the most common case: "Tap target creature."
-    pub fn target(spec: ChooseSpec) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec),
-        }
-    }
-
-    /// Create a targeted tap effect with a specific target count.
-    ///
-    /// Example: "Tap up to two target creatures."
-    pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec).with_count(count),
-        }
-    }
-
-    /// Create a non-targeted tap effect for all matching permanents.
-    ///
-    /// Example: "Tap all creatures you don't control."
-    pub fn all(filter: ObjectFilter) -> Self {
-        Self {
-            spec: ChooseSpec::all(filter),
-        }
-    }
-
-    /// Create a tap effect that taps the source permanent.
-    ///
-    /// Used for cost effects that require tapping the source.
-    pub fn source() -> Self {
-        Self {
-            spec: ChooseSpec::Source,
-        }
-    }
-}
-
 impl EffectExecutor for TapEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -82,7 +34,7 @@ impl EffectExecutor for TapEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut events = Vec::new();
-        let result_policy = if self.spec.is_target() && self.spec.is_single() {
+        let result_policy = if self.target.is_target() && self.target.is_single() {
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
         } else {
             ObjectApplyResultPolicy::CountApplied
@@ -92,7 +44,7 @@ impl EffectExecutor for TapEffect {
         let apply_result = apply_to_selected_objects(
             game,
             ctx,
-            &self.spec,
+            &self.target,
             result_policy,
             |game, _ctx, object_id| {
                 if game.object(object_id).is_some() && !game.is_tapped(object_id) {
@@ -112,16 +64,16 @@ impl EffectExecutor for TapEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        if self.spec.is_target() {
-            Some(&self.spec)
+        if self.target.is_target() {
+            Some(&self.target)
         } else {
             None
         }
     }
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        if self.spec.is_target() {
-            Some(self.spec.count())
+        if self.target.is_target() {
+            Some(self.target.count())
         } else {
             None
         }
@@ -131,11 +83,11 @@ impl EffectExecutor for TapEffect {
         "permanent to tap"
     }
     fn is_tap_source_cost(&self) -> bool {
-        matches!(self.spec, ChooseSpec::Source)
+        matches!(self.target, ChooseSpec::Source)
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.spec, ChooseSpec::Source) {
+        if matches!(self.target, ChooseSpec::Source) {
             Some("{T}".to_string())
         } else {
             None
@@ -153,7 +105,7 @@ impl CostExecutableEffect for TapEffect {
         use crate::effects::CostValidationError;
 
         // Only check for Source selection (tap source as cost)
-        if !matches!(self.spec, ChooseSpec::Source) {
+        if !matches!(self.target, ChooseSpec::Source) {
             return Ok(());
         }
 

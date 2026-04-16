@@ -3,8 +3,8 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::events::processing::process_life_gain_with_event;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
@@ -196,8 +196,8 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::EventKind;
     use crate::effects::ResolvedTarget;
+    use crate::events::EventKind;
     use crate::ids::PlayerId;
 
     #[test]

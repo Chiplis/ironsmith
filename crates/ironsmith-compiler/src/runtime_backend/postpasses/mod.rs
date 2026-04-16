@@ -246,10 +246,12 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     let ability_text = ability.text.as_deref()?;
     let start_next_turn =
         spell_battlefield_trigger_text_implies_delayed_schedule(ability_text, &triggered.trigger)?;
+    let trigger =
+        delayed_trigger_spec_from_label(triggered.trigger.display().as_str(), Some(ability_text))?;
 
     let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
-        triggered.trigger.clone(),
-        triggered.effects.clone(),
+        trigger,
+        triggered.effects.clone().to_vec(),
         true,
         Vec::new(),
         PlayerFilter::You,
@@ -259,6 +261,42 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     }
 
     Some(Effect::new(delayed))
+}
+
+fn delayed_trigger_spec_from_label(
+    trigger_label: &str,
+    ability_text: Option<&str>,
+) -> Option<ironsmith_core::DelayedTriggerSpec> {
+    let label = trigger_label.to_ascii_lowercase();
+    let text = ability_text.unwrap_or_default().to_ascii_lowercase();
+    match label.as_str() {
+        "beginning_of_upkeep" => {
+            let player = if text.contains("your next upkeep") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(
+                player,
+            ))
+        }
+        "beginning_of_draw_step" => {
+            let player = if text.contains("your next draw step") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(ironsmith_core::DelayedTriggerSpec::BeginningOfDrawStep(
+                player,
+            ))
+        }
+        "beginning_of_end_step" => Some(ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(
+            PlayerFilter::Any,
+        )),
+        "end_of_combat" => Some(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
+        "this_dies" => Some(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        _ => None,
+    }
 }
 
 fn finalize_nonpermanent_delayed_triggered_abilities(

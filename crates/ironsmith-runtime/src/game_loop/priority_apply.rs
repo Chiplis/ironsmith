@@ -1056,7 +1056,9 @@ pub(super) fn apply_replacement_choice_response(
     chosen_index: usize,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::events::processing::{TraitEventResult, process_event_with_chosen_replacement_trait};
+    use crate::events::processing::{
+        TraitEventResult, process_event_with_chosen_replacement_trait,
+    };
 
     // Take the pending choice
     let pending = game

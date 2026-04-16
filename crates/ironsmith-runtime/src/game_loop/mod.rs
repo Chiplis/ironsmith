@@ -25,6 +25,8 @@ use crate::decision::{
     compute_legal_attackers, compute_legal_blockers, compute_potential_mana,
 };
 use crate::effect::Effect;
+use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+use crate::events::DamageTarget as EventDamageTarget;
 use crate::events::cause::EventCause;
 use crate::events::combat::{
     CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent, CreatureBecameBlockedEvent,
@@ -36,9 +38,7 @@ use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent};
 use crate::events::zones::EnterBattlefieldEvent;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
 use crate::filter::{FilterContext, ObjectFilter};
-use crate::events::DamageTarget as EventDamageTarget;
 use crate::game_state::{GameState, StackEntry, Step, Target};
 use crate::ids::{ObjectId, PlayerId, StableId};
 type CostStep = ();

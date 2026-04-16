@@ -1,0 +1,52 @@
+use crate::{CardType, Condition, ObjectFilter, PlayerFilter};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThisSpellCostCondition {
+    Always,
+    YourTurn,
+    NotYourTurn,
+    YouLifeTotalOrLess(i32),
+    OpponentHasNoCardsInHand,
+    OpponentControlsLandsOrMore(u32),
+    OpponentControlsAtLeastNMoreCreaturesThanYou(u32),
+    TotalCreatureCardsInAllGraveyardsOrMore(u32),
+    OpponentCastSpellsThisTurnOrMore(u32),
+    OpponentDrewCardsThisTurnOrMore(u32),
+    YouWereDealtDamageByCreaturesThisTurnOrMore(u32),
+    ConditionExpr {
+        condition: Condition,
+        display: String,
+    },
+    TargetsPlayer(PlayerFilter),
+    TargetsObject(ObjectFilter),
+    YouCastSpellsThisTurnOrMore {
+        count: u32,
+        card_types: Vec<CardType>,
+    },
+    YouGainedLifeThisTurnOrMore(u32),
+    OpponentHasPoisonCountersOrMore(u32),
+    OpponentHasCardsInGraveyardOrMore(u32),
+    DistinctCardTypesInYourGraveyardOrMore(u32),
+    LifeTotalLessThanStarting,
+    IsNight,
+    YouSacrificedArtifactThisTurn,
+    YouCommittedCrimeThisTurn,
+    CreatureLeftBattlefieldUnderYourControlThisTurn,
+    YouHaveCardsInYourGraveyardOrMore(u32),
+    YouHaveCardsOfTypesInYourGraveyardOrMore {
+        count: u32,
+        card_types: Vec<CardType>,
+    },
+    OnlyCreatureCardsInHandNamed(String),
+    NoCardsInHandMatching {
+        filter: ObjectFilter,
+        display: String,
+    },
+    CardInYourGraveyardMatching {
+        filter: ObjectFilter,
+        display: String,
+    },
+    NotStartingPlayer,
+    CreatureCardPutIntoYourGraveyardThisTurn,
+    CreatureIsAttackingYou,
+}

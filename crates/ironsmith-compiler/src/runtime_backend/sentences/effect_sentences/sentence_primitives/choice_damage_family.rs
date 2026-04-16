@@ -11,7 +11,7 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
         return Ok(None);
     }
 
-    let sentence_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let sentence_words = crate::runtime_backend::token_word_refs(tokens);
     let has_lose_x = find_window_by(&sentence_words, 3, |window| {
         (window[0] == "lose" || window[0] == "loses") && window[1] == "x" && window[2] == "life"
     })
@@ -142,7 +142,7 @@ pub(crate) fn parse_sentence_exile_multi_target(
         return Ok(None);
     }
 
-    let first_words = crate::cards::builders::compiler::token_word_refs(&first_tokens);
+    let first_words = crate::runtime_backend::token_word_refs(&first_tokens);
     let first_is_explicit_target = first_tokens.first().is_some_and(|t| t.is_word("target"))
         || (grammar::strip_lexed_prefix_phrase(&first_tokens, &["up", "to"]).is_some()
             && grammar::contains_word(&first_tokens, "target"));
@@ -312,7 +312,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
 
     let mut effects = Vec::new();
     for segment in segments {
-        let segment_words = crate::cards::builders::compiler::token_word_refs(&segment);
+        let segment_words = crate::runtime_backend::token_word_refs(&segment);
         if segment_words.iter().any(|word| {
             matches!(
                 *word,
@@ -349,7 +349,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
 pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.first() != Some(&"reveal") {
         return Ok(None);
     }
@@ -381,7 +381,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     }
 
     let mut count = ChoiceCount::exactly(1);
-    let descriptor_words = crate::cards::builders::compiler::token_word_refs(&descriptor_tokens);
+    let descriptor_words = crate::runtime_backend::token_word_refs(&descriptor_tokens);
     if grammar::words_match_any_prefix(&descriptor_tokens, ANY_NUMBER_OF_PREFIXES).is_some() {
         count = ChoiceCount::any_number();
         descriptor_tokens = trim_commas(&descriptor_tokens[3..]);
@@ -420,8 +420,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     let mut filter = match parse_object_filter(&descriptor_tokens, false) {
         Ok(filter) => filter,
         Err(_) => {
-            let descriptor_words =
-                crate::cards::builders::compiler::token_word_refs(&descriptor_tokens);
+            let descriptor_words = crate::runtime_backend::token_word_refs(&descriptor_tokens);
             let mut filter = ObjectFilter::default();
             let mut idx = 0usize;
             if let Some(color) = descriptor_words.get(idx).and_then(|word| parse_color(word)) {
@@ -484,7 +483,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
     }
 
     let reveal_tokens = trim_commas(&tokens[reveal_idx + 1..]);
-    let reveal_words = crate::cards::builders::compiler::token_word_refs(&reveal_tokens);
+    let reveal_words = crate::runtime_backend::token_word_refs(&reveal_tokens);
     if reveal_words.is_empty()
         || !reveal_words
             .first()
@@ -709,7 +708,7 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     {
         alt_target_tokens = &alt_target_tokens[1..];
     }
-    let alt_target_words = crate::cards::builders::compiler::token_word_refs(alt_target_tokens);
+    let alt_target_words = crate::runtime_backend::token_word_refs(alt_target_tokens);
     if !matches!(alt_target_words.as_slice(), ["them"] | ["that", "player"]) {
         return Ok(None);
     }
@@ -750,7 +749,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     }
 
     if !matches!(
-        crate::cards::builders::compiler::token_word_refs(&after_tokens).as_slice(),
+        crate::runtime_backend::token_word_refs(&after_tokens).as_slice(),
         ["that", "creature", "attacked", "this", "turn"]
             | ["enchanted", "creature", "attacked", "this", "turn"]
     ) {
@@ -769,7 +768,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     };
 
     if !matches!(
-        crate::cards::builders::compiler::token_word_refs(subject_slice).as_slice(),
+        crate::runtime_backend::token_word_refs(subject_slice).as_slice(),
         ["this", "aura"] | ["this", "permanent"] | ["this", "enchantment"]
     ) {
         return Ok(None);
@@ -791,9 +790,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     {
         target_tokens.remove(0);
     }
-    if crate::cards::builders::compiler::token_word_refs(&target_tokens).as_slice()
-        != ["that", "player"]
-    {
+    if crate::runtime_backend::token_word_refs(&target_tokens).as_slice() != ["that", "player"] {
         return Ok(None);
     }
 

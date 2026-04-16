@@ -1,4 +1,6 @@
-use super::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice, split_lexed_sentences};
+use super::lexer::{
+    OwnedLexToken, TokenWordView, lex_line, render_token_slice, split_lexed_sentences,
+};
 use crate::model::{ParsedRestrictions, RestrictionBucket};
 
 /// Result of splitting a line-oriented oracle text fragment for parsing.
@@ -199,7 +201,16 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
     words.starts_with(&["at", "beginning", "of", "next", "end", "step"])
         || words.starts_with(&["at", "the", "beginning", "of", "next", "end", "step"])
-        || words.starts_with(&["at", "the", "beginning", "of", "your", "next", "end", "step"])
+        || words.starts_with(&[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "your",
+            "next",
+            "end",
+            "step",
+        ])
         || words.starts_with(&["at", "the", "beginning", "of", "your", "next", "upkeep"])
         || words.starts_with(&["at", "beginning", "of", "your", "next", "upkeep"])
 }
@@ -235,7 +246,10 @@ mod tests {
         );
 
         assert_eq!(split.sentences, vec!["Draw a card"]);
-        assert_eq!(split.parenthetical_sentences, vec!["Activate only as a sorcery"]);
+        assert_eq!(
+            split.parenthetical_sentences,
+            vec!["Activate only as a sorcery"]
+        );
     }
 
     #[test]

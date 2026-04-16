@@ -5,15 +5,13 @@ use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::time::Duration;
 
-use ironsmith::cards::{
-    CardDefinition, generated_definition_has_unimplemented_content,
-};
+use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::compiled_text::compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
-use ironsmith::tooling::{
+use ironsmith_tools::parse_card_definition_with_runtime_builder;
+use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, default_cards_path, default_db_path,
 };
-use ironsmith_tools::parse_card_definition_with_runtime_builder;
 use rayon::prelude::*;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};

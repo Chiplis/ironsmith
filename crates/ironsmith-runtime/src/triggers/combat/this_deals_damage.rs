@@ -1,10 +1,10 @@
 //! "Whenever this permanent deals damage" trigger.
 
 use crate::events::DamageEvent;
+use crate::events::DamageTarget;
 use crate::events::EventKind;
 use crate::filter::Comparison;
 use crate::filter::PlayerFilterExt;
-use crate::events::DamageTarget;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

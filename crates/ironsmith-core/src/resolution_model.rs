@@ -171,8 +171,7 @@ impl<E> std::ops::Deref for ResolutionProgram<E> {
     type Target = [E];
 
     fn deref(&self) -> &Self::Target {
-        self.flattened_default_effects
-            .as_slice()
+        self.flattened_default_effects.as_slice()
     }
 }
 

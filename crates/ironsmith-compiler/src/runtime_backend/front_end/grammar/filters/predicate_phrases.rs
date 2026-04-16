@@ -310,9 +310,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             let filter_tokens = &attachment_tokens[used..];
             if !filter_tokens.is_empty() {
                 let filter = parse_object_filter(filter_tokens, false).or_else(|_| {
-                    match crate::cards::builders::compiler::token_word_refs(filter_tokens)
-                        .as_slice()
-                    {
+                    match crate::runtime_backend::token_word_refs(filter_tokens).as_slice() {
                         ["aura"] | ["auras"] => {
                             Ok(ObjectFilter::default().with_subtype(Subtype::Aura))
                         }
@@ -409,7 +407,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         if let Some((count, used)) = parse_number(&tokens[2..]) {
             let rest = &tokens[2 + used..];
-            let rest_words = crate::cards::builders::compiler::token_word_refs(rest);
+            let rest_words = crate::runtime_backend::token_word_refs(rest);
             if rest_words.len() >= 4
                 && rest_words[0] == "or"
                 && rest_words[1] == "more"

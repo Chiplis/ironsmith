@@ -64,13 +64,15 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
         if !iterated_player_bound && let Some(decider) = &may.decider {
             validate_unbound_iterated_player(format!("{decider:?}"), context)?;
         }
         return validate_effects_for_iterated_player(&may.effects, iterated_player_bound, context);
     }
-    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+    if let Some(unless_pays) =
+        effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             validate_unbound_iterated_player(format!("{:?}", unless_pays.player), context)?;
         }
@@ -80,7 +82,9 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
+    if let Some(unless_action) =
+        effect.downcast_ref::<crate::effects::UnlessActionEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             validate_unbound_iterated_player(format!("{:?}", unless_action.player), context)?;
         }
@@ -95,7 +99,9 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+    if let Some(for_players) =
+        effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             validate_unbound_iterated_player(format!("{:?}", for_players.filter), context)?;
         }
@@ -107,16 +113,18 @@ fn validate_effect_for_iterated_player(
         }
         return validate_effects_for_iterated_player(&for_each_object.effects, true, context);
     }
-    if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+    if let Some(for_each_tagged) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+    {
         return validate_effects_for_iterated_player(&for_each_tagged.effects, true, context);
     }
-    if let Some(for_each_controller) =
-        effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()
+    if let Some(for_each_controller) = effect
+        .downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<crate::effect::Effect>>()
     {
         return validate_effects_for_iterated_player(&for_each_controller.effects, true, context);
     }
     if let Some(for_each_player) =
-        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()
+        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<crate::effect::Effect>>()
     {
         return validate_effects_for_iterated_player(&for_each_player.effects, true, context);
     }

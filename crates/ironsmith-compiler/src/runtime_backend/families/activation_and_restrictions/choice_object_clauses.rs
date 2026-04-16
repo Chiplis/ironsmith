@@ -3,7 +3,7 @@ use super::*;
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let (chooser, choose_start_idx) =
         if clause_words.first().copied() == Some("target") && clause_words.len() >= 4 {
             let chooser = match clause_words.get(1).copied() {
@@ -121,7 +121,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 pub(crate) fn parse_you_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.is_empty() {
         return Ok(None);
     }
@@ -181,7 +181,7 @@ pub(crate) fn parse_you_choose_objects_clause(
         }
         break;
     }
-    let mut choose_words = crate::cards::builders::compiler::token_word_refs(&choose_object_tokens);
+    let mut choose_words = crate::runtime_backend::token_word_refs(&choose_object_tokens);
     loop {
         if matches!(
             choose_words.as_slice(),
@@ -301,7 +301,7 @@ pub(crate) fn parse_you_choose_objects_clause(
 pub(crate) fn parse_you_choose_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, PlayerFilter, bool, usize)>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.is_empty() {
         return Ok(None);
     }
@@ -326,7 +326,7 @@ pub(crate) fn parse_you_choose_player_clause(
             ))
         })?;
     let player_tokens = trim_commas(&tokens[choose_word_token_idx + 1..]);
-    let mut player_words = crate::cards::builders::compiler::token_word_refs(&player_tokens);
+    let mut player_words = crate::runtime_backend::token_word_refs(&player_tokens);
     if player_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing chosen player in choose-player clause (clause: '{}')",
@@ -438,7 +438,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
         choose_filter.card_types.push(CardType::Creature);
     }
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(second);
+    let second_words = crate::runtime_backend::token_word_refs(second);
     let Some((neg_start, neg_end)) = find_negation_span(second) else {
         return Ok(None);
     };
@@ -643,7 +643,7 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_words = crate::cards::builders::compiler::token_word_refs(first);
+    let first_words = crate::runtime_backend::token_word_refs(first);
     let Some(mut idx) = find_index(&first_words, |word| matches!(*word, "choose" | "chooses"))
     else {
         return Ok(None);
@@ -681,12 +681,12 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
             first_words.join(" ")
         )));
     }
-    let reveal_tail = crate::cards::builders::compiler::token_word_refs(&reveal_tokens[used + 1..]);
+    let reveal_tail = crate::runtime_backend::token_word_refs(&reveal_tokens[used + 1..]);
     if !slice_ends_with(&reveal_tail, &["of", "your", "library"]) {
         return Ok(None);
     }
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(second);
+    let second_words = crate::runtime_backend::token_word_refs(second);
     if !matches!(second_words.first().copied(), Some("put" | "puts")) {
         return Ok(None);
     }
@@ -868,7 +868,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(first);
-    let first_words = crate::cards::builders::compiler::token_word_refs(&first_tokens);
+    let first_words = crate::runtime_backend::token_word_refs(&first_tokens);
     let Some((consumed, excluded_subtypes)) =
         parse_choose_creature_type_phrase_words(&first_words)?
     else {
@@ -881,7 +881,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
         )));
     }
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(second);
+    let second_words = crate::runtime_backend::token_word_refs(second);
     let Some(become_idx) = find_index(second, |token| {
         token.is_word("become") || token.is_word("becomes")
     }) else {
@@ -906,12 +906,12 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
         } else {
             (Until::Forever, become_tail_tokens.to_vec())
         };
-    let become_words = crate::cards::builders::compiler::token_word_refs(&become_tokens);
+    let become_words = crate::runtime_backend::token_word_refs(&become_tokens);
     if become_words.as_slice() != ["that", "type"] {
         return Ok(None);
     }
 
-    let subject_words = crate::cards::builders::compiler::token_word_refs(&subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
     let target = if slice_starts_with(&subject_words, &["each"])
         || slice_starts_with(&subject_words, &["all"])
     {
@@ -958,7 +958,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
         return Ok(None);
     };
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_clause);
+    let second_words = crate::runtime_backend::token_word_refs(&second_clause);
     if !matches!(second_words.first().copied(), Some("put" | "puts")) {
         return Ok(None);
     }
@@ -975,14 +975,13 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     {
         return Ok(None);
     }
-    let destination_words =
-        crate::cards::builders::compiler::token_word_refs(&second_clause[on_idx + 3..]);
+    let destination_words = crate::runtime_backend::token_word_refs(&second_clause[on_idx + 3..]);
     if !slice_contains(&destination_words, &"library") {
         return Ok(None);
     }
 
     let moved_tokens = trim_commas(&second_clause[1..on_idx]);
-    let moved_words = crate::cards::builders::compiler::token_word_refs(&moved_tokens);
+    let moved_words = crate::runtime_backend::token_word_refs(&moved_tokens);
     let target = if moved_tokens.is_empty()
         || moved_words.as_slice() == ["it"]
         || moved_words.as_slice() == ["them"]
@@ -1040,7 +1039,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
         return Ok(None);
     };
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second_clause);
+    let second_words = crate::runtime_backend::token_word_refs(&second_clause);
     if second_words.len() < 4
         || second_words[0] != "you"
         || !matches!(second_words[1], "put" | "puts")
@@ -1057,8 +1056,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
         return Ok(None);
     }
 
-    let moved_words =
-        crate::cards::builders::compiler::token_word_refs(&second_clause[2..onto_idx]);
+    let moved_words = crate::runtime_backend::token_word_refs(&second_clause[2..onto_idx]);
     let moved_is_tagged_choice = moved_words == ["it"]
         || moved_words == ["that", "card"]
         || moved_words == ["that", "permanent"];
@@ -1067,7 +1065,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
     }
 
     let destination_words: Vec<&str> =
-        crate::cards::builders::compiler::token_word_refs(&second_clause[onto_idx + 1..])
+        crate::runtime_backend::token_word_refs(&second_clause[onto_idx + 1..])
             .into_iter()
             .filter(|word| !is_article(word))
             .collect();

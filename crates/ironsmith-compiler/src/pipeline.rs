@@ -5,7 +5,8 @@ use crate::facade::CompiledCardText;
 ///
 /// The concrete implementation still lives outside this crate for now, but the
 /// stage boundaries now have a stable compiler-owned home.
-pub trait LoweringPipeline<Context, SemanticDocument, ParsedDocument, PreparedDocument, Definition> {
+pub trait LoweringPipeline<Context, SemanticDocument, ParsedDocument, PreparedDocument, Definition>
+{
     fn parse_text_to_semantic_document(
         &self,
         context: Context,

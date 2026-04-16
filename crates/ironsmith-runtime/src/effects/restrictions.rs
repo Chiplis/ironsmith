@@ -150,8 +150,8 @@ mod tests {
     use super::*;
     use crate::PowerToughness;
     use crate::card::CardBuilder;
-    use crate::effects::RegenerateEffect;
     use crate::effects::ExecutionContext;
+    use crate::effects::RegenerateEffect;
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::PlayerId;

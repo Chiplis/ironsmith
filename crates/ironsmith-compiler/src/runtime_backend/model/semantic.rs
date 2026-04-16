@@ -54,9 +54,9 @@ pub(crate) enum LineAst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AdditionalCostChoiceOptionAst {
+pub(crate) struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
     pub(crate) description: String,
-    pub(crate) effects: Vec<EffectAst>,
+    pub(crate) effects: Vec<Effect>,
 }
 
 #[derive(Debug, Clone)]

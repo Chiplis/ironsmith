@@ -1,27 +1,44 @@
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::{EffectExecutor, RegisterZoneReplacementEffect};
-use crate::events::ReplacementPriority;
+use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::events::ReplacementPriority;
 use crate::game_state::GameState;
+use crate::replacement::{ReplacementAction, ReplacementEffect};
+use crate::target::ObjectFilter;
 
 /// Execute an effect while temporary replacement effects are scoped to that execution.
 ///
 /// This models self-replacement patterns like "Counter target spell. If that spell is
 /// countered this way, exile it instead..." where the replacement applies only to the
 /// event caused by the antecedent effect.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LocalRewriteEffect {
-    pub effect: Box<Effect>,
-    pub zone_replacements: Vec<RegisterZoneReplacementEffect>,
-}
+pub type LocalRewriteEffect = ironsmith_core::LocalRewriteEffect<Effect>;
 
-impl LocalRewriteEffect {
-    pub fn new(effect: Effect, zone_replacements: Vec<RegisterZoneReplacementEffect>) -> Self {
-        Self {
-            effect: Box::new(effect),
-            zone_replacements,
-        }
+fn resolve_zone_replacements(
+    replacement: &ironsmith_core::RegisterZoneReplacementEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Vec<ReplacementEffect>, ExecutionError> {
+    let object_ids = resolve_objects_for_effect(game, ctx, &replacement.target)?;
+    if object_ids.is_empty() {
+        return Err(ExecutionError::InvalidTarget);
     }
+
+    Ok(object_ids
+        .into_iter()
+        .map(|object_id| {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(object_id),
+                    replacement.from_zone,
+                    replacement.to_zone,
+                ),
+                ReplacementAction::ChangeDestination(replacement.replacement_zone),
+            )
+        })
+        .collect())
 }
 
 impl EffectExecutor for LocalRewriteEffect {
@@ -33,7 +50,7 @@ impl EffectExecutor for LocalRewriteEffect {
         let mut replacements = Vec::new();
         let fallback_target = self.effect.0.get_target_spec().cloned();
         for replacement in &self.zone_replacements {
-            match replacement.resolve_replacements(game, ctx) {
+            match resolve_zone_replacements(replacement, game, ctx) {
                 Ok(resolved) => replacements.extend(resolved.into_iter().map(|effect| {
                     effect.with_priority_override(ReplacementPriority::SelfReplacement)
                 })),
@@ -43,7 +60,7 @@ impl EffectExecutor for LocalRewriteEffect {
                     };
                     let mut rebound = replacement.clone();
                     rebound.target = target_spec.clone();
-                    if let Ok(resolved) = rebound.resolve_replacements(game, ctx) {
+                    if let Ok(resolved) = resolve_zone_replacements(&rebound, game, ctx) {
                         replacements.extend(resolved.into_iter().map(|effect| {
                             effect.with_priority_override(ReplacementPriority::SelfReplacement)
                         }));

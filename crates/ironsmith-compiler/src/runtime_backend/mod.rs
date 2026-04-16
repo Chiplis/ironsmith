@@ -2,6 +2,7 @@
 
 #[allow(unused_imports)]
 pub(crate) use super::*;
+pub(crate) use crate::cards::builders::GrantedAbilityAst;
 
 pub(crate) mod facade;
 pub(crate) mod families;
@@ -182,8 +183,8 @@ pub(crate) use shared_types::{
 pub(crate) use util::tokenize_line;
 pub(crate) use util::{
     SubjectAst, contains_until_end_of_turn, find_activation_cost_start, is_basic_color_word,
-    is_sentence_helper_tag, parse_counter_type_from_tokens, parse_counter_type_word, parse_number,
-    parse_number_or_x_value, parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase,
+    parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_number_or_x_value,
+    parse_power_toughness, parse_scryfall_mana_cost, parse_target_phrase,
     replace_unbound_x_with_value, span_from_tokens, starts_with_activation_cost,
     token_index_for_word_index, value_contains_unbound_x, words,
 };
@@ -211,22 +212,6 @@ pub(crate) fn parse_card_text_allow_unsupported(
     text: impl Into<String>,
 ) -> Result<CardDefinition, CardTextError> {
     compile_card_text(builder, text, true).map(|compiled| compiled.definition)
-}
-
-pub(crate) fn parse_card_text_with_annotations(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    compile_card_text(builder, text, false)
-        .map(|compiled| (compiled.definition, compiled.annotations))
-}
-
-pub(crate) fn parse_card_text_with_annotations_allow_unsupported(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    compile_card_text(builder, text, true)
-        .map(|compiled| (compiled.definition, compiled.annotations))
 }
 
 #[cfg(test)]

@@ -26,12 +26,14 @@ fn package_dependencies(manifest_path: &Path) -> Vec<String> {
         .and_then(toml::Value::as_table)
         .map(|deps| {
             deps.values()
-                .filter_map(|value| match value {
+                .enumerate()
+                .filter_map(|(index, value)| match value {
                     toml::Value::String(name) => Some(name.clone()),
                     toml::Value::Table(table) => table
                         .get("package")
                         .and_then(toml::Value::as_str)
-                        .map(str::to_owned),
+                        .map(str::to_owned)
+                        .or_else(|| deps.keys().nth(index).map(std::string::ToString::to_string)),
                     _ => None,
                 })
                 .collect()
@@ -55,27 +57,60 @@ fn workspace_dependency_rules_hold() {
     let mut deps = BTreeMap::new();
     for manifest in manifests {
         let path = root.join(manifest);
-        let package_name = manifest
-            .split('/')
-            .nth(1)
-            .expect("crate dir")
-            .to_string();
+        let package_name = manifest.split('/').nth(1).expect("crate dir").to_string();
         deps.insert(package_name, package_dependencies(&path));
     }
 
     let core = deps.get("ironsmith-core").expect("core deps");
     assert!(
-        !core.iter().any(|dep| dep.starts_with("ironsmith-") && dep != "ironsmith-core"),
+        !core
+            .iter()
+            .any(|dep| dep.starts_with("ironsmith-") && dep != "ironsmith-core"),
         "ironsmith-core must not depend on internal workspace crates: {core:?}"
     );
 
+    assert!(
+        !root
+            .join("crates/ironsmith-compiler-runtime-bridge")
+            .exists(),
+        "compiler/runtime conversion must be runtime-owned; the bridge crate should not exist"
+    );
+
     let runtime = deps.get("ironsmith-runtime").expect("runtime deps");
-    for forbidden in ["ironsmith-compiler", "ironsmith-registry", "ironsmith-wasm"] {
+    for forbidden in ["ironsmith-registry", "ironsmith-wasm"] {
         assert!(
             !runtime.iter().any(|dep| dep == forbidden),
             "ironsmith-runtime must not depend on {forbidden}: {runtime:?}"
         );
     }
+    let runtime_manifest_path = root.join("crates/ironsmith-runtime/Cargo.toml");
+    let runtime_manifest_raw = fs::read_to_string(&runtime_manifest_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", runtime_manifest_path.display()));
+    let runtime_manifest: toml::Value =
+        toml::from_str(&runtime_manifest_raw).expect("runtime manifest parses");
+    let compiler_dep = runtime_manifest
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .and_then(|deps| deps.get("ironsmith-compiler"))
+        .and_then(toml::Value::as_table)
+        .expect("runtime compiler integration dependency");
+    assert_eq!(
+        compiler_dep.get("optional").and_then(toml::Value::as_bool),
+        Some(true),
+        "runtime may depend on the compiler only through an optional integration feature"
+    );
+    let compiler_feature = runtime_manifest
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .and_then(|features| features.get("compiler-integration"))
+        .and_then(toml::Value::as_array)
+        .expect("runtime compiler-integration feature");
+    assert!(
+        compiler_feature
+            .iter()
+            .any(|value| value.as_str() == Some("dep:ironsmith-compiler")),
+        "runtime compiler dependency must remain gated behind compiler-integration"
+    );
 
     let compiler = deps.get("ironsmith-compiler").expect("compiler deps");
     for forbidden in ["ironsmith-runtime", "ironsmith-registry", "ironsmith-wasm"] {
@@ -84,12 +119,6 @@ fn workspace_dependency_rules_hold() {
             "ironsmith-compiler must not depend on {forbidden}: {compiler:?}"
         );
     }
-
-    let registry = deps.get("ironsmith-registry").expect("registry deps");
-    assert!(
-        !registry.iter().any(|dep| dep == "ironsmith-runtime"),
-        "ironsmith-registry must not depend on ironsmith-runtime: {registry:?}"
-    );
 }
 
 fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) {
@@ -145,8 +174,14 @@ fn production_rust_files_stay_under_size_ceiling() {
 
     let oversized: Vec<(String, usize)> = files
         .into_iter()
-        .filter(|path| path.components().all(|component| component.as_os_str() != "tests"))
-        .filter(|path| path.components().all(|component| component.as_os_str() != "target"))
+        .filter(|path| {
+            path.components()
+                .all(|component| component.as_os_str() != "tests")
+        })
+        .filter(|path| {
+            path.components()
+                .all(|component| component.as_os_str() != "target")
+        })
         .filter(|path| !path.to_string_lossy().contains("/src/generated_"))
         .filter_map(|path| {
             let content = fs::read_to_string(&path)
@@ -248,13 +283,50 @@ fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules(
     }
 
     assert!(
-        !root.join("crates/ironsmith-runtime/src/executor.rs").exists(),
+        !root
+            .join("crates/ironsmith-runtime/src/executor.rs")
+            .exists(),
         "legacy executor.rs should not exist once effect execution is effects-owned"
     );
     assert!(
         !lib_rs.contains("ExecutionContext"),
         "runtime lib.rs should not publicly surface the legacy ExecutionContext name"
     );
+    assert!(
+        !lib_rs.contains("\npub mod compiler;\n"),
+        "runtime lib.rs should not publicly export the legacy compiler prelude/module surface"
+    );
+    assert!(
+        !lib_rs.contains("pub mod tooling;"),
+        "runtime lib.rs should not expose parse-backed tooling helpers; tooling belongs in ironsmith-tools"
+    );
+    assert!(
+        !root
+            .join("crates/ironsmith-runtime/src/tooling.rs")
+            .exists(),
+        "runtime tooling.rs should not exist after parse-backed tooling moved to ironsmith-tools"
+    );
+    assert!(
+        !lib_rs.contains("pub use cards::{CardDefinition, CardDefinitionBuilder, CardRegistry};")
+            && !lib_rs.contains("\npub use cards::CardDefinitionBuilder;"),
+        "runtime lib.rs should not publicly export CardDefinitionBuilder in normal builds"
+    );
+    let cards_mod = read_repo_file(&root, "crates/ironsmith-runtime/src/cards/mod.rs");
+    assert!(
+        !cards_mod.contains("\npub use builders::{ParseAnnotations, TextSpan};"),
+        "runtime cards module should not export parser annotation/span helper types in normal builds"
+    );
+    let runtime_builders = read_repo_file(&root, "crates/ironsmith-runtime/src/cards/builders.rs");
+    for forbidden in [
+        "#[path = \"../../../ironsmith-compiler/",
+        "include_str!(\n                \"../../../ironsmith-compiler/",
+        "../../../ironsmith-compiler/src/runtime_backend",
+    ] {
+        assert!(
+            !runtime_builders.contains(forbidden),
+            "runtime cards/builders.rs should not path-load or include compiler backend sources: {forbidden}"
+        );
+    }
     assert!(
         effects_mod.contains("pub type EffectContext<'a> = context::ExecutionContext<'a>;"),
         "effects/mod.rs should keep EffectContext as the public execution-context name"
@@ -281,8 +353,15 @@ fn runtime_gameplay_code_does_not_call_global_registry_singletons_directly() {
     let offenders: Vec<String> = files
         .into_iter()
         .filter(|path| *path != allowlisted_runtime_registry_owner)
-        .filter(|path| !allowlisted_test_helpers.iter().any(|allowed| allowed == path))
-        .filter(|path| path.components().all(|component| component.as_os_str() != "tests"))
+        .filter(|path| {
+            !allowlisted_test_helpers
+                .iter()
+                .any(|allowed| allowed == path)
+        })
+        .filter(|path| {
+            path.components()
+                .all(|component| component.as_os_str() != "tests")
+        })
         .filter_map(|path| {
             let content = fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
@@ -322,9 +401,7 @@ fn compiler_runtime_backend_does_not_import_ironsmith_runtime_directly() {
                 .map(|fragment| {
                     format!(
                         "{} -> {}",
-                        path.strip_prefix(&root)
-                            .unwrap_or(&path)
-                            .display(),
+                        path.strip_prefix(&root).unwrap_or(&path).display(),
                         fragment
                     )
                 })

@@ -1,5 +1,5 @@
-use crate::filter::ObjectFilterExt as _;
 use super::*;
+use crate::filter::ObjectFilterExt as _;
 
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
 pub fn calculate_effective_activation_total_cost(

@@ -7,26 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
-
-/// Executes an inner effect using a resolved object as `ctx.source`.
-///
-/// This is useful for patterns like "that creature deals damage" where the
-/// effect sequence is still resolving from a spell or ability, but a different
-/// object should be treated as the source of the inner effect.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExecuteWithSourceEffect {
-    pub source: ChooseSpec,
-    pub effect: Box<Effect>,
-}
-
-impl ExecuteWithSourceEffect {
-    pub fn new(source: ChooseSpec, effect: Effect) -> Self {
-        Self {
-            source,
-            effect: Box::new(effect),
-        }
-    }
-}
+pub type ExecuteWithSourceEffect = ironsmith_core::ExecuteWithSourceEffect<Effect>;
 
 impl EffectExecutor for ExecuteWithSourceEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -76,8 +57,8 @@ impl EffectExecutor for ExecuteWithSourceEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::events::DamageEvent;
     use crate::effects::ResolvedTarget;
+    use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

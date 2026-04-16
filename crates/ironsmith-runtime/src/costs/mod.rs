@@ -122,7 +122,7 @@ impl Cost {
     }
 
     /// Convert a runtime effect into a canonical cost component.
-    pub(crate) fn try_from_runtime_effect(effect: crate::effect::Effect) -> Result<Self, String> {
+    pub fn try_from_runtime_effect(effect: crate::effect::Effect) -> Result<Self, String> {
         if let Some(amount) = effect.0.pay_life_amount() {
             return Ok(Self::life(amount));
         }

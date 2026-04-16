@@ -4,8 +4,8 @@ use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 
 use ironsmith::compiled_text::compiled_lines;
-use serde::Serialize;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
+use serde::Serialize;
 
 #[derive(Debug)]
 struct Args {

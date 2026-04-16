@@ -6,8 +6,8 @@ use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{
     ApplyContinuousEffect, EffectExecutor, PutCountersEffect, ScheduleDelayedTriggerEffect,
 };
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -17,17 +17,7 @@ use crate::types::CardType;
 
 /// Earthbend effect: make target land a 0/0 creature with haste, put counters,
 /// and return it tapped if it dies or is exiled.
-#[derive(Debug, Clone, PartialEq)]
-pub struct EarthbendEffect {
-    pub target: ChooseSpec,
-    pub counters: u32,
-}
-
-impl EarthbendEffect {
-    pub fn new(target: ChooseSpec, counters: u32) -> Self {
-        Self { target, counters }
-    }
-}
+pub type EarthbendEffect = ironsmith_core::EarthbendEffect;
 
 impl EffectExecutor for EarthbendEffect {
     fn execute(

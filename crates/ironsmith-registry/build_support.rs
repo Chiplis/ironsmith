@@ -49,10 +49,20 @@ fn workspace_root(manifest_dir: &str) -> PathBuf {
 }
 
 fn definitions_files(manifest_dir: &str) -> Vec<PathBuf> {
-    let root = Path::new(manifest_dir)
+    let local_root = Path::new(manifest_dir)
         .join("src")
         .join("cards")
         .join("definitions");
+    let root = if local_root.exists() {
+        local_root
+    } else {
+        workspace_root(manifest_dir)
+            .join("crates")
+            .join("ironsmith-runtime")
+            .join("src")
+            .join("cards")
+            .join("definitions")
+    };
     let mut files = Vec::new();
     collect_rust_files(&root, &mut files);
     files.sort();
@@ -273,11 +283,15 @@ pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinit
 
     println!(
         "cargo:rerun-if-changed={}",
-        workspace_root.join("scripts/generate_baked_registry.py").display()
+        workspace_root
+            .join("scripts/generate_baked_registry.py")
+            .display()
     );
     println!(
         "cargo:rerun-if-changed={}",
-        workspace_root.join("scripts/stream_scryfall_blocks.py").display()
+        workspace_root
+            .join("scripts/stream_scryfall_blocks.py")
+            .display()
     );
     println!("cargo:rerun-if-env-changed=IRONSMITH_GENERATED_REGISTRY_SCORES_FILE");
     println!("cargo:rerun-if-env-changed=IRONSMITH_REGISTRY_DB_PATH");

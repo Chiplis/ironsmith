@@ -43,14 +43,14 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     if !trailing_subject.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing creature-type choice subject clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let trimmed_subject_tokens = trim_commas(&subject_tokens[..choice_idx]).to_vec();
     if trimmed_subject_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing creature subject before creature-type choice phrase (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -91,7 +91,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing creature subject before creature-type choice phrase (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -99,7 +99,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
         return Err(CardTextError::ParseError(format!(
             "creature-type choice pump subject must be creature-based (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -109,13 +109,13 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing power/toughness modifier in creature-type choice pump clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             ))
         })?;
     let (base_power, base_toughness) = parse_pt_modifier_values(modifier).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in creature-type choice pump clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     let (power, toughness, duration, condition) =
@@ -123,7 +123,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     if condition.is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported conditional gets duration in creature-type choice pump clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -146,7 +146,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
 pub(crate) fn parse_sentence_put_sticker_on(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if !matches!(clause_words.first().copied(), Some("put" | "puts")) {
         return Ok(None);
     }
@@ -180,7 +180,7 @@ pub(crate) fn parse_sentence_put_sticker_on(
         return Ok(None);
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if target_words
         .first()
         .is_some_and(|word| matches!(*word, "target" | "it" | "them" | "that" | "those" | "this"))
@@ -237,7 +237,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             if base_filter_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing return target before chosen-type qualifier (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             let mut filter = parse_object_filter(&base_filter_tokens, false)?;
@@ -247,7 +247,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             let (choice_idx, consumed) = referenced_type_choice.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "type-choice return target must mention the chosen type (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
             let mut start_idx = choice_idx;
@@ -279,7 +279,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             if base_filter_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing return target before chosen-type qualifier (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
 
@@ -368,7 +368,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
 pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, CHOOSE_ALL_OR_PUT_ALL_PREFIXES).is_none() {
         return Ok(None);
     }
@@ -526,7 +526,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
         for comma_segment in split_lexed_slices_on_comma(and_segment) {
             let trimmed = trim_commas(&comma_segment);
             if !trimmed.is_empty() {
-                let trimmed_words = crate::cards::builders::compiler::token_word_refs(&trimmed);
+                let trimmed_words = crate::runtime_backend::token_word_refs(&trimmed);
                 let starts_new_target = trimmed_words.first().is_some_and(|word| {
                     matches!(
                         *word,
@@ -584,7 +584,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             segment.extend(shared_suffix.clone());
         }
         if let Some(quantifier) = shared_quantifier.as_deref() {
-            let segment_words = crate::cards::builders::compiler::token_word_refs(&segment);
+            let segment_words = crate::runtime_backend::token_word_refs(&segment);
             let has_explicit_quantifier =
                 matches!(segment_words.first().copied(), Some("all" | "each"));
             let starts_like_target_reference = matches!(
@@ -601,12 +601,12 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                 );
             }
         }
-        let segment_words = crate::cards::builders::compiler::token_word_refs(&segment);
+        let segment_words = crate::runtime_backend::token_word_refs(&segment);
         if matches!(segment_words.first().copied(), Some("all" | "each")) {
             if segment.len() < 2 {
                 return Err(CardTextError::ParseError(format!(
                     "missing return-all filter (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             let filter = parse_object_filter(&segment[1..], false)?;
@@ -668,7 +668,7 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         filter.controller = Some(PlayerFilter::Any);
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let effect_tokens = trim_commas(effect_slice);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -705,7 +705,7 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
 pub(crate) fn parse_distribute_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.first().copied() != Some("distribute") {
         return Ok(None);
     }

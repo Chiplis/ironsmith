@@ -495,7 +495,7 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value(
 ) -> Option<Value> {
     let commander_start_token_idx = token_index_for_word_index(tokens, commander_start_word_idx)?;
     let commander_words =
-        crate::cards::builders::compiler::token_word_refs(&tokens[commander_start_token_idx..]);
+        crate::runtime_backend::token_word_refs(&tokens[commander_start_token_idx..]);
     let normalized: Vec<&str> = commander_words
         .iter()
         .copied()

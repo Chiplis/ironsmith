@@ -9,37 +9,7 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};
-
-/// Effect that applies effects once for each object matching a filter.
-///
-/// # Fields
-///
-/// * `filter` - Filter for which objects to iterate over
-/// * `effects` - Effects to execute for each matching object
-///
-/// # Example
-///
-/// ```ignore
-/// // For each creature you control, gain 1 life
-/// let effect = ForEachEffect::new(
-///     ObjectFilter::creature().you_control(),
-///     vec![Effect::gain_life(1)],
-/// );
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ForEachObject {
-    /// Filter for which objects to iterate over.
-    pub filter: ObjectFilter,
-    /// Effects to execute for each matching object.
-    pub effects: Vec<Effect>,
-}
-
-impl ForEachObject {
-    /// Create a new ForEach effect.
-    pub fn new(filter: ObjectFilter, effects: Vec<Effect>) -> Self {
-        Self { filter, effects }
-    }
-}
+pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 impl EffectExecutor for ForEachObject {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

@@ -791,7 +791,7 @@ fn rewrite_lower_grant_static_ability(
 ) -> Result<StaticAbility, CardTextError> {
     let mut grant = crate::static_abilities::GrantAbility::new(
         filter,
-        rewrite_lower_static_ability_ast(ability)?,
+        rewrite_lower_static_ability_ast(ability)?.into(),
     );
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
@@ -989,7 +989,7 @@ fn rewrite_validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
         if !iterated_player_bound && let Some(decider) = &may.decider {
             rewrite_validate_unbound_iterated_player(format!("{decider:?}"), context)?;
         }
@@ -999,7 +999,9 @@ fn rewrite_validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+    if let Some(unless_pays) =
+        effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(format!("{:?}", unless_pays.player), context)?;
         }
@@ -1009,7 +1011,9 @@ fn rewrite_validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
+    if let Some(unless_action) =
+        effect.downcast_ref::<crate::effects::UnlessActionEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(
                 format!("{:?}", unless_action.player),
@@ -1027,7 +1031,9 @@ fn rewrite_validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+    if let Some(for_players) =
+        effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+    {
         if !iterated_player_bound {
             rewrite_validate_unbound_iterated_player(format!("{:?}", for_players.filter), context)?;
         }
@@ -1046,15 +1052,17 @@ fn rewrite_validate_effect_for_iterated_player(
             context,
         );
     }
-    if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+    if let Some(for_each_tagged) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+    {
         return rewrite_validate_effects_for_iterated_player(
             &for_each_tagged.effects,
             true,
             context,
         );
     }
-    if let Some(for_each_controller) =
-        effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()
+    if let Some(for_each_controller) = effect
+        .downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<crate::effect::Effect>>()
     {
         return rewrite_validate_effects_for_iterated_player(
             &for_each_controller.effects,
@@ -1063,7 +1071,7 @@ fn rewrite_validate_effect_for_iterated_player(
         );
     }
     if let Some(for_each_player) =
-        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()
+        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<crate::effect::Effect>>()
     {
         return rewrite_validate_effects_for_iterated_player(
             &for_each_player.effects,

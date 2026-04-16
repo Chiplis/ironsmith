@@ -8,22 +8,7 @@ use crate::game_state::GameState;
 use crate::mana::ManaCost;
 use crate::target::{ObjectFilter, PlayerFilter};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantNextSpellCostReductionEffect {
-    pub player: PlayerFilter,
-    pub filter: ObjectFilter,
-    pub reduction: ManaCost,
-}
-
-impl GrantNextSpellCostReductionEffect {
-    pub fn new(player: PlayerFilter, filter: ObjectFilter, reduction: ManaCost) -> Self {
-        Self {
-            player,
-            filter,
-            reduction,
-        }
-    }
-}
+pub type GrantNextSpellCostReductionEffect = ironsmith_core::GrantNextSpellCostReductionEffect;
 
 impl EffectExecutor for GrantNextSpellCostReductionEffect {
     fn execute(

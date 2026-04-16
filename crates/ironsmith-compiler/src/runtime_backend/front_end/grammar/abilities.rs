@@ -17,7 +17,7 @@ use super::super::lexer::{
 };
 use super::super::token_primitives::{slice_contains, slice_starts_with, str_strip_suffix};
 use super::primitives;
-use crate::cards::builders::compiler::util::{
+use crate::runtime_backend::util::{
     parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word, parse_number_word_u32,
 };
 
@@ -1142,8 +1142,8 @@ pub(crate) fn is_additional_cost_choice_line_lexed(tokens: &[OwnedLexToken]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::TokenWordView;
-    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::runtime_backend::lexer::TokenWordView;
+    use crate::runtime_backend::lexer::lex_line;
 
     #[test]
     fn untap_each_other_players_untap_step_extracts_subject_tokens() {

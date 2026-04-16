@@ -9,17 +9,7 @@ use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_s
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TargetOnlyEffect {
-    pub target: ChooseSpec,
-}
-
-impl TargetOnlyEffect {
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
-}
+pub use ironsmith_core::TargetOnlyEffect;
 
 impl EffectExecutor for TargetOnlyEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

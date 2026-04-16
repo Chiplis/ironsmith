@@ -15,10 +15,10 @@
 
 mod application;
 
-use crate::filter::ObjectFilterExt as _;
 use crate::DecisionMaker;
-use crate::events::{Event, EventContext};
 use crate::events::DamageTarget;
+use crate::events::{Event, EventContext};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::PlayerId;
 use crate::object::CounterType;
@@ -748,7 +748,6 @@ fn trait_effect_matches_event(
 
     Some(priority)
 }
-
 
 /// Result of processing an event through replacement effects.
 ///

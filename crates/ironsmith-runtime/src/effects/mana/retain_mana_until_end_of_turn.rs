@@ -3,21 +3,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RetainManaUntilEndOfTurnEffect {
-    pub player: PlayerFilter,
-}
-
-impl RetainManaUntilEndOfTurnEffect {
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
-    }
-
-    pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
-    }
-}
+pub type RetainManaUntilEndOfTurnEffect = ironsmith_core::RetainManaUntilEndOfTurnEffect;
 
 impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

@@ -1,8 +1,8 @@
 //! "Whenever [filter] attacks while saddled" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::combat::CreatureAttackedEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

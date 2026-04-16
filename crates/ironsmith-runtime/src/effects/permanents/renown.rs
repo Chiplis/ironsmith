@@ -2,8 +2,8 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;

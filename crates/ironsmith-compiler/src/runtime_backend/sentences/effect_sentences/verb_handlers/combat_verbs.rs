@@ -1,7 +1,7 @@
 pub(crate) fn parse_attach_object_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
-    let object_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let object_words = crate::runtime_backend::token_word_refs(tokens);
     let object_span = span_from_tokens(tokens);
     if object_words.is_empty() {
         return Err(CardTextError::ParseError(
@@ -72,7 +72,7 @@ pub(crate) fn parse_attach_object_phrase(
 }
 
 pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "attach clause missing object and destination".to_string(),
@@ -125,7 +125,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let object = parse_attach_object_phrase(&object_tokens)?;
-    let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     let target = if matches!(target_words.as_slice(), ["it"] | ["them"]) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
     } else {
@@ -142,7 +142,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         } else {
             tokens
         };
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["damage", "to", "each", "opponent", "equal", "to"])
         .is_some()
         && grammar::contains_word(tokens, "number")
@@ -209,7 +209,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
 pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["damage", "to"]).is_none() {
         return Ok(None);
     }
@@ -245,7 +245,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 clause_words.join(" ")
             ))
         })?;
-    let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if target_words.as_slice() == ["each", "player"]
         || target_words.as_slice() == ["each", "players"]
     {
@@ -275,7 +275,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
 pub(crate) fn parse_deal_damage_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["damage", "equal", "to"]).is_none() {
         return Ok(None);
     }
@@ -285,7 +285,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         if !tokens[idx].is_word("to") {
             continue;
         }
-        let tail_words = crate::cards::builders::compiler::token_word_refs(&tokens[idx + 1..]);
+        let tail_words = crate::runtime_backend::token_word_refs(&tokens[idx + 1..]);
         if tail_words.is_empty() {
             continue;
         }
@@ -401,16 +401,16 @@ fn parse_divided_damage_target(
     }) else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage targets after 'among' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(target_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(target_tokens).join(" ")
         )));
     };
     let among_tail = trim_commas(&target_tokens[among_idx + 1..]);
-    let among_words = crate::cards::builders::compiler::token_word_refs(&among_tail);
+    let among_words = crate::runtime_backend::token_word_refs(&among_tail);
     let Some(target_idx) = find_index(&among_words, |word| matches!(*word, "target" | "targets"))
     else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage target phrase (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(target_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(target_tokens).join(" ")
         )));
     };
 
@@ -424,7 +424,7 @@ fn parse_divided_damage_target(
     {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage target count (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(target_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(target_tokens).join(" ")
         )));
     }
 
@@ -452,7 +452,7 @@ fn parse_divided_damage_with_amount(
     if !rest.first().is_some_and(|token| token.is_word("damage")) {
         return Err(CardTextError::ParseError(format!(
             "missing damage keyword in divided-damage clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let mut target_tokens = &rest[1..];
@@ -509,7 +509,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     if target_tokens.iter().any(|token| token.is_word("where")) {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing where damage clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -529,7 +529,7 @@ pub(crate) fn parse_deal_damage_with_amount(
                 || {
                     CardTextError::ParseError(format!(
                         "unsupported trailing instead-if clause in damage effect (clause: '{}')",
-                        crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
                     ))
                 },
             )?
@@ -565,7 +565,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         let predicate = parse_trailing_if_predicate_lexed(target_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported trailing if clause in damage effect (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             ))
         })?;
         return Ok(EffectAst::Conditional {
@@ -583,11 +583,11 @@ pub(crate) fn parse_deal_damage_with_amount(
     if find_index(&target_tokens, |token| token.is_word("if")).is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing if clause in damage effect (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(target_tokens);
     if target_words.as_slice() == ["instead"] {
         return Ok(EffectAst::DealDamage {
             amount,
@@ -596,7 +596,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
-        let each_of_words = crate::cards::builders::compiler::token_word_refs(each_of_tokens);
+        let each_of_words = crate::runtime_backend::token_word_refs(each_of_tokens);
         if matches!(
             each_of_words.as_slice(),
             ["up", "to", _, "target"] | ["up", "to", _, "targets"]
@@ -723,7 +723,7 @@ pub(crate) fn parse_deal_damage_with_amount(
 
     if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word("at")) {
         let timing_words =
-            crate::cards::builders::compiler::token_word_refs(&target_tokens[at_idx..]);
+            crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]);
         let matches_end_of_combat = timing_words.as_slice() == ["at", "end", "of", "combat"]
             || timing_words.as_slice() == ["at", "the", "end", "of", "combat"];
         if matches_end_of_combat && at_idx >= 1 {
@@ -782,7 +782,7 @@ pub(crate) fn parse_instead_if_control_predicate(
     }
     let cut_markers: &[&[&str]] = &[&["as", "you", "cast", "this", "spell"], &["this", "turn"]];
     for marker in cut_markers {
-        let filter_words = crate::cards::builders::compiler::token_word_refs(filter_tokens);
+        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
         if let Some(idx) = find_window_by(&filter_words, marker.len(), |window| window == *marker) {
             let cut_idx =
                 token_index_for_word_index(filter_tokens, idx).unwrap_or(filter_tokens.len());
@@ -791,7 +791,7 @@ pub(crate) fn parse_instead_if_control_predicate(
         }
     }
     let mut filter_tokens = trim_commas(filter_tokens);
-    let filter_words = crate::cards::builders::compiler::token_word_refs(&filter_tokens);
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     let mut requires_different_powers = false;
     if grammar::words_match_suffix(&filter_tokens, &["with", "different", "powers"]).is_some()
         || grammar::words_match_suffix(&filter_tokens, &["with", "different", "power"]).is_some()

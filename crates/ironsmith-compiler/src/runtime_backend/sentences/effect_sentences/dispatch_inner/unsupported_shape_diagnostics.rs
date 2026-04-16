@@ -1,7 +1,7 @@
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);
@@ -43,7 +43,7 @@ pub(crate) fn parse_prevent_damage_sentence(
 pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
     else {
         return Ok(None);

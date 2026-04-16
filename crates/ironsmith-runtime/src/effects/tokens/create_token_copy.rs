@@ -43,301 +43,80 @@ use super::lifecycle::{
 /// // Create a copy with haste that's exiled at end of combat (Kiki-Jiki style)
 /// let effect = CreateTokenCopyEffect::kiki_jiki_style(ChooseSpec::creature());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct CreateTokenCopyEffect {
-    /// Which permanent to copy.
-    pub target: ChooseSpec,
-    /// How many copies to create.
-    pub count: Value,
-    /// Who controls the tokens.
-    pub controller: PlayerFilter,
-    /// Whether the copy enters tapped.
-    pub enters_tapped: bool,
-    /// Whether the copy has haste.
-    pub has_haste: bool,
-    /// Whether the copy enters attacking.
-    pub enters_attacking: bool,
-    /// Optional custom attack-target selection when entering attacking.
-    pub attack_target_mode: Option<CopyAttackTargetMode>,
-    /// Whether to exile at end of combat.
-    pub exile_at_end_of_combat: bool,
-    /// Whether to sacrifice at the beginning of the next end step.
-    pub sacrifice_at_next_end_step: bool,
-    /// Whether to exile at the beginning of the next end step.
-    pub exile_at_next_end_step: bool,
-    /// Optional power/toughness adjustment for the created tokens.
-    pub pt_adjustment: Option<CopyPtAdjustment>,
-    /// Card types to add to copied tokens.
-    pub added_card_types: Vec<CardType>,
-    /// Subtypes to add to copied tokens.
-    pub added_subtypes: Vec<Subtype>,
-    /// Supertypes to remove from copied tokens.
-    pub removed_supertypes: Vec<Supertype>,
-    /// Optional fixed base power/toughness override.
-    pub set_base_power_toughness: Option<(i32, i32)>,
-    /// Optional color override for copied tokens.
-    pub set_colors: Option<ColorSet>,
-    /// Optional exact card-type override for copied tokens.
-    pub set_card_types: Option<Vec<CardType>>,
-    /// Optional exact subtype override for copied tokens.
-    pub set_subtypes: Option<Vec<Subtype>>,
-    /// Static abilities to grant to copied tokens.
-    pub granted_static_abilities: Vec<StaticAbility>,
-}
+pub type CopyPtAdjustment = ironsmith_core::CopyPtAdjustment;
+pub type CopyAttackTargetMode = ironsmith_core::CopyAttackTargetMode;
+pub type CreateTokenCopyEffect = ironsmith_core::CreateTokenCopyEffect<StaticAbility>;
 
-/// Optional power/toughness adjustment for copied tokens.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CopyPtAdjustment {
-    /// Set base power/toughness to half (rounded up) of the original.
-    HalfRoundUp,
-}
-
-/// Attack-target assignment mode for copied tokens entering attacking.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CopyAttackTargetMode {
-    /// Choose among the player and planeswalkers controlled by that player.
-    PlayerOrPlaneswalkerControlledBy(PlayerFilter),
-}
-
-impl CreateTokenCopyEffect {
-    /// Create a new create token copy effect.
-    pub fn new(target: ChooseSpec, count: impl Into<Value>, controller: PlayerFilter) -> Self {
-        Self {
-            target,
-            count: count.into(),
-            controller,
-            enters_tapped: false,
-            has_haste: false,
-            enters_attacking: false,
-            attack_target_mode: None,
-            exile_at_end_of_combat: false,
-            sacrifice_at_next_end_step: false,
-            exile_at_next_end_step: false,
-            pt_adjustment: None,
-            added_card_types: Vec::new(),
-            added_subtypes: Vec::new(),
-            removed_supertypes: Vec::new(),
-            set_base_power_toughness: None,
-            set_colors: None,
-            set_card_types: None,
-            set_subtypes: None,
-            granted_static_abilities: Vec::new(),
-        }
+fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
+    let mut targets = Vec::new();
+    if game
+        .player(player_id)
+        .is_some_and(|player| player.is_in_game())
+    {
+        targets.push(AttackTarget::Player(player_id));
     }
 
-    /// Create a single token copy under your control.
-    pub fn one(target: ChooseSpec) -> Self {
-        Self::new(target, 1, PlayerFilter::You)
-    }
-
-    /// Create a token copy with haste.
-    pub fn with_haste(target: ChooseSpec) -> Self {
-        let mut effect = Self::one(target);
-        effect.has_haste = true;
-        effect
-    }
-
-    /// Create a token copy that enters tapped.
-    pub fn tapped(target: ChooseSpec) -> Self {
-        let mut effect = Self::one(target);
-        effect.enters_tapped = true;
-        effect
-    }
-
-    /// Create a Kiki-Jiki style copy: has haste and is exiled at end of combat.
-    pub fn kiki_jiki_style(target: ChooseSpec) -> Self {
-        let mut effect = Self::one(target);
-        effect.has_haste = true;
-        effect.exile_at_end_of_combat = true;
-        effect
-    }
-
-    /// Set whether the copy enters tapped.
-    pub fn enters_tapped(mut self, value: bool) -> Self {
-        self.enters_tapped = value;
-        self
-    }
-
-    /// Set whether the copy has haste.
-    pub fn haste(mut self, value: bool) -> Self {
-        self.has_haste = value;
-        self
-    }
-
-    /// Set whether the copy enters attacking.
-    pub fn attacking(mut self, value: bool) -> Self {
-        self.enters_attacking = value;
-        if !value {
-            self.attack_target_mode = None;
-        }
-        self
-    }
-
-    /// Set a custom attack-target assignment mode for copied tokens.
-    pub fn attack_target_mode(mut self, mode: CopyAttackTargetMode) -> Self {
-        self.enters_attacking = true;
-        self.attack_target_mode = Some(mode);
-        self
-    }
-
-    /// Enter attacking a chosen player or a planeswalker that player controls.
-    pub fn attacking_player_or_planeswalker_controlled_by(mut self, player: PlayerFilter) -> Self {
-        self.enters_attacking = true;
-        self.attack_target_mode = Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
-            player,
-        ));
-        self
-    }
-
-    /// Set whether to exile at end of combat.
-    pub fn exile_at_eoc(mut self, value: bool) -> Self {
-        self.exile_at_end_of_combat = value;
-        self
-    }
-
-    /// Set whether to sacrifice at the beginning of the next end step.
-    pub fn sacrifice_at_next_end_step(mut self, value: bool) -> Self {
-        self.sacrifice_at_next_end_step = value;
-        self
-    }
-
-    /// Set whether to exile at the beginning of the next end step.
-    pub fn exile_at_next_end_step(mut self, value: bool) -> Self {
-        self.exile_at_next_end_step = value;
-        self
-    }
-
-    /// Set base power/toughness to half (rounded up) of the original.
-    pub fn half_power_toughness_round_up(mut self) -> Self {
-        self.pt_adjustment = Some(CopyPtAdjustment::HalfRoundUp);
-        self
-    }
-
-    /// Add a card type to copied tokens.
-    pub fn added_card_type(mut self, card_type: CardType) -> Self {
-        if !self.added_card_types.contains(&card_type) {
-            self.added_card_types.push(card_type);
-        }
-        self
-    }
-
-    /// Add a subtype to copied tokens.
-    pub fn added_subtype(mut self, subtype: Subtype) -> Self {
-        if !self.added_subtypes.contains(&subtype) {
-            self.added_subtypes.push(subtype);
-        }
-        self
-    }
-
-    /// Remove a supertype from copied tokens.
-    pub fn removed_supertype(mut self, supertype: Supertype) -> Self {
-        if !self.removed_supertypes.contains(&supertype) {
-            self.removed_supertypes.push(supertype);
-        }
-        self
-    }
-
-    /// Set copied tokens to a fixed base power/toughness.
-    pub fn set_base_power_toughness(mut self, power: i32, toughness: i32) -> Self {
-        self.set_base_power_toughness = Some((power, toughness));
-        self
-    }
-
-    /// Set copied tokens to exact colors.
-    pub fn set_colors(mut self, colors: ColorSet) -> Self {
-        self.set_colors = Some(colors);
-        self
-    }
-
-    /// Set copied tokens to exact card types.
-    pub fn set_card_types(mut self, card_types: Vec<CardType>) -> Self {
-        self.set_card_types = Some(card_types);
-        self
-    }
-
-    /// Set copied tokens to exact subtypes.
-    pub fn set_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
-        self.set_subtypes = Some(subtypes);
-        self
-    }
-
-    /// Grant a static ability to copied tokens.
-    pub fn grant_static_ability(mut self, ability: StaticAbility) -> Self {
-        self.granted_static_abilities.push(ability);
-        self
-    }
-
-    fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
-        let mut targets = Vec::new();
-        if game
-            .player(player_id)
-            .is_some_and(|player| player.is_in_game())
+    for &object_id in &game.battlefield {
+        if let Some(object) = game.object(object_id)
+            && object.controller == player_id
+            && object.has_card_type(CardType::Planeswalker)
         {
-            targets.push(AttackTarget::Player(player_id));
+            targets.push(AttackTarget::Planeswalker(object_id));
         }
-
-        for &object_id in &game.battlefield {
-            if let Some(object) = game.object(object_id)
-                && object.controller == player_id
-                && object.has_card_type(CardType::Planeswalker)
-            {
-                targets.push(AttackTarget::Planeswalker(object_id));
-            }
-        }
-
-        targets
     }
 
-    fn choose_attack_target(
-        game: &GameState,
-        ctx: &mut ExecutionContext,
-        player_id: PlayerId,
-        targets: &[AttackTarget],
-    ) -> Option<AttackTarget> {
-        if targets.len() == 1 {
-            return Some(targets[0].clone());
-        }
+    targets
+}
 
-        let player_name = game
-            .player(player_id)
-            .map(|player| player.name.clone())
-            .unwrap_or_else(|| "that player".to_string());
-        let options: Vec<SelectableOption> = targets
-            .iter()
-            .enumerate()
-            .map(|(index, target)| {
-                let description = match target {
-                    AttackTarget::Player(_) => format!("Attack {player_name}"),
-                    AttackTarget::Planeswalker(planeswalker_id) => {
-                        let walker_name = game
-                            .object(*planeswalker_id)
-                            .map(|object| object.name.clone())
-                            .unwrap_or_else(|| "a planeswalker".to_string());
-                        format!("Attack {walker_name} controlled by {player_name}")
-                    }
-                };
-                SelectableOption::new(index, description)
-            })
-            .collect();
-        let choice_ctx = SelectOptionsContext::new(
-            ctx.controller,
-            Some(ctx.source),
-            format!("Choose attack target for token copy attacking {player_name}"),
-            options,
-            1,
-            1,
-        );
-        let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return None;
-        }
-        chosen
-            .first()
-            .copied()
-            .filter(|selected| *selected < targets.len())
-            .and_then(|index| targets.get(index))
-            .cloned()
+fn choose_attack_target(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    targets: &[AttackTarget],
+) -> Option<AttackTarget> {
+    if targets.len() == 1 {
+        return Some(targets[0].clone());
     }
+
+    let player_name = game
+        .player(player_id)
+        .map(|player| player.name.clone())
+        .unwrap_or_else(|| "that player".to_string());
+    let options: Vec<SelectableOption> = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let description = match target {
+                AttackTarget::Player(_) => format!("Attack {player_name}"),
+                AttackTarget::Planeswalker(planeswalker_id) => {
+                    let walker_name = game
+                        .object(*planeswalker_id)
+                        .map(|object| object.name.clone())
+                        .unwrap_or_else(|| "a planeswalker".to_string());
+                    format!("Attack {walker_name} controlled by {player_name}")
+                }
+            };
+            SelectableOption::new(index, description)
+        })
+        .collect();
+    let choice_ctx = SelectOptionsContext::new(
+        ctx.controller,
+        Some(ctx.source),
+        format!("Choose attack target for token copy attacking {player_name}"),
+        options,
+        1,
+        1,
+    );
+    let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    chosen
+        .first()
+        .copied()
+        .filter(|selected| *selected < targets.len())
+        .and_then(|index| targets.get(index))
+        .cloned()
 }
 
 impl EffectExecutor for CreateTokenCopyEffect {
@@ -500,10 +279,10 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 )?;
 
                 if let Some(attack_player) = configured_attack_player {
-                    let targets = Self::attack_targets_for_player(game, attack_player);
+                    let targets = attack_targets_for_player(game, attack_player);
                     if !targets.is_empty() {
                         if let Some(chosen_target) =
-                            Self::choose_attack_target(game, ctx, attack_player, &targets)
+                            choose_attack_target(game, ctx, attack_player, &targets)
                         {
                             if let Some(combat) = game.combat.as_mut() {
                                 combat.attackers.push(AttackerInfo {

@@ -29,19 +29,46 @@ fn compose_total_cost<C: CostComponent>(
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlternativeCastingMethod<E, C, Cond> {
-    Dash { cost: ManaCost },
-    Warp { cost: ManaCost },
-    Plot { cost: ManaCost },
-    Suspend { cost: ManaCost, time: u32 },
-    Disturb { cost: ManaCost },
-    Overload { cost: ManaCost, effects: Vec<E> },
-    Flashback { total_cost: TotalCost<C> },
-    Harmonize { total_cost: TotalCost<C> },
+    Dash {
+        cost: ManaCost,
+    },
+    Warp {
+        cost: ManaCost,
+    },
+    Plot {
+        cost: ManaCost,
+    },
+    Suspend {
+        cost: ManaCost,
+        time: u32,
+    },
+    Disturb {
+        cost: ManaCost,
+    },
+    Overload {
+        cost: ManaCost,
+        effects: Vec<E>,
+    },
+    Flashback {
+        total_cost: TotalCost<C>,
+    },
+    Harmonize {
+        total_cost: TotalCost<C>,
+    },
     JumpStart,
-    Escape { cost: Option<ManaCost>, exile_count: u32 },
-    Madness { cost: ManaCost },
-    Miracle { cost: ManaCost },
-    Foretell { cost: ManaCost },
+    Escape {
+        cost: Option<ManaCost>,
+        exile_count: u32,
+    },
+    Madness {
+        cost: ManaCost,
+    },
+    Miracle {
+        cost: ManaCost,
+    },
+    Foretell {
+        cost: ManaCost,
+    },
     Composed {
         name: &'static str,
         total_cost: TotalCost<C>,
@@ -52,7 +79,9 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         cost: ManaCost,
         condition: TrapCondition,
     },
-    Bestow { total_cost: TotalCost<C> },
+    Bestow {
+        total_cost: TotalCost<C>,
+    },
 }
 
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond>

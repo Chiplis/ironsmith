@@ -13,20 +13,8 @@ use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 /// Grants a temporary zero-mana alternative casting method to tagged exiled spells.
-#[derive(Debug, Clone, PartialEq)]
-pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
-    pub tag: TagKey,
-    pub player: PlayerFilter,
-}
-
-impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
-    pub fn new(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
-        Self {
-            tag: tag.into(),
-            player,
-        }
-    }
-}
+pub type GrantTaggedSpellFreeCastUntilEndOfTurnEffect =
+    ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect;
 
 impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     fn execute(

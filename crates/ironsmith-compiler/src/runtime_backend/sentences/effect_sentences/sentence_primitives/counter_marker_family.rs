@@ -24,11 +24,11 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     if object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object in end-of-combat clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let object_words = crate::cards::builders::compiler::token_word_refs(&object_tokens);
+    let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
     let filter = if matches!(
         object_words.as_slice(),
         ["it"]
@@ -424,7 +424,7 @@ pub(crate) fn parse_gets_then_fights_sentence(
     ) {
         return Err(CardTextError::ParseError(format!(
             "fight target must be a creature (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -473,7 +473,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing return target before destination (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -493,7 +493,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     }
 
     let base_destination_word_storage =
-        crate::cards::builders::compiler::token_word_refs(&destination_tokens[..with_idx]);
+        crate::runtime_backend::token_word_refs(&destination_tokens[..with_idx]);
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
     let Some(battlefield_idx) = find_index(&base_destination_words, |word| *word == "battlefield")
     else {
@@ -532,7 +532,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     }
 
     let on_target_words =
-        crate::cards::builders::compiler::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
     let timing_words =
         if on_target_words.starts_with(&["it"]) || on_target_words.starts_with(&["them"]) {
             &on_target_words[1..]
@@ -552,7 +552,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     if descriptor_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing counter descriptor in return-with-counters clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -567,7 +567,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     if descriptors.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing counter descriptor in return-with-counters clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -642,7 +642,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing put target before destination (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -662,7 +662,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     }
 
     let base_destination_word_storage =
-        crate::cards::builders::compiler::token_word_refs(&destination_tokens[..with_idx]);
+        crate::runtime_backend::token_word_refs(&destination_tokens[..with_idx]);
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
     if base_destination_words.first() != Some(&"battlefield") {
         return Ok(None);
@@ -701,7 +701,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     }
 
     let on_target_words =
-        crate::cards::builders::compiler::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
     if on_target_words != ["it"] && on_target_words != ["them"] {
         return Ok(None);
     }
@@ -873,11 +873,10 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     };
 
     let predicate_tokens = trim_commas(predicate_slice);
-    let predicate_words: Vec<&str> =
-        crate::cards::builders::compiler::token_word_refs(&predicate_tokens)
-            .into_iter()
-            .filter(|word| !is_article(word))
-            .collect();
+    let predicate_words: Vec<&str> = crate::runtime_backend::token_word_refs(&predicate_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
     let predicate_is_supported = predicate_words.as_slice()
         == ["creature", "enters", "this", "way"]
         || predicate_words.as_slice() == ["it", "enters", "as", "creature"];
@@ -901,7 +900,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }
 
     let on_target_words =
-        crate::cards::builders::compiler::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
     if on_target_words != ["it"] {
         return Ok(None);
     }
@@ -934,7 +933,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
 pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let _clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let _clause_words = crate::runtime_backend::token_word_refs(tokens);
     let inner_start_word_idx = if let Some((prefix, _)) =
         grammar::words_match_any_prefix(tokens, FOR_EACH_PLAYER_PREFIXES)
     {
@@ -979,7 +978,7 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     }
 
     let on_target_words =
-        crate::cards::builders::compiler::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
     if on_target_words != ["it"] && on_target_words != ["them"] {
         return Ok(None);
     }

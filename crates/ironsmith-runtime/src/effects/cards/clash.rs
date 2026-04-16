@@ -9,8 +9,8 @@ use crate::decisions::{
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -19,40 +19,10 @@ use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClashOpponentMode {
-    AnyOpponent,
-    TargetOpponent,
-    DefendingPlayer,
-}
+pub use ironsmith_core::ClashOpponentMode;
 
 /// Effect that performs a clash with an opponent.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ClashEffect {
-    opponent_mode: ClashOpponentMode,
-}
-
-impl ClashEffect {
-    pub fn new(opponent_mode: ClashOpponentMode) -> Self {
-        Self { opponent_mode }
-    }
-
-    pub fn against_any_opponent() -> Self {
-        Self::new(ClashOpponentMode::AnyOpponent)
-    }
-
-    pub fn against_target_opponent() -> Self {
-        Self::new(ClashOpponentMode::TargetOpponent)
-    }
-
-    pub fn against_defending_player() -> Self {
-        Self::new(ClashOpponentMode::DefendingPlayer)
-    }
-
-    pub fn opponent_mode(&self) -> ClashOpponentMode {
-        self.opponent_mode
-    }
-}
+pub type ClashEffect = ironsmith_core::ClashEffect;
 
 fn in_game_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
     game.players

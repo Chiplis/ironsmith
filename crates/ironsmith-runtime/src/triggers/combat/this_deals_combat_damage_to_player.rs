@@ -1,8 +1,8 @@
 //! "Whenever this creature deals combat damage to a player" trigger.
 
 use crate::events::DamageEvent;
-use crate::events::EventKind;
 use crate::events::DamageTarget;
+use crate::events::EventKind;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 

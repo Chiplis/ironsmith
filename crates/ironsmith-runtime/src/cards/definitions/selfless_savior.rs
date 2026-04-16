@@ -63,6 +63,19 @@ mod tests {
         game.create_object_from_definition(&def, owner, Zone::Battlefield)
     }
 
+    fn selfless_savior_activated_effects(def: &CardDefinition) -> &[crate::effect::Effect] {
+        def.abilities
+            .iter()
+            .find_map(|ability| {
+                if let AbilityKind::Activated(activated) = &ability.kind {
+                    Some(activated.effects.flattened_default_effects())
+                } else {
+                    None
+                }
+            })
+            .expect("Should have activated ability effects")
+    }
+
     // ========================================
     // Basic Property Tests
     // ========================================
@@ -141,7 +154,6 @@ mod tests {
 
             // Verify targets another creature you control
             assert_eq!(activated.choices.len(), 1);
-            println!("{:#?}", activated.choices);
             if let ChooseSpec::Target(inner) = &activated.choices[0] {
                 if let ChooseSpec::Object(filter) = inner.as_ref() {
                     assert!(filter.card_types.contains(&CardType::Creature));
@@ -178,18 +190,11 @@ mod tests {
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
         let def = selfless_savior();
-        let ability = def
-            .abilities
-            .iter()
-            .find_map(|a| {
-                if let AbilityKind::Activated(activated) = &a.kind {
-                    activated.effects.first()
-                } else {
-                    None
-                }
-            })
-            .expect("Should have activated ability effect");
-        let result = execute_effect(&mut game, ability, &mut ctx).unwrap();
+        let mut result = None;
+        for effect in selfless_savior_activated_effects(&def) {
+            result = Some(execute_effect(&mut game, effect, &mut ctx).unwrap());
+        }
+        let result = result.expect("Should execute at least one activated ability effect");
 
         assert!(
             result.status == crate::effect::OutcomeStatus::Succeeded
@@ -223,16 +228,8 @@ mod tests {
         ctx.targets = vec![]; // No target
 
         let def = selfless_savior();
-        let ability = def
-            .abilities
-            .iter()
-            .find_map(|a| {
-                if let AbilityKind::Activated(activated) = &a.kind {
-                    activated.effects.first()
-                } else {
-                    None
-                }
-            })
+        let ability = selfless_savior_activated_effects(&def)
+            .first()
             .expect("Should have activated ability effect");
         let result = execute_effect(&mut game, ability, &mut ctx);
 
@@ -255,18 +252,9 @@ mod tests {
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
         let def = selfless_savior();
-        let ability = def
-            .abilities
-            .iter()
-            .find_map(|a| {
-                if let AbilityKind::Activated(activated) = &a.kind {
-                    activated.effects.first()
-                } else {
-                    None
-                }
-            })
-            .expect("Should have activated ability effect");
-        let _ = execute_effect(&mut game, ability, &mut ctx).unwrap();
+        for effect in selfless_savior_activated_effects(&def) {
+            let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
 
         // The soldier should have indestructible
         {

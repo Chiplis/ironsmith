@@ -1,15 +1,15 @@
 //! Exile effect implementation.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::color::{Color, ColorSet};
 use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::events::processing::EventOutcome;
 use crate::filter::FilterContext;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -32,200 +32,123 @@ use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change
 /// // Exile all creatures (non-targeted - cannot fizzle)
 /// let effect = ExileEffect::all(ObjectFilter::creature());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExileEffect {
-    /// What to exile - can be targeted, all matching, source, etc.
-    pub spec: ChooseSpec,
-    /// Whether exiled objects should be turned face down in exile.
-    pub face_down: bool,
-}
+pub type ExileEffect = ironsmith_core::ExileEffect;
 
-impl ExileEffect {
-    /// Create an exile effect with a custom spec.
-    pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self {
-            spec,
-            face_down: false,
-        }
-    }
+fn exile_object(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object_id: crate::ids::ObjectId,
+    face_down: bool,
+) -> Result<Option<OutcomeStatus>, ExecutionError> {
+    if let Some(obj) = game.object(object_id) {
+        let from_zone = obj.zone;
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-    /// Mark exiled cards as face down.
-    pub fn with_face_down(mut self, face_down: bool) -> Self {
-        self.face_down = face_down;
-        self
-    }
+        let result = apply_zone_change_with_additional_effects(
+            game,
+            object_id,
+            from_zone,
+            Zone::Exile,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+            &additional_effects,
+        );
 
-    /// Create a targeted exile effect (single target).
-    pub fn target(spec: ChooseSpec) -> Self {
-        Self::with_spec(ChooseSpec::target(spec))
-    }
-
-    /// Create a targeted exile effect with a specific target count.
-    pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
-        Self::with_spec(ChooseSpec::target(spec).with_count(count))
-    }
-
-    /// Create a non-targeted exile effect for all matching permanents.
-    pub fn all(filter: ObjectFilter) -> Self {
-        Self::with_spec(ChooseSpec::all(filter))
-    }
-
-    /// Create an exile effect targeting a single creature.
-    pub fn creature() -> Self {
-        Self::target(ChooseSpec::creature())
-    }
-
-    /// Create an exile effect targeting a single permanent.
-    pub fn permanent() -> Self {
-        Self::target(ChooseSpec::permanent())
-    }
-
-    /// Create an exile effect targeting any number of targets.
-    pub fn any_number(target: ChooseSpec) -> Self {
-        Self::targets(target, ChoiceCount::any_number())
-    }
-
-    /// Create an exile effect for a specific object.
-    pub fn specific(object_id: crate::ids::ObjectId) -> Self {
-        Self::with_spec(ChooseSpec::SpecificObject(object_id))
-    }
-
-    /// Helper for convenience constructors that mirror ExileAllEffect.
-    pub fn creatures() -> Self {
-        Self::all(ObjectFilter::creature())
-    }
-
-    /// Create an effect that exiles all nonland permanents.
-    pub fn nonland_permanents() -> Self {
-        Self::all(ObjectFilter::nonland_permanent())
-    }
-
-    /// Helper to exile a single object (shared logic).
-    fn exile_object(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        object_id: crate::ids::ObjectId,
-        face_down: bool,
-    ) -> Result<Option<OutcomeStatus>, ExecutionError> {
-        if let Some(obj) = game.object(object_id) {
-            let from_zone = obj.zone;
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-            // Process through replacement effects with decision maker.
-            let result = apply_zone_change_with_additional_effects(
-                game,
-                object_id,
-                from_zone,
-                Zone::Exile,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                &additional_effects,
-            );
-
-            match result {
-                EventOutcome::Prevented => {
-                    return Ok(Some(crate::effect::OutcomeStatus::Prevented));
-                }
-                EventOutcome::Proceed(result) => {
-                    if result.final_zone == Zone::Exile {
-                        for &new_id in &result.new_object_ids {
-                            if face_down {
-                                game.set_face_down(new_id);
-                                if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
-                                    for &viewer in viewers {
-                                        game.grant_face_down_exile_view(new_id, viewer);
-                                    }
+        match result {
+            EventOutcome::Prevented => return Ok(Some(crate::effect::OutcomeStatus::Prevented)),
+            EventOutcome::Proceed(result) => {
+                if result.final_zone == Zone::Exile {
+                    for &new_id in &result.new_object_ids {
+                        if face_down {
+                            game.set_face_down(new_id);
+                            if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
+                                for &viewer in viewers {
+                                    game.grant_face_down_exile_view(new_id, viewer);
                                 }
                             }
-                            game.add_exiled_with_source_link(ctx.source, new_id);
                         }
+                        game.add_exiled_with_source_link(ctx.source, new_id);
                     }
-                    return Ok(None); // Successfully exiled
                 }
-                EventOutcome::Replaced => {
-                    // Replacement effects already executed
-                    return Ok(Some(crate::effect::OutcomeStatus::Replaced));
-                }
-                EventOutcome::NotApplicable => {
-                    return Ok(Some(crate::effect::OutcomeStatus::TargetInvalid));
-                }
+                return Ok(None);
+            }
+            EventOutcome::Replaced => return Ok(Some(crate::effect::OutcomeStatus::Replaced)),
+            EventOutcome::NotApplicable => {
+                return Ok(Some(crate::effect::OutcomeStatus::TargetInvalid));
             }
         }
-        // Object doesn't exist - target is invalid
-        Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
     }
+    Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
+}
 
-    /// Check if spec uses ctx.targets (Object/Player/AnyTarget filters)
-    fn uses_ctx_targets(&self) -> bool {
-        matches!(
-            self.spec.base(),
-            ChooseSpec::Object(_)
-                | ChooseSpec::Player(_)
-                | ChooseSpec::AnyTarget
-                | ChooseSpec::AnyOtherTarget
-        )
+fn uses_ctx_targets(effect: &ExileEffect) -> bool {
+    matches!(
+        effect.spec.base(),
+        ChooseSpec::Object(_)
+            | ChooseSpec::Player(_)
+            | ChooseSpec::AnyTarget
+            | ChooseSpec::AnyOtherTarget
+    )
+}
+
+fn fixed_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
+    let ChooseSpec::Object(filter) = effect.spec.base() else {
+        return None;
+    };
+    let count = effect.spec.count();
+    if count.min == 0 || count.max != Some(count.min) {
+        return None;
     }
+    Some((filter, count.min as u32))
+}
 
-    fn fixed_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
-        let ChooseSpec::Object(filter) = self.spec.base() else {
-            return None;
-        };
-        let count = self.spec.count();
-        if count.min == 0 || count.max != Some(count.min) {
-            return None;
-        }
-        Some((filter, count.min as u32))
-    }
+fn exile_from_hand_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
+    let (filter, count) = fixed_cost_filter(effect)?;
+    (filter.zone == Some(Zone::Hand)).then_some((filter, count))
+}
 
-    fn exile_from_hand_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
-        let (filter, count) = self.fixed_cost_filter()?;
-        (filter.zone == Some(Zone::Hand)).then_some((filter, count))
-    }
+fn exile_from_graveyard_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
+    let (filter, count) = fixed_cost_filter(effect)?;
+    (filter.zone == Some(Zone::Graveyard)).then_some((filter, count))
+}
 
-    fn exile_from_graveyard_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
-        let (filter, count) = self.fixed_cost_filter()?;
-        (filter.zone == Some(Zone::Graveyard)).then_some((filter, count))
-    }
+fn matching_cost_candidates(
+    game: &GameState,
+    filter: &ObjectFilter,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+) -> Vec<crate::ids::ObjectId> {
+    let filter_ctx = FilterContext::new(controller).with_source(source);
+    let candidate_ids: Vec<_> = match filter.zone {
+        Some(Zone::Hand) => game
+            .players
+            .iter()
+            .flat_map(|player| player.hand.iter().copied())
+            .collect(),
+        Some(Zone::Graveyard) => game
+            .players
+            .iter()
+            .flat_map(|player| player.graveyard.iter().copied())
+            .collect(),
+        Some(Zone::Battlefield) => game.battlefield.clone(),
+        Some(Zone::Library) => game
+            .players
+            .iter()
+            .flat_map(|player| player.library.iter().copied())
+            .collect(),
+        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+        Some(Zone::Exile) => game.exile.clone(),
+        Some(Zone::Command) => game.command_zone.clone(),
+        None => Vec::new(),
+    };
 
-    fn matching_cost_candidates(
-        &self,
-        game: &GameState,
-        filter: &ObjectFilter,
-        source: crate::ids::ObjectId,
-        controller: crate::ids::PlayerId,
-    ) -> Vec<crate::ids::ObjectId> {
-        let filter_ctx = FilterContext::new(controller).with_source(source);
-        let candidate_ids: Vec<_> = match filter.zone {
-            Some(Zone::Hand) => game
-                .players
-                .iter()
-                .flat_map(|player| player.hand.iter().copied())
-                .collect(),
-            Some(Zone::Graveyard) => game
-                .players
-                .iter()
-                .flat_map(|player| player.graveyard.iter().copied())
-                .collect(),
-            Some(Zone::Battlefield) => game.battlefield.clone(),
-            Some(Zone::Library) => game
-                .players
-                .iter()
-                .flat_map(|player| player.library.iter().copied())
-                .collect(),
-            Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-            Some(Zone::Exile) => game.exile.clone(),
-            Some(Zone::Command) => game.command_zone.clone(),
-            None => Vec::new(),
-        };
-
-        candidate_ids
-            .into_iter()
-            .filter(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-            })
-            .collect()
-    }
+    candidate_ids
+        .into_iter()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        })
+        .collect()
 }
 
 impl EffectExecutor for ExileEffect {
@@ -240,13 +163,13 @@ impl EffectExecutor for ExileEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         // Handle targeted effects with special single-target behavior
         // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
-        if self.spec.is_target() && self.uses_ctx_targets() {
+        if self.spec.is_target() && uses_ctx_targets(self) {
             let count = self.spec.count();
             if count.is_single() {
                 return apply_single_target_object_from_context(
                     game,
                     ctx,
-                    |game, ctx, object_id| Self::exile_object(game, ctx, object_id, self.face_down),
+                    |game, ctx, object_id| exile_object(game, ctx, object_id, self.face_down),
                 );
             }
             // Multi-target with count - handle "any number" specially
@@ -256,7 +179,7 @@ impl EffectExecutor for ExileEffect {
                 let mut affected_ids = Vec::new();
                 for target in ctx.targets.clone() {
                     if let ResolvedTarget::Object(object_id) = target {
-                        match Self::exile_object(game, ctx, object_id, self.face_down)? {
+                        match exile_object(game, ctx, object_id, self.face_down)? {
                             None => {
                                 exiled_count += 1;
                                 if let Some(result) = take_recorded_zone_change(game, object_id) {
@@ -359,7 +282,7 @@ impl EffectExecutor for ExileEffect {
     }
 
     fn exile_from_hand_cost_info(&self) -> Option<(u32, Option<ColorSet>)> {
-        let (filter, count) = self.exile_from_hand_cost_filter()?;
+        let (filter, count) = exile_from_hand_cost_filter(self)?;
         Some((count, filter.colors))
     }
 
@@ -368,7 +291,7 @@ impl EffectExecutor for ExileEffect {
             return Some("Exile ~".to_string());
         }
 
-        if let Some((filter, count)) = self.exile_from_hand_cost_filter() {
+        if let Some((filter, count)) = exile_from_hand_cost_filter(self) {
             let color_prefix = filter
                 .colors
                 .map(|colors| {
@@ -406,7 +329,7 @@ impl EffectExecutor for ExileEffect {
             ));
         }
 
-        if let Some((filter, count)) = self.exile_from_graveyard_cost_filter() {
+        if let Some((filter, count)) = exile_from_graveyard_cost_filter(self) {
             let type_str = filter
                 .card_types
                 .first()
@@ -434,10 +357,10 @@ impl CostExecutableEffect for ExileEffect {
             return Ok(());
         }
 
-        if let Some((filter, count)) = self.fixed_cost_filter()
+        if let Some((filter, count)) = fixed_cost_filter(self)
             && matches!(filter.zone, Some(Zone::Hand | Zone::Graveyard))
         {
-            let matching = self.matching_cost_candidates(game, filter, source, controller);
+            let matching = matching_cost_candidates(game, filter, source, controller);
             if matching.len() < count as usize {
                 return Err(crate::effects::CostValidationError::NotEnoughCards);
             }

@@ -25,8 +25,8 @@ pub fn goblin_guide() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
-    use crate::events::EventKind;
     use crate::effects::ExecutionContext;
+    use crate::events::EventKind;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::types::{CardType, Subtype};

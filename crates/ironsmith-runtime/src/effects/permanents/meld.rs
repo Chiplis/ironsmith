@@ -11,33 +11,7 @@ use crate::game_state::GameState;
 use crate::game_state::MeldComponentState;
 use crate::object::ObjectKind;
 use crate::zone::Zone;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MeldEffect {
-    pub result_name: String,
-    pub enters_tapped: bool,
-    pub enters_attacking: bool,
-}
-
-impl MeldEffect {
-    pub fn new(result_name: impl Into<String>) -> Self {
-        Self {
-            result_name: result_name.into(),
-            enters_tapped: false,
-            enters_attacking: false,
-        }
-    }
-
-    pub fn enters_tapped(mut self, enters_tapped: bool) -> Self {
-        self.enters_tapped = enters_tapped;
-        self
-    }
-
-    pub fn enters_attacking(mut self, enters_attacking: bool) -> Self {
-        self.enters_attacking = enters_attacking;
-        self
-    }
-}
+pub type MeldEffect = ironsmith_core::MeldEffect;
 
 fn current_source_id(game: &GameState, ctx: &ExecutionContext) -> Option<crate::ids::ObjectId> {
     if game.object(ctx.source).is_some() {
@@ -129,7 +103,8 @@ impl EffectExecutor for MeldEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let Some(result_def) = game.linked_face_definition_by_name_or_id(Some(&self.result_name), None)
+        let Some(result_def) =
+            game.linked_face_definition_by_name_or_id(Some(&self.result_name), None)
         else {
             return Ok(EffectOutcome::resolved());
         };

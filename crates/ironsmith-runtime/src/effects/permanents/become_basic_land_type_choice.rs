@@ -19,51 +19,20 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::Subtype;
 
 /// Effect: target land becomes one basic land type of the controller's choice.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BecomeBasicLandTypeChoiceEffect {
-    pub target: ChooseSpec,
-    pub until: Until,
-    pub chooser: PlayerFilter,
-    pub fixed_subtype: Option<Subtype>,
+pub type BecomeBasicLandTypeChoiceEffect = ironsmith_core::BecomeBasicLandTypeChoiceEffect;
+
+fn subtype_options() -> [(Subtype, ManaSymbol, &'static str); 5] {
+    [
+        (Subtype::Plains, ManaSymbol::White, "Plains"),
+        (Subtype::Island, ManaSymbol::Blue, "Island"),
+        (Subtype::Swamp, ManaSymbol::Black, "Swamp"),
+        (Subtype::Mountain, ManaSymbol::Red, "Mountain"),
+        (Subtype::Forest, ManaSymbol::Green, "Forest"),
+    ]
 }
 
-impl BecomeBasicLandTypeChoiceEffect {
-    pub fn new(target: ChooseSpec, until: Until) -> Self {
-        Self {
-            target,
-            until,
-            chooser: PlayerFilter::You,
-            fixed_subtype: None,
-        }
-    }
-
-    pub fn fixed(target: ChooseSpec, subtype: Subtype, until: Until) -> Self {
-        Self {
-            target,
-            until,
-            chooser: PlayerFilter::You,
-            fixed_subtype: Some(subtype),
-        }
-    }
-
-    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
-        self.chooser = chooser;
-        self
-    }
-
-    fn subtype_options() -> [(Subtype, ManaSymbol, &'static str); 5] {
-        [
-            (Subtype::Plains, ManaSymbol::White, "Plains"),
-            (Subtype::Island, ManaSymbol::Blue, "Island"),
-            (Subtype::Swamp, ManaSymbol::Black, "Swamp"),
-            (Subtype::Mountain, ManaSymbol::Red, "Mountain"),
-            (Subtype::Forest, ManaSymbol::Green, "Forest"),
-        ]
-    }
-
-    fn mana_ability_for(subtype: Subtype) -> Ability {
-        Ability::basic_land_mana(subtype).expect("basic land subtype should map to a mana ability")
-    }
+fn mana_ability_for(subtype: Subtype) -> Ability {
+    Ability::basic_land_mana(subtype).expect("basic land subtype should map to a mana ability")
 }
 
 impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
@@ -73,14 +42,14 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let (subtype, _, _) = if let Some(subtype) = self.fixed_subtype {
-            Self::subtype_options()
+            subtype_options()
                 .into_iter()
                 .find(|(candidate, _, _)| *candidate == subtype)
                 .expect("fixed basic land subtype must be one of the five basic land types")
         } else {
             let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
 
-            let options: Vec<SelectableOption> = Self::subtype_options()
+            let options: Vec<SelectableOption> = subtype_options()
                 .iter()
                 .enumerate()
                 .map(|(idx, (_, _, label))| SelectableOption::new(idx, *label))
@@ -101,18 +70,18 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(chosen) = chosen.filter(|idx| *idx < Self::subtype_options().len()) else {
+            let Some(chosen) = chosen.filter(|idx| *idx < subtype_options().len()) else {
                 return Ok(EffectOutcome::count(0));
             };
 
-            Self::subtype_options()[chosen]
+            subtype_options()[chosen]
         };
-        let mana_ability = Self::mana_ability_for(subtype);
+        let mana_ability = mana_ability_for(subtype);
 
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
             self.target.clone(),
             Modification::SetSubtypes(vec![subtype]),
-            self.until.clone(),
+            self.duration.clone(),
         );
         // Rule intent: type change replaces the land's abilities with the basic land mana ability.
         apply = apply.with_additional_modification(Modification::SetAbilities(vec![mana_ability]));

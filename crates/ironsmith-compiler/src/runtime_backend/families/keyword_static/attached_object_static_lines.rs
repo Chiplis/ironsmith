@@ -30,7 +30,7 @@ fn scale_value_by_factor(base: Value, factor: u32) -> Option<Value> {
 }
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::cards::builders::compiler::lexer::token_word_refs(tokens)
+    crate::runtime_backend::lexer::token_word_refs(tokens)
 }
 
 fn str_ends_with_char(text: &str, suffix: char) -> bool {
@@ -39,30 +39,30 @@ fn str_ends_with_char(text: &str, suffix: char) -> bool {
 }
 
 fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    crate::cards::builders::compiler::token_primitives::slice_starts_with(words, prefix)
+    crate::runtime_backend::token_primitives::slice_starts_with(words, prefix)
 }
 
 fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    crate::cards::builders::compiler::token_primitives::slice_ends_with(words, suffix)
+    crate::runtime_backend::token_primitives::slice_ends_with(words, suffix)
 }
 
 fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    crate::cards::builders::compiler::token_primitives::slice_contains_str(words, expected)
+    crate::runtime_backend::token_primitives::slice_contains_str(words, expected)
 }
 
 fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    crate::cards::builders::compiler::token_primitives::contains_window(words, sequence)
+    crate::runtime_backend::token_primitives::contains_window(words, sequence)
 }
 
 fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    crate::cards::builders::compiler::token_primitives::find_str_by(words, |word| predicate(word))
+    crate::runtime_backend::token_primitives::find_str_by(words, |word| predicate(word))
 }
 
 fn find_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
 ) -> Option<usize> {
-    crate::cards::builders::compiler::grammar::primitives::find_token_index(tokens, |token| {
+    crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
         predicate(token)
     })
 }
@@ -109,7 +109,7 @@ pub(crate) fn display_text_for_tokens(
                 "t" => "{T}".to_string(),
                 "q" => "{Q}".to_string(),
                 _ if in_effect_text && numeric_like => word.to_string(),
-                _ => crate::cards::builders::compiler::util::parse_mana_symbol(word)
+                _ => crate::runtime_backend::util::parse_mana_symbol(word)
                     .map(|symbol| ManaCost::from_symbols(vec![symbol]).to_oracle())
                     .unwrap_or_else(|_| word.to_string()),
             };
@@ -135,7 +135,7 @@ pub(crate) fn display_text_for_tokens(
             capitalize_next_cost_action = false;
         } else if matches!(
             token.kind,
-            crate::cards::builders::compiler::lexer::TokenKind::ManaGroup
+            crate::runtime_backend::lexer::TokenKind::ManaGroup
         ) {
             let suppress_space = str_ends_with_char(text.as_str(), '}');
             if needs_space && !text.is_empty() && !suppress_space {
@@ -175,7 +175,7 @@ fn parse_attached_granted_activated_line(
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
     let rendered = display_text_for_tokens(&trimmed, false);
-    if let Ok(reparsed) = crate::cards::builders::compiler::lexer::lex_line(rendered.as_str(), 0) {
+    if let Ok(reparsed) = crate::runtime_backend::lexer::lex_line(rendered.as_str(), 0) {
         if let Some(parsed) = parse_activated_line(&reparsed)? {
             return Ok(Some(parsed));
         }
@@ -1325,7 +1325,7 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     let display = "prevent all damage that would be dealt by enchanted creature".to_string();
     Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
         ability: Box::new(StaticAbilityAst::Static(StaticAbility::new(
-            crate::static_abilities::PreventAllDamageDealtByThisPermanent,
+            crate::static_abilities::PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT,
         ))),
         display,
         condition: None,
@@ -1412,7 +1412,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
         return Ok(None);
     }
     let triggered =
-        match crate::cards::builders::compiler::clause_support::parse_triggered_line_lexed(
+        match crate::runtime_backend::clause_support::parse_triggered_line_lexed(
             &trigger_tokens,
         )? {
             LineAst::Triggered {
@@ -1675,7 +1675,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
         effects,
         max_triggers_per_turn,
     } =
-        crate::cards::builders::compiler::clause_support::parse_triggered_line_lexed(&ability_tokens)?
+        crate::runtime_backend::clause_support::parse_triggered_line_lexed(&ability_tokens)?
     {
         let parsed = parsed_triggered_ability(
             trigger,

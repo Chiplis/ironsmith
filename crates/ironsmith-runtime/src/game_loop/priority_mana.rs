@@ -1,6 +1,6 @@
+use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt;
 use crate::filter::ObjectFilterExt as _;
-use super::*;
 
 // ============================================================================
 // Pip-by-Pip Mana Payment Helpers
@@ -1029,11 +1029,7 @@ pub(super) fn mana_ability_can_pay_pip(
 ///
 /// Anything else (counters, sacrifice, life, non-mana side effects, etc.)
 /// is treated as irreversible for UI undo purposes.
-pub fn mana_ability_is_undo_safe(
-    game: &GameState,
-    source: ObjectId,
-    ability_index: usize,
-) -> bool {
+pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_index: usize) -> bool {
     use crate::ability::AbilityKind;
 
     let Some(object) = game.object(source) else {
@@ -2933,12 +2929,12 @@ pub(super) fn apply_casting_method_choice_response(
 
     // Move spell to stack immediately per MTG rule 601.2a
     let stack_id = propose_spell_cast(game, spell_id, from_zone, player, &casting_method)?;
-    let cast_provenance = game
-        .provenance_graph_mut()
-        .alloc_root(ProvenanceNodeKind::EffectExecution {
-            source: stack_id,
-            controller: player,
-        });
+    let cast_provenance =
+        game.provenance_graph_mut()
+            .alloc_root(ProvenanceNodeKind::EffectExecution {
+                source: stack_id,
+                controller: player,
+            });
 
     // Get the spell's mana cost and effects, considering casting method
     // Note: We use stack_id now since the spell has been moved to stack

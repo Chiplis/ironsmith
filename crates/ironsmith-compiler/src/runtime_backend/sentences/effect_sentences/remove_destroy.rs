@@ -2,13 +2,13 @@ use super::*;
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = find_index(tokens, |token| token.is_word("from")) {
-        let tail_words = crate::cards::builders::compiler::token_word_refs(&tokens[from_idx + 1..]);
+        let tail_words = crate::runtime_backend::token_word_refs(&tokens[from_idx + 1..]);
         if tail_words == ["combat"] {
             let target_tokens = trim_commas(&tokens[..from_idx]);
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing remove-from-combat target (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             let target = parse_target_phrase(&target_tokens)?;
@@ -32,7 +32,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             target_tokens = trim_commas(&target_tokens[1..]);
         }
 
-        let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+        let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
         let source_like_target = matches!(
             target_words.as_slice(),
             ["it"]
@@ -69,7 +69,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let (amount, used) = parse_value(&tokens[idx..]).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing counter removal amount (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
     idx += used;
@@ -190,7 +190,7 @@ pub(crate) fn wrap_destroy_with_delayed_timing(
 }
 
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let original_clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let original_clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut delayed_timing = None;
     let mut timing_cut_word_idx = original_clause_words.len();
     for word_idx in 0..original_clause_words.len() {
@@ -212,7 +212,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     } else {
         trim_commas(tokens)
     };
-    let clause_words = crate::cards::builders::compiler::token_word_refs(&core_tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(&core_tokens);
     if clause_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing destroy target before delayed timing clause (clause: '{}')",
@@ -273,7 +273,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 filter_tokens.pop();
             }
             let target_tokens = trim_commas(&core_tokens[attached_idx + 2..]);
-            let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+            let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             let has_timing_tail = target_words.iter().any(|word| {
                 matches!(
                     *word,
@@ -446,7 +446,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 pub(crate) fn parse_destroy_combat_history_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let Some(that_idx) = find_word_sequence_start(
         &clause_words,
         &["that", "was", "dealt", "damage", "this", "turn"],

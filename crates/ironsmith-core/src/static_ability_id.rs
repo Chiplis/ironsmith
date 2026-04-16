@@ -26,6 +26,7 @@ pub enum StaticAbilityId {
     Ward,
     Fear,
     Skulk,
+    Prowess,
     Flanking,
     UmbraArmor,
     Landwalk,
@@ -237,6 +238,7 @@ impl StaticAbilityId {
             | Ward
             | Fear
             | Skulk
+            | Prowess
             | Flanking
             | UmbraArmor
             | Landwalk
@@ -450,6 +452,7 @@ impl StaticAbilityId {
                 | Ward
                 | Fear
                 | Skulk
+                | Prowess
                 | Flanking
                 | Landwalk
                 | Bloodthirst

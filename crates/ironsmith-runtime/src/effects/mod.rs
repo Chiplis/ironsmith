@@ -74,10 +74,10 @@ pub mod zones;
 pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 
 // Re-export the traits, modal spec, and cost validation error
+pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor, ModalSpec,
 };
-pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::ExecutionContext;
 pub use runtime::{execute_effect, resolve_value, validate_target};

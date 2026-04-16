@@ -7,8 +7,8 @@ use crate::decisions::context::{BooleanContext, TargetRequirementContext, Target
 use crate::effect::{ChoiceCount, EffectId, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::events::spells::BecomesTargetedEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::spells::BecomesTargetedEvent;
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::targeting::{compute_legal_targets, normalize_targets_for_requirements};

@@ -2,8 +2,8 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility as NewStaticAbility;
-use crate::triggers::Trigger;
 use crate::target::PlayerFilter;
+use crate::triggers::Trigger;
 
 pub type Ability =
     ironsmith_core::Ability<NewStaticAbility, Trigger, crate::effect::Effect, crate::costs::Cost>;
@@ -14,7 +14,8 @@ pub type AbilityKind = ironsmith_core::AbilityKind<
     crate::costs::Cost,
 >;
 pub type TriggeredAbility = ironsmith_core::TriggeredAbility<Trigger, crate::effect::Effect>;
-pub type ActivatedAbility = ironsmith_core::ActivatedAbility<crate::effect::Effect, crate::costs::Cost>;
+pub type ActivatedAbility =
+    ironsmith_core::ActivatedAbility<crate::effect::Effect, crate::costs::Cost>;
 pub type LevelAbility = ironsmith_core::LevelAbility<NewStaticAbility>;
 pub use ironsmith_core::{
     ActivationTiming, ManaUsageRestriction, ManaUsageSubtypeRequirement, ProtectionFrom,

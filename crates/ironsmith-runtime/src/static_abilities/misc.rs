@@ -3143,9 +3143,9 @@ mod tests {
     use crate::StaticAbility;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::events::DamageEvent;
+    use crate::events::DamageTarget;
     use crate::events::EventContext;
     use crate::events::zones::ZoneChangeEvent;
-    use crate::events::DamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaCost;
     use crate::rules::state_based::apply_state_based_actions_with;

@@ -743,6 +743,7 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-core",
  "logos",
+ "stacker",
  "winnow 1.0.1",
 ]
 
@@ -756,6 +757,9 @@ version = "0.1.0"
 dependencies = [
  "ironsmith-compiler",
  "ironsmith-core",
+ "ironsmith-runtime",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -763,19 +767,16 @@ name = "ironsmith-runtime"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "csv",
  "getrandom 0.3.4",
+ "ironsmith-compiler",
  "ironsmith-core",
  "js-sys",
  "logos",
  "rand",
  "rayon",
- "reqwest",
- "rusqlite",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "sha2",
  "stacker",
  "wasm-bindgen",
  "winnow 1.0.1",
@@ -785,13 +786,16 @@ dependencies = [
 name = "ironsmith-tools"
 version = "0.1.0"
 dependencies = [
+ "csv",
  "ironsmith-compiler",
+ "ironsmith-registry",
  "ironsmith-runtime",
  "rayon",
  "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "toml",
 ]

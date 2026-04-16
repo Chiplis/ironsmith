@@ -1,12 +1,12 @@
 //! Add mana of any color/type that lands matching a filter could produce.
 
-use crate::filter::ObjectFilterExt as _;
 use super::choice_helpers::{choose_mana_symbols, credit_mana_symbols_from_context};
 use crate::ability::{AbilityKind, ActivatedAbility};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 use crate::object::Object;

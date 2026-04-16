@@ -1,4 +1,3 @@
-use crate::filter::ObjectFilterExt as _;
 use super::*;
 use crate::ability::Ability;
 use crate::ability::AbilityKind;
@@ -11,6 +10,7 @@ use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -2593,8 +2593,8 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
 fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
     use crate::ability::AbilityKind;
     use crate::cards::CardDefinitionBuilder;
-    use crate::events::zones::EnterBattlefieldEvent;
     use crate::effects::{ExecutionContext, execute_effect};
+    use crate::events::zones::EnterBattlefieldEvent;
     use crate::ids::CardId;
     use crate::triggers::TriggerEvent;
     use crate::zone::Zone;
@@ -6572,8 +6572,8 @@ fn test_etb_trigger_fires() {
 fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
-    use crate::events::zones::EnterBattlefieldEvent;
     use crate::effects::{ExecutionContext, execute_effect};
+    use crate::events::zones::EnterBattlefieldEvent;
     use crate::ids::CardId;
     use crate::provenance::ProvNodeId;
     use crate::triggers::TriggerEvent;
@@ -8026,8 +8026,8 @@ fn test_stormbreath_dragon_monstrosity_only_works_once() {
 fn test_stormbreath_dragon_becomes_monstrous_trigger_fires() {
     use crate::cards::definitions::stormbreath_dragon;
     use crate::effect::Effect;
-    use crate::events::other::BecameMonstrousEvent;
     use crate::effects::{ExecutionContext, execute_effect};
+    use crate::events::other::BecameMonstrousEvent;
     use crate::triggers::check_triggers;
 
     let mut game = setup_game();
@@ -8684,8 +8684,8 @@ fn test_persist_trigger_generation() {
 
 #[test]
 fn test_return_from_graveyard_with_counter_effect() {
-    use crate::events::zones::ZoneChangeEvent;
     use crate::effects::ExecutionContext;
+    use crate::events::zones::ZoneChangeEvent;
     use crate::snapshot::ObjectSnapshot;
     use crate::triggers::TriggerEvent;
 
@@ -14205,8 +14205,8 @@ fn test_backdraft_cast_from_hand_uses_blasphemous_act_damage_history() {
 fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile_for_free() {
     use crate::alternative_cast::CastingMethod;
     use crate::decision::{LegalAction, compute_legal_actions};
-    use crate::events::processing::ZoneChangeOutcome;
     use crate::effects::{ExecutionContext, execute_effect};
+    use crate::events::processing::ZoneChangeOutcome;
     use crate::object::CounterType;
 
     let mut game = setup_game();

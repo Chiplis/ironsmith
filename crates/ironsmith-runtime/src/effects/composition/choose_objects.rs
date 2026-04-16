@@ -3,11 +3,11 @@
 //! This effect allows a player to choose objects matching a filter and tag them
 //! for reference by subsequent effects in the same spell/ability.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::effect::{ChoiceCount, EffectOutcome, SearchSelectionMode, Value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::tag::TagKey;
@@ -49,166 +49,38 @@ use crate::zone::Zone;
 ///     Effect::sacrifice(ChooseSpec::tagged("sacrificed")),
 /// ]
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChooseObjectsEffect {
-    /// Filter for which objects can be chosen.
-    pub filter: ObjectFilter,
-    /// Number of objects to choose.
-    pub count: ChoiceCount,
-    /// Optional runtime-resolved count used when the printed amount is defined by a Value.
-    pub count_value: Option<Value>,
-    /// Which player makes the choice.
-    pub chooser: PlayerFilter,
-    /// Fallback zone to search for objects when the filter has no explicit zone.
-    pub zone: Option<Zone>,
-    /// Additional zones to search for objects.
-    pub additional_zones: Vec<Zone>,
-    /// Tag name to store chosen objects under.
-    pub tag: TagKey,
-    /// Human-readable description for the decision prompt.
-    pub description: &'static str,
-    /// Whether this choice represents a library search.
-    pub is_search: bool,
-    /// Whether chosen cards should be revealed.
-    pub reveal: bool,
-    /// Search phrasing that determines fail-to-find behavior.
-    pub search_mode: SearchSelectionMode,
-    /// Restrict selection to top-most matching objects in ordered zones.
-    pub top_only: bool,
-    /// Replace any prior snapshots stored under `tag` instead of accumulating.
-    pub replace_tagged_objects: bool,
+pub type ChooseObjectsEffect = ironsmith_core::ChooseObjectsEffect;
+
+pub(crate) fn top_only_selection_limit(
+    effect: &ChooseObjectsEffect,
+    x_value: Option<u32>,
+) -> usize {
+    if !effect.top_only {
+        return usize::MAX;
+    }
+    if effect.count.dynamic_x {
+        return x_value
+            .and_then(|x| usize::try_from(x).ok())
+            .filter(|x| *x > 0)
+            .unwrap_or(1);
+    }
+    effect.count.max.unwrap_or(effect.count.min).max(1)
 }
 
-impl ChooseObjectsEffect {
-    /// Create a new ChooseObjectsEffect.
-    pub fn new(
-        filter: ObjectFilter,
-        count: impl Into<ChoiceCount>,
-        chooser: PlayerFilter,
-        tag: impl Into<TagKey>,
-    ) -> Self {
-        Self {
-            filter,
-            count: count.into(),
-            count_value: None,
-            chooser,
-            zone: None,
-            additional_zones: Vec::new(),
-            tag: tag.into(),
-            description: "Choose",
-            is_search: false,
-            reveal: false,
-            search_mode: SearchSelectionMode::Exact,
-            top_only: false,
-            replace_tagged_objects: false,
+pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, ExecutionError> {
+    let Some(primary_zone) = effect.filter.zone.or(effect.zone) else {
+        return Err(ExecutionError::UnresolvableValue(
+            "ChooseObjectsEffect requires an explicit search zone".to_string(),
+        ));
+    };
+
+    let mut zones = vec![primary_zone];
+    for zone in &effect.additional_zones {
+        if !zones.contains(zone) {
+            zones.push(*zone);
         }
     }
-
-    /// Set the zone to search for objects.
-    pub fn in_zone(mut self, zone: Zone) -> Self {
-        self.zone = Some(zone);
-        self.additional_zones.clear();
-        self
-    }
-
-    /// Set the zones to search for objects.
-    pub fn in_zones(mut self, zones: Vec<Zone>) -> Self {
-        let mut iter = zones.into_iter();
-        if let Some(first) = iter.next() {
-            self.zone = Some(first);
-            self.additional_zones = iter.collect();
-        } else {
-            self.zone = None;
-            self.additional_zones.clear();
-        }
-        self
-    }
-
-    /// Set a custom description for the decision prompt.
-    pub fn with_description(mut self, description: &'static str) -> Self {
-        self.description = description;
-        self
-    }
-
-    /// Use a runtime-resolved value for the choice count.
-    pub fn with_count_value(mut self, count_value: Value) -> Self {
-        self.count_value = Some(count_value);
-        self
-    }
-
-    pub fn with_count_value_opt(mut self, count_value: Option<Value>) -> Self {
-        self.count_value = count_value;
-        self
-    }
-
-    /// Mark this choice as a library search (respects search restrictions).
-    pub fn as_search(mut self) -> Self {
-        self.is_search = true;
-        self.search_mode = SearchSelectionMode::Exact;
-        self
-    }
-
-    /// Mark this choice as an optional search ("up to", "any number").
-    pub fn as_optional_search(mut self) -> Self {
-        self.is_search = true;
-        self.search_mode = SearchSelectionMode::Optional;
-        self
-    }
-
-    /// Mark this choice as an "all matching" search.
-    pub fn as_all_matching_search(mut self) -> Self {
-        self.is_search = true;
-        self.search_mode = SearchSelectionMode::AllMatching;
-        self
-    }
-
-    /// Mark chosen cards as revealed.
-    pub fn reveal(mut self) -> Self {
-        self.reveal = true;
-        self
-    }
-
-    /// Restrict selection to top-most matching objects in ordered zones.
-    pub fn top_only(mut self) -> Self {
-        self.top_only = true;
-        self
-    }
-
-    /// Replace previously tagged objects instead of accumulating with them.
-    pub fn replace_tagged_objects(mut self) -> Self {
-        self.replace_tagged_objects = true;
-        self
-    }
-
-    /// Number of top-most matches considered when `top_only` is set.
-    pub(crate) fn top_only_selection_limit(&self, x_value: Option<u32>) -> usize {
-        if !self.top_only {
-            return usize::MAX;
-        }
-        if self.count.dynamic_x {
-            return x_value
-                .and_then(|x| usize::try_from(x).ok())
-                .filter(|x| *x > 0)
-                .unwrap_or(1);
-        }
-        self.count.max.unwrap_or(self.count.min).max(1)
-    }
-
-    pub(crate) fn search_zones(&self) -> Result<Vec<Zone>, ExecutionError> {
-        let Some(primary_zone) = self.filter.zone.or(self.zone) else {
-            return Err(ExecutionError::UnresolvableValue(
-                "ChooseObjectsEffect requires an explicit search zone".to_string(),
-            ));
-        };
-
-        let mut zones = vec![primary_zone];
-        for zone in &self.additional_zones {
-            if !zones.contains(zone) {
-                zones.push(*zone);
-            }
-        }
-        Ok(zones)
-    }
+    Ok(zones)
 }
 
 impl EffectExecutor for ChooseObjectsEffect {
@@ -365,7 +237,7 @@ impl CostExecutableEffect for ChooseObjectsEffect {
                 "ChooseObjectsEffect requires an explicit search zone".to_string(),
             ));
         };
-        let top_only_limit = self.top_only_selection_limit(None);
+        let top_only_limit = top_only_selection_limit(self, None);
 
         let candidate_count = match search_zone {
             Zone::Battlefield => game

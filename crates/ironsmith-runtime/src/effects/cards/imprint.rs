@@ -3,11 +3,11 @@
 //! Imprint exiles a card from a zone (typically hand) and associates it with
 //! the source permanent. Used by Chrome Mox, Isochron Scepter, etc.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::decisions::{MayChooseCardSpec, make_decision};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;

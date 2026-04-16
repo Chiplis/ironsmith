@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
+use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
     compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
@@ -190,13 +191,26 @@ fn compile_job_for_name(
     name: &str,
     input_text: Option<&str>,
 ) -> Result<CompileJob, String> {
+    fn compile_from_registry_name(name: &str) -> Option<CardDefinition> {
+        RegistryCardRegistry::try_compile_card(name)
+            .ok()
+            .or_else(|| CardRegistry::try_compile_card(name).ok())
+            .or_else(|| {
+                let (front_face, _) = name.split_once("//")?;
+                let front_face = front_face.trim();
+                RegistryCardRegistry::try_compile_card(front_face)
+                    .ok()
+                    .or_else(|| CardRegistry::try_compile_card(front_face).ok())
+            })
+    }
+
     let card_input = load_card_by_name(cards_path, name).map_err(|err| err.to_string())?;
     // Prefer the payload-backed cards.json entry when available so inspection reflects the
     // active parser/lowering path. Fall back to registry-backed definitions only when the card
     // is not present in the source snapshot and the caller did not supply ad hoc text.
     if input_text.is_none()
         && card_input.is_none()
-        && let Ok(definition) = CardRegistry::try_compile_card(name)
+        && let Some(definition) = compile_from_registry_name(name)
     {
         let payload = payload_from_definition(&definition);
         return Ok(CompileJob {
@@ -222,16 +236,14 @@ fn compile_job_for_name(
                 compiled_definition: None,
             })
         }
-        (Some(text), Some(card)) => {
-            Ok(CompileJob {
-                name: card.name,
-                oracle_text: card.oracle_text,
-                parse_input: text.to_string(),
-                db_payload: None,
-                authoritative_snapshot: None,
-                compiled_definition: None,
-            })
-        }
+        (Some(text), Some(card)) => Ok(CompileJob {
+            name: card.name,
+            oracle_text: card.oracle_text,
+            parse_input: text.to_string(),
+            db_payload: None,
+            authoritative_snapshot: None,
+            compiled_definition: None,
+        }),
         (Some(text), None) => Ok(CompileJob {
             name: name.to_string(),
             oracle_text: text.to_string(),
@@ -294,20 +306,17 @@ fn print_compiled_job(
     let def = if let Some(definition) = job.compiled_definition.as_ref() {
         definition
     } else {
-        parsed_definition = parse_card_definition_with_runtime_builder(
-            &job.name,
-            job.parse_input.clone(),
-            false,
-        )
-        .map_err(|err| {
-            let _ = store_snapshot_if_requested(
-                should_write_db,
-                job.authoritative_snapshot.as_ref(),
-                job.db_payload.as_ref(),
-                db_path,
-            );
-            format!("parse failed for {}: {err:?}", job.name)
-        })?;
+        parsed_definition =
+            parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
+                .map_err(|err| {
+                let _ = store_snapshot_if_requested(
+                    should_write_db,
+                    job.authoritative_snapshot.as_ref(),
+                    job.db_payload.as_ref(),
+                    db_path,
+                );
+                format!("parse failed for {}: {err:?}", job.name)
+            })?;
         &parsed_definition
     };
     let mut display_def = def.clone();

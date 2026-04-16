@@ -9,21 +9,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
-
-/// Effect that reveals the objects currently tagged under `tag`.
-///
-/// This is mainly used to support clauses like "reveal it" where "it" refers to
-/// a card found/drawn earlier in the same effect chain.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RevealTaggedEffect {
-    pub tag: TagKey,
-}
-
-impl RevealTaggedEffect {
-    pub fn new(tag: impl Into<TagKey>) -> Self {
-        Self { tag: tag.into() }
-    }
-}
+pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
 impl EffectExecutor for RevealTaggedEffect {
     fn execute(

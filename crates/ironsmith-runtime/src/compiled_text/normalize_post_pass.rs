@@ -2630,6 +2630,16 @@ fn normalize_repeated_target_player_unless_process_once(text: &str) -> Option<St
 }
 
 pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
+    let text = text
+        .replace(
+            "for each nontoken creature card in exile",
+            "for each nontoken creature exiled this way",
+        )
+        .replace(
+            "for each creature card in exile",
+            "for each creature exiled this way",
+        );
+    let text = text.as_str();
     let mut normalized = text.trim().to_string();
     if normalized.is_empty() {
         return normalized;

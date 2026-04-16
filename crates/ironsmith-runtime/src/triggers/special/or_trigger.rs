@@ -75,8 +75,8 @@ impl TriggerMatcher for OrTrigger {
 mod tests {
     use super::*;
     use crate::events::DamageEvent;
-    use crate::events::zones::ZoneChangeEvent;
     use crate::events::DamageTarget;
+    use crate::events::zones::ZoneChangeEvent;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
     use crate::triggers::ThisDealsCombatDamageToPlayerTrigger;

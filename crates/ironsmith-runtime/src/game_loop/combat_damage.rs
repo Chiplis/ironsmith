@@ -254,8 +254,11 @@ pub(super) fn apply_combat_lifelink(
         return;
     }
 
-    let life_to_gain =
-        crate::events::processing::process_life_gain_with_event(game, controller, total_damage_dealt);
+    let life_to_gain = crate::events::processing::process_life_gain_with_event(
+        game,
+        controller,
+        total_damage_dealt,
+    );
     if life_to_gain > 0
         && let Some(player) = game.player_mut(controller)
     {
@@ -409,8 +412,8 @@ pub(super) fn deal_damage_to_defender(
             })
         }
         AttackTarget::Planeswalker(pw_id) => {
-            use crate::events::processing::process_damage_assignments_with_event;
             use crate::events::DamageTarget as EventDamageTarget;
+            use crate::events::processing::process_damage_assignments_with_event;
 
             let damage_result =
                 calculate_damage_with_game(game, attacker, DamageTarget::Permanent, damage, true);
@@ -516,8 +519,8 @@ pub(super) fn apply_damage_to_permanent(
     source_id: ObjectId,
     result: &DamageResult,
 ) -> AppliedPermanentDamage {
-    use crate::events::processing::process_damage_assignments_with_event;
     use crate::events::DamageTarget;
+    use crate::events::processing::process_damage_assignments_with_event;
 
     let processed = process_damage_assignments_with_event(
         game,
@@ -586,8 +589,8 @@ pub(super) fn apply_damage_to_player(
     source_id: ObjectId,
     result: &DamageResult,
 ) -> AppliedPlayerDamage {
-    use crate::events::processing::process_damage_assignments_with_event;
     use crate::events::DamageTarget;
+    use crate::events::processing::process_damage_assignments_with_event;
 
     let processed = process_damage_assignments_with_event(
         game,
@@ -650,10 +653,10 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::DamageTarget as EventDamageTarget;
     use crate::events::cause::CauseFilter;
     use crate::events::counters::matchers::WouldPutCountersMatcher;
     use crate::events::damage::matchers::DamageFromSourceMatcher;
-    use crate::events::DamageTarget as EventDamageTarget;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{CounterType, Object};

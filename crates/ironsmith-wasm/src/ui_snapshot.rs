@@ -5,7 +5,9 @@ use serde::Serialize;
 use ironsmith::combat_state::AttackTarget;
 use ironsmith::decision::GameResult;
 use ironsmith::decisions::context::DecisionContext;
-use ironsmith::game_state::{GameState, Target, UiBattlefieldTransition, UiBattlefieldTransitionKind};
+use ironsmith::game_state::{
+    GameState, Target, UiBattlefieldTransition, UiBattlefieldTransitionKind,
+};
 use ironsmith::ids::{ObjectId, PlayerId};
 use ironsmith::types::CardType;
 use ironsmith::zone::Zone;
@@ -97,7 +99,9 @@ fn power_toughness_signature_for_group(obj: &ironsmith::object::Object) -> Strin
     }
 }
 
-pub(super) fn counter_snapshots_for_object(obj: &ironsmith::object::Object) -> Vec<CounterSnapshot> {
+pub(super) fn counter_snapshots_for_object(
+    obj: &ironsmith::object::Object,
+) -> Vec<CounterSnapshot> {
     let mut counters: Vec<CounterSnapshot> = obj
         .counters
         .iter()

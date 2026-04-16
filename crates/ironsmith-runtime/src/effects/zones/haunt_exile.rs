@@ -6,32 +6,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::delayed::trigger_queue::{DelayedTriggerConfig, queue_delayed_trigger};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
-use crate::target::ChooseSpec;
 use crate::triggers::Trigger;
 use crate::zone::Zone;
-
-/// Effect that exiles the source card "haunting" a target creature.
-///
-/// When executed, this effect:
-/// 1. Exiles the source card (the haunt creature that just died, or the haunt spell)
-/// 2. Schedules a one-shot delayed trigger watching the targeted creature:
-///    when that creature dies, the embedded haunt effects fire.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HauntExileEffect {
-    /// The effects to execute when the haunted creature dies.
-    pub haunt_effects: Vec<Effect>,
-    /// The targeting choices for the haunt effects (e.g., "target player").
-    pub haunt_choices: Vec<ChooseSpec>,
-}
-
-impl HauntExileEffect {
-    pub fn new(haunt_effects: Vec<Effect>, haunt_choices: Vec<ChooseSpec>) -> Self {
-        Self {
-            haunt_effects,
-            haunt_choices,
-        }
-    }
-}
+pub type HauntExileEffect = ironsmith_core::HauntExileEffect<Effect>;
 
 impl EffectExecutor for HauntExileEffect {
     fn execute(

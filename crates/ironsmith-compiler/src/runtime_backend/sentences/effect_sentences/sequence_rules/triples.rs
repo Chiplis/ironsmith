@@ -6,21 +6,21 @@ use super::super::dispatch_entry::{
     parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
     parse_top_cards_view_sentence,
 };
-use crate::cards::builders::compiler::activation_and_restrictions::activated_line_core::find_word_sequence_start;
-use crate::cards::builders::compiler::effect_sentences;
-use crate::cards::builders::compiler::effect_sentences::SentenceInput;
-use crate::cards::builders::compiler::front_end::lexer::OwnedLexToken;
-use crate::cards::builders::compiler::lexer::TokenWordView;
-use crate::cards::builders::compiler::token_primitives::{
-    parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
-};
-use crate::cards::builders::compiler::util::trim_commas;
-use crate::cards::builders::compiler::util::{helper_tag_for_tokens, is_article};
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, LibraryConsultModeAst, LibraryConsultStopRuleAst,
     ObjectFilter, PlayerAst, PredicateAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
+use crate::runtime_backend::activation_and_restrictions::activated_line_core::find_word_sequence_start;
+use crate::runtime_backend::effect_sentences;
+use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::front_end::lexer::OwnedLexToken;
+use crate::runtime_backend::lexer::TokenWordView;
+use crate::runtime_backend::token_primitives::{
+    parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
+};
+use crate::runtime_backend::util::trim_commas;
+use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
 use crate::target::ChooseSpec;
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -80,17 +80,17 @@ pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     let second = trim_commas(sentences[sentence_idx + 1].lowered());
     let third = trim_commas(sentences[sentence_idx + 2].lowered());
 
-    let first_words = crate::cards::builders::compiler::token_word_refs(&first);
+    let first_words = crate::runtime_backend::token_word_refs(&first);
     if !abundant_harvest_choice_sentence(&first_words) {
         return Ok(None);
     }
 
-    let second_words = crate::cards::builders::compiler::token_word_refs(&second);
+    let second_words = crate::runtime_backend::token_word_refs(&second);
     if !abundant_harvest_reveal_sentence(&second_words) {
         return Ok(None);
     }
 
-    let third_words = crate::cards::builders::compiler::token_word_refs(&third);
+    let third_words = crate::runtime_backend::token_word_refs(&third);
     let moves_to_hand =
         slice_starts_with(
             &third_words,
@@ -749,14 +749,11 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
         return Ok(None);
     };
     let filter_word_len = filter_words.len().saturating_sub(suffix.len());
-    let filter_token_end = crate::cards::builders::compiler::token_index_for_word_index(
-        &filter_tokens,
-        filter_word_len,
-    )
-    .unwrap_or(filter_tokens.len());
+    let filter_token_end =
+        crate::runtime_backend::token_index_for_word_index(&filter_tokens, filter_word_len)
+            .unwrap_or(filter_tokens.len());
     let filter_prefix_tokens = trim_commas(&filter_tokens[..filter_token_end]);
-    let mut spell_filter =
-        crate::cards::builders::compiler::parse_spell_filter_lexed(&filter_prefix_tokens);
+    let mut spell_filter = crate::runtime_backend::parse_spell_filter_lexed(&filter_prefix_tokens);
     spell_filter.zone = Some(Zone::Stack);
     spell_filter.has_mana_cost = true;
 
@@ -1045,7 +1042,7 @@ pub(super) fn parse_tainted_pact_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&first_tokens)
+    let first_words: Vec<&str> = crate::runtime_backend::token_word_refs(&first_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1054,7 +1051,7 @@ pub(super) fn parse_tainted_pact_sequence(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&second_tokens)
+    let second_words: Vec<&str> = crate::runtime_backend::token_word_refs(&second_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -1073,7 +1070,7 @@ pub(super) fn parse_tainted_pact_sequence(
     }
 
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&third_tokens)
+    let third_words: Vec<&str> = crate::runtime_backend::token_word_refs(&third_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

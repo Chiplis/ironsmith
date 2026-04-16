@@ -1,7 +1,7 @@
+use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt;
 use crate::cards::CardDefinitionRuntimeExt;
 use crate::filter::ObjectFilterExt as _;
-use super::*;
 
 fn resolve_modal_count_value(
     value: &crate::effect::Value,

@@ -561,9 +561,7 @@ pub fn parser_token_word_refs<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
     words
 }
 
-pub fn parser_token_word_positions<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Vec<(usize, &'a str)> {
+pub fn parser_token_word_positions<'a>(tokens: &'a [OwnedLexToken]) -> Vec<(usize, &'a str)> {
     let mut positions = Vec::new();
     for (token_idx, token) in tokens.iter().enumerate() {
         for piece in token.parser_word_pieces() {
@@ -708,7 +706,10 @@ mod tests {
         let sentences = split_lexed_sentences(&tokens);
 
         assert_eq!(sentences.len(), 2);
-        assert_eq!(render_token_slice(sentences[0]), "Gain \"Draw a card.\"Then scry 1");
+        assert_eq!(
+            render_token_slice(sentences[0]),
+            "Gain \"Draw a card.\"Then scry 1"
+        );
         assert_eq!(render_token_slice(sentences[1]), "Untap this creature");
     }
 

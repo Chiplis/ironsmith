@@ -1,7 +1,7 @@
 use crate::cost_model::{CostComponent, TotalCost};
 use crate::{
-    CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram,
-    Subtype, Zone,
+    CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram, Subtype,
+    Zone,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -390,7 +390,11 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
         }
     }
 
-    pub fn mana_with_costs(cost: TotalCost<C>, additional_costs: Vec<C>, mana: Vec<ManaSymbol>) -> Self {
+    pub fn mana_with_costs(
+        cost: TotalCost<C>,
+        additional_costs: Vec<C>,
+        mana: Vec<ManaSymbol>,
+    ) -> Self {
         let mut costs = cost.costs().to_vec();
         costs.extend(additional_costs);
         Self {

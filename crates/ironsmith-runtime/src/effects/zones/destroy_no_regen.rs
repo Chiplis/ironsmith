@@ -9,8 +9,8 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
 };
-use crate::events::processing::{EventOutcome, process_destroy};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::{EventOutcome, process_destroy};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 

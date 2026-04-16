@@ -4,23 +4,8 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::tag::TagKey;
 use crate::zone::Zone;
-
-/// Effect that lets a player reorder a tagged set of cards that are currently
-/// on top of a library.
-///
-/// This powers "Put them back in any order" after a `LookAtTopCardsEffect`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReorderLibraryTopEffect {
-    pub tag: TagKey,
-}
-
-impl ReorderLibraryTopEffect {
-    pub fn new(tag: impl Into<TagKey>) -> Self {
-        Self { tag: tag.into() }
-    }
-}
+pub type ReorderLibraryTopEffect = ironsmith_core::ReorderLibraryTopEffect;
 
 fn normalize_order_response(
     response: Vec<crate::ids::ObjectId>,

@@ -7,8 +7,8 @@ use crate::effects::delayed::trigger_queue::{
     DelayedTriggerTemplate, DelayedWatcherIdentity, queue_delayed_from_template,
 };
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::ChooseSpec;
@@ -19,51 +19,10 @@ use super::MoveToZoneEffect;
 use super::apply_zone_change_with_additional_effects;
 
 /// Duration for "exile ... until ..." effects.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExileUntilDuration {
-    /// Return when the source leaves the battlefield.
-    SourceLeavesBattlefield,
-    /// Return at the beginning of the next end step.
-    NextEndStep,
-    /// Return at end of combat.
-    EndOfCombat,
-}
+pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
 
 /// Exile objects with an associated duration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExileUntilEffect {
-    /// What to exile.
-    pub spec: ChooseSpec,
-    /// How long the exile lasts.
-    pub duration: ExileUntilDuration,
-    /// Zone to return cards to when the duration expires.
-    pub return_zone: Zone,
-    /// Whether exiled cards should be turned face down.
-    pub face_down: bool,
-}
-
-impl ExileUntilEffect {
-    /// Create a new exile-until effect.
-    pub fn new(spec: ChooseSpec, duration: ExileUntilDuration) -> Self {
-        Self {
-            spec,
-            duration,
-            return_zone: Zone::Battlefield,
-            face_down: false,
-        }
-    }
-
-    /// Mark exiled cards as face down.
-    pub fn with_face_down(mut self, face_down: bool) -> Self {
-        self.face_down = face_down;
-        self
-    }
-
-    /// Exile until this source leaves the battlefield.
-    pub fn source_leaves(spec: ChooseSpec) -> Self {
-        Self::new(spec, ExileUntilDuration::SourceLeavesBattlefield)
-    }
-}
+pub type ExileUntilEffect = ironsmith_core::ExileUntilEffect;
 
 impl EffectExecutor for ExileUntilEffect {
     fn execute(

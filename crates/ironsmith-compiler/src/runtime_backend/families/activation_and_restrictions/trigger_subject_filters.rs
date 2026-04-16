@@ -12,7 +12,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
         )));
     }
 
-    let remainder_words = crate::cards::builders::compiler::token_word_refs(&remainder);
+    let remainder_words = crate::runtime_backend::token_word_refs(&remainder);
     let Some(card_word_idx) =
         find_index(&remainder_words, |word| *word == "card" || *word == "cards")
     else {
@@ -64,7 +64,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
         return Ok(None);
     }
 
-    let qualifier_words = crate::cards::builders::compiler::token_word_refs(&qualifier_tokens);
+    let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
     if qualifier_words.as_slice() == ["one", "or", "more"] {
         return Ok(None);
     }
@@ -112,7 +112,7 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty() {
         return None;
     }
@@ -359,7 +359,7 @@ pub(crate) fn parse_trigger_subject_filter(
         return Ok(None);
     }
 
-    let subject_words = crate::cards::builders::compiler::token_word_refs(subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
     if is_source_reference_words(&subject_words) {
         return Ok(None);
     }
@@ -378,7 +378,7 @@ pub(crate) fn parse_trigger_subject_filter(
         .map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported trigger subject filter (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(subject_tokens).join(" ")
+                crate::runtime_backend::token_word_refs(subject_tokens).join(" ")
             ))
         })
 }
@@ -387,7 +387,7 @@ pub(crate) fn trigger_subject_player_selector(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
     let subject_tokens = strip_leading_one_or_more(subject_tokens);
-    let subject_words = crate::cards::builders::compiler::token_word_refs(subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
     parse_trigger_subject_player_filter(&subject_words)
 }
 
@@ -839,7 +839,7 @@ pub(crate) fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
 pub(crate) fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if !slice_contains(&clause_words, &"spell") && !slice_contains(&clause_words, &"spells") {
         return Ok(None);
     }
@@ -1046,8 +1046,7 @@ pub(crate) fn parse_spell_activity_trigger(
         } else {
             (copy, cast, false)
         };
-        let between_words =
-            crate::cards::builders::compiler::token_word_refs(&tokens[first + 1..second]);
+        let between_words = crate::runtime_backend::token_word_refs(&tokens[first + 1..second]);
         if between_words.as_slice() == ["or"] {
             let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
             let cast_trigger = TriggerSpec::SpellCast {
@@ -1111,7 +1110,7 @@ pub(crate) fn parse_spell_activity_trigger(
 }
 
 pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let starts_with_token_pronoun = matches!(
         words.as_slice(),
         ["they", "have", ..]
@@ -1126,7 +1125,7 @@ pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bo
 }
 
 pub(crate) fn is_round_up_each_time_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     matches!(words.as_slice(), ["round", "up", "each", "time", ..])
 }
 
@@ -1145,7 +1144,7 @@ pub(crate) struct MayCastTaggedSpec {
 }
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
-    let mut clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let mut clause_words = crate::runtime_backend::token_word_refs(tokens);
     while clause_words
         .first()
         .is_some_and(|word| *word == "then" || *word == "and")
@@ -1248,7 +1247,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
 pub(crate) fn parse_copy_reference_cost_reduction_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaCost> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 6 {
         return None;
     }
@@ -1303,7 +1302,7 @@ pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAs
 }
 
 pub(crate) fn is_simple_copy_reference_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     matches!(
         clause_words.as_slice(),
         ["copy", "it"]
@@ -1406,7 +1405,7 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
     tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 6 || !matches!(clause_words.first().copied(), Some("exile" | "exiles"))
     {
         return None;
@@ -1442,7 +1441,7 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
     tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 8 || !matches!(clause_words[0], "sacrifice" | "sacrifices") {
         return None;
     }
@@ -1466,7 +1465,7 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
 }
 
 pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty() {
         return false;
     }
@@ -1502,7 +1501,7 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     if !slice_contains(&words_all, &"create") || !slice_contains(&words_all, &"token") {
         return tokens.to_vec();
     }

@@ -5,8 +5,8 @@ use crate::decisions::context::{BooleanContext, ViewCardsContext};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::events::{CardRevealedEvent, CardsDrawnEvent};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{CardRevealedEvent, CardsDrawnEvent};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
@@ -14,6 +14,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+pub use ironsmith_core::DrawCardsEffect;
 
 #[derive(Debug, Clone)]
 pub(crate) struct AutomaticDrawRevealCandidate {
@@ -175,29 +176,6 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// // Specific player draws 2 cards
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct DrawCardsEffect {
-    /// Number of cards to draw.
-    pub count: Value,
-    /// Which player draws.
-    pub player: PlayerFilter,
-}
-
-impl DrawCardsEffect {
-    /// Create a new DrawCards effect.
-    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player,
-        }
-    }
-
-    /// Create a "draw N cards" effect for the controller.
-    pub fn you(count: impl Into<Value>) -> Self {
-        Self::new(count, PlayerFilter::You)
-    }
-}
-
 impl EffectExecutor for DrawCardsEffect {
     fn execute(
         &self,

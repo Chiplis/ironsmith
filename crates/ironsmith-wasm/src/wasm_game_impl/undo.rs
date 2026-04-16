@@ -1,4 +1,3 @@
-
 impl WasmGame {
     pub(super) fn is_cancelable(&self) -> bool {
         if let Some(replay) = self.pending_replay_action.as_ref() {
@@ -749,9 +748,12 @@ impl WasmGame {
         source_name: &str,
         parse_block: &str,
     ) -> Result<CardDefinition, String> {
-        ironsmith::cards::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), source_name)
-            .parse_text(parse_block.to_string())
-            .map_err(|err| format!("{err:?}"))
+        ironsmith::compiler_integration::compile_to_runtime_definition(
+            source_name,
+            parse_block.to_string(),
+            false,
+        )
+        .map_err(|err| err.to_string())
     }
 
     fn compiled_ability_lines(definition: &CardDefinition) -> Vec<String> {
@@ -761,7 +763,9 @@ impl WasmGame {
             .enumerate()
             .map(|(index, ability)| {
                 let text = match &ability.kind {
-                    ironsmith::ability::AbilityKind::Static(static_ability) => static_ability.display(),
+                    ironsmith::ability::AbilityKind::Static(static_ability) => {
+                        static_ability.display()
+                    }
                     ironsmith::ability::AbilityKind::Triggered(triggered) => {
                         let trigger = triggered.trigger.display();
                         let effects = if triggered.effects.is_empty() {
@@ -783,7 +787,8 @@ impl WasmGame {
                             } else {
                                 format!(
                                     "Add {}",
-                                    ironsmith::mana::ManaCost::from_symbols(mana.clone()).to_oracle()
+                                    ironsmith::mana::ManaCost::from_symbols(mana.clone())
+                                        .to_oracle()
                                 )
                             }
                         } else {
@@ -958,15 +963,21 @@ impl WasmGame {
                 )));
             }
 
-            let mut builder = ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), name);
+            let mut builder = ironsmith_compiler::CardDefinitionBuilder::new(CardId::new(), name);
             if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)? {
                 builder = builder.color_indicator(colors);
             }
 
             let parse_block = Self::build_custom_face_parse_block(face)?;
-            let mut definition = builder.parse_text(parse_block).map_err(|err| {
-                JsValue::from_str(&format!("face {} parse failed: {err:?}", index + 1))
-            })?;
+            let mut definition =
+                ironsmith::compiler_integration::compile_builder_to_runtime_definition(
+                    builder,
+                    parse_block,
+                    false,
+                )
+                .map_err(|err| {
+                    JsValue::from_str(&format!("face {} parse failed: {err}", index + 1))
+                })?;
             definition.card.linked_face_layout = draft.layout.linked_face_layout();
             definitions.push(definition);
         }
@@ -1124,7 +1135,9 @@ impl WasmGame {
         let definition = eligible[sample_index].clone();
         let layout = match definition.card.linked_face_layout {
             ironsmith::card::LinkedFaceLayout::Split => CustomCardLayoutInput::Split,
-            ironsmith::card::LinkedFaceLayout::TransformLike => CustomCardLayoutInput::TransformLike,
+            ironsmith::card::LinkedFaceLayout::TransformLike => {
+                CustomCardLayoutInput::TransformLike
+            }
             ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
         };
 
@@ -1473,7 +1486,9 @@ impl WasmGame {
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, JsValue> {
         if let Some(definition) = self.find_card_definition(query).cloned() {
-            if let Some(error) = ironsmith::cards::unsupported_generated_definition_error(&definition) {
+            if let Some(error) =
+                ironsmith::cards::unsupported_generated_definition_error(&definition)
+            {
                 return Err(JsValue::from_str(&error));
             }
             return Ok(definition);
@@ -1484,5 +1499,4 @@ impl WasmGame {
             Err(err) => Err(JsValue::from_str(&err)),
         }
     }
-
 }

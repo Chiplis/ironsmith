@@ -1,11 +1,11 @@
 //! Grant abilities to all matching creatures effect implementation.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::continuous::{EffectSourceType, EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::ObjectFilter;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
 use crate::zone::Zone;

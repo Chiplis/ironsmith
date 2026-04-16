@@ -4,8 +4,8 @@ pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
     let sign = match tokens.first()?.kind {
-        crate::cards::builders::compiler::lexer::TokenKind::Dash => "-",
-        crate::cards::builders::compiler::lexer::TokenKind::Plus => "+",
+        crate::runtime_backend::lexer::TokenKind::Dash => "-",
+        crate::runtime_backend::lexer::TokenKind::Plus => "+",
         _ => return None,
     };
     let modifier = tokens.get(1)?.as_word()?;
@@ -31,7 +31,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     if let Some(effect) = parse_tap_or_untap_all(tokens)? {
         return Ok(effect);
     }
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter = parse_object_filter(&tokens[1..], false)?;
         return Ok(EffectAst::TapAll { filter });
@@ -51,7 +51,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
 }
 
 fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if !matches!(words.first().copied(), Some("all" | "each")) {
         return Ok(None);
     }
@@ -76,7 +76,7 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     }
 
     let analyze_type_choice_reference = |tokens: &[OwnedLexToken]| {
-        let words = crate::cards::builders::compiler::token_word_refs(tokens);
+        let words = crate::runtime_backend::token_word_refs(tokens);
         let qualifier = find_word_sequence_start(&words, &["of", "the", "chosen", "type"])
             .map(|start| (start, 4usize))
             .or_else(|| {
@@ -105,8 +105,8 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         (stripped, mentions)
     };
 
-    let left_words = crate::cards::builders::compiler::token_word_refs(&left_tokens);
-    let right_words = crate::cards::builders::compiler::token_word_refs(&right_tokens);
+    let left_words = crate::runtime_backend::token_word_refs(&left_tokens);
+    let right_words = crate::runtime_backend::token_word_refs(&right_tokens);
     let (cleaned_left, left_mentions_chosen_type) = analyze_type_choice_reference(&left_tokens);
     let (cleaned_right, right_mentions_chosen_type) = analyze_type_choice_reference(&right_tokens);
 

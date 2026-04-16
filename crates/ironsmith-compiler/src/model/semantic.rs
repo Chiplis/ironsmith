@@ -51,7 +51,7 @@ pub enum LineAst<
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AdditionalCostChoiceOptionAst<Effect> {
+pub struct AdditionalCostChoiceOptionAst<Effect = crate::effect::Effect> {
     pub description: String,
     pub effects: Vec<Effect>,
 }
@@ -85,7 +85,8 @@ pub struct ParsedLineAst<Chunk> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedModalAst<TriggerSpec, Effect, Value, Predicate, TotalCost, Zone, Condition> {
-    pub header: ParsedModalHeader<TriggerSpec, Effect, Value, Predicate, TotalCost, Zone, Condition>,
+    pub header:
+        ParsedModalHeader<TriggerSpec, Effect, Value, Predicate, TotalCost, Zone, Condition>,
     pub modes: Vec<ParsedModalModeAst<Effect>>,
 }
 

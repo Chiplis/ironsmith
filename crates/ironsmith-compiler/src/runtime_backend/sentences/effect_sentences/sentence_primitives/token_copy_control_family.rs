@@ -15,7 +15,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
     }
 
     let reveal_tokens = trim_commas(&segments[0]);
-    let reveal_words = crate::cards::builders::compiler::token_word_refs(&reveal_tokens);
+    let reveal_words = crate::runtime_backend::token_word_refs(&reveal_tokens);
     let reveal_prefix = [
         "each", "player", "reveals", "a", "number", "of", "cards", "from", "the", "top", "of",
         "their", "library", "equal", "to",
@@ -46,7 +46,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
     }
 
     let rest_tokens = trim_commas(&segments[2]);
-    let rest_words = crate::cards::builders::compiler::token_word_refs(&rest_tokens);
+    let rest_words = crate::runtime_backend::token_word_refs(&rest_tokens);
     let rest_words = if rest_words.first().copied() == Some("and") {
         &rest_words[1..]
     } else {
@@ -111,7 +111,7 @@ pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
         return Ok(None);
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     if grammar::words_match_prefix(&tail_tokens, &["do", "the", "same", "for"]).is_none() {
         return Ok(None);
     }
@@ -289,7 +289,7 @@ pub(crate) fn parse_sacrifice_any_number_sentence(
     if idx >= head_tokens.len() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice any number of' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -297,7 +297,7 @@ pub(crate) fn parse_sacrifice_any_number_sentence(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice any number of' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -362,7 +362,7 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence(
     if idx >= tokens.len() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice one or more' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -370,7 +370,7 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice one or more' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let filter = parse_object_filter(&filter_tokens, false)?;
@@ -554,7 +554,7 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         return Ok(None);
     }
 
-    let head_words = crate::cards::builders::compiler::token_word_refs(&head_tokens);
+    let head_words = crate::runtime_backend::token_word_refs(&head_tokens);
     if !head_words.first().is_some_and(|word| *word == "exile")
         && !(head_words.first().is_some_and(|word| *word == "you")
             && head_words.get(1).is_some_and(|word| *word == "exile"))
@@ -562,7 +562,7 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         return Ok(None);
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     if !tail_words
         .first()
         .is_some_and(|word| *word == "shuffle" || *word == "shuffles")
@@ -622,7 +622,7 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
     if source_name_tokens.is_empty() {
         return Ok(None);
     }
-    let source_name_words = crate::cards::builders::compiler::token_word_refs(&source_name_tokens);
+    let source_name_words = crate::runtime_backend::token_word_refs(&source_name_tokens);
     if !is_likely_named_or_source_reference_words(&source_name_words) {
         return Ok(None);
     }
@@ -636,7 +636,7 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
     }
 
     let on_target_words =
-        crate::cards::builders::compiler::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
     if on_target_words != ["it"] && on_target_words != ["them"] {
         return Ok(None);
     }
@@ -693,8 +693,8 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
         return Ok(None);
     }
 
-    let head_word_storage = crate::cards::builders::compiler::token_word_refs(&head_tokens);
-    let tail_word_storage = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let head_word_storage = crate::runtime_backend::token_word_refs(&head_tokens);
+    let tail_word_storage = crate::runtime_backend::token_word_refs(&tail_tokens);
     let head_words = normalize_words(&head_word_storage);
     let tail_words = normalize_words(&tail_word_storage);
     let is_that_player_tail = slice_starts_with(&tail_words, &["that", "player"]);
@@ -756,7 +756,7 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
         return Ok(None);
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     let suffix = [
         "damage",
         "to",

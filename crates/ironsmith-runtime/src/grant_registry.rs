@@ -8,8 +8,8 @@
 //! - One-shot effects with duration (e.g., Snapcaster Mage grants flashback until end of turn)
 //! - Static abilities (e.g., Underworld Breach grants escape while on battlefield)
 
-use crate::filter::ObjectFilterExt as _;
 use crate::alternative_cast::AlternativeCastingMethod;
+use crate::filter::ObjectFilterExt as _;
 use crate::grant::{DerivedAlternativeCast, Grantable};
 use crate::ids::{ObjectId, PlayerId};
 use crate::static_abilities::StaticAbility;

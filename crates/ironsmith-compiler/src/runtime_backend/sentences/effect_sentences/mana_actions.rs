@@ -204,7 +204,7 @@ pub(crate) fn parse_add_mana(
             });
         }
 
-        let tail_words = crate::cards::builders::compiler::token_word_refs(tail_tokens);
+        let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
         let chosen_by_player_tail = matches!(
             tail_words.as_slice(),
             ["they", "choose"]
@@ -331,7 +331,7 @@ pub(crate) fn parse_add_mana(
             let amount = parse_dynamic_cost_modifier_value(amount_tokens)?.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported dynamic mana amount (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
             parser_trace_stack("parse_add_mana:scaled", tokens);
@@ -350,7 +350,7 @@ pub(crate) fn parse_add_mana(
             });
         }
         let trailing_words = if let Some(last_idx) = last_mana_idx {
-            crate::cards::builders::compiler::token_word_refs(&tokens[last_idx + 1..])
+            crate::runtime_backend::token_word_refs(&tokens[last_idx + 1..])
         } else {
             Vec::new()
         };
@@ -563,7 +563,7 @@ pub(crate) fn parse_any_combination_mana_colors(
 }
 
 pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty()
         || words[0] != "to"
         || !grammar::contains_word(tokens, "mana")
@@ -582,7 +582,7 @@ pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_counter_type_from_descriptor_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterType> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let last = *words.last()?;
     if let Some(counter_type) = parse_counter_type_word(last) {
         return Some(counter_type);

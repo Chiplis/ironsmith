@@ -4,11 +4,12 @@ use crate::ability::AbilityKind;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
-use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
+pub use ironsmith_core::CounterEffect;
 
 /// Effect that counters a target spell on the stack.
 ///
@@ -28,24 +29,6 @@ use crate::zone::Zone;
 /// // Counter target creature spell
 /// let effect = CounterEffect::new(ChooseSpec::creature_spell());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct CounterEffect {
-    /// The targeting specification (for UI/validation purposes).
-    pub target: ChooseSpec,
-}
-
-impl CounterEffect {
-    /// Create a new counter effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
-    }
-
-    /// Create an effect that counters any spell.
-    pub fn any_spell() -> Self {
-        Self::new(ChooseSpec::spell())
-    }
-}
-
 impl EffectExecutor for CounterEffect {
     fn execute(
         &self,

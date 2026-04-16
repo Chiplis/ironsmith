@@ -158,6 +158,12 @@ impl ChooseSpec {
     }
 }
 
+impl From<ObjectFilter> for ChooseSpec {
+    fn from(value: ObjectFilter) -> Self {
+        Self::Object(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ChooseSpec;

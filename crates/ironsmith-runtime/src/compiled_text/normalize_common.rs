@@ -5751,7 +5751,7 @@ pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> S
 
 pub(super) fn describe_compact_protection_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    if choose_mode.min_choose_count.is_some()
+    if choose_mode.min_choose_count != choose_mode.choose_count
         || !matches!(choose_mode.choose_count, Value::Fixed(1))
     {
         return None;
@@ -5806,7 +5806,7 @@ pub(super) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
 
 pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    if choose_mode.min_choose_count.is_some()
+    if choose_mode.min_choose_count != choose_mode.choose_count
         || !matches!(choose_mode.choose_count, Value::Fixed(1))
         || choose_mode.modes.len() != 5
     {
@@ -5863,7 +5863,7 @@ pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<S
 
 pub(super) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    if choose_mode.min_choose_count.is_some()
+    if choose_mode.min_choose_count != choose_mode.choose_count
         || !matches!(choose_mode.choose_count, Value::Fixed(1))
         || choose_mode.modes.len() < 2
     {
@@ -7102,15 +7102,15 @@ pub(super) fn describe_tag_attached_then_tap_or_untap(
     }
 
     if let Some(tap) = next.downcast_ref::<crate::effects::TapEffect>()
-        && choose_spec_references_tag(&tap.spec, tag)
+        && choose_spec_references_tag(&tap.target, tag)
     {
-        let attached_object = describe_attached_object_for_tag(tag, Some(&tap.spec));
+        let attached_object = describe_attached_object_for_tag(tag, Some(&tap.target));
         return Some(format!("Tap {attached_object}"));
     }
     if let Some(untap) = next.downcast_ref::<crate::effects::UntapEffect>()
-        && choose_spec_references_tag(&untap.spec, tag)
+        && choose_spec_references_tag(&untap.target, tag)
     {
-        let attached_object = describe_attached_object_for_tag(tag, Some(&untap.spec));
+        let attached_object = describe_attached_object_for_tag(tag, Some(&untap.target));
         return Some(format!("Untap {attached_object}"));
     }
     None

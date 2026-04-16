@@ -118,26 +118,26 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             _ => parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing proliferate count (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?,
         }
     } else {
         return Err(CardTextError::ParseError(format!(
             "missing proliferate count (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
 
     let trailing = trim_commas(&tokens[used..]);
-    let trailing_words = crate::cards::builders::compiler::token_word_refs(&trailing);
+    let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
     let trailing_ok = trailing_words.is_empty()
         || trailing_words.as_slice() == ["time"]
         || trailing_words.as_slice() == ["times"];
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing proliferate clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -153,7 +153,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         return None;
     }
 
-    let filtered_tail: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&tail_tokens)
+    let filtered_tail: Vec<&str> = crate::runtime_backend::token_word_refs(&tail_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -178,7 +178,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
     let (amount, used) = parse_value(&amount_tokens)?;
-    let amount_words = crate::cards::builders::compiler::token_word_refs(&amount_tokens);
+    let amount_words = crate::runtime_backend::token_word_refs(&amount_tokens);
     if !matches!(amount_words.get(used).copied(), Some("card" | "cards")) {
         return None;
     }
@@ -444,8 +444,8 @@ pub(crate) fn parse_reorder(
     tokens: &[OwnedLexToken],
     _subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause = crate::cards::builders::compiler::token_word_refs(tokens).join(" ");
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause = crate::runtime_backend::token_word_refs(tokens).join(" ");
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing reorder target".to_string(),
@@ -548,7 +548,7 @@ pub(crate) fn parse_shuffle(
         return Ok(EffectAst::ShuffleLibrary { player });
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if let Some(into_idx) = find_index(&clause_words, |word| *word == "into") {
         let target_words = &clause_words[..into_idx];
         let destination_words: Vec<&str> = clause_words[into_idx + 1..]
@@ -655,7 +655,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
         return Err(CardTextError::ParseError("missing goad target".to_string()));
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if target_words.as_slice() == ["it"] || target_words.as_slice() == ["them"] {
         return Ok(EffectAst::Goad {
             target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
@@ -669,7 +669,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     ) {
         return Err(CardTextError::ParseError(format!(
             "goad target must be a creature (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -684,7 +684,7 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         ));
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(&target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if matches!(target_words.as_slice(), ["it"] | ["them"]) {
         return Ok(EffectAst::Detain {
             target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),

@@ -765,7 +765,7 @@ pub(crate) static POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<LexRuleHin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::util::tokenize_line;
+    use crate::runtime_backend::util::tokenize_line;
 
     #[test]
     fn parse_sentence_implicit_become_clause_handles_explicit_self_negative_type_with_duration() {

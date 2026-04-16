@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 
 use ironsmith_tools::{
     CardStatusDb, TagImportRow, default_cards_path, default_db_path, load_canonical_cards,
-    normalize_lookup_name,
-    read_tag_rows_from_research_csv_paths,
+    normalize_lookup_name, read_tag_rows_from_research_csv_paths,
 };
 
 #[derive(Debug)]

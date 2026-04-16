@@ -5,8 +5,8 @@
 //! - Priority passing and resolution
 //! - Step-specific actions (untapping, drawing, cleanup)
 
-use crate::filter::ObjectFilterExt as _;
 use crate::DecisionMaker;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::PlayerId;
 
@@ -549,8 +549,8 @@ pub fn apply_cleanup_discard(
     cards_to_discard: &[crate::ids::ObjectId],
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<crate::ids::ObjectId> {
-    use crate::events::processing::execute_discard;
     use crate::events::cause::EventCause;
+    use crate::events::processing::execute_discard;
     use crate::zone::Zone;
 
     let mut madness_cards = Vec::new();

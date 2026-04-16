@@ -10,17 +10,17 @@
 //! - When it resolves, the opponent must pay the ward cost or the spell/ability
 //!   is countered
 
-use crate::filter::ObjectFilterExt as _;
 use crate::ability::AbilityKind;
 use crate::cost::TotalCost;
 use crate::costs::CostContext;
 use crate::decision::DecisionMaker;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::decisions::{WardSpec, make_decision};
-use crate::events::processing::execute_discard;
-use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::cause::EventCause;
 use crate::events::permanents::SacrificeEvent;
+use crate::events::processing::execute_discard;
+use crate::events::processing::{EventOutcome, process_zone_change};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -190,12 +190,12 @@ fn pay_ward_cost(
     cost: &WardCost,
     decision_maker: &mut impl DecisionMaker,
 ) -> bool {
-    let ward_provenance =
-        game.provenance_graph_mut()
-            .alloc_root(crate::provenance::ProvenanceNodeKind::EffectExecution {
-                source,
-                controller: payer,
-            });
+    let ward_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source,
+            controller: payer,
+        },
+    );
     match cost {
         WardCost::Mana(total_cost) => {
             if crate::cost::can_pay_cost_with_reason(

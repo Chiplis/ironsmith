@@ -14,36 +14,16 @@ use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect: target permanent becomes one color of the chooser's choice.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BecomeColorChoiceEffect {
-    pub target: ChooseSpec,
-    pub until: Until,
-    pub chooser: PlayerFilter,
-}
+pub type BecomeColorChoiceEffect = ironsmith_core::BecomeColorChoiceEffect;
 
-impl BecomeColorChoiceEffect {
-    pub fn new(target: ChooseSpec, until: Until) -> Self {
-        Self {
-            target,
-            until,
-            chooser: PlayerFilter::You,
-        }
-    }
-
-    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
-        self.chooser = chooser;
-        self
-    }
-
-    fn color_options() -> [(Color, &'static str); 5] {
-        [
-            (Color::White, "White"),
-            (Color::Blue, "Blue"),
-            (Color::Black, "Black"),
-            (Color::Red, "Red"),
-            (Color::Green, "Green"),
-        ]
-    }
+fn color_options() -> [(Color, &'static str); 5] {
+    [
+        (Color::White, "White"),
+        (Color::Blue, "Blue"),
+        (Color::Black, "Black"),
+        (Color::Red, "Red"),
+        (Color::Green, "Green"),
+    ]
 }
 
 impl EffectExecutor for BecomeColorChoiceEffect {
@@ -54,7 +34,7 @@ impl EffectExecutor for BecomeColorChoiceEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
 
-        let options: Vec<SelectableOption> = Self::color_options()
+        let options: Vec<SelectableOption> = color_options()
             .iter()
             .enumerate()
             .map(|(idx, (_, label))| SelectableOption::new(idx, *label))
@@ -69,15 +49,15 @@ impl EffectExecutor for BecomeColorChoiceEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let Some(chosen) = chosen.filter(|idx| *idx < Self::color_options().len()) else {
+        let Some(chosen) = chosen.filter(|idx| *idx < color_options().len()) else {
             return Ok(EffectOutcome::count(0));
         };
 
-        let (color, _) = Self::color_options()[chosen];
+        let (color, _) = color_options()[chosen];
         let apply = crate::effects::ApplyContinuousEffect::with_spec(
             self.target.clone(),
             Modification::SetColors(crate::color::ColorSet::from_color(color)),
-            self.until.clone(),
+            self.duration.clone(),
         );
 
         apply.execute(game, ctx)

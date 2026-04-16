@@ -1155,10 +1155,13 @@ pub(crate) fn preprocess_document(
 
         for (split_index, split_line) in split_parse_line_variants(line).into_iter().enumerate() {
             let virtual_line_index = line_index.saturating_mul(8).saturating_add(split_index);
+            let looks_like_resolution_followup = lex_line(split_line.as_str(), virtual_line_index)
+                .ok()
+                .map(|tokens| looks_like_spell_resolution_followup_intro_lexed(tokens.as_slice()))
+                .unwrap_or(false);
+
             if spell_card_prefers_resolution_line_merge(&builder)
-                && lex_line(split_line.as_str(), virtual_line_index)
-                    .ok()
-                    .is_some_and(|tokens| looks_like_spell_resolution_followup_intro_lexed(&tokens))
+                && looks_like_resolution_followup
                 && let Some(PreprocessedItem::Line(previous)) = items.last_mut()
             {
                 let combined_raw_line =

@@ -195,7 +195,7 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
 pub(crate) fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -365,7 +365,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(
 pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

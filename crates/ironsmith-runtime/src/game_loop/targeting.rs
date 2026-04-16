@@ -373,12 +373,12 @@ pub(super) fn resolve_modal_mode_counts(
         &choose_mode.choose_count,
         choose_mode.modes.len().max(1),
     );
-    let min_modes = match choose_mode.min_choose_count.as_ref() {
-        Some(min_value) => {
-            resolve_modal_count_value_for_source(game, source_id, min_value, max_modes)
-        }
-        None => max_modes,
-    };
+    let min_modes = resolve_modal_count_value_for_source(
+        game,
+        source_id,
+        &choose_mode.min_choose_count,
+        max_modes,
+    );
     (min_modes, max_modes)
 }
 

@@ -3,9 +3,7 @@ use std::env;
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 
-use ironsmith::cards::{
-    CardDefinition, generated_definition_has_unimplemented_content,
-};
+use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::compiled_text::compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
 use ironsmith_tools::{

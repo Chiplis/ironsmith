@@ -14,73 +14,8 @@ use std::collections::HashSet;
 
 const TEMP_IT_TAG: &str = "__it__";
 
-/// Effect that exchanges control of two permanents.
-///
-/// Creates continuous effects that swap the controllers of two permanents.
-///
-/// # Fields
-///
-/// * `permanent1` - First permanent
-/// * `permanent2` - Second permanent
-///
-/// # Example
-///
-/// ```ignore
-/// // Exchange control of two target creatures
-/// let effect = ExchangeControlEffect::new(
-///     ChooseSpec::creature(),
-///     ChooseSpec::creature(),
-/// );
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExchangeControlEffect {
-    /// First permanent to exchange.
-    pub permanent1: ChooseSpec,
-    /// Second permanent to exchange.
-    pub permanent2: ChooseSpec,
-    /// Optional targeting constraint that requires the two permanents to share a type.
-    pub shared_type: Option<SharedTypeConstraint>,
-    /// Optional temporary tag used to resolve the second permanent relative to the first.
-    pub permanent1_reference_tag: Option<TagKey>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SharedTypeConstraint {
-    CardType,
-    PermanentType,
-}
-
-impl ExchangeControlEffect {
-    /// Create a new exchange control effect.
-    pub fn new(permanent1: ChooseSpec, permanent2: ChooseSpec) -> Self {
-        Self {
-            permanent1,
-            permanent2,
-            shared_type: None,
-            permanent1_reference_tag: None,
-        }
-    }
-
-    pub fn with_shared_type(mut self, constraint: SharedTypeConstraint) -> Self {
-        self.shared_type = Some(constraint);
-        self
-    }
-
-    pub fn with_permanent1_reference_tag(mut self, tag: impl Into<TagKey>) -> Self {
-        self.permanent1_reference_tag = Some(tag.into());
-        self
-    }
-
-    /// Exchange control of two creatures.
-    pub fn creatures() -> Self {
-        Self::new(ChooseSpec::creature(), ChooseSpec::creature())
-    }
-
-    /// Exchange control of two permanents.
-    pub fn permanents() -> Self {
-        Self::new(ChooseSpec::permanent(), ChooseSpec::permanent())
-    }
-}
+pub use ironsmith_core::SharedTypeConstraint;
+pub type ExchangeControlEffect = ironsmith_core::ExchangeControlEffect;
 
 impl EffectExecutor for ExchangeControlEffect {
     fn execute(

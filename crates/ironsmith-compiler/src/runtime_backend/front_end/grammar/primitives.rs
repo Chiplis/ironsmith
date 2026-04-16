@@ -1148,7 +1148,7 @@ pub(crate) fn parse_prefix_word_slice<'a, O>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::runtime_backend::lexer::lex_line;
     use winnow::combinator::cut_err;
 
     #[test]

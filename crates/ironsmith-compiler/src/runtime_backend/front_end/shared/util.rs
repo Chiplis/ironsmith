@@ -190,36 +190,6 @@ pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> T
     ))
 }
 
-pub(crate) fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
-    let Some(rest) = str_strip_prefix(tag, SENTENCE_HELPER_TAG_PREFIX) else {
-        return false;
-    };
-    let Some(rest) = str_strip_prefix(rest, prefix) else {
-        return false;
-    };
-    let Some(rest) = str_strip_prefix(rest, "_l") else {
-        return false;
-    };
-    let mut parts = rest.split("_s");
-    let Some(line) = parts.next() else {
-        return false;
-    };
-    let Some(rest) = parts.next() else {
-        return false;
-    };
-    let mut parts = rest.split("_e");
-    let Some(start) = parts.next() else {
-        return false;
-    };
-    let Some(end) = parts.next() else {
-        return false;
-    };
-    parts.next().is_none()
-        && line.parse::<usize>().is_ok()
-        && start.parse::<usize>().is_ok()
-        && end.parse::<usize>().is_ok()
-}
-
 pub(crate) fn classify_instead_followup_text(
     text: &str,
 ) -> crate::cards::builders::InsteadSemantics {
@@ -499,7 +469,7 @@ pub(crate) fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {
     }
     eprintln!(
         "[parser-flow] stage={stage} clause='{}'",
-        crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+        crate::runtime_backend::token_word_refs(tokens).join(" ")
     );
 }
 
@@ -509,7 +479,7 @@ pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
     }
     eprintln!(
         "[parser-trace] stage={stage} clause='{}'",
-        crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+        crate::runtime_backend::token_word_refs(tokens).join(" ")
     );
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
 }
@@ -1110,7 +1080,7 @@ pub(crate) fn apply_filter_keyword_constraint(
 }
 
 pub(crate) fn parse_flashback_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-    let words_all = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words_all = crate::runtime_backend::token_word_refs(tokens);
     if words_all.first().copied() != Some("flashback") {
         return None;
     }
@@ -1817,7 +1787,7 @@ pub(crate) fn parse_target_count_range_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::runtime_backend::lexer::lex_line;
 
     #[test]
     fn parse_subject_recognizes_a_player_of_your_choice() {
@@ -1896,7 +1866,7 @@ pub(crate) fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
 }
 
 pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
-    let all_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let all_words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(
         all_words.as_slice(),
         ["up", "to", _, "target"]
@@ -1926,8 +1896,7 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
                         continue;
                     };
                     let candidate = trim_commas(&tokens[token_start..]);
-                    let candidate_words =
-                        crate::cards::builders::compiler::token_word_refs(&candidate);
+                    let candidate_words = crate::runtime_backend::token_word_refs(&candidate);
                     if candidate_words.is_empty() {
                         continue;
                     }
@@ -1983,7 +1952,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     let mut target_count: Option<ChoiceCount> = None;
     let mut explicit_target = false;
 
-    let all_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let all_words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(
         all_words.as_slice(),
         ["any"] | ["any", "target"] | ["any", "targets"]
@@ -2000,7 +1969,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         && matches!(all_words.last().copied(), Some("target") | Some("targets"))
         && let Some((value, _)) = parse_number_or_x_value(&tokens[2..])
     {
-        let target_words = crate::cards::builders::compiler::token_word_refs(&tokens[3..]);
+        let target_words = crate::runtime_backend::token_word_refs(&tokens[3..]);
         let target = if matches!(
             target_words.as_slice(),
             ["other", "target"] | ["other", "targets"]
@@ -2195,7 +2164,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 .unwrap_or("?");
             return Err(CardTextError::ParseError(format!(
                 "unsupported dynamic or missing target count after 'up to' (found '{next_word}' in clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
     } else if let Some((count, used)) = parse_target_count_range_prefix(&tokens[idx..]) {
@@ -2402,7 +2371,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         idx += 2;
     }
 
-    let words_all = crate::cards::builders::compiler::token_word_refs(&tokens[idx..]);
+    let words_all = crate::runtime_backend::token_word_refs(&tokens[idx..]);
     if words_all.as_slice() == ["any", "target"] {
         return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
     }
@@ -2414,7 +2383,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let remaining = &tokens[idx..];
-    let remaining_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(remaining)
+    let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remaining)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -3498,7 +3467,7 @@ pub(crate) fn parse_escape_line(
         ));
     }
 
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     if tail_words.first().copied() != Some("exile") {
         return Err(CardTextError::ParseError(format!(
             "unsupported escape clause tail (clause: '{}')",
@@ -3663,7 +3632,7 @@ pub(crate) fn parse_bestow_line(
             .find_map(|(idx, token)| token.is_period().then_some(idx))
             .unwrap_or(tail_tokens.len());
         let clause_tokens = trim_commas(&tail_tokens[..clause_end]).to_vec();
-        let clause_words = crate::cards::builders::compiler::token_word_refs(&clause_tokens);
+        let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
         if !clause_words.is_empty() && clause_words[0] != "if" {
             cost_tokens.extend(clause_tokens);
         }
@@ -4128,8 +4097,7 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
                 line
             ))
         })?;
-    let trailing_words =
-        crate::cards::builders::compiler::token_word_refs(&tokens[cost_clause_end + 1..]);
+    let trailing_words = crate::runtime_backend::token_word_refs(&tokens[cost_clause_end + 1..]);
     if !trailing_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
@@ -4158,9 +4126,13 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line_lexed(
     parse_you_may_rather_than_spell_cost_line(tokens, line)
 }
 
+#[cfg(not(test))]
 pub(crate) fn parse_additional_cost_choice_options(
     tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<AdditionalCostChoiceOptionAst>>, CardTextError> {
+) -> Result<
+    Option<Vec<AdditionalCostChoiceOptionAst<crate::runtime_backend::ast::EffectAst>>>,
+    CardTextError,
+> {
     fn render_option_text(tokens: &[OwnedLexToken]) -> String {
         tokens
             .iter()
@@ -4231,9 +4203,101 @@ pub(crate) fn parse_additional_cost_choice_options(
     Ok(Some(options))
 }
 
+#[cfg(test)]
+pub(crate) fn parse_additional_cost_choice_options(
+    tokens: &[OwnedLexToken],
+) -> Result<
+    Option<Vec<AdditionalCostChoiceOptionAst<crate::runtime_backend::ast::EffectAst>>>,
+    CardTextError,
+> {
+    fn render_option_text(tokens: &[OwnedLexToken]) -> String {
+        tokens
+            .iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+            .map(OwnedLexToken::parser_text)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    let clause_view = UtilWordView::new(tokens);
+    let clause_words = clause_view.to_word_refs();
+    if contains_words_sequence(clause_words.as_slice(), &["one", "or", "more"]) {
+        return Ok(None);
+    }
+    if !words_contain(clause_words.as_slice(), "or") {
+        return Ok(None);
+    }
+
+    let option_tokens = split_lexed_slices_on_or(tokens);
+    if option_tokens.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut normalized_options = Vec::new();
+    for mut option in option_tokens.into_iter().map(|option| option.to_vec()) {
+        while option
+            .first()
+            .is_some_and(|token| token.is_word("and") || token.is_word("or"))
+        {
+            option.remove(0);
+        }
+        let option = trim_commas(&option).to_vec();
+        if option.is_empty() {
+            continue;
+        }
+        normalized_options.push(option);
+    }
+
+    if normalized_options.len() < 2 {
+        return Ok(None);
+    }
+
+    if normalized_options.iter().any(|option| {
+        find_verb(option).is_none() && !option.first().is_some_and(|token| token.is_word("behold"))
+    }) {
+        return Ok(None);
+    }
+
+    let mut options: Vec<AdditionalCostChoiceOptionAst<crate::runtime_backend::ast::EffectAst>> =
+        Vec::new();
+    for option in normalized_options {
+        let effects = parse_effect_sentences_lexed(&option)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "additional cost option parsed to no effects (clause: '{}')",
+                render_option_text(&option)
+            )));
+        }
+        options.push(AdditionalCostChoiceOptionAst {
+            description: render_option_text(&option),
+            effects,
+        });
+    }
+
+    if options.len() < 2 {
+        return Ok(None);
+    }
+
+    Ok(Some(options))
+}
+
+#[cfg(not(test))]
 pub(crate) fn parse_additional_cost_choice_options_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<AdditionalCostChoiceOptionAst>>, CardTextError> {
+) -> Result<
+    Option<Vec<AdditionalCostChoiceOptionAst<crate::runtime_backend::ast::EffectAst>>>,
+    CardTextError,
+> {
+    parse_additional_cost_choice_options(tokens)
+}
+
+#[cfg(test)]
+pub(crate) fn parse_additional_cost_choice_options_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<
+    Option<Vec<AdditionalCostChoiceOptionAst<crate::runtime_backend::ast::EffectAst>>>,
+    CardTextError,
+> {
     parse_additional_cost_choice_options(tokens)
 }
 

@@ -2,8 +2,8 @@ use super::super::super::activation_and_restrictions::parse_cant_restriction_cla
 use super::super::super::grammar::primitives::TokenWordView;
 use super::super::super::lexer::OwnedLexToken;
 use super::super::super::token_primitives::slice_ends_with as word_slice_ends_with;
-use crate::cards::builders::{CardTextError, EffectAst, PlayerAst};
 use crate::effect::{Restriction, Until};
+use crate::host::{CardTextError, EffectAst, PlayerAst};
 use crate::target::PlayerFilter;
 
 pub(super) fn parse_next_turn_cant_clause(

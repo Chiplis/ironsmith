@@ -3,8 +3,8 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
-use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -13,19 +13,7 @@ use super::{
     apply_zone_change_with_additional_effects, maybe_prompt_for_split_result_order,
     take_recorded_zone_change,
 };
-
-/// "Put target [object] into its owner's library Nth from the top."
-#[derive(Debug, Clone, PartialEq)]
-pub struct MoveToLibraryNthFromTopEffect {
-    pub target: ChooseSpec,
-    pub position: Value,
-}
-
-impl MoveToLibraryNthFromTopEffect {
-    pub fn new(target: ChooseSpec, position: Value) -> Self {
-        Self { target, position }
-    }
-}
+pub type MoveToLibraryNthFromTopEffect = ironsmith_core::MoveToLibraryNthFromTopEffect;
 
 impl EffectExecutor for MoveToLibraryNthFromTopEffect {
     fn execute(

@@ -1,5 +1,5 @@
 use super::*;
-use crate::cards::builders::compiler::sentences::effect_sentences::lex_chain_helpers::{
+use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
 };
 
@@ -31,7 +31,7 @@ pub(crate) fn parse_sacrifice(
     target: Option<TargetAst>,
 ) -> Result<EffectAst, CardTextError> {
     let mut tokens = tokens;
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut normalized_words = clause_words.as_slice();
     if let Some(unless_idx) = find_index(&normalized_words, |word| *word == "unless") {
         let tail = &normalized_words[unless_idx..];
@@ -151,7 +151,7 @@ pub(crate) fn parse_sacrifice(
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object after chooser suffix (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
@@ -161,10 +161,10 @@ pub(crate) fn parse_sacrifice(
     if filter.source && count != 1 {
         return Err(CardTextError::ParseError(format!(
             "source sacrifice only supports count 1 (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let sacrifice_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let sacrifice_words = crate::runtime_backend::token_word_refs(tokens);
     let excludes_attached_object = find_window_by(&sacrifice_words, 3, |window| {
         matches!(
             window,
@@ -207,7 +207,7 @@ pub(crate) fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::contains_word(tokens, "hand") {
         return Ok(EffectAst::DiscardHand { player });
     }
@@ -247,7 +247,7 @@ pub(crate) fn parse_discard(
     };
 
     let rest = &tokens[used..];
-    let rest_words = crate::cards::builders::compiler::token_word_refs(rest);
+    let rest_words = crate::runtime_backend::token_word_refs(rest);
     let Some(card_word_idx) = find_index(&rest_words, |word| *word == "card" || *word == "cards")
     else {
         return Err(CardTextError::ParseError(
@@ -300,7 +300,7 @@ pub(crate) fn parse_discard(
             tag: None,
         });
     }
-    let trailing_words = crate::cards::builders::compiler::token_word_refs(trailing_tokens);
+    let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
     let random = trailing_words.as_slice() == ["at", "random"];
     if !trailing_words.is_empty() && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
@@ -355,7 +355,7 @@ pub(crate) fn parse_discard(
 pub(crate) fn parse_discard_color_qualifier_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let qualifier_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let qualifier_words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -386,7 +386,7 @@ pub(crate) fn parse_discard_color_qualifier_filter(
 pub(crate) fn parse_discard_chosen_color_qualifier_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let qualifier_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let qualifier_words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

@@ -1,13 +1,13 @@
 //! Redirect-the-next-time damage replacement effect.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::events::damage::matchers::DamageSourceConstraint;
-use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
+use crate::events::damage::matchers::DamageSourceConstraint;
+use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter};

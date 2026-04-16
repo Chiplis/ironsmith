@@ -20,16 +20,18 @@
 //! can reference those results using `Effect::if_` with an `EffectPredicate`.
 
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
-use crate::filter::ObjectFilterExt as _;
 use crate::zone::Zone;
 pub use ironsmith_core::effect::{ChoiceCount, EffectId, SearchSelectionMode};
-pub use ironsmith_core::{Comparison, EventValueSpec, ValueComparisonOperator};
+pub use ironsmith_core::{
+    Comparison, EffectPredicate, EventValueSpec, Until, ValueComparisonOperator,
+};
 use std::sync::Arc;
 
 // ============================================================================
@@ -535,43 +537,13 @@ impl Default for EffectOutcome {
 // Effect Predicates (for conditional effects)
 // ============================================================================
 
-/// Predicate to evaluate an effect's result.
-///
-/// Used with `Effect::If` to conditionally execute effects based on
-/// a prior effect's result.
-#[derive(Debug, Clone, PartialEq)]
-pub enum EffectPredicate {
-    /// Effect succeeded (is_success() returns true).
-    Succeeded,
-
-    /// Effect failed (is_failure() returns true).
-    Failed,
-
-    /// Something actually happened (something_happened() returns true).
-    /// This is the typical "if you do" meaning.
-    Happened,
-
-    /// Nothing happened (something_happened() returns false).
-    /// This is the typical "if you don't" meaning.
-    DidNotHappen,
-
-    /// Something happened and it was not replaced.
-    HappenedNotReplaced,
-
-    /// Compare the count value.
-    /// Only meaningful for `OutcomeValue::Count` payloads.
-    Value(Comparison),
-
-    /// Player chose to do it (result is not Declined).
-    Chosen,
-
-    /// Was the result Declined?
-    WasDeclined,
+pub trait EffectPredicateRuntimeExt {
+    /// Evaluate this predicate against a full effect outcome.
+    fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool;
 }
 
-impl EffectPredicate {
-    /// Evaluate this predicate against a full effect outcome.
-    pub fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool {
+impl EffectPredicateRuntimeExt for EffectPredicate {
+    fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool {
         match self {
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
@@ -1180,50 +1152,8 @@ impl Effect {
     }
 }
 
-/// Duration for temporary effects.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub enum Until {
-    /// Permanent (until removed)
-    #[default]
-    Forever,
-
-    /// Until end of turn
-    EndOfTurn,
-
-    /// Until your next turn
-    YourNextTurn,
-
-    /// Until that permanent's controller's next untap step
-    ControllersNextUntapStep,
-
-    /// Until end of combat
-    EndOfCombat,
-
-    /// As long as source remains on battlefield
-    ThisLeavesTheBattlefield,
-
-    /// As long as you control source
-    YouStopControllingThis,
-
-    /// For a number of turns
-    TurnsPass(Value),
-}
-
 /// A mode for modal spells.
-#[derive(Debug, Clone, PartialEq)]
-pub struct EffectMode {
-    pub description: String,
-    pub effects: Vec<Effect>,
-}
-
-impl EffectMode {
-    pub fn new(description: impl Into<String>, effects: Vec<Effect>) -> Self {
-        Self {
-            description: description.into(),
-            effects,
-        }
-    }
-}
+pub type EffectMode = ironsmith_core::EffectMode<Effect>;
 
 /// Description for creating an emblem.
 #[derive(Debug, Clone)]

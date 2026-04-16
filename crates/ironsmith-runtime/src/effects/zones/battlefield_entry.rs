@@ -1,5 +1,5 @@
-use crate::events::EnterBattlefieldEvent;
 use crate::effects::ExecutionContext;
+use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;

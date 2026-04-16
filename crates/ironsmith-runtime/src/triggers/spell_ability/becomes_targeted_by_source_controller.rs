@@ -1,8 +1,8 @@
 //! "Whenever [filter] becomes the target of a spell or ability [player] controls" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::spells::BecomesTargetedEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;

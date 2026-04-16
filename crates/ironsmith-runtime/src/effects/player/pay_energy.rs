@@ -9,25 +9,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, PlayerFilter};
-
-/// Effect that asks a player to pay energy counters.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PayEnergyEffect {
-    /// Amount of energy to pay.
-    pub amount: Value,
-    /// Player who pays the energy.
-    pub player: ChooseSpec,
-}
-
-impl PayEnergyEffect {
-    /// Create a new pay-energy effect.
-    pub fn new(amount: impl Into<Value>, player: ChooseSpec) -> Self {
-        Self {
-            amount: amount.into(),
-            player,
-        }
-    }
-}
+pub type PayEnergyEffect = ironsmith_core::PayEnergyEffect;
 
 impl EffectExecutor for PayEnergyEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

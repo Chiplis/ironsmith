@@ -194,6 +194,25 @@ impl CompilerFacade {
         backend.compile(request)
     }
 
+    /// Canonical compiler-owned definition compiler.
+    ///
+    /// This is the public entrypoint for the native backend now compiled inside
+    /// `ironsmith-compiler`. Adapters should call this instead of importing the
+    /// backend module tree or runtime-hosted parser wrappers.
+    pub fn compile_definition(
+        &self,
+        builder: crate::cards::CardDefinitionBuilder,
+        text: impl Into<String>,
+        policy: CompilePolicy,
+    ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
+        let compiled =
+            crate::runtime_backend::compile_card_text(builder, text, policy.allow_unsupported)?;
+        Ok(CompiledCardText {
+            definition: compiled.definition,
+            annotations: compiled.annotations,
+        })
+    }
+
     /// Canonical compiler-owned analyze entrypoint over a backend implementation.
     pub fn analyze_with_backend<Context, Definition, SemanticDocument, Backend>(
         &self,
@@ -230,11 +249,14 @@ fn build_char_map(original: &str, normalized: &str) -> Vec<usize> {
         }
 
         if normalized_char == ' ' {
-            while original_idx < original_chars.len() && !original_chars[original_idx].is_whitespace()
+            while original_idx < original_chars.len()
+                && !original_chars[original_idx].is_whitespace()
             {
                 original_idx += 1;
             }
-            while original_idx < original_chars.len() && original_chars[original_idx].is_whitespace() {
+            while original_idx < original_chars.len()
+                && original_chars[original_idx].is_whitespace()
+            {
                 original_idx += 1;
             }
             map.push(original_idx.saturating_sub(1));
@@ -255,7 +277,8 @@ mod tests {
     #[test]
     fn prepare_source_normalizes_whitespace_and_tracks_lines() {
         let facade = CompilerFacade::new();
-        let (document, annotations) = facade.prepare_source(" Draw   a  card.\r\nThen\tdiscard one.");
+        let (document, annotations) =
+            facade.prepare_source(" Draw   a  card.\r\nThen\tdiscard one.");
 
         assert_eq!(document.original_lines.len(), 2);
         assert_eq!(document.normalized_lines[0], "Draw a card.");
@@ -297,7 +320,10 @@ mod tests {
         );
 
         assert_eq!(split.sentences, vec!["Draw a card"]);
-        assert_eq!(split.parenthetical_sentences, vec!["Activate only as a sorcery"]);
+        assert_eq!(
+            split.parenthetical_sentences,
+            vec!["Activate only as a sorcery"]
+        );
     }
 
     #[test]
@@ -388,7 +414,9 @@ mod tests {
         let compiled = backend
             .compile(request.clone())
             .expect("fake backend should compile");
-        let analyzed = backend.analyze(request).expect("fake backend should analyze");
+        let analyzed = backend
+            .analyze(request)
+            .expect("fake backend should analyze");
 
         assert_eq!(compiled.definition, "compiled:Draw two cards.");
         assert_eq!(analyzed, "Draw two cards.".len());

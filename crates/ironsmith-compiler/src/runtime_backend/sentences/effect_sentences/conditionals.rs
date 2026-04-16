@@ -337,7 +337,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
 pub(crate) fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let Some(split) = split_for_each_opponent_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
@@ -359,7 +359,7 @@ pub(crate) fn parse_for_each_opponent_doesnt(
 pub(crate) fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let Some(split) = split_for_each_player_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
@@ -401,7 +401,7 @@ fn parse_negated_who_this_way_predicate(
 pub(crate) fn parse_vote_start_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let vote_idx = find_index(&clause_words, |word| *word == "vote" || *word == "votes");
     let Some(vote_idx) = vote_idx else {
         return Ok(None);
@@ -488,7 +488,7 @@ pub(crate) fn parse_vote_start_sentence(
 pub(crate) fn parse_for_each_vote_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 4 {
         return Ok(None);
     }
@@ -533,7 +533,7 @@ pub(crate) fn parse_for_each_vote_clause(
 }
 
 pub(crate) fn parse_vote_extra_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 3 || words.first().copied() != Some("you") {
         return None;
     }
@@ -552,7 +552,7 @@ pub(crate) fn parse_vote_extra_sentence(tokens: &[OwnedLexToken]) -> Option<Effe
 pub(crate) fn parse_after_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let line_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let line_words = crate::runtime_backend::token_word_refs(tokens);
     if line_words.len() < 3
         || line_words[0] != "after"
         || line_words[1] != "that"
@@ -571,7 +571,7 @@ pub(crate) fn parse_after_turn_sentence(
         &tokens[3..]
     };
 
-    let remaining_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(remainder)
+    let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remainder)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -609,7 +609,7 @@ pub(crate) fn parse_after_turn_sentence(
 pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() != ["counter", "target", "spell", "if", "it", "was", "kicked"] {
         return Ok(None);
     }
@@ -627,7 +627,7 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
 pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let matches = clause_words.as_slice()
         == [
             "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",

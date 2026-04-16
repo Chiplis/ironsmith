@@ -382,7 +382,7 @@ pub(crate) fn parse_effect_sentence_lexed(
         return Ok(vec![meld_effect]);
     }
     if let Some(effect) =
-        crate::cards::builders::compiler::sentences::effect_sentences::special_sentence_family::parse_control_combat_choices_sentence(tokens)?
+        crate::runtime_backend::sentences::effect_sentences::special_sentence_family::parse_control_combat_choices_sentence(tokens)?
     {
         return Ok(vec![effect]);
     }

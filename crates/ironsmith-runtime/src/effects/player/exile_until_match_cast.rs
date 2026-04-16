@@ -1,7 +1,6 @@
 //! Exile cards from the top of a library until one matches a filter, then offer
 //! that card to be cast and put the rest on the bottom in random order.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
 use crate::effect::{Effect, EffectOutcome};
@@ -11,6 +10,7 @@ use crate::effects::consult_helpers::{
 };
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, StackEntry};
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};

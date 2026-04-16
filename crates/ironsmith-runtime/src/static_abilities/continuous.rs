@@ -3,7 +3,6 @@
 //! These abilities generate continuous effects that modify other objects
 //! through the layer system.
 
-use crate::filter::ObjectFilterExt as _;
 use super::{
     StaticAbility, StaticAbilityId, StaticAbilityKind,
     text_utils::{capitalize_first, join_with_and},
@@ -13,6 +12,7 @@ use crate::continuous::{
     ContinuousEffect, EffectSourceType, EffectTarget, Modification, PtSublayer,
 };
 use crate::effect::{Comparison, Value};
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt, TaggedOpbjectRelation};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};

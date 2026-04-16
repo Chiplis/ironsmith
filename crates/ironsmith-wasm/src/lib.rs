@@ -602,7 +602,8 @@ fn fallback_stack_entry_ability_text(
             return Some(text);
         }
 
-        let compiled_lines = ironsmith::compiled_text::compiled_lines(&source_obj.to_card_definition());
+        let compiled_lines =
+            ironsmith::compiled_text::compiled_lines(&source_obj.to_card_definition());
         if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
             return Some(text);
         }
@@ -1592,7 +1593,9 @@ impl WasmReplayDecisionMaker {
     }
 
     fn capture_once_for_game(&mut self, game: &GameState, ctx: DecisionContext) {
-        self.capture_once(ironsmith::decisions::context::enrich_display_hints(game, ctx));
+        self.capture_once(ironsmith::decisions::context::enrich_display_hints(
+            game, ctx,
+        ));
     }
 
     fn finish(self) -> (Option<DecisionContext>, Option<ActiveViewedCards>) {
@@ -2056,7 +2059,9 @@ impl CustomCardLayoutInput {
     fn linked_face_layout(self) -> ironsmith::card::LinkedFaceLayout {
         match self {
             CustomCardLayoutInput::Single => ironsmith::card::LinkedFaceLayout::None,
-            CustomCardLayoutInput::TransformLike => ironsmith::card::LinkedFaceLayout::TransformLike,
+            CustomCardLayoutInput::TransformLike => {
+                ironsmith::card::LinkedFaceLayout::TransformLike
+            }
             CustomCardLayoutInput::Split => ironsmith::card::LinkedFaceLayout::Split,
         }
     }

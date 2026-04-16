@@ -223,10 +223,10 @@ pub(crate) fn normalize_activate_only_restriction(
     timing: &ActivationTiming,
 ) -> Option<String> {
     if timing != &ActivationTiming::OncePerTurn {
-        return Some(crate::cards::builders::compiler::token_word_refs(tokens).join(" "));
+        return Some(crate::runtime_backend::token_word_refs(tokens).join(" "));
     }
 
-    let mut words = crate::cards::builders::compiler::token_word_refs(tokens)
+    let mut words = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .map(|word| word.to_ascii_lowercase())
         .collect::<Vec<_>>();

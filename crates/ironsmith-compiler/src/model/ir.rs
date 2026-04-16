@@ -157,18 +157,20 @@ mod tests {
         let document = RewriteSemanticDocument {
             builder: "builder".to_string(),
             annotations: ParseAnnotations::default(),
-            items: vec![RewriteSemanticItem::<
-                String,
-                String,
-                String,
-                String,
-                String,
-                String,
-                String,
-                String,
-                String,
-                String,
-            >::Metadata],
+            items: vec![
+                RewriteSemanticItem::<
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                >::Metadata,
+            ],
             allow_unsupported: true,
         };
 

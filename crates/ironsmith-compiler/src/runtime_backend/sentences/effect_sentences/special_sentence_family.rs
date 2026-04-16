@@ -5,12 +5,12 @@ use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SH
 use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
-use crate::cards::builders::compiler::contains_until_end_of_turn;
-use crate::cards::builders::compiler::token_index_for_word_index;
 use crate::cards::builders::{CardTextError, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, TargetAst, Value};
 use crate::effect::Until;
 use crate::object::CounterType;
+use crate::runtime_backend::contains_until_end_of_turn;
+use crate::runtime_backend::token_index_for_word_index;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
@@ -18,11 +18,11 @@ use crate::types::CardType;
 pub(crate) fn parse_exile_then_meld_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["exile", "them"]).is_none() {
         return Ok(None);
     }
-    let Some(meld_idx) = crate::cards::builders::compiler::grammar::primitives::find_phrase_start(
+    let Some(meld_idx) = crate::runtime_backend::grammar::primitives::find_phrase_start(
         tokens,
         &["then", "meld", "them", "into"],
     ) else {
@@ -45,19 +45,17 @@ pub(crate) fn parse_exile_then_meld_sentence(
 pub(crate) fn parse_if_damage_would_be_dealt_put_counters_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_prefix(tokens, &["if", "damage", "would", "be", "dealt", "to"])
         .is_none()
     {
         return Ok(None);
     }
 
-    let Some(this_turn_rel) =
-        crate::cards::builders::compiler::grammar::primitives::find_phrase_start(
-            &tokens[6..],
-            &["this", "turn"],
-        )
-    else {
+    let Some(this_turn_rel) = crate::runtime_backend::grammar::primitives::find_phrase_start(
+        &tokens[6..],
+        &["this", "turn"],
+    ) else {
         return Ok(None);
     };
     let this_turn_idx = 6 + this_turn_rel;
@@ -99,7 +97,7 @@ pub(crate) fn parse_if_damage_would_be_dealt_put_counters_sentence(
 pub(crate) fn parse_control_combat_choices_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.as_slice()
         == [
             "you",

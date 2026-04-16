@@ -4,14 +4,19 @@ pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
-        && remainder != tokens
+        && remainder.as_slice() != tokens
     {
         let Some(abilities) = parse_cant_clauses(&remainder)? else {
             return Ok(None);
         };
         let conditioned = abilities
             .into_iter()
-            .map(|ability| ability.with_condition(condition.clone()).unwrap_or(ability))
+            .map(|ability| {
+                ability
+                    .clone()
+                    .with_condition(condition.clone())
+                    .unwrap_or(ability)
+            })
             .collect::<Vec<_>>();
         return Ok(Some(conditioned));
     }
@@ -54,7 +59,7 @@ pub(crate) fn parse_cant_clauses(
             let Some(ability) = parse_cant_clause(&segment)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(&segment).join(" ")
+                    crate::runtime_backend::token_word_refs(&segment).join(" ")
                 )));
             };
             abilities.push(ability);
@@ -97,7 +102,7 @@ pub(crate) fn parse_cant_clauses(
             let Some(ability) = parse_cant_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(segment).join(" ")
+                    crate::runtime_backend::token_word_refs(segment).join(" ")
                 )));
             };
             abilities.push(ability);
@@ -155,27 +160,21 @@ pub(crate) fn parse_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
-        && remainder != tokens
+        && remainder.as_slice() != tokens
     {
         let Some(ability) = parse_cant_clause(&remainder)? else {
             return Ok(None);
         };
-        if let Some(conditioned) = ability.with_condition(condition.clone()) {
+        #[cfg(not(feature = "serialization"))]
+        {
+            let conditioned = ability.clone().with_condition(condition.clone());
             return Ok(Some(conditioned));
         }
-        if let Some(parsed) = parse_cant_restriction_clause(&remainder)?
-            && parsed.target.is_none()
+        #[cfg(feature = "serialization")]
         {
-            return Ok(Some(
-                StaticAbility::restriction(
-                    parsed.restriction,
-                    format_negated_restriction_display(tokens),
-                )
-                .with_condition(condition)
-                .unwrap_or(ability),
-            ));
+            let conditioned = ability.clone().with_condition(condition.clone());
+            return Ok(conditioned);
         }
-        return Ok(Some(ability));
     }
 
     let normalized_storage = normalize_cant_words(tokens);
@@ -1086,7 +1085,7 @@ pub(crate) fn parse_cant_clause(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let subject_words = crate::cards::builders::compiler::token_word_refs(&subject_tokens);
+        let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
         if (subject_words == ["this", "creature"] || subject_words == ["this"])
             && remainder_words.first() == Some(&"block")
             && remainder_words.len() > 1
@@ -1107,7 +1106,7 @@ pub(crate) fn parse_cant_clause(
                 ),
                 format!(
                     "this creature can't block {}",
-                    crate::cards::builders::compiler::token_word_refs(&attacker_tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(&attacker_tokens).join(" ")
                 ),
             )));
         }
@@ -1115,8 +1114,7 @@ pub(crate) fn parse_cant_clause(
             let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
                 return Ok(None);
             };
-            let subject_text =
-                crate::cards::builders::compiler::token_word_refs(&subject_tokens).join(" ");
+            let subject_text = crate::runtime_backend::token_word_refs(&subject_tokens).join(" ");
             if subject_text.is_empty() {
                 return Ok(None);
             }
@@ -1248,7 +1246,7 @@ pub(crate) fn parse_cant_clause(
         && normalized.last().is_some_and(|word| *word == "instead")
     {
         return Ok(Some(StaticAbility::keyword_marker(
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" "),
+            crate::runtime_backend::token_word_refs(tokens).join(" "),
         )));
     }
 

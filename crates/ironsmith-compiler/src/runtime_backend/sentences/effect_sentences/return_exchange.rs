@@ -89,7 +89,7 @@ pub(crate) fn wrap_return_with_delayed_timing(
 pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let rewritten_storage;
     let tokens = if tokens.first().is_some_and(|token| token.is_word("to")) {
-        let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+        let clause_words = crate::runtime_backend::token_word_refs(tokens);
         let hand_or_battlefield_idx = find_index(&clause_words, |word| {
             matches!(*word, "hand" | "hands" | "battlefield")
         });
@@ -134,7 +134,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         tokens
     };
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::contains_word(tokens, "unless") {
         return Err(CardTextError::ParseError(format!(
             "unsupported return-unless clause (clause: '{}')",
@@ -163,7 +163,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let to_idx = to_idx.ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing return destination (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -182,8 +182,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     let target_tokens = target_tokens_vec.as_slice();
     let destination_tokens_full = &tokens[to_idx + 1..];
-    let destination_words_full =
-        crate::cards::builders::compiler::token_word_refs(destination_tokens_full);
+    let destination_words_full = crate::runtime_backend::token_word_refs(destination_tokens_full);
     let mut delayed_timing = None;
     let mut destination_word_cutoff = destination_words_full.len();
     for word_idx in 0..destination_words_full.len() {
@@ -207,15 +206,14 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         destination_tokens_full
     };
 
-    let mut destination_words =
-        crate::cards::builders::compiler::token_word_refs(destination_tokens);
+    let mut destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
     if let Some(except_idx) = find_word_sequence_start(&destination_words, &["except", "for"]) {
         let exception_words = &destination_words[except_idx + 2..];
         if exception_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing return exception qualifiers (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         for word in exception_words {
@@ -228,7 +226,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception qualifier '{}' (clause: '{}')",
                     word,
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             };
             if !slice_contains(&destination_excluded_subtypes, &subtype) {
@@ -238,7 +236,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         if destination_excluded_subtypes.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing subtype return exception qualifiers (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         destination_words.truncate(except_idx);
@@ -272,17 +270,17 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     if delayed_timing.is_none() && has_delayed_timing_words {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed return timing clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     if !is_hand && !is_battlefield && !is_graveyard {
         return Err(CardTextError::ParseError(format!(
             "unsupported return destination (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(target_tokens);
     if let Some(and_idx) = find_index(target_tokens, |token| token.is_word("and"))
         && and_idx > 0
     {
@@ -293,7 +291,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target return clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
     }
@@ -328,7 +326,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         if has_unsupported_return_all_qualifier {
             return Err(CardTextError::ParseError(format!(
                 "unsupported qualified return-all filter (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         if target_tokens.len() < 2 {
@@ -345,13 +343,13 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             if !trailing.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing color-choice return-all clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             if base_filter_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing return-all filter before color-choice clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 )));
             }
             let mut filter = parse_object_filter(&base_filter_tokens, false)?;
@@ -365,8 +363,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 delayed_timing,
             ));
         }
-        let return_filter_words =
-            crate::cards::builders::compiler::token_word_refs(return_filter_tokens);
+        let return_filter_words = crate::runtime_backend::token_word_refs(return_filter_tokens);
         let chosen_this_way_suffixes: [(&[&str], bool); 7] = [
             (&["not", "chosen", "this", "way"], true),
             (&["that", "weren't", "chosen", "this", "way"], true),
@@ -395,8 +392,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         } else {
             (return_filter_tokens.to_vec(), None)
         };
-        let return_filter_words =
-            crate::cards::builders::compiler::token_word_refs(&return_filter_tokens);
+        let return_filter_words = crate::runtime_backend::token_word_refs(&return_filter_tokens);
         let chosen_type_suffix_patterns: [(&[&str], bool, bool); 5] = [
             (
                 &["that", "arent", "of", "the", "chosen", "type"],
@@ -469,7 +465,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     if !destination_excluded_subtypes.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "unsupported return exception on non-return-all clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -511,7 +507,7 @@ pub(crate) fn parse_exchange(
     fn split_shared_type_clause<'a>(
         clause_tokens: &'a [OwnedLexToken],
     ) -> Result<(&'a [OwnedLexToken], Option<SharedTypeConstraintAst>), CardTextError> {
-        let tail_words = crate::cards::builders::compiler::token_word_refs(clause_tokens);
+        let tail_words = crate::runtime_backend::token_word_refs(clause_tokens);
         let Some(rel_word_idx) = find_window_by(&tail_words, 2, |window| {
             window[0] == "that" && matches!(window[1], "share" | "shares")
         }) else {
@@ -521,7 +517,7 @@ pub(crate) fn parse_exchange(
         let rel_token_idx =
             token_index_for_word_index(clause_tokens, rel_word_idx).unwrap_or(clause_tokens.len());
         let (head, tail) = clause_tokens.split_at(rel_token_idx);
-        let share_words = crate::cards::builders::compiler::token_word_refs(tail);
+        let share_words = crate::runtime_backend::token_word_refs(tail);
         let share_head =
             if let Some((prefix, _)) = grammar::words_match_any_prefix(tail, SHARE_REL_PREFIXES) {
                 &share_words[prefix.len()..]
@@ -553,7 +549,7 @@ pub(crate) fn parse_exchange(
     }
 
     fn parse_value_operand(operand_tokens: &[OwnedLexToken]) -> Option<ExchangeValueAst> {
-        match crate::cards::builders::compiler::token_word_refs(operand_tokens).as_slice() {
+        match crate::runtime_backend::token_word_refs(operand_tokens).as_slice() {
             ["your", "life", "total"] => return Some(ExchangeValueAst::LifeTotal(PlayerAst::You)),
             ["target", "player", "life", "total"]
             | ["target", "players", "life", "total"]
@@ -622,7 +618,7 @@ pub(crate) fn parse_exchange(
         Some(ExchangeValueAst::Stat { target, kind })
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, LIFE_TOTALS_PREFIXES).is_some() {
         if clause_words.as_slice() == ["life", "totals"] {
             return match subject {
@@ -644,21 +640,20 @@ pub(crate) fn parse_exchange(
             )));
         }
 
-        let player2 =
-            match crate::cards::builders::compiler::token_word_refs(&tokens[3..]).as_slice() {
-                ["you"] => Some(PlayerAst::You),
-                ["target", "player"] | ["target", "players"] => Some(PlayerAst::Target),
-                ["target", "opponent"] | ["target", "opponents"] => Some(PlayerAst::TargetOpponent),
-                ["that", "player"] | ["that", "players"] => Some(PlayerAst::That),
-                ["opponent"] | ["opponents"] | ["an", "opponent"] => Some(PlayerAst::Opponent),
-                _ => None,
-            }
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported life-total exchange partner (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
+        let player2 = match crate::runtime_backend::token_word_refs(&tokens[3..]).as_slice() {
+            ["you"] => Some(PlayerAst::You),
+            ["target", "player"] | ["target", "players"] => Some(PlayerAst::Target),
+            ["target", "opponent"] | ["target", "opponents"] => Some(PlayerAst::TargetOpponent),
+            ["that", "player"] | ["that", "players"] => Some(PlayerAst::That),
+            ["opponent"] | ["opponents"] | ["an", "opponent"] => Some(PlayerAst::Opponent),
+            _ => None,
+        }
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported life-total exchange partner (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
         let player1 = match subject {
             Some(SubjectAst::Player(player)) => player,
             _ => PlayerAst::You,
@@ -746,7 +741,7 @@ pub(crate) fn parse_exchange(
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported exchange clause (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
             let left_tokens = trim_commas(&remainder[..split_idx]);
@@ -754,13 +749,13 @@ pub(crate) fn parse_exchange(
             let left = parse_value_operand(&left_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported exchange value operand (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(&left_tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(&left_tokens).join(" ")
                 ))
             })?;
             let right = parse_value_operand(&right_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported exchange value operand (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(&right_tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(&right_tokens).join(" ")
                 ))
             })?;
 
@@ -776,13 +771,10 @@ pub(crate) fn parse_exchange(
         )));
     }
     if let Some((before_and, after_and)) =
-        crate::cards::builders::compiler::grammar::primitives::split_lexed_once_on_separator(
-            tokens,
-            || {
-                use winnow::Parser as _;
-                crate::cards::builders::compiler::grammar::primitives::kw("and").void()
-            },
-        )
+        crate::runtime_backend::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            crate::runtime_backend::grammar::primitives::kw("and").void()
+        })
     {
         let left_target = parse_target_phrase(&before_and[2..]).ok();
         let (right_tokens, shared_type) = split_shared_type_clause(after_and)?;

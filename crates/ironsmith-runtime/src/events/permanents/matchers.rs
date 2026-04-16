@@ -1,10 +1,10 @@
 //! Permanent replacement effect matchers (tap, untap, destroy, sacrifice).
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::context::EventContext;
 use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
 };
+use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 
 use super::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};

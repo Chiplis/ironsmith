@@ -1,15 +1,15 @@
 //! Sacrifice effect implementation.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{
     normalize_object_selection, resolve_player_filter, resolve_single_object_for_effect,
     resolve_value,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::processing::EventOutcome;
-use crate::events::permanents::SacrificeEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::permanents::SacrificeEvent;
+use crate::events::processing::EventOutcome;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -496,77 +496,56 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 /// // Sacrifice the source permanent
 /// let effect = SacrificeTargetEffect::source();
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct SacrificeTargetEffect {
-    /// The target to sacrifice.
-    pub target: ChooseSpec,
-}
+pub type SacrificeTargetEffect = ironsmith_core::SacrificeTargetEffect;
 
-impl SacrificeTargetEffect {
-    /// Create a new sacrifice target effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+fn sacrifice_target_object(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object_id: ObjectId,
+) -> Result<(bool, Option<TriggerEvent>), ExecutionError> {
+    if !game.can_be_sacrificed(object_id) {
+        return Ok((false, None));
+    }
+    if !game.battlefield.contains(&object_id) {
+        return Ok((false, None));
     }
 
-    /// Create an effect that sacrifices the source permanent.
-    pub fn source() -> Self {
-        Self::new(ChooseSpec::Source)
-    }
+    let pre_snapshot = game
+        .object(object_id)
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+    let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
+    let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-    /// Helper to sacrifice a single object.
-    fn sacrifice_object(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        object_id: ObjectId,
-    ) -> Result<(bool, Option<TriggerEvent>), ExecutionError> {
-        // Verify the object can be sacrificed
-        if !game.can_be_sacrificed(object_id) {
-            return Ok((false, None));
+    let result = apply_zone_change_with_additional_effects(
+        game,
+        object_id,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        ctx.cause.clone(),
+        &mut *ctx.decision_maker,
+        &additional_effects,
+    );
+
+    match result {
+        EventOutcome::Prevented => Ok((false, None)),
+        EventOutcome::Proceed(result) => {
+            let _ = result;
+            let event = Some(TriggerEvent::new_with_provenance(
+                SacrificeEvent::new(object_id, Some(ctx.source))
+                    .with_snapshot(pre_snapshot, sacrificing_player),
+                ctx.provenance,
+            ));
+            Ok((true, event))
         }
-
-        // Verify it's on the battlefield
-        if !game.battlefield.contains(&object_id) {
-            return Ok((false, None));
-        }
-
-        let pre_snapshot = game
-            .object(object_id)
-            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-        let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-        // Process sacrifice through replacement effects
-        let result = apply_zone_change_with_additional_effects(
-            game,
-            object_id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            ctx.cause.clone(),
-            &mut *ctx.decision_maker,
-            &additional_effects,
-        );
-
-        match result {
-            EventOutcome::Prevented => Ok((false, None)),
-            EventOutcome::Proceed(result) => {
-                let _ = result;
-                let event = Some(TriggerEvent::new_with_provenance(
-                    SacrificeEvent::new(object_id, Some(ctx.source))
-                        .with_snapshot(pre_snapshot, sacrificing_player),
-                    ctx.provenance,
-                ));
-                Ok((true, event))
-            }
-            EventOutcome::Replaced => Ok((
-                true,
-                Some(TriggerEvent::new_with_provenance(
-                    SacrificeEvent::new(object_id, Some(ctx.source))
-                        .with_snapshot(pre_snapshot, sacrificing_player),
-                    ctx.provenance,
-                )),
+        EventOutcome::Replaced => Ok((
+            true,
+            Some(TriggerEvent::new_with_provenance(
+                SacrificeEvent::new(object_id, Some(ctx.source))
+                    .with_snapshot(pre_snapshot, sacrificing_player),
+                ctx.provenance,
             )),
-            EventOutcome::NotApplicable => Ok((false, None)),
-        }
+        )),
+        EventOutcome::NotApplicable => Ok((false, None)),
     }
 }
 
@@ -587,7 +566,7 @@ impl EffectExecutor for SacrificeTargetEffect {
             Err(err) => return Err(err),
         };
 
-        let (sacrificed, event) = Self::sacrifice_object(game, ctx, object_id)?;
+        let (sacrificed, event) = sacrifice_target_object(game, ctx, object_id)?;
         let mut outcome = EffectOutcome::count(if sacrificed { 1 } else { 0 });
         if let Some(event) = event {
             outcome = outcome.with_event(event);

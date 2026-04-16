@@ -10,9 +10,9 @@
 //!               but doesn't actually prevent anything (and doesn't exhaust shields)
 //! - Rule 615.12: "Can't be prevented" damage bypasses prevention entirely
 
-use crate::filter::ObjectFilterExt as _;
 use crate::color::Color;
 use crate::effect::{Effect, Until};
+use crate::filter::ObjectFilterExt as _;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
 use crate::types::CardType;

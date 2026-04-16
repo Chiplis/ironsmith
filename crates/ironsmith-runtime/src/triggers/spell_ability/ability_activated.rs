@@ -1,8 +1,8 @@
 //! "Whenever an ability of [filter] is activated" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::spells::AbilityActivatedEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;

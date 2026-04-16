@@ -27,7 +27,7 @@ use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_fi
 use super::conditionals::negated_action_word_index;
 
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::cards::builders::compiler::lexer::token_word_refs(tokens)
+    crate::runtime_backend::lexer::token_word_refs(tokens)
 }
 
 const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[

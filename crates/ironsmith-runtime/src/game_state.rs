@@ -249,8 +249,7 @@ struct RuntimeCacheState {
     continuous_state_active_player: Cell<PlayerId>,
     continuous_state_phase: Cell<Phase>,
     continuous_state_step: Cell<Option<Step>>,
-    calculated_characteristics_cache:
-        RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
+    calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
     calculated_characteristics_cache_revision: Cell<u64>,
 }
 
@@ -1870,7 +1869,9 @@ impl GameState {
         self.runtime_cache
             .continuous_state_active_player
             .set(self.turn.active_player);
-        self.runtime_cache.continuous_state_phase.set(self.turn.phase);
+        self.runtime_cache
+            .continuous_state_phase
+            .set(self.turn.phase);
         self.runtime_cache.continuous_state_step.set(self.turn.step);
     }
 
@@ -4009,7 +4010,12 @@ impl GameState {
         }
 
         let effects_revision = self.effect_store.continuous_effects.revision();
-        if self.runtime_cache.calculated_characteristics_cache_revision.get() != effects_revision {
+        if self
+            .runtime_cache
+            .calculated_characteristics_cache_revision
+            .get()
+            != effects_revision
+        {
             self.runtime_cache
                 .calculated_characteristics_cache
                 .borrow_mut()
@@ -4032,7 +4038,10 @@ impl GameState {
 
         let effects = self.cached_continuous_effects_snapshot();
         let calculated = self.calculated_characteristics_batch_with_effects(&missing, &effects);
-        let mut cache = self.runtime_cache.calculated_characteristics_cache.borrow_mut();
+        let mut cache = self
+            .runtime_cache
+            .calculated_characteristics_cache
+            .borrow_mut();
         for id in missing {
             cache.insert(id, calculated.get(&id).cloned());
         }
@@ -4047,7 +4056,10 @@ impl GameState {
         }
         let effects_revision = self.effect_store.continuous_effects.revision();
         if self.continuous_state_is_clean() {
-            if self.runtime_cache.calculated_characteristics_cache_revision.get()
+            if self
+                .runtime_cache
+                .calculated_characteristics_cache_revision
+                .get()
                 != effects_revision
             {
                 self.runtime_cache
@@ -6795,9 +6807,9 @@ impl GameState {
         mut event: crate::triggers::TriggerEvent,
     ) {
         use crate::events::DamageEvent;
+        use crate::events::DamageTarget;
         use crate::events::permanents::SacrificeEvent;
         use crate::events::zones::ZoneChangeEvent;
-        use crate::events::DamageTarget;
 
         if let Some(damage) = event.downcast::<DamageEvent>()
             && let DamageTarget::Object(object_id) = damage.target
@@ -6910,7 +6922,8 @@ impl GameState {
     /// Ensure a replacement-event envelope has provenance.
     pub fn ensure_event_provenance(&mut self, mut event: Event) -> Event {
         let provenance = event.provenance();
-        if provenance == ProvNodeId::default() || self.provenance_graph().node(provenance).is_none() {
+        if provenance == ProvNodeId::default() || self.provenance_graph().node(provenance).is_none()
+        {
             let provenance = self.provenance_graph_mut().alloc_root_event(event.kind());
             event.set_provenance(provenance);
         }
@@ -6923,7 +6936,8 @@ impl GameState {
         mut event: crate::triggers::TriggerEvent,
     ) -> crate::triggers::TriggerEvent {
         let provenance = event.provenance();
-        if provenance == ProvNodeId::default() || self.provenance_graph().node(provenance).is_none() {
+        if provenance == ProvNodeId::default() || self.provenance_graph().node(provenance).is_none()
+        {
             let provenance = self.provenance_graph_mut().alloc_root_event(event.kind());
             event.set_provenance(provenance);
         }

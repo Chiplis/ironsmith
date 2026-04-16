@@ -26,8 +26,8 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::AutoPassDecisionMaker;
-    use crate::events::EventKind;
     use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::events::EventKind;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

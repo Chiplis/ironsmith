@@ -1,8 +1,8 @@
 //! "Whenever [player] casts [spell]" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::spells::SpellCastEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

@@ -9,33 +9,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-
-/// Effect that adds one mana of any of the imprinted card's colors.
-///
-/// If no card is imprinted, or the imprinted card is colorless, this does nothing.
-/// If the imprinted card has multiple colors, the player chooses which color.
-///
-/// # Example
-///
-/// ```ignore
-/// // Chrome Mox's mana ability
-/// let effect = AddManaOfImprintedColorsEffect::new();
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddManaOfImprintedColorsEffect;
-
-impl AddManaOfImprintedColorsEffect {
-    /// Create a new add mana of imprinted colors effect.
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for AddManaOfImprintedColorsEffect {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub type AddManaOfImprintedColorsEffect = ironsmith_core::AddManaOfImprintedColorsEffect;
 
 impl EffectExecutor for AddManaOfImprintedColorsEffect {
     fn execute(

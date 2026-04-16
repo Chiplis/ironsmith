@@ -53,6 +53,12 @@ pub struct ReferenceImports<PlayerFilter> {
     pub last_effect_id: Option<EffectId>,
 }
 
+impl<PlayerFilter> Default for ReferenceImports<PlayerFilter> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl<PlayerFilter> ReferenceImports<PlayerFilter> {
     pub fn empty() -> Self {
         Self {

@@ -26,8 +26,8 @@ mod tests {
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
     use crate::effect::EffectOutcome;
-    use crate::events::zones::EnterBattlefieldEvent;
     use crate::effects::ExecutionContext;
+    use crate::events::zones::EnterBattlefieldEvent;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::triggers::{TriggerEvent, check_triggers};

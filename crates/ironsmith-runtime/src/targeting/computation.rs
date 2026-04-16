@@ -3,8 +3,8 @@
 //! This module provides functions for computing legal targets
 //! for spells and abilities.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::ability::extract_static_abilities;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};

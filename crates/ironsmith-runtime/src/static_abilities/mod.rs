@@ -43,6 +43,7 @@
 
 mod characteristics;
 mod combat;
+mod compiler_model;
 mod continuous;
 mod cost_modifiers;
 mod id;
@@ -58,13 +59,14 @@ pub use id::StaticAbilityId;
 // Re-export ability structs for direct construction
 pub use characteristics::*;
 pub use combat::*;
+pub use compiler_model::StaticAbilityModelConversionError;
 pub use continuous::*;
 pub use cost_modifiers::*;
+pub use ironsmith_core::ThisSpellCastTiming;
 pub use keywords::*;
 pub use misc::*;
 pub use protection::*;
 pub use restrictions::*;
-pub use ironsmith_core::ThisSpellCastTiming;
 
 pub(crate) use continuous::resolve_anthem_count_expression;
 use std::sync::Arc;
@@ -1472,6 +1474,10 @@ impl StaticAbility {
 
     pub fn skulk() -> Self {
         Self::new(Skulk)
+    }
+
+    pub fn prowess() -> Self {
+        Self::new(Prowess)
     }
 
     pub fn intimidate() -> Self {

@@ -1,10 +1,10 @@
 //! "Whenever [filter] deals combat damage to [player]" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::DamageEvent;
-use crate::events::EventKind;
-use crate::filter::PlayerFilterExt;
 use crate::events::DamageTarget;
+use crate::events::EventKind;
+use crate::filter::ObjectFilterExt as _;
+use crate::filter::PlayerFilterExt;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

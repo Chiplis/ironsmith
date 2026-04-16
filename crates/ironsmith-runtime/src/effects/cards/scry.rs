@@ -4,8 +4,8 @@ use crate::decisions::{ScrySpec, ask_choose_one, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::{FilterContext, PlayerFilterExt};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -231,28 +231,7 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
 /// // Scry 1
 /// let effect = ScryEffect::you(1);
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ScryEffect {
-    /// Number of cards to scry.
-    pub count: Value,
-    /// The player who scries.
-    pub player: PlayerFilter,
-}
-
-impl ScryEffect {
-    /// Create a new scry effect.
-    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player,
-        }
-    }
-
-    /// The controller scries N.
-    pub fn you(count: impl Into<Value>) -> Self {
-        Self::new(count, PlayerFilter::You)
-    }
-}
+pub type ScryEffect = ironsmith_core::ScryEffect;
 
 impl EffectExecutor for ScryEffect {
     fn execute(
@@ -358,20 +337,7 @@ impl EffectExecutor for FatesealEffect {
 }
 
 /// Effect that makes multiple players scry at once.
-#[derive(Debug, Clone, PartialEq)]
-pub struct EachPlayerScryEffect {
-    pub count: Value,
-    pub player_filter: PlayerFilter,
-}
-
-impl EachPlayerScryEffect {
-    pub fn new(count: impl Into<Value>, player_filter: PlayerFilter) -> Self {
-        Self {
-            count: count.into(),
-            player_filter,
-        }
-    }
-}
+pub type EachPlayerScryEffect = ironsmith_core::EachPlayerScryEffect;
 
 impl EffectExecutor for EachPlayerScryEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

@@ -1,7 +1,6 @@
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, StableId, TagKey,
-    ValueComparisonOperator, Zone,
+    ManaSymbol, ObjectFilter, PlayerFilter, StableId, TagKey, ValueComparisonOperator, Zone,
 };
 use crate::{ChooseSpec, Color};
 
@@ -170,7 +169,10 @@ impl ManaSpendPermission {
         }
     }
 
-    pub fn any_color_for_casting_stable_ids(player: PlayerFilter, stable_ids: Vec<StableId>) -> Self {
+    pub fn any_color_for_casting_stable_ids(
+        player: PlayerFilter,
+        stable_ids: Vec<StableId>,
+    ) -> Self {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
@@ -223,7 +225,10 @@ impl Restriction {
     }
 
     pub fn cast_creature_spells(filter: PlayerFilter) -> Self {
-        Self::cast_spells_matching(filter, ObjectFilter::default().with_type(crate::CardType::Creature))
+        Self::cast_spells_matching(
+            filter,
+            ObjectFilter::default().with_type(crate::CardType::Creature),
+        )
     }
 
     pub fn cast_more_than_one_spell_each_turn_matching(
@@ -376,7 +381,10 @@ pub enum Condition {
         filter: ObjectFilter,
         count: u32,
     },
-    PlayerControlsBasicLandTypesAmongLandsOrMore { player: PlayerFilter, count: u32 },
+    PlayerControlsBasicLandTypesAmongLandsOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     PlayerControlsExactly {
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -399,16 +407,36 @@ pub enum Condition {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
-    PlayerLifeAtMostHalfStartingLifeTotal { player: PlayerFilter },
-    PlayerLifeLessThanHalfStartingLifeTotal { player: PlayerFilter },
-    PlayerHasLessLifeThanYou { player: PlayerFilter },
-    PlayerHasMoreLifeThanYou { player: PlayerFilter },
-    PlayerHasNoOpponentWithMoreLifeThan { player: PlayerFilter },
-    PlayerHasMoreLifeThanEachOtherPlayer { player: PlayerFilter },
-    PlayerIsMonarch { player: PlayerFilter },
-    PlayerHasInitiative { player: PlayerFilter },
-    PlayerHasCitysBlessing { player: PlayerFilter },
-    PlayerCommittedCrimeThisTurn { player: PlayerFilter },
+    PlayerLifeAtMostHalfStartingLifeTotal {
+        player: PlayerFilter,
+    },
+    PlayerLifeLessThanHalfStartingLifeTotal {
+        player: PlayerFilter,
+    },
+    PlayerHasLessLifeThanYou {
+        player: PlayerFilter,
+    },
+    PlayerHasMoreLifeThanYou {
+        player: PlayerFilter,
+    },
+    PlayerHasNoOpponentWithMoreLifeThan {
+        player: PlayerFilter,
+    },
+    PlayerHasMoreLifeThanEachOtherPlayer {
+        player: PlayerFilter,
+    },
+    PlayerIsMonarch {
+        player: PlayerFilter,
+    },
+    PlayerHasInitiative {
+        player: PlayerFilter,
+    },
+    PlayerHasCitysBlessing {
+        player: PlayerFilter,
+    },
+    PlayerCommittedCrimeThisTurn {
+        player: PlayerFilter,
+    },
     PlayerCompletedDungeon {
         player: PlayerFilter,
         dungeon_name: Option<String>,
@@ -416,26 +444,46 @@ pub enum Condition {
     LifeTotalOrLess(i32),
     LifeTotalOrGreater(i32),
     CardsInHandOrMore(i32),
-    PlayerCardsInHandOrMore { player: PlayerFilter, count: i32 },
-    PlayerCardsInHandOrFewer { player: PlayerFilter, count: i32 },
-    PlayerHasMoreCardsInHandThanYou { player: PlayerFilter },
-    PlayerHasMoreCardsInHandThanEachOtherPlayer { player: PlayerFilter },
+    PlayerCardsInHandOrMore {
+        player: PlayerFilter,
+        count: i32,
+    },
+    PlayerCardsInHandOrFewer {
+        player: PlayerFilter,
+        count: i32,
+    },
+    PlayerHasMoreCardsInHandThanYou {
+        player: PlayerFilter,
+    },
+    PlayerHasMoreCardsInHandThanEachOtherPlayer {
+        player: PlayerFilter,
+    },
     YouHaveCardInHandMatching(ObjectFilter),
     YourTurn,
     YourFirstTurnsOfTheGameOrFewer(u32),
     CreatureDiedThisTurn,
     CreatureDiedThisTurnOrMore(u32),
     CastSpellThisTurn,
-    PlayerCastSpellsThisTurnOrMore { player: PlayerFilter, count: u32 },
+    PlayerCastSpellsThisTurnOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     AttackedThisTurn,
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
     SourceWasCast,
     ThisSpellWasCastFromZone(Zone),
-    PlayerTappedLandForManaThisTurn { player: PlayerFilter },
-    PlayerGainedLifeThisTurnOrMore { player: PlayerFilter, count: u32 },
-    PlayerHadLandEnterBattlefieldThisTurn { player: PlayerFilter },
+    PlayerTappedLandForManaThisTurn {
+        player: PlayerFilter,
+    },
+    PlayerGainedLifeThisTurnOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
+    PlayerHadLandEnterBattlefieldThisTurn {
+        player: PlayerFilter,
+    },
     ValueComparison {
         left: Value,
         operator: ValueComparisonOperator,
@@ -443,7 +491,10 @@ pub enum Condition {
     },
     NoSpellsWereCastLastTurn,
     SpellsWereCastLastTurnOrMore(u32),
-    PlayerHasCardTypesInGraveyardOrMore { player: PlayerFilter, count: u32 },
+    PlayerHasCardTypesInGraveyardOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     TargetIsTapped,
     TargetIsAttacking,
     TargetIsBlocked,
@@ -486,7 +537,10 @@ pub enum Condition {
         tag: TagKey,
         filter: ObjectFilter,
     },
-    PlayerTaggedObjectEnteredBattlefieldThisTurn { player: PlayerFilter, tag: TagKey },
+    PlayerTaggedObjectEnteredBattlefieldThisTurn {
+        player: PlayerFilter,
+        tag: TagKey,
+    },
     PlayerOwnsCardNamedInZones {
         player: PlayerFilter,
         name: String,
@@ -530,7 +584,10 @@ pub enum Condition {
     SourceIsAttacking,
     SourceIsBlocking,
     SourceIsSoulbondPaired,
-    PlayerGraveyardHasCardsAtLeast { player: crate::PlayerId, count: usize },
+    PlayerGraveyardHasCardsAtLeast {
+        player: crate::PlayerId,
+        count: usize,
+    },
     XValueAtLeast(u32),
     Custom(&'static str),
     Unmodeled(String),

@@ -3,9 +3,9 @@
 //! These are keyword abilities that don't have parameters and don't generate
 //! continuous effects. They're just flags that are checked when relevant.
 
-use crate::effect::RestrictionExt as _;
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
+use crate::effect::RestrictionExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
@@ -68,6 +68,8 @@ define_keyword!(Intimidate, Intimidate, "Intimidate",
 define_keyword!(Skulk, Skulk, "Skulk",
     grants_evasion => true
 );
+
+define_keyword!(Prowess, Prowess, "Prowess");
 
 // === Combat keywords ===
 

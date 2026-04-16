@@ -1,7 +1,7 @@
 pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("monstrosity") {
         return Ok(None);
     }
@@ -39,7 +39,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         &tokens[6..]
     };
 
-    let remainder_words = crate::cards::builders::compiler::token_word_refs(remainder);
+    let remainder_words = crate::runtime_backend::token_word_refs(remainder);
     if remainder_words.is_empty() {
         return Ok(None);
     }
@@ -88,7 +88,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -109,7 +109,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> 
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -130,7 +130,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -151,7 +151,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -181,7 +181,7 @@ fn has_end_of_combat_tail(words: &[&str], at_idx: usize) -> bool {
 pub(crate) fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(
         words.as_slice(),
         ["take", "an", "extra", "turn", "after", "this", "one"]
@@ -208,7 +208,7 @@ pub(crate) fn parse_take_extra_turn_sentence(
 pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 4 {
         return Ok(None);
     }
@@ -315,7 +315,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         clause_tokens = &clause_tokens[1..];
     }
 
-    let words_all = crate::cards::builders::compiler::token_word_refs(clause_tokens);
+    let words_all = crate::runtime_backend::token_word_refs(clause_tokens);
     if words_all.first().copied() != Some("exile")
         || !grammar::contains_word(clause_tokens, "then")
         || !grammar::contains_word(clause_tokens, "return")
@@ -403,7 +403,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
 pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() < 6 || words[0] != "exile" {
         return Ok(None);
     }
@@ -503,7 +503,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
 pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if words.as_slice()
         == [
             "look",
@@ -558,7 +558,7 @@ pub(crate) fn parse_look_at_hand_sentence(
 pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let starts_with_look_top = slice_starts_with_any(
         &clause_words,
         &[&["look", "at", "the", "top"], &["look", "at", "top"]],
@@ -606,7 +606,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     {
         tail_tokens.remove(0);
     }
-    let tail_words = crate::cards::builders::compiler::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     let looks_like_exile_one_of_looked = slice_starts_with_any(
         &tail_words,
         &[
@@ -656,7 +656,7 @@ pub(crate) fn parse_gain_life_equal_to_age_sentence(
 pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let pattern = [
         "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you", "voted",
         "for", "may", "scry",

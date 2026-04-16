@@ -71,7 +71,7 @@ fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
 }
 
 fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(tokens)
+    let words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -86,7 +86,7 @@ fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) 
 }
 
 fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     matches!(
         words.as_slice(),
         ["then", "that", "player", "shuffles"]
@@ -100,7 +100,7 @@ fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool 
     if heads.is_empty() {
         return true;
     }
-    crate::cards::builders::compiler::token_word_refs(tokens)
+    crate::runtime_backend::token_word_refs(tokens)
         .first()
         .is_some_and(|head| heads.iter().any(|candidate| head == candidate))
 }
@@ -248,7 +248,7 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
         .and_then(|idx| sentences.get(idx))
         .is_some_and(|previous_sentence| {
             let previous_words =
-                crate::cards::builders::compiler::token_word_refs(previous_sentence.lowered());
+                crate::runtime_backend::token_word_refs(previous_sentence.lowered());
             previous_words
                 .iter()
                 .any(|word| *word == "become" || *word == "becomes")
@@ -284,7 +284,7 @@ fn pre_rule_cant_be_regenerated_followup(
     }
     Err(CardTextError::ParseError(format!(
         "unsupported standalone cant-be-regenerated clause (clause: '{}')",
-        crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+        crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
     )))
 }
 
@@ -321,7 +321,7 @@ fn pre_rule_copy_and_cast_followups(
     }
 
     if let Some(reduction) =
-        crate::cards::builders::compiler::activation_and_restrictions::parse_copy_reference_cost_reduction_sentence(
+        crate::runtime_backend::activation_and_restrictions::parse_copy_reference_cost_reduction_sentence(
             sentence_tokens,
         )
     {
@@ -332,7 +332,7 @@ fn pre_rule_copy_and_cast_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone copy cost-reduction clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
         )));
     }
 
@@ -364,7 +364,7 @@ fn pre_rule_token_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone token mana reminder clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
         )));
     }
     if let Some(effect) =
@@ -393,11 +393,11 @@ fn pre_rule_token_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone token reminder clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
         )));
     }
     if is_generic_token_reminder_sentence(sentence_tokens) {
-        let reminder_words = crate::cards::builders::compiler::token_word_refs(sentence_tokens);
+        let reminder_words = crate::runtime_backend::token_word_refs(sentence_tokens);
         let delayed_pronoun_lifecycle =
             matches!(reminder_words.first().copied(), Some("exile" | "sacrifice"))
                 && (grammar::contains_word(sentence_tokens, "it")
@@ -407,7 +407,7 @@ fn pre_rule_token_followups(
         if !delayed_pronoun_lifecycle && !pronoun_followup_clause {
             return Err(CardTextError::ParseError(format!(
                 "unsupported standalone token reminder clause (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+                crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
             )));
         }
     }
@@ -493,7 +493,7 @@ fn pre_rule_exile_this_way_followup(
     else {
         return Err(CardTextError::ParseError(format!(
             "missing comma after if-card-put-into-exile-this-way clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ")
+            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
         )));
     };
 
@@ -530,8 +530,7 @@ fn post_rule_future_zone_and_self_replacement(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let sentence_text =
-        crate::cards::builders::compiler::token_word_refs(sentence_tokens).join(" ");
+    let sentence_text = crate::runtime_backend::token_word_refs(sentence_tokens).join(" ");
     maybe_rewrite_future_zone_replacement_sentence(sentence_effects, &sentence_text);
     if matches!(
         classify_instead_followup_text(&sentence_text),

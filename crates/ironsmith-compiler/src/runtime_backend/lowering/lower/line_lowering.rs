@@ -323,7 +323,7 @@ fn lower_parsed_ability_chunk(
     };
 
     let parsed_ability = super::rewrite_lower_prepared_ability(parsed_ability)?;
-    if let Some(ref effects_ast) = parsed_ability.effects_ast {
+    if let Some(effects_ast) = parsed_ability.effects_ast.as_ref().map(Vec::as_slice) {
         super::collect_tag_spans_from_effects_with_context(
             effects_ast,
             annotations,

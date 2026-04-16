@@ -6,6 +6,7 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ChooseSpec;
+pub type ConditionalEffect = ironsmith_core::ConditionalEffect<crate::effect::Effect>;
 
 /// Effect that branches based on game state conditions.
 ///
@@ -29,32 +30,6 @@ use crate::target::ChooseSpec;
 ///     vec![Effect::gain_life(2)],
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConditionalEffect {
-    /// The game state condition to check.
-    pub condition: Condition,
-    /// Effects to execute if condition is true.
-    pub if_true: Vec<Effect>,
-    /// Effects to execute if condition is false.
-    pub if_false: Vec<Effect>,
-}
-
-impl ConditionalEffect {
-    /// Create a new Conditional effect.
-    pub fn new(condition: Condition, if_true: Vec<Effect>, if_false: Vec<Effect>) -> Self {
-        Self {
-            condition,
-            if_true,
-            if_false,
-        }
-    }
-
-    /// Create a conditional with no else clause.
-    pub fn if_only(condition: Condition, if_true: Vec<Effect>) -> Self {
-        Self::new(condition, if_true, vec![])
-    }
-}
-
 impl EffectExecutor for ConditionalEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())

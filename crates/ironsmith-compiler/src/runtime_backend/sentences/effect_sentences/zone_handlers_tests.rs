@@ -1,5 +1,5 @@
 use super::*;
-use crate::cards::builders::compiler::util::tokenize_line;
+use crate::runtime_backend::util::tokenize_line;
 
 #[test]
 fn parse_graveyard_owner_prefix_handles_shared_phrases() {
@@ -74,7 +74,7 @@ fn split_exile_face_down_suffix_keeps_face_down_before_then_clauses() {
 
     assert!(face_down);
     assert_eq!(
-        crate::cards::builders::compiler::token_word_refs(prefix),
+        crate::runtime_backend::token_word_refs(prefix),
         vec!["all", "cards", "from", "your", "library"]
     );
 }

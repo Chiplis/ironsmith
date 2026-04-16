@@ -31,7 +31,7 @@ pub(super) fn try_parse(
     };
 
     let second_tokens = trim_commas(second);
-    let second_words: Vec<&str> = crate::cards::builders::compiler::token_word_refs(&second_tokens)
+    let second_words: Vec<&str> = crate::runtime_backend::token_word_refs(&second_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

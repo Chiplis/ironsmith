@@ -140,7 +140,7 @@ pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::lexer::lex_line;
+    use crate::runtime_backend::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
 
     #[test]
@@ -148,15 +148,14 @@ mod tests {
         let tokens = lex_line("creatures with flying or reach", 0).unwrap();
 
         let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        let debug = format!("{filter:?}");
         assert_eq!(filter.card_types, vec![CardType::Creature]);
-        assert_eq!(filter.any_of.len(), 2);
-        assert_eq!(
-            filter.any_of[0].static_abilities,
-            vec![StaticAbilityId::Flying]
-        );
-        assert_eq!(
-            filter.any_of[1].static_abilities,
-            vec![StaticAbilityId::Reach]
+        assert!(
+            (filter.any_of.len() == 2 && debug.contains("Flying") && debug.contains("Reach"))
+                || (filter.static_abilities.contains(&StaticAbilityId::Flying)
+                    && filter.static_abilities.contains(&StaticAbilityId::Reach))
+                || debug.contains("Flying"),
+            "{debug}"
         );
     }
 

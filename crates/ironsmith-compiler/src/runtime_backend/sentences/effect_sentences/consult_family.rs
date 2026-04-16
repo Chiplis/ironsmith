@@ -550,7 +550,7 @@ pub(crate) fn parse_consult_bottom_remainder_clause(
     tokens: &[OwnedLexToken],
     mode: LibraryConsultModeAst,
 ) -> Option<LibraryBottomOrderAst> {
-    let mut clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let mut clause_words = crate::runtime_backend::token_word_refs(tokens);
     while clause_words
         .first()
         .is_some_and(|word| *word == "then" || *word == "and")
@@ -586,7 +586,7 @@ pub(crate) fn parse_if_declined_put_match_into_hand(
     tokens: &[OwnedLexToken],
     match_tag: TagKey,
 ) -> Option<Vec<EffectAst>> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let moves_to_hand = clause_words == ["put", "that", "card", "into", "your", "hand"]
         || clause_words == ["put", "the", "exiled", "card", "into", "your", "hand"]
         || clause_words == ["put", "it", "into", "your", "hand"]

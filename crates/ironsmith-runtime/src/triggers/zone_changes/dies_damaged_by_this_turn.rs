@@ -1,8 +1,8 @@
 //! "Whenever a creature dealt damage by [this/equipped] creature this turn dies" triggers.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::zones::ZoneChangeEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;

@@ -3,7 +3,6 @@
 //! Supports text like "Change the target of target spell" and
 //! "Choose new targets for target spell or ability".
 
-use crate::filter::ObjectFilterExt as _;
 use crate::decisions::context::{
     SelectObjectsContext, SelectOptionsContext, SelectableObject, SelectableOption,
     TargetRequirementContext, TargetsContext,
@@ -13,8 +12,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_from_spec, resolve_player_filter, resolve_players_from_spec,
 };
-use crate::events::spells::BecomesTargetedEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::spells::BecomesTargetedEvent;
+use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::PlayerId;
@@ -24,61 +24,7 @@ use crate::targeting::{
 };
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NewTargetRestriction {
-    Player(PlayerFilter),
-    Object(ObjectFilter),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum RetargetMode {
-    /// Choose new targets for all targets of the spell/ability.
-    All,
-    /// Change a single target to a fixed target.
-    OneToFixed(ChooseSpec),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RetargetStackObjectEffect {
-    pub target: ChooseSpec,
-    pub mode: RetargetMode,
-    pub chooser: PlayerFilter,
-    pub require_change: bool,
-    pub new_target_restriction: Option<NewTargetRestriction>,
-}
-
-impl RetargetStackObjectEffect {
-    pub fn new(target: ChooseSpec) -> Self {
-        Self {
-            target,
-            mode: RetargetMode::All,
-            chooser: PlayerFilter::You,
-            require_change: false,
-            new_target_restriction: None,
-        }
-    }
-
-    pub fn with_mode(mut self, mode: RetargetMode) -> Self {
-        self.mode = mode;
-        self
-    }
-
-    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
-        self.chooser = chooser;
-        self
-    }
-
-    pub fn require_change(mut self) -> Self {
-        self.require_change = true;
-        self
-    }
-
-    pub fn with_restriction(mut self, restriction: NewTargetRestriction) -> Self {
-        self.new_target_restriction = Some(restriction);
-        self
-    }
-}
+pub use ironsmith_core::{NewTargetRestriction, RetargetMode, RetargetStackObjectEffect};
 
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {

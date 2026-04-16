@@ -7,8 +7,8 @@ use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
 use crate::effects::{CostExecutableEffect, CostValidationError};
-use crate::events::cause::EventCause;
 use crate::effects::{ExecutionContext, execute_effect};
+use crate::events::cause::EventCause;
 use crate::game_state::GameState;
 
 /// Convert a CostValidationError to CostPaymentError.
@@ -227,13 +227,13 @@ impl CostPayer for CostEffect {
         use crate::target::{ChooseSpec, PlayerFilter};
 
         if let Some(effect) = self.effect.downcast_ref::<TapEffect>()
-            && matches!(effect.spec, ChooseSpec::Source)
+            && matches!(effect.target, ChooseSpec::Source)
         {
             return CostProcessingMode::Immediate;
         }
 
         if let Some(effect) = self.effect.downcast_ref::<UntapEffect>()
-            && matches!(effect.spec, ChooseSpec::Source)
+            && matches!(effect.target, ChooseSpec::Source)
         {
             return CostProcessingMode::Immediate;
         }

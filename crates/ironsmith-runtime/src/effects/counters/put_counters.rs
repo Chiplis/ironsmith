@@ -3,12 +3,13 @@
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::processing::process_put_counters_with_event;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::process_put_counters_with_event;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
+pub use ironsmith_core::PutCountersEffect;
 use std::collections::HashMap;
 
 /// Effect that puts counters on a target permanent.
@@ -33,60 +34,6 @@ use std::collections::HashMap;
 ///     ChooseSpec::creature(),
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct PutCountersEffect {
-    /// The type of counter to put.
-    pub counter_type: CounterType,
-    /// How many counters to put.
-    pub count: Value,
-    /// Which permanent to target.
-    pub target: ChooseSpec,
-    /// How many targets. None defaults to exactly 1.
-    pub target_count: Option<ChoiceCount>,
-    /// Whether to distribute the total counter amount among chosen targets.
-    pub distributed: bool,
-}
-
-impl PutCountersEffect {
-    /// Create a new put counters effect.
-    pub fn new(counter_type: CounterType, count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self {
-            counter_type,
-            count: count.into(),
-            target,
-            target_count: None,
-            distributed: false,
-        }
-    }
-
-    /// Create a put counters effect with target count specification.
-    pub fn with_target_count(mut self, target_count: ChoiceCount) -> Self {
-        self.target_count = Some(target_count);
-        self
-    }
-
-    /// Mark this as a distributed-counters effect.
-    pub fn with_distributed(mut self, distributed: bool) -> Self {
-        self.distributed = distributed;
-        self
-    }
-
-    /// Create an effect that puts +1/+1 counters on target creature.
-    pub fn plus_one_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self::new(CounterType::PlusOnePlusOne, count, target)
-    }
-
-    /// Create an effect that puts -1/-1 counters on target creature.
-    pub fn minus_one_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
-        Self::new(CounterType::MinusOneMinusOne, count, target)
-    }
-
-    /// Create an effect that puts counters on the source.
-    pub fn on_source(counter_type: CounterType, count: impl Into<Value>) -> Self {
-        Self::new(counter_type, count, ChooseSpec::Source)
-    }
-}
-
 impl EffectExecutor for PutCountersEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -109,7 +56,7 @@ impl EffectExecutor for PutCountersEffect {
             },
         };
 
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+        let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         if count == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -188,7 +135,7 @@ impl EffectExecutor for PutCountersEffect {
 
     fn cost_description(&self) -> Option<String> {
         if matches!(self.target, ChooseSpec::Source)
-            && let Value::Fixed(count) = self.count
+            && let Value::Fixed(count) = self.amount
         {
             return Some(if count == 1 {
                 format!("Put a {} counter on ~", self.counter_type.description())

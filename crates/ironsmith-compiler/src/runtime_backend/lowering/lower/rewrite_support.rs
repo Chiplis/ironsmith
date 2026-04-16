@@ -211,10 +211,17 @@ pub(super) fn rewrite_normalize_spell_delayed_trigger_effects(
             return true;
         }
 
+        let Some(trigger) = delayed_trigger_spec_from_label(
+            triggered.trigger.display().as_str(),
+            Some(ability_text.as_str()),
+        ) else {
+            return true;
+        };
+
         delayed.push(crate::effect::Effect::new(
             crate::effects::ScheduleDelayedTriggerEffect::new(
-                triggered.trigger.clone(),
-                triggered.effects.clone(),
+                trigger,
+                triggered.effects.clone().to_vec(),
                 false,
                 Vec::new(),
                 PlayerFilter::You,
@@ -233,6 +240,42 @@ pub(super) fn rewrite_normalize_spell_delayed_trigger_effects(
         .get_or_insert_with(crate::resolution::ResolutionProgram::default)
         .extend(crate::resolution::ResolutionProgram::from_effects(delayed));
     builder
+}
+
+fn delayed_trigger_spec_from_label(
+    trigger_label: &str,
+    ability_text: Option<&str>,
+) -> Option<ironsmith_core::DelayedTriggerSpec> {
+    let label = trigger_label.to_ascii_lowercase();
+    let text = ability_text.unwrap_or_default().to_ascii_lowercase();
+    match label.as_str() {
+        "beginning_of_upkeep" => {
+            let player = if text.contains("your next upkeep") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(
+                player,
+            ))
+        }
+        "beginning_of_draw_step" => {
+            let player = if text.contains("your next draw step") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(ironsmith_core::DelayedTriggerSpec::BeginningOfDrawStep(
+                player,
+            ))
+        }
+        "beginning_of_end_step" => Some(ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(
+            PlayerFilter::Any,
+        )),
+        "end_of_combat" => Some(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
+        "this_dies" => Some(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        _ => None,
+    }
 }
 
 pub(super) fn rewrite_normalize_take_to_the_streets_spell_effect(

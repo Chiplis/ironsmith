@@ -1,128 +1,49 @@
 //! Return to hand effect implementation.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
     resolve_tagged_object_id,
 };
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::processing::EventOutcome;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::EventOutcome;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
 use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change};
+pub type ReturnToHandEffect = ironsmith_core::ReturnToHandEffect;
 
-/// Effect that returns permanents to their owners' hands.
-///
-/// This is commonly called "bouncing" in MTG terminology.
-///
-/// Supports both targeted and non-targeted (all) selection modes.
-///
-/// # Examples
-///
-/// ```ignore
-/// // Return target creature to its owner's hand (targeted - can fizzle)
-/// let effect = ReturnToHandEffect::target(ChooseSpec::creature());
-///
-/// // Return all creatures to their owners' hands (non-targeted - cannot fizzle)
-/// let effect = ReturnToHandEffect::all(ObjectFilter::creature());
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReturnToHandEffect {
-    /// What to return - can be targeted, all matching, source, etc.
-    pub spec: ChooseSpec,
-}
+fn return_object_to_hand(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object_id: crate::ids::ObjectId,
+) -> Result<Option<OutcomeStatus>, ExecutionError> {
+    if let Some(obj) = game.object(object_id) {
+        let from_zone = obj.zone;
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-impl ReturnToHandEffect {
-    /// Create a return to hand effect with a custom spec.
-    pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
+        let result = apply_zone_change_with_additional_effects(
+            game,
+            object_id,
+            from_zone,
+            Zone::Hand,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+            &additional_effects,
+        );
+
+        return match result {
+            EventOutcome::Prevented => Ok(Some(crate::effect::OutcomeStatus::Prevented)),
+            EventOutcome::Proceed(_) => Ok(None),
+            EventOutcome::Replaced => Ok(Some(crate::effect::OutcomeStatus::Replaced)),
+            EventOutcome::NotApplicable => Ok(Some(crate::effect::OutcomeStatus::TargetInvalid)),
+        };
     }
 
-    /// Create a targeted return to hand effect (single target).
-    pub fn target(spec: ChooseSpec) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec),
-        }
-    }
-
-    /// Create a targeted return to hand effect with a specific target count.
-    pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec).with_count(count),
-        }
-    }
-
-    /// Create a non-targeted return to hand effect for all matching permanents.
-    pub fn all(filter: ObjectFilter) -> Self {
-        Self {
-            spec: ChooseSpec::all(filter),
-        }
-    }
-
-    /// Create a return to hand effect targeting any creature.
-    pub fn creature() -> Self {
-        Self::target(ChooseSpec::creature())
-    }
-
-    /// Create a return to hand effect targeting any permanent.
-    pub fn permanent() -> Self {
-        Self::target(ChooseSpec::permanent())
-    }
-
-    /// Create an effect that returns all creatures.
-    pub fn creatures() -> Self {
-        Self::all(ObjectFilter::creature())
-    }
-
-    /// Create an effect that returns all nonland permanents.
-    pub fn nonland_permanents() -> Self {
-        Self::all(ObjectFilter::nonland_permanent())
-    }
-
-    /// Helper to return a single object to hand (shared logic).
-    fn return_object(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        object_id: crate::ids::ObjectId,
-    ) -> Result<Option<OutcomeStatus>, ExecutionError> {
-        if let Some(obj) = game.object(object_id) {
-            let from_zone = obj.zone;
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-            // Process through replacement effects with decision maker.
-            let result = apply_zone_change_with_additional_effects(
-                game,
-                object_id,
-                from_zone,
-                Zone::Hand,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                &additional_effects,
-            );
-
-            match result {
-                EventOutcome::Prevented => {
-                    return Ok(Some(crate::effect::OutcomeStatus::Prevented));
-                }
-                EventOutcome::Proceed(_) => {
-                    return Ok(None); // Successfully returned
-                }
-                EventOutcome::Replaced => {
-                    // Replacement effects already executed
-                    return Ok(Some(crate::effect::OutcomeStatus::Replaced));
-                }
-                EventOutcome::NotApplicable => {
-                    return Ok(Some(crate::effect::OutcomeStatus::TargetInvalid));
-                }
-            }
-        }
-        // Object doesn't exist - target is invalid
-        Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
-    }
+    Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
 }
 
 impl EffectExecutor for ReturnToHandEffect {
@@ -163,7 +84,7 @@ impl EffectExecutor for ReturnToHandEffect {
                     .next()
                     .ok_or(ExecutionError::InvalidTarget)?;
                 let stable_id = game.object(target_id).map(|obj| obj.stable_id);
-                let status = Self::return_object(game, ctx, target_id)?;
+                let status = return_object_to_hand(game, ctx, target_id)?;
                 let affected_ids = take_recorded_zone_change(game, target_id)
                     .map(|result| result.new_object_ids)
                     .or_else(|| match status {
@@ -187,7 +108,7 @@ impl EffectExecutor for ReturnToHandEffect {
                 game,
                 ctx,
                 &self.spec,
-                |game, ctx, object_id| Self::return_object(game, ctx, object_id),
+                |game, ctx, object_id| return_object_to_hand(game, ctx, object_id),
             );
         }
 
@@ -364,8 +285,8 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
     use crate::effect::Effect;
-    use crate::events::zones::matchers::WouldGoToHandMatcher;
     use crate::effects::ExecutionContext;
+    use crate::events::zones::matchers::WouldGoToHandMatcher;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::replacement::{ReplacementAction, ReplacementEffect};

@@ -793,7 +793,7 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::compiler::util::tokenize_line;
+    use crate::runtime_backend::util::tokenize_line;
 
     #[test]
     fn strip_not_on_battlefield_phrase_strips_contractions_without_word_view() {
@@ -801,7 +801,7 @@ mod tests {
 
         assert!(strip_not_on_battlefield_phrase(&mut tokens));
         assert_eq!(
-            crate::cards::builders::compiler::token_word_refs(&tokens),
+            crate::runtime_backend::token_word_refs(&tokens),
             vec!["creatures"]
         );
     }
@@ -813,7 +813,7 @@ mod tests {
 
         assert!(vote_winners_only);
         assert_eq!(
-            crate::cards::builders::compiler::token_word_refs(&trimmed),
+            crate::runtime_backend::token_word_refs(&trimmed),
             vec!["creature"]
         );
     }

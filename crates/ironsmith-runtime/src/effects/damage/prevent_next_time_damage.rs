@@ -6,10 +6,10 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
-use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::ObjectFilter;
@@ -126,9 +126,9 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
 mod tests {
     use super::*;
     use crate::decision::SelectFirstDecisionMaker;
+    use crate::events::DamageTarget;
     use crate::events::processing::process_damage_with_event;
     use crate::events::traits::ReplacementMatcher;
-    use crate::events::DamageTarget;
     use crate::ids::{ObjectId, PlayerId};
 
     #[test]

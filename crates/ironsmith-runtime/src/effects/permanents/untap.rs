@@ -3,11 +3,12 @@
 use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::events::PermanentUntappedEvent;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::PermanentUntappedEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::UntapEffect;
 
 /// Effect that untaps permanents.
 ///
@@ -22,46 +23,6 @@ use crate::triggers::TriggerEvent;
 /// // Untap all creatures you control (non-targeted - cannot fizzle)
 /// let effect = UntapEffect::all(ObjectFilter::creature().you_control());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct UntapEffect {
-    /// What to untap - can be targeted, all matching, source, etc.
-    pub spec: ChooseSpec,
-}
-
-impl UntapEffect {
-    /// Create an untap effect with a custom spec.
-    pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
-    }
-
-    /// Create a targeted untap effect (single target).
-    ///
-    /// This is the most common case: "Untap target creature."
-    pub fn target(spec: ChooseSpec) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec),
-        }
-    }
-
-    /// Create a targeted untap effect with a specific target count.
-    ///
-    /// Example: "Untap up to two target creatures."
-    pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
-        Self {
-            spec: ChooseSpec::target(spec).with_count(count),
-        }
-    }
-
-    /// Create a non-targeted untap effect for all matching permanents.
-    ///
-    /// Example: "Untap all creatures you control."
-    pub fn all(filter: ObjectFilter) -> Self {
-        Self {
-            spec: ChooseSpec::all(filter),
-        }
-    }
-}
-
 impl EffectExecutor for UntapEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -73,7 +34,7 @@ impl EffectExecutor for UntapEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut events = Vec::new();
-        let result_policy = if self.spec.is_target() && self.spec.is_single() {
+        let result_policy = if self.target.is_target() && self.target.is_single() {
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
         } else {
             ObjectApplyResultPolicy::CountApplied
@@ -83,7 +44,7 @@ impl EffectExecutor for UntapEffect {
         let apply_result = apply_to_selected_objects(
             game,
             ctx,
-            &self.spec,
+            &self.target,
             result_policy,
             |game, _ctx, object_id| {
                 if game.object(object_id).is_some() && game.is_tapped(object_id) {
@@ -103,16 +64,16 @@ impl EffectExecutor for UntapEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        if self.spec.is_target() {
-            Some(&self.spec)
+        if self.target.is_target() {
+            Some(&self.target)
         } else {
             None
         }
     }
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        if self.spec.is_target() {
-            Some(self.spec.count())
+        if self.target.is_target() {
+            Some(self.target.count())
         } else {
             None
         }
@@ -123,11 +84,11 @@ impl EffectExecutor for UntapEffect {
     }
 
     fn is_untap_source_cost(&self) -> bool {
-        matches!(self.spec, ChooseSpec::Source)
+        matches!(self.target, ChooseSpec::Source)
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.spec, ChooseSpec::Source) {
+        if matches!(self.target, ChooseSpec::Source) {
             Some("{Q}".to_string())
         } else {
             None
@@ -142,7 +103,7 @@ impl CostExecutableEffect for UntapEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if matches!(self.spec, ChooseSpec::Source) {
+        if matches!(self.target, ChooseSpec::Source) {
             if !game.is_tapped(source) {
                 return Err(crate::effects::CostValidationError::AlreadyUntapped);
             }

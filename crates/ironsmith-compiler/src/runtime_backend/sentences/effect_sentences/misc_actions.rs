@@ -7,11 +7,11 @@ pub(crate) fn parse_become(
     let Some(SubjectAst::Player(player)) = subject else {
         return Err(CardTextError::ParseError(format!(
             "unsupported become clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() == ["the", "monarch"] || clause_words.as_slice() == ["monarch"] {
         return Ok(EffectAst::BecomeMonarch { player });
     }
@@ -31,7 +31,7 @@ pub(crate) fn parse_become(
 pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     use crate::effect::Until;
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
     // Split off trailing duration, if present.
     let (duration, remainder) =
@@ -50,7 +50,7 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     // Target phrase is everything up to "power".
     let target_tokens = &remainder[..power_idx];
-    let target_words = crate::cards::builders::compiler::token_word_refs(target_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(target_tokens);
     let target = if target_words.is_empty()
         || matches!(
             target_words.as_slice(),
@@ -86,7 +86,7 @@ pub(crate) fn parse_skip(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let (player, words) = match subject {
         Some(SubjectAst::Player(player)) => (player, clause_words),
         _ => {
@@ -163,7 +163,7 @@ pub(crate) fn parse_flip(
         });
     }
 
-    let target_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let target_words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(target_words.as_slice(), ["a", "coin"] | ["coin"]) {
         return Ok(EffectAst::FlipCoin { player });
     }
@@ -208,14 +208,14 @@ pub(crate) fn parse_roll(
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
     Ok(EffectAst::RollDie { player, sides })
 }
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         if tokens.len() < 2 {
             return Err(CardTextError::ParseError(
@@ -233,7 +233,7 @@ pub(crate) fn parse_mill(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let starts_with_card_keyword = tokens
         .first()
         .and_then(OwnedLexToken::as_word)
@@ -340,7 +340,7 @@ pub(crate) fn parse_get(
         }))
     }
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::contains_word(tokens, "poison")
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
     {
@@ -515,7 +515,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             "untap clause missing target".to_string(),
         ));
     }
-    let words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter = parse_object_filter(&tokens[1..], false)?;
         return Ok(EffectAst::UntapAll { filter });
@@ -539,7 +539,7 @@ pub(crate) fn parse_scry(
     let (count, _) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing scry count (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -555,7 +555,7 @@ pub(crate) fn parse_surveil(
     let (count, _) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing surveil count (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
 
@@ -582,7 +582,7 @@ pub(crate) fn parse_pay(
         })
         .count();
 
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
@@ -645,7 +645,7 @@ pub(crate) fn parse_pay(
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported pay clause token '{word}' (clause: '{}')",
-                crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
         if energy_count > 0 {
@@ -664,7 +664,7 @@ pub(crate) fn parse_pay(
             .map_err(|_| {
                 CardTextError::ParseError(format!(
                     "missing payment cost (clause: '{}')",
-                    crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?
     };

@@ -7,33 +7,7 @@ use crate::effects::helpers::resolve_players_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-
-/// Effect that lets a player look at another player's hand.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LookAtHandEffect {
-    /// Which player(s) to look at.
-    pub target: ChooseSpec,
-    /// Whether this is a public reveal instead of a private look.
-    pub reveal: bool,
-}
-
-impl LookAtHandEffect {
-    /// Create a new look-at-hand effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self {
-            target,
-            reveal: false,
-        }
-    }
-
-    /// Create a reveal-hand effect (all players see the hand).
-    pub fn reveal(target: ChooseSpec) -> Self {
-        Self {
-            target,
-            reveal: true,
-        }
-    }
-}
+pub type LookAtHandEffect = ironsmith_core::LookAtHandEffect;
 
 impl EffectExecutor for LookAtHandEffect {
     fn execute(

@@ -1,8 +1,8 @@
 //! "Whenever [player] [keyword action]" trigger.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::events::EventKind;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
+use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;

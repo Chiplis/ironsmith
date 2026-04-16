@@ -108,7 +108,7 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed end-step effect clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -161,7 +161,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if trigger_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before comma (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -178,10 +178,10 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if trigger_core_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before 'this turn' (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let trigger_core_words = crate::cards::builders::compiler::token_word_refs(&trigger_core_tokens);
+    let trigger_core_words = crate::runtime_backend::token_word_refs(&trigger_core_tokens);
     let trigger = if matches!(
         trigger_core_words.as_slice(),
         ["that", "creature", "is", "dealt", "damage"]
@@ -201,7 +201,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -209,7 +209,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::cards::builders::compiler::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -222,7 +222,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 6 {
         return Ok(None);
     }
@@ -339,7 +339,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
 pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let all_words = crate::cards::builders::compiler::token_word_refs(tokens);
+    let all_words = crate::runtime_backend::token_word_refs(tokens);
     if all_words.len() < 6 {
         return Ok(None);
     }
@@ -363,7 +363,7 @@ pub(crate) fn parse_each_player_choose_and_sacrifice_rest(
         return Ok(None);
     };
     let then_idx = before_then.len();
-    let after_words = crate::cards::builders::compiler::token_word_refs(after_then);
+    let after_words = crate::runtime_backend::token_word_refs(after_then);
     if !slice_starts_with_any(
         &after_words,
         &[
