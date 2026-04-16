@@ -5,7 +5,6 @@ use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_li
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::target::{ObjectFilter, PlayerFilter};
 pub type ChooseSpellCastHistoryEffect = ironsmith_core::ChooseSpellCastHistoryEffect;
 
 impl EffectExecutor for ChooseSpellCastHistoryEffect {

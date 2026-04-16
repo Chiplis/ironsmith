@@ -4,13 +4,13 @@
 //! by re-targeting stack objects produced by a prior effect.
 
 use crate::decisions::context::{BooleanContext, TargetRequirementContext, TargetsContext};
-use crate::effect::{ChoiceCount, EffectId, EffectOutcome};
+use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::spells::BecomesTargetedEvent;
 use crate::game_state::{GameState, StackEntry, Target};
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::targeting::{compute_legal_targets, normalize_targets_for_requirements};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;

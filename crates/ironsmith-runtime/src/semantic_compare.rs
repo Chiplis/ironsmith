@@ -2223,14 +2223,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "Sacrifice three creatures you control",
             "Sacrifice three creatures",
         )
-        .replace(
-            "Tag the object attached to this Aura as 'enchanted'. ",
-            "",
-        )
-        .replace(
-            "tag the object attached to this Aura as 'enchanted'. ",
-            "",
-        )
+        .replace("Tag the object attached to this Aura as 'enchanted'. ", "")
+        .replace("tag the object attached to this Aura as 'enchanted'. ", "")
         .replace(
             "Tag the object attached to this permanent as 'enchanted'. ",
             "",
@@ -2799,7 +2793,10 @@ fn normalize_damage_source_for_clause_surface(line: &str) -> String {
         if let Some((left, right)) = normalized.split_once(separator) {
             let right = right.trim_start();
             if starts_with_damage_subject(right) {
-                return format!("{left}{separator}{}", normalize_damage_self_reference(right));
+                return format!(
+                    "{left}{separator}{}",
+                    normalize_damage_self_reference(right)
+                );
             }
         }
     }

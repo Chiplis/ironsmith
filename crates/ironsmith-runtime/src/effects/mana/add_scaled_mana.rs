@@ -4,13 +4,12 @@
 //! Example: "Add {B} for each creature card in your graveyard."
 
 use super::choice_helpers::credit_mana_symbols_from_context;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::PlayerFilter;
 pub type AddScaledManaEffect = ironsmith_core::AddScaledManaEffect;
 
 impl EffectExecutor for AddScaledManaEffect {
@@ -49,6 +48,7 @@ mod tests {
     use crate::ids::PlayerId;
     use crate::object::Object;
     use crate::target::ObjectFilter;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

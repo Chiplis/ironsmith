@@ -1152,8 +1152,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_turn_runner_pauses_for_exert_attack_choice_before_applying_attackers() {
         let mut game = setup_game();
@@ -1243,8 +1241,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_turn_runner_pauses_for_optional_reveal_first_draw_and_queues_trigger() {
         let mut game = setup_game();

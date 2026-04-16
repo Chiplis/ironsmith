@@ -3,7 +3,7 @@
 //! This module implements the `DealDamage` effect, which deals damage to a target
 //! creature, planeswalker, or player.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};

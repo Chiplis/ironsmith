@@ -1,12 +1,15 @@
 //! Unified filter-based grant effect implementation.
 
+use crate::continuous::{EffectSourceType, EffectTarget, Modification};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::grant::{GrantDuration, GrantSpec};
+use crate::grant::{GrantDuration, GrantSpec, Grantable};
 use crate::grant_registry::GrantSource;
+use crate::zone::Zone;
 pub type GrantBySpecEffect = ironsmith_core::GrantBySpecEffect<GrantSpec, GrantDuration>;
 
 /// Effect that grants a [`GrantSpec`] to cards matching its filter for a duration.
@@ -17,6 +20,35 @@ impl EffectExecutor for GrantBySpecEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        if self.spec.zone == Zone::Battlefield
+            && let Grantable::Ability(ability) = &self.spec.grantable
+        {
+            let filter_ctx = game.filter_context_for(player_id, Some(ctx.source));
+            let locked_targets: Vec<_> = game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| self.spec.filter.matches(obj, &filter_ctx, game))
+                .map(|obj| obj.id)
+                .collect();
+            let duration = match self.duration {
+                GrantDuration::UntilEndOfTurn => crate::effect::Until::EndOfTurn,
+                GrantDuration::Forever => crate::effect::Until::Forever,
+                GrantDuration::UntilYourNextTurnEnd => {
+                    return Err(ExecutionError::Impossible(
+                        "grant duration until your next turn is not implemented".to_string(),
+                    ));
+                }
+            };
+            let effect = crate::effects::ApplyContinuousEffect::new(
+                EffectTarget::Filter(self.spec.filter.clone()),
+                Modification::AddAbility(ability.clone()),
+                duration,
+            )
+            .with_source_type(EffectSourceType::Resolution { locked_targets });
+            return effect.execute(game, ctx);
+        }
+
         let grant_source = match self.duration {
             GrantDuration::UntilEndOfTurn => {
                 GrantSource::until_end_of_turn(ctx.source, game.turn.turn_number)

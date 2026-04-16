@@ -29,11 +29,15 @@ js-sys = { version = "0.3", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+[dev-dependencies]
+ironsmith-compiler = { path = "../ironsmith-compiler" }
+
 [features]
-default = ["serialization", "engine-integration-tests"]
+default = ["serialization", "engine-integration-tests", "runtime-parser-tests"]
 serialization = ["dep:serde", "dep:serde_json"]
 generated-registry = []
 engine-integration-tests = []
+runtime-parser-tests = []
 handwritten-parse-support = []
 wasm = [
     "serialization",

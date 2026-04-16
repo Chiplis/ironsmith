@@ -1880,8 +1880,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn became_monstrous_trigger_uses_event_n_as_x_value() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();

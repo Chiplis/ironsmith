@@ -7,7 +7,7 @@
 
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
-use crate::effect::{Effect, EffectOutcome, OutcomeValue, Value};
+use crate::effect::{Effect, EffectOutcome, OutcomeValue};
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
     LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,

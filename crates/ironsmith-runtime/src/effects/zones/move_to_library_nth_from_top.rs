@@ -1,6 +1,6 @@
 //! Move an object to the Nth position from the top of its owner's library.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};

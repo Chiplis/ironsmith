@@ -1,6 +1,6 @@
 //! ChooseMode effect implementation.
 
-use crate::effect::{EffectMode, EffectOutcome, Value};
+use crate::effect::{EffectOutcome, Value};
 use crate::effects::executor_trait::ModalSpec;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};

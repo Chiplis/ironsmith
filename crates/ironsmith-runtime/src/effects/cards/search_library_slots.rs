@@ -16,8 +16,6 @@ use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
-use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
@@ -178,6 +176,7 @@ mod tests {
     use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::ManaCost;
+    use crate::test_prelude::*;
     use crate::types::{CardType, Subtype, Supertype};
 
     fn setup_game() -> GameState {

@@ -440,6 +440,13 @@ impl StaticAbilityModelInterpreter {
     }
 
     fn leaf_static_ability(&self) -> Option<StaticAbility> {
+        if matches!(self.payload(), ironsmith_core::StaticAbilityPayload::None)
+            && let Ok(ability) =
+                StaticAbility::from_compiler_model_parts(self.model.id, self.model.label.clone())
+        {
+            return Some(ability);
+        }
+
         Some(match self.payload() {
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
@@ -716,6 +723,30 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         if let Some(ability) = self.leaf_static_ability() {
             return ability.display();
         }
+        if let Some(reduction) = &self.this_spell_cost_reduction {
+            return reduction.display();
+        }
+        if let Some(reduction) = &self.this_spell_cost_reduction_mana_cost {
+            return reduction.display();
+        }
+        if let Some(reduction) = &self.cost_reduction {
+            return reduction.display();
+        }
+        if let Some(reduction) = &self.cost_reduction_mana_cost {
+            return reduction.display();
+        }
+        if let Some(increase) = &self.cost_increase {
+            return increase.display();
+        }
+        if let Some(increase) = &self.cost_increase_mana_cost {
+            return increase.display();
+        }
+        if let Some(reduction) = &self.activated_ability_cost_reduction {
+            return reduction.display();
+        }
+        if let Some(increase) = &self.activated_ability_cost_increase {
+            return increase.display();
+        }
         self.model.label.clone()
     }
 
@@ -827,6 +858,41 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.id() == StaticAbilityId::Flash
     }
 
+    fn forbids_paying_life_for_cast_or_activate(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.forbids_paying_life_for_cast_or_activate())
+    }
+
+    fn forbids_sacrificing_nonland_for_cast_or_activate(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.forbids_sacrificing_nonland_for_cast_or_activate())
+    }
+
+    fn optional_attack_cost_prompt(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<crate::decisions::context::BooleanContext> {
+        self.leaf_static_ability()?
+            .optional_attack_cost_prompt(game, source, controller)
+    }
+
+    fn pay_optional_attack_cost(
+        &self,
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        trigger_queue: &mut crate::triggers::TriggerQueue,
+    ) -> Option<Result<(), String>> {
+        self.leaf_static_ability()?.pay_optional_attack_cost(
+            game,
+            source,
+            controller,
+            trigger_queue,
+        )
+    }
+
     fn has_reach(&self) -> bool {
         self.id() == StaticAbilityId::Reach
     }
@@ -845,6 +911,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_shroud(&self) -> bool {
         self.id() == StaticAbilityId::Shroud
+    }
+
+    fn is_changeling(&self) -> bool {
+        self.id() == StaticAbilityId::Changeling
     }
 
     fn has_menace(&self) -> bool {

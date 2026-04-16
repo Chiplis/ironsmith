@@ -1,6 +1,6 @@
 //! Return to hand effect implementation.
 
-use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
+use crate::effect::{EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
     resolve_tagged_object_id,
@@ -10,7 +10,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
 use super::{apply_zone_change_with_additional_effects, take_recorded_zone_change};
@@ -292,6 +292,7 @@ mod tests {
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
+    use crate::test_prelude::*;
     use crate::types::CardType;
 
     struct SelectIdsDecisionMaker {

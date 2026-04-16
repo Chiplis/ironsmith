@@ -174,7 +174,6 @@ const INFERNO_CARDS: &[&str] = &[
 ];
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
 #[test]
 fn scryfall_inferno_cards_parse_without_unsupported_markers() {
     let infos = inferno_card_info_by_name();

@@ -8,7 +8,6 @@ use crate::effects::helpers::resolve_player_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::mana::ManaCost;
 use crate::special_actions::{SpecialAction, can_perform, perform};
 use crate::target::ChooseSpec;
 
@@ -252,6 +251,7 @@ mod tests {
     use crate::mana::ManaSymbol;
     use crate::static_abilities::StaticAbility;
     use crate::target::PlayerFilter;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

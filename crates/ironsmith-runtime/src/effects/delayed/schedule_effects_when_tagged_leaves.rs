@@ -5,8 +5,6 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::tag::TagKey;
-use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
 
 use super::trigger_queue::{

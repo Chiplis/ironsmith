@@ -1,7 +1,7 @@
 //! Exile effect implementation.
 
 use crate::color::{Color, ColorSet};
-use crate::effect::{ChoiceCount, EffectOutcome, OutcomeStatus};
+use crate::effect::{EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };

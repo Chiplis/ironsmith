@@ -8,7 +8,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
-use crate::target::{ObjectFilter, TaggedOpbjectRelation};
+use crate::target::TaggedOpbjectRelation;
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 impl EffectExecutor for ForEachObject {
@@ -104,6 +104,7 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
     use crate::target::{ChooseSpec, TaggedObjectConstraint};
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

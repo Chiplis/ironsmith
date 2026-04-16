@@ -2,10 +2,9 @@
 
 use crate::ability::Ability;
 use crate::card::PtValue;
-use crate::color::ColorSet;
 use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -13,8 +12,8 @@ use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::object::Object;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, PlayerFilter};
-use crate::types::{CardType, Subtype, Supertype};
+use crate::target::ChooseSpec;
+use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::lifecycle::{
@@ -323,6 +322,7 @@ mod tests {
     use crate::object::ObjectKind;
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::target::ObjectFilter;
+    use crate::test_prelude::*;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {

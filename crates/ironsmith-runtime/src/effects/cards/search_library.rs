@@ -13,7 +13,6 @@ use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 

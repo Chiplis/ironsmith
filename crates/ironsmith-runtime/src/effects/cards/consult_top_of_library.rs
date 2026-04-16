@@ -1,11 +1,9 @@
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{EffectExecutor, consult_helpers::*};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::tag::TagKey;
-use crate::target::{ObjectFilter, PlayerFilter};
 pub use ironsmith_core::{ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule};
 
 impl EffectExecutor for ConsultTopOfLibraryEffect {

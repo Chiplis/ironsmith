@@ -6,7 +6,6 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
 use crate::types::CardType;
 pub use ironsmith_core::ChooseCardTypeEffect;
 
@@ -64,6 +63,7 @@ mod tests {
     use super::*;
     use crate::decision::DecisionMaker;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::test_prelude::*;
 
     struct ChooseLandDm;
     impl DecisionMaker for ChooseLandDm {

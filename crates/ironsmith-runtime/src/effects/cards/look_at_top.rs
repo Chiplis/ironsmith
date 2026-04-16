@@ -1,11 +1,10 @@
 //! Look at top cards effect implementation.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 pub use ironsmith_core::LookAtTopCardsEffect;
@@ -64,6 +63,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::ids::{CardId, PlayerId};
     use crate::tag::TagKey;
+    use crate::test_prelude::*;
     use crate::zone::Zone;
 
     #[derive(Debug)]

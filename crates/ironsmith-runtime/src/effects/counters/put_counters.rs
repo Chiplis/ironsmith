@@ -7,7 +7,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::process_put_counters_with_event;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::object::CounterType;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::PutCountersEffect;
 use std::collections::HashMap;
@@ -159,6 +158,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

@@ -5,7 +5,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 pub use ironsmith_core::RevealTopEffect;
@@ -76,6 +75,7 @@ mod tests {
     use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
     use crate::tag::TagKey;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -127,8 +127,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn reveal_top_emits_card_revealed_event_that_triggers_reveal_abilities() {
         let mut game = setup_game();

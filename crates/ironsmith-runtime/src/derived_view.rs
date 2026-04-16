@@ -492,16 +492,17 @@ impl<'a> DerivedGameView<'a> {
         if !self.requires_battlefield_characteristic_calculation(object_id) {
             return object.abilities.iter().any(|ability| {
                 matches!(&ability.kind, AbilityKind::Static(static_ability)
-                    if ability.functions_in(&object.zone) && static_ability.id() == ability_id)
+                    if ability.functions_in(&object.zone)
+                        && static_ability.id() == ability_id
+                        && static_ability.is_active(self.game, object_id))
             });
         }
 
         self.calculated_characteristics(object_id)
             .is_some_and(|chars| {
-                chars
-                    .static_abilities
-                    .iter()
-                    .any(|ability| ability.id() == ability_id)
+                chars.static_abilities.iter().any(|ability| {
+                    ability.id() == ability_id && ability.is_active(self.game, object_id)
+                })
             })
     }
 

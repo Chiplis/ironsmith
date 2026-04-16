@@ -948,8 +948,17 @@ pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>);
 
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
-        // Compare by ID and display (for abilities with parameters)
-        self.0.id() == other.0.id() && self.0.display() == other.0.display()
+        if self.0.id() != other.0.id() {
+            return false;
+        }
+
+        match self.0.id() {
+            StaticAbilityId::Protection => self.0.protection_from() == other.0.protection_from(),
+            StaticAbilityId::Ward => self.0.ward_cost() == other.0.ward_cost(),
+            StaticAbilityId::Landwalk => self.0.landwalk_kind() == other.0.landwalk_kind(),
+            _ if self.0.is_keyword() && other.0.is_keyword() => true,
+            _ => self.0.display() == other.0.display(),
+        }
     }
 }
 

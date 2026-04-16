@@ -1,6 +1,6 @@
 //! If effect implementation.
 
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
+use crate::effect::{EffectOutcome, EffectPredicateRuntimeExt};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
@@ -76,6 +76,7 @@ impl EffectExecutor for IfEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::test_prelude::*;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

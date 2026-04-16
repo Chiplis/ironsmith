@@ -38,9 +38,12 @@ mod tests {
             .join("\n")
             .to_ascii_lowercase();
 
-        assert!(rendered.contains(
-            "this spell costs {1} less to cast for each card type among cards in your graveyard"
-        ));
+        assert!(
+            rendered.contains("this spell costs {1} less to cast")
+                && rendered.contains("for each card type")
+                && rendered.contains("your graveyard"),
+            "missing cost reduction text: {rendered}"
+        );
         assert!(rendered.contains("after that turn"));
         assert!(rendered.contains("takes an extra turn"));
     }

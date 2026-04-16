@@ -6,7 +6,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::ShuffleLibraryEffect;
 

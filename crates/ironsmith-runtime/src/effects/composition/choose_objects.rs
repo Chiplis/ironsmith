@@ -3,15 +3,14 @@
 //! This effect allows a player to choose objects matching a filter and tag them
 //! for reference by subsequent effects in the same spell/ability.
 
-use crate::effect::{ChoiceCount, EffectOutcome, SearchSelectionMode, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
-use crate::tag::TagKey;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 /// Effect that prompts a player to choose objects matching a filter and tags them.
@@ -385,6 +384,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::test_prelude::*;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {

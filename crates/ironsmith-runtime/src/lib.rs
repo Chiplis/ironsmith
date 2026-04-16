@@ -63,6 +63,15 @@ pub mod zone;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) mod test_prelude {
+    pub(crate) use crate::effect::{EffectId, EffectPredicate};
+    pub(crate) use crate::{
+        ChoiceCount, ChooseSpec, CounterType, Effect, ManaCost, ObjectFilter, PlayerFilter, Until,
+        Value,
+    };
+}
+
 /// Preferred import surface for gameplay/runtime consumers.
 pub mod engine {
     /// High-signal engine types and functions for external consumers.

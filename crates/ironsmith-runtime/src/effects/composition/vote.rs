@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::effect::ChoiceCount;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};

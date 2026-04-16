@@ -565,8 +565,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn simple_battlefield_mana_ability_output_recognizes_basic_land_tap() {
         let mut game = setup_game();
@@ -2353,8 +2351,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_compute_legal_actions_includes_kentaro_mana_value_cast_for_samurai() {
         let mut game = setup_game();
@@ -2439,8 +2435,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_compute_legal_actions_includes_rooftop_storm_free_cast_only_for_zombies() {
         let mut game = setup_game();
@@ -2545,8 +2539,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_can_cast_spell_with_non_targeted_prevent_all_damage_without_creatures() {
         let mut game = setup_game();
@@ -3538,8 +3530,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_compute_legal_actions_excludes_hand_only_ability_from_battlefield() {
         use crate::cards::CardDefinitionBuilder;
@@ -3853,8 +3843,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_suspend_only_card_does_not_offer_normal_cast_from_hand() {
         let mut game = setup_game();

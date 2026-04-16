@@ -4613,8 +4613,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn renders_dynamic_any_one_color_mana_with_explicit_x_count_clause() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wirewood Render Variant")
@@ -4638,8 +4636,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn renders_equipment_self_reference_and_singular_attach_target() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Equipment Render Variant")
@@ -4659,8 +4655,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn normalize_rendered_line_prefers_saga_self_reference_when_oracle_uses_saga() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Saga Render Variant")
@@ -4680,8 +4674,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn normalize_rendered_line_prefers_siege_self_reference_when_oracle_uses_siege() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Siege Render Variant")
@@ -6406,8 +6398,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn post_pass_normalizes_imposing_grandeur_surface() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Imposing Grandeur")
@@ -6484,8 +6474,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn canonical_compiled_lines_compact_named_token_payload_when_card_oracle_is_stripped() {
         let mut def = crate::CardDefinitionBuilder::new(
@@ -6517,8 +6505,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn canonical_compiled_lines_hide_suspend_intrinsics_for_corpulent_corpse() {
         let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Corpulent Corpse")
@@ -6534,8 +6520,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn canonical_compiled_lines_hide_suspend_intrinsics_for_durkwood_baloth() {
         let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Durkwood Baloth")
@@ -6548,8 +6532,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn canonical_compiled_lines_hide_suspend_intrinsics_for_gargadon() {
         let def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Gargadon")

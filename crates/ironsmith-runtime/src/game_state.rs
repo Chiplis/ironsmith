@@ -4273,11 +4273,17 @@ impl GameState {
             return chars
                 .static_abilities
                 .iter()
-                .any(|ability| ability.id() == ability_id);
+                .any(|ability| ability.id() == ability_id && ability.is_active(self, id));
         }
 
-        self.object(id)
-            .is_some_and(|object| object.has_static_ability_id(ability_id))
+        self.object(id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                    if ability.functions_in(&object.zone)
+                        && static_ability.id() == ability_id
+                        && static_ability.is_active(self, id))
+            })
+        })
     }
 
     /// Get the calculated subtypes of an object (with continuous effects applied).
@@ -7092,8 +7098,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn azusa_after_first_land_grants_two_remaining_land_plays() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

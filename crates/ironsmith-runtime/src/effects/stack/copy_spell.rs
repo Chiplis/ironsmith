@@ -1,13 +1,13 @@
 //! Copy spell effect implementation.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::spells::SpellCopiedEvent;
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::object::Object;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 

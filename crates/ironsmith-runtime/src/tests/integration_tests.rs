@@ -1387,8 +1387,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_copy_as_enters_applies_before_other_etb_replacements() {
         let copy_land =
@@ -1430,8 +1428,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_copy_as_enters_can_add_card_type_to_copied_permanent() {
         let metamorph =
@@ -1481,8 +1477,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_copy_as_enters_can_add_ability_to_copied_permanent() {
         let omni = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Omni Replica")

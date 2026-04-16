@@ -6,12 +6,11 @@
 use crate::color::Color;
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::{EffectOutcome, Until};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect: target permanent becomes one color of the chooser's choice.
 pub type BecomeColorChoiceEffect = ironsmith_core::BecomeColorChoiceEffect;
@@ -71,6 +70,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectOptionsContext;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::test_prelude::*;
     use crate::zone::Zone;
 
     struct ChooseRedDm;

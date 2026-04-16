@@ -166,8 +166,6 @@ fn test_urzas_saga_under_blood_moon_loses_chapter_abilities() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_urborg_style_effect_includes_itself_and_grants_black_mana() {
     let mut game = setup_game();
@@ -225,8 +223,6 @@ fn test_urborg_style_effect_includes_itself_and_grants_black_mana() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_blood_moon_turns_off_urborg_dependency_even_if_urborg_is_newer() {
     let mut game = setup_game();
@@ -313,8 +309,6 @@ fn test_blood_moon_turns_off_urborg_dependency_even_if_urborg_is_newer() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_blood_moon_replaces_nonbasic_land_mana_abilities_with_red() {
     let mut game = setup_game();
@@ -554,8 +548,6 @@ fn test_manascape_refractor_copies_squirrel_nest_ability() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_conditional_attached_creature_check_uses_in_progress_characteristics() {
     let mut game = setup_game();
@@ -3280,8 +3272,6 @@ fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_goaded_creature_may_attack_goader_if_other_player_attack_cost_is_unpayable() {
     let mut game = GameState::new(
@@ -3411,8 +3401,6 @@ fn test_same_player_goading_again_does_not_refresh_duration() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
     let mut game = setup_game();
@@ -3493,8 +3481,6 @@ fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_collective_restraint_attack_tax_scales_per_attacker_and_can_be_paid() {
     let mut game = setup_game();
@@ -3576,8 +3562,6 @@ fn test_collective_restraint_attack_tax_scales_per_attacker_and_can_be_paid() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_fixed_attack_tax_blocks_unpaid_attack() {
     let mut game = setup_game();
@@ -3636,8 +3620,6 @@ fn test_fixed_attack_tax_blocks_unpaid_attack() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn test_fixed_attack_tax_scales_per_attacker_and_can_be_paid() {
     let mut game = setup_game();

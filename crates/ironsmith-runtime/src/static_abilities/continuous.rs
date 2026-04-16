@@ -3388,8 +3388,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_commander_cast_count_anthem_scales_from_player_commander_casts() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -3446,8 +3444,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_bonehoard_counts_creature_cards_in_all_graveyards() {
         use crate::cards::builders::CardDefinitionBuilder;
@@ -3509,8 +3505,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_kembas_banner_counts_creatures_you_control_for_each() {
         use crate::cards::builders::CardDefinitionBuilder;
@@ -3578,8 +3572,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_cranial_ram_counts_artifacts_for_x_only_bonus() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -3906,7 +3898,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
     #[test]
     fn bruenor_anthem_parses_with_attached_to_affected_and_renders_correctly() {
         // Structure / text test: verify the anthem is parsed with the

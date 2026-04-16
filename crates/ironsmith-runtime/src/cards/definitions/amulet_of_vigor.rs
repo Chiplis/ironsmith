@@ -332,8 +332,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn test_cultivator_colossus_triggers_amulet_for_each_land() {
         use super::CardDefinitionBuilder;

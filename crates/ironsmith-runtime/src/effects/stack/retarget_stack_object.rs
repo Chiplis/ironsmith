@@ -18,7 +18,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::PlayerId;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::targeting::{
     assigned_target_ranges, compute_legal_targets, normalize_targets_for_requirements,
 };

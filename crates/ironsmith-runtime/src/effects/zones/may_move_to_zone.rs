@@ -7,7 +7,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::MayMoveToZoneEffect;
 

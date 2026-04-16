@@ -2,7 +2,7 @@
 
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{BooleanContext, ViewCardsContext};
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -11,7 +11,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
 use crate::snapshot::ObjectSnapshot;
-use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::DrawCardsEffect;
@@ -275,6 +274,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::ids::{CardId, PlayerId};
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

@@ -2,7 +2,7 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, make_decision_with_fallback};
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};

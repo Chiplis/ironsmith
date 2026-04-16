@@ -1,6 +1,6 @@
 //! Conditional effect implementation.
 
-use crate::effect::{Condition, Effect, EffectOutcome};
+use crate::effect::{Condition, EffectOutcome};
 use crate::effects::{EffectExecutor, ModalSpec};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
@@ -124,6 +124,7 @@ fn evaluate_condition(
 mod tests {
     use super::*;
     use crate::effect::Condition;
+    use crate::test_prelude::*;
 
     #[test]
     fn conditional_forwards_inner_target_spec_from_if_true() {

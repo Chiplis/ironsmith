@@ -336,8 +336,6 @@ fn choose_player_stuffy_doll_redirects_damage_to_chosen_player() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-
-
 #[test]
 fn choose_player_spectral_searchlight_gives_mana_to_chosen_player() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();

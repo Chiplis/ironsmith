@@ -1,8 +1,7 @@
 //! Registry-owned runtime card-loading implementation shared with runtime.
 
-use super::{generated_meld_counterparts, generated_registry, *};
-use crate::ability::Ability;
-use crate::ability::AbilityKind;
+use super::{generated_meld_counterparts, generated_registry};
+use crate::ability::{Ability, AbilityKind};
 use crate::cards::CardDefinition;
 #[cfg(all(feature = "handwritten-parse-support", not(test)))]
 use crate::cards::CardDefinitionBuilder;
@@ -583,9 +582,7 @@ fn try_compile_builtin_card_by_name(name: &str) -> Option<CardDefinition> {
     let mut registry = CardRegistry::new();
     super::register_builtin_handwritten_cards_if_for_runtime_tests(
         &mut registry,
-        |constructor_key| {
-            constructor_key_matches_any_request(constructor_key, &requested_keys)
-        },
+        |constructor_key| constructor_key_matches_any_request(constructor_key, &requested_keys),
     );
 
     registry

@@ -5,8 +5,6 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::mana::ManaCost;
-use crate::target::{ObjectFilter, PlayerFilter};
 
 pub type GrantNextSpellCostReductionEffect = ironsmith_core::GrantNextSpellCostReductionEffect;
 

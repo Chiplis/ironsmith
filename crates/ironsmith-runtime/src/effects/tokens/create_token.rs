@@ -1,13 +1,13 @@
 //! Create token effect implementation.
 
 use crate::cards::CardDefinition;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::Object;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
 use super::lifecycle::{
@@ -141,6 +141,7 @@ mod tests {
     use crate::color::{Color, ColorSet};
     use crate::ids::{CardId, PlayerId};
     use crate::object::{CounterType, ObjectKind};
+    use crate::test_prelude::*;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 

@@ -67,7 +67,8 @@ mod tests {
 
         let debug_str_1 = format!("{:?}", &costs[1]);
         assert!(
-            debug_str_1.contains("SacrificeEffect"),
+            debug_str_1.contains("SacrificeEffect")
+                || debug_str_1.contains("SacrificePlayerEffect"),
             "Second cost should be sacrifice"
         );
     }

@@ -1,6 +1,6 @@
 //! Monstrosity effect implementation.
 
-use crate::effect::{Effect, EffectOutcome, Value};
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_value;
 use crate::effects::{EffectExecutor, PutCountersEffect};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};

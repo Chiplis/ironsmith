@@ -2,12 +2,11 @@
 
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::{EffectOutcome, Until};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::{Subtype, SubtypeFamily};
 
 /// Effect: target object(s) become a chosen creature type.
@@ -272,6 +271,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::ids::PlayerId;
     use crate::target::ObjectFilter;
+    use crate::test_prelude::*;
     use crate::zone::Zone;
 
     struct ChooseZombieDm;

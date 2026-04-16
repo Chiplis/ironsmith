@@ -14,8 +14,8 @@ mod generated_meld_counterparts {
 #[path = "runtime_registry_impl.rs"]
 mod registry_impl;
 
-pub use registry_impl::*;
 pub use compiler_runtime::*;
+pub use registry_impl::*;
 
 pub use ironsmith::ability;
 pub use ironsmith::alternative_cast;

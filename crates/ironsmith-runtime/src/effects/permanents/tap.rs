@@ -1,12 +1,12 @@
 //! Tap effect implementation.
 
-use crate::effect::{ChoiceCount, EffectOutcome};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::TapEffect;
 
@@ -139,6 +139,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

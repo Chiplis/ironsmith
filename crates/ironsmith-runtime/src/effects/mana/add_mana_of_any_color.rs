@@ -2,7 +2,7 @@
 
 use super::choice_helpers::{choose_mana_colors, credit_mana_symbols_from_context};
 use crate::color::Color;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -91,6 +91,7 @@ mod tests {
     use super::*;
     use crate::ids::PlayerId;
     use crate::target::PlayerFilter;
+    use crate::test_prelude::*;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

@@ -5,7 +5,6 @@ use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::object::CounterType;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::RemoveCountersEffect;
 
@@ -121,6 +120,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

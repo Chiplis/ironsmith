@@ -8,7 +8,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
+use crate::target::ChooseSpec;
 pub use ironsmith_core::PutOntoBattlefieldEffect;
 
 /// Effect that puts a target card onto the battlefield.
@@ -96,6 +96,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
     use crate::target::ObjectFilter;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
 

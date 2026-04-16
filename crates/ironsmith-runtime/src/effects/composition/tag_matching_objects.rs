@@ -6,8 +6,7 @@ use crate::effects::helpers::resolve_objects_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::TagKey;
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub type TagMatchingObjectsEffect = ironsmith_core::TagMatchingObjectsEffect;
 
@@ -60,6 +59,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::test_prelude::*;
     use crate::types::CardType;
 
     fn make_card(name: &str) -> crate::card::Card {

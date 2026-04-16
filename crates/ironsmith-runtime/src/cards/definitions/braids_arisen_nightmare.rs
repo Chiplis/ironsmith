@@ -425,7 +425,8 @@ mod tests {
 
         let debug = format!("{:#?}", triggered.effects);
         assert!(
-            debug.contains("MayEffect") && debug.contains("SacrificeEffect"),
+            debug.contains("MayEffect")
+                && (debug.contains("SacrificeEffect") || debug.contains("SacrificePlayerEffect")),
             "expected optional sacrifice branch, got {debug}"
         );
         assert!(

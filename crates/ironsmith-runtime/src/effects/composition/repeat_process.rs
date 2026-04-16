@@ -1,4 +1,4 @@
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
+use crate::effect::{Effect, EffectOutcome, EffectPredicateRuntimeExt};
 use crate::effects::{EffectExecutor, SequenceEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;

@@ -70,11 +70,7 @@ fn workspace_dependency_rules_hold() {
     );
 
     let runtime = deps.get("ironsmith-runtime").expect("runtime deps");
-    for forbidden in [
-        "ironsmith-compiler",
-        "ironsmith-registry",
-        "ironsmith-wasm",
-    ] {
+    for forbidden in ["ironsmith-compiler", "ironsmith-registry", "ironsmith-wasm"] {
         assert!(
             !runtime.iter().any(|dep| dep == forbidden),
             "ironsmith-runtime must not depend on {forbidden}: {runtime:?}"

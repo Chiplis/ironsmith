@@ -167,6 +167,10 @@ impl SacrificeEffect {
 }
 
 impl EffectExecutor for SacrificePlayerEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -174,6 +178,33 @@ impl EffectExecutor for SacrificePlayerEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone())
             .execute(game, ctx)
+    }
+}
+
+impl CostExecutableEffect for SacrificePlayerEffect {
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let effect =
+            SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone());
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            &effect, game, source, controller, reason,
+        )
+    }
+
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let effect =
+            SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone());
+        CostExecutableEffect::can_execute_as_cost(&effect, game, source, controller)
     }
 }
 

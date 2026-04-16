@@ -9,13 +9,12 @@
 use crate::ability::Ability;
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::{EffectOutcome, Until};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::Subtype;
 
 /// Effect: target land becomes one basic land type of the controller's choice.
@@ -97,6 +96,7 @@ mod tests {
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::ids::{CardId, PlayerId};
+    use crate::test_prelude::*;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
@@ -114,7 +114,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
     #[test]
     fn become_basic_land_type_choice_sets_subtype_and_replaces_mana_ability() {
         let mut game = setup_game();
@@ -174,8 +173,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn fixed_basic_land_type_sets_subtype_and_replaces_mana_ability() {
         let mut game = setup_game();

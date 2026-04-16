@@ -6,7 +6,6 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ObjectFilter, PlayerFilter};
 
 pub type GrantNextSpellAbilityEffect = ironsmith_core::GrantNextSpellAbilityEffect<StaticAbility>;
 
@@ -32,6 +31,7 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::test_prelude::*;
 
     #[test]
     fn execute_registers_next_spell_ability_grant() {

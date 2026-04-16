@@ -3,6 +3,8 @@
 //! This module extends the CardBuilder with methods for adding abilities,
 //! making it easy to define cards with their complete gameplay mechanics.
 
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+use crate::TaggedOpbjectRelation;
 use crate::ability::{
     self, Ability, AbilityKind, ActivationTiming, LevelAbility, TriggeredAbility,
 };
@@ -21,6 +23,8 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::Trigger;
@@ -79,6 +83,10 @@ impl ParseCacheKey {
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]
 type CachedParseResult = Result<CardDefinition, CardTextError>;
+
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[path = "../../../ironsmith-registry/src/compiler_runtime.rs"]
+mod compiler_runtime_for_tests;
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]
 fn parse_result_cache() -> &'static std::sync::Mutex<HashMap<ParseCacheKey, CachedParseResult>> {
@@ -283,9 +291,17 @@ fn parse_card_text_with_annotations_policy(
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
     let text = text.into();
     let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
-    let _ = (builder, text, allow_unsupported, cache_key);
-    Err(CardTextError::InvariantViolation(
-        "runtime parser tests moved to ironsmith-registry".to_string(),
+    let compiled =
+        compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
+            runtime_builder_snapshot(&builder),
+            text,
+            allow_unsupported,
+        )
+        .map_err(compiler_runtime_error_to_card_text_error)?;
+    let _ = store_cached_parse(cache_key, Ok(compiled.definition.clone()));
+    Ok((
+        compiled.definition,
+        parse_annotations_from_compiler(compiled.annotations),
     ))
 }
 
@@ -1129,10 +1145,58 @@ fn compile_to_runtime_definition(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<CardDefinition, CardTextError> {
-    let _ = (builder, text.into(), allow_unsupported);
-    Err(CardTextError::InvariantViolation(
-        "runtime parser tests moved to ironsmith-registry".to_string(),
-    ))
+    compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_definition(
+        runtime_builder_snapshot(builder),
+        text,
+        allow_unsupported,
+    )
+    .map_err(compiler_runtime_error_to_card_text_error)
+}
+
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+fn runtime_builder_snapshot(
+    builder: &CardDefinitionBuilder,
+) -> compiler_runtime_for_tests::RuntimeBuilderSnapshot {
+    compiler_runtime_for_tests::RuntimeBuilderSnapshot {
+        card: builder.card_builder.clone().build(),
+        max_saga_chapter: builder.max_saga_chapter,
+        has_fuse: builder.has_fuse,
+    }
+}
+
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+fn compiler_runtime_error_to_card_text_error(
+    err: compiler_runtime_for_tests::CompilerIntegrationError,
+) -> CardTextError {
+    CardTextError::ParseError(err.to_string())
+}
+
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+fn parse_annotations_from_compiler(
+    annotations: ironsmith_compiler::ParseAnnotations,
+) -> ParseAnnotations {
+    ParseAnnotations {
+        tag_spans: annotations
+            .tag_spans
+            .into_iter()
+            .map(|(tag, spans)| {
+                (
+                    TagKey::from(tag),
+                    spans
+                        .into_iter()
+                        .map(|span| TextSpan {
+                            line: span.line,
+                            start: span.start,
+                            end: span.end,
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+        normalized_lines: annotations.normalized_lines,
+        original_lines: annotations.original_lines,
+        normalized_char_maps: annotations.normalized_char_maps,
+    }
 }
 
 impl CardDefinitionBuilder {
@@ -1557,7 +1621,13 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text.
-    #[cfg(test)]
+    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
+        parse_card_text(self, text)
+    }
+
+    /// Build a CardDefinition from oracle text.
+    #[cfg(all(test, not(ironsmith_runtime_parser_tests)))]
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
         let _ = (self, text.into());
         Err(CardTextError::InvariantViolation(
@@ -1566,7 +1636,16 @@ impl CardDefinitionBuilder {
     }
 
     /// Build a CardDefinition from oracle text, preserving unsupported lines as markers.
-    #[cfg(test)]
+    #[cfg(all(test, ironsmith_runtime_parser_tests))]
+    pub fn parse_text_allow_unsupported(
+        self,
+        text: impl Into<String>,
+    ) -> Result<CardDefinition, CardTextError> {
+        parse_card_text_allow_unsupported(self, text)
+    }
+
+    /// Build a CardDefinition from oracle text, preserving unsupported lines as markers.
+    #[cfg(all(test, not(ironsmith_runtime_parser_tests)))]
     pub fn parse_text_allow_unsupported(
         self,
         text: impl Into<String>,
@@ -3998,7 +4077,7 @@ impl CardDefinitionBuilder {
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod delayed_trigger_finalization_tests {
     use super::*;
 
@@ -4066,8 +4145,6 @@ mod delayed_trigger_finalization_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Glass Asp Variant")
@@ -4087,8 +4164,6 @@ mod delayed_trigger_finalization_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_delayed_next_upkeep_unless_payment_keeps_payment_player_choice() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Quenchable Fire Variant")
@@ -4245,8 +4320,6 @@ mod keyword_behavior_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_undying_oracle_text_with_snapshot_counter_predicate() {
         let text = "When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.";
@@ -4265,8 +4338,6 @@ mod keyword_behavior_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_persist_oracle_text_with_snapshot_counter_predicate() {
         let text = "When this creature dies, if it had no -1/-1 counters on it, return it to the battlefield under its owner's control with a -1/-1 counter on it.";
@@ -4285,8 +4356,6 @@ mod keyword_behavior_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_self_enters_with_x_counters_is_typed_static() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB X Counter Variant")
@@ -4313,8 +4382,6 @@ mod keyword_behavior_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_self_enters_with_opponent_lost_life_is_typed_static() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB Opponent Lost Life Variant")
@@ -4344,7 +4411,7 @@ mod keyword_behavior_tests {
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod target_parse_tests {
     use super::*;
 
@@ -4645,8 +4712,6 @@ mod target_parse_tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_for_each_land_unless_any_player_pays_life_uses_non_target_destroy() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cleansing Variant")
@@ -4670,7 +4735,7 @@ mod target_parse_tests {
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod effect_parse_tests {
     use super::*;
     use crate::alternative_cast::AlternativeCastingMethod;
@@ -4697,7 +4762,6 @@ mod effect_parse_tests {
     use crate::zone::Zone;
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
     #[test]
     fn parse_yawgmoths_will_from_text() {
         let text = "Until end of turn, you may play lands and cast spells from your graveyard.\n\
@@ -4723,8 +4787,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Variant")
@@ -4761,8 +4823,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_land_with_quoted_activated_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Quoted Aura")
@@ -4788,8 +4848,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn dauthi_voidwalker_activation_grants_free_exile_cast_action() {
         use crate::ability::AbilityKind;
@@ -4963,7 +5021,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
     #[test]
     fn dauthi_voidwalker_activation_auto_selects_single_candidate_without_choice_prompt() {
         use crate::ability::AbilityKind;
@@ -5042,8 +5099,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn dauthi_voidwalker_activation_prompts_for_multiple_void_counter_cards_only() {
         use crate::ability::AbilityKind;
@@ -5159,8 +5214,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn dauthi_voidwalker_zero_cost_spell_only_offers_free_exile_cast_action() {
         use crate::ability::AbilityKind;
@@ -5252,8 +5305,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn dauthi_voidwalker_casted_permanent_from_exile_enters_under_casters_control() {
         use crate::ability::AbilityKind;
@@ -5362,8 +5413,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_cant_gain_life_until_eot_from_text() {
         let text = "Until end of turn, players can't gain life.";
@@ -5381,8 +5430,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_source_cant_be_blocked_until_eot_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Horizons Variant")
@@ -5417,8 +5464,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_cant_be_regenerated_this_turn_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Furnace Brood Variant")
@@ -5453,8 +5498,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_source_doesnt_untap_during_next_untap_step_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Cloudcrest Lake Variant")
@@ -5504,8 +5547,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_kefnets_last_word_uses_next_untap_step_duration() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kefnet's Last Word Variant")
@@ -5534,8 +5575,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_targets_dont_untap_during_controller_next_untap_step_uses_controller_duration() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Frost Breath Variant")
@@ -5557,8 +5596,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_dies_return_under_your_control_uses_move_to_zone() {
         let def = CardDefinitionBuilder::new(CardId::new(), "False Demise Variant")
@@ -5585,8 +5622,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_return_to_hand_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Unsummon")
@@ -5601,8 +5636,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_tap_one_or_two_targets_preserves_choice_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Probe Tap Two")
@@ -5621,8 +5654,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_tap_all_spirits_compiles_as_non_targeted_all() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Probe Tap All Spirits")
@@ -5634,8 +5665,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .iter()
             .find_map(|e| e.downcast_ref::<TapEffect>())
             .expect("should include tap effect");
-        let ChooseSpec::All(filter) = &tap.spec else {
-            panic!("expected non-targeted tap-all spec, got {:?}", tap.spec);
+        let ChooseSpec::All(filter) = &tap.target else {
+            panic!("expected non-targeted tap-all spec, got {:?}", tap.target);
         };
         assert!(
             filter.subtypes.contains(&Subtype::Spirit),
@@ -5644,8 +5675,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_any_number_of_target_spells_preserves_choice_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Probe Exile Any")
@@ -5670,8 +5699,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_return_to_battlefield_from_graveyard_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Reanimate Variant")
@@ -5693,8 +5720,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_return_all_from_graveyards_to_battlefield_tapped_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Planar Birth Variant")
@@ -5716,8 +5741,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_control_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Switcheroo")
@@ -5736,8 +5759,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_cultural_exchange_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Cultural Exchange")
@@ -5769,8 +5790,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_gruesome_menagerie_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Gruesome Menagerie")
@@ -5800,8 +5819,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_life_totals_with_target_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Magus Variant")
@@ -5817,8 +5834,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_life_totals_between_two_targets_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Soul Conduit")
@@ -5838,8 +5853,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_text_boxes_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Exchange of Words")
@@ -5866,8 +5879,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_control_heterogeneous_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Avarice Totem")
@@ -5890,8 +5901,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_control_heterogeneous_with_relative_constraint_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Daring Thief")
@@ -5910,8 +5919,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_hand_and_graveyard_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Harness Infinity")
@@ -5930,8 +5937,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_hand_and_library_then_shuffle_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mordenkainen Variant")
@@ -5947,8 +5952,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_life_total_with_toughness_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Tree of Redemption")
@@ -5967,8 +5970,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exchange_power_with_target_power_until_end_of_combat_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Serene Master")
@@ -5991,8 +5992,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_draw_for_each_tapped_creature_target_opponent_controls() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Borrowing Arrows Variant")
@@ -6022,8 +6021,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_draw_with_unsupported_tail_errors() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Bad Draw Tail")
@@ -6035,8 +6032,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_counter_spell_with_graveyard_reference_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Drown in the Loch Variant")
@@ -6054,8 +6049,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_has_base_power_toughness_as_static() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Illusory Wrappings Variant")
@@ -6099,8 +6092,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_loses_abilities_and_transforms_with_base_pt() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ichthyomorphosis Variant")
@@ -6140,8 +6131,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_bestow_enchanted_creature_loses_abilities_and_transforms_with_base_pt() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Trickster's Elk Variant")
@@ -6189,8 +6178,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_creature_has_base_power_until_end_of_turn() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wak-Wak Variant")
@@ -6213,8 +6200,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_target_nonland_not_exactly_two_colors_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ravnica Variant")
@@ -6235,8 +6220,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_base_power_toughness_with_unknown_tail_errors() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Bad Base PT Tail")
@@ -6248,8 +6231,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_search_to_battlefield_tapped_preserves_tapped_flag() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Roiling Regrowth Variant")
@@ -6278,8 +6259,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_double_counters_on_each_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kalonian Hydra Variant")
@@ -6309,7 +6288,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         assert_eq!(put.counter_type, CounterType::PlusOnePlusOne);
         assert_eq!(
-            put.count,
+            put.amount,
             Value::CountersOn(
                 Box::new(ChooseSpec::Iterated),
                 Some(CounterType::PlusOnePlusOne)
@@ -6319,8 +6298,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_remove_typed_counter_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Power Conduit Variant")
@@ -6340,8 +6317,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_remove_typed_counter_from_text_for_each_card() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Descendant of Masumaro Variant")
@@ -6369,8 +6344,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_create_token_copy_of_target_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Copy Variant")
@@ -6388,8 +6361,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_dino_dna_style_copy_modifier_with_trample() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dino DNA Variant")
@@ -6437,8 +6408,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_saw_in_half_style_half_pt_copy_does_not_set_type_override() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Saw in Half Variant")
@@ -6466,8 +6435,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_shaleskin_bruiser_style_scaling_attack_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Shaleskin Bruiser Variant")
@@ -6507,8 +6474,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn compiled_text_cleans_duplicate_target_mentions() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Torch Fiend Variant")
@@ -6527,8 +6492,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_adamant_mana_spent_conditional_compiles_semantically() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Turn into a Pumpkin Variant")
@@ -6545,8 +6508,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_adamant_mana_spent_conditional_rejects_unparsed_tail() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Broken Adamant Variant")
@@ -6560,8 +6521,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_no_spells_cast_last_turn_conditional_predicate() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Werewolf Transform Variant")
@@ -6578,8 +6537,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_daybound_keyword_line_builds_typed_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Daybound Probe")
@@ -6607,8 +6564,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn daybound_runtime_transforms_source_for_day_and_night_spell_count_windows() {
         use crate::effects::{ExecutionContext, execute_effect};
@@ -6713,8 +6668,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_nightbound_keyword_line_builds_typed_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nightbound Probe")
@@ -6733,8 +6686,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn create_token_render_preserves_cant_attack_or_block_alone_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Toby Token Variant")
@@ -6752,8 +6703,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_ring_tempts_compiles_and_renders() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ring Variant")
@@ -6770,8 +6719,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn from_text_with_metadata_no_longer_falls_back_on_parse_failure() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Fallback Variant")
@@ -6915,8 +6862,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_negated_untap_clause_compiles_to_untap_restriction() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ty Lee Variant")
@@ -6946,8 +6891,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_ty_lee_named_duration_now_errors_instead_of_partial_compile() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ty Lee")
@@ -6971,8 +6914,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_two_or_more_other_lands_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Shattered Sanctum Variant")
@@ -6997,8 +6938,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_two_or_fewer_other_lands_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blackcleave Cliffs Variant")
@@ -7023,8 +6962,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_two_or_more_basic_lands_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Canopy Vista Variant")
@@ -7049,8 +6986,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_any_player_has_13_or_less_life_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Abandoned Campground Variant")
@@ -7075,8 +7010,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_two_or_more_opponents_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Vault of Champions Variant")
@@ -7101,8 +7034,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_tapped_unless_control_mount_or_vehicle_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Country Roads Variant")
@@ -7127,8 +7058,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_opponents_control_enter_tapped_preserves_controller_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Frozen Aether Variant")
@@ -7143,8 +7072,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_played_by_your_opponents_enter_tapped_preserves_controller_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Uphill Battle Variant")
@@ -7159,8 +7086,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_pay_life_or_enter_tapped_shockland_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blood Crypt Variant")
@@ -7199,8 +7124,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_pay_life_or_enter_tapped_requires_if_you_dont_tail() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Broken Shockland Variant")
@@ -7211,7 +7134,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-    #[cfg(ironsmith_runtime_parser_tests)]
+    #[cfg(ironsmith_runtime_legacy_parser_unit_tests)]
     #[test]
     fn tokenize_line_keeps_hybrid_slash_inside_mana_braces() {
         let tokens = tokenize_line("{U/R}, {T}: Add {C}.", 0);
@@ -7223,8 +7146,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mana_vault_upkeep_pay_clause_includes_pay_mana_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mana Vault Trigger Variant")
@@ -7252,8 +7173,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_energy_pay_clause_includes_pay_energy_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Energy Pay Trigger Variant")
@@ -7283,8 +7202,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_get_energy_equal_to_tagged_spell_mana_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Electrosiphon Variant")
@@ -7307,8 +7224,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_black_for_each_creature_in_graveyard_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Crypt Probe")
@@ -7338,8 +7253,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_add_for_each_creature_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Gaea Probe")
@@ -7391,8 +7304,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_add_for_each_swamp_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Coffers Probe")
@@ -7428,8 +7339,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_add_equal_to_devotion_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Karametra Probe")
@@ -7475,8 +7384,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_add_equal_to_devotion_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Devotion Ritual Probe")
@@ -7498,8 +7405,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_equal_to_source_power_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Viridian Joiner Variant")
@@ -7527,8 +7432,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_equal_to_sacrificed_creature_mana_value_uses_sacrifice_cost_tag() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Szeras Variant")
@@ -7561,8 +7464,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_same_mana_value_as_sacrificed_creature_uses_sacrifice_cost_tag() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sanguine Praetor Variant")
@@ -7603,8 +7504,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_that_much_colorless_uses_previous_effect_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mana Seism Variant")
@@ -7628,8 +7527,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_x_any_one_color_where_count_keeps_dynamic_amount() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Harabaz Druid Variant")
@@ -7679,8 +7576,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_combination_of_two_colors_keeps_amount_and_restriction() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Lumberjack Variant")
@@ -7726,8 +7621,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_or_mana_colors_compiles_single_restricted_choice_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dual Land Variant")
@@ -7771,8 +7664,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_combination_of_colors_expands_to_five_colors() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Terrarion Variant")
@@ -7806,8 +7697,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_combination_with_where_tail_keeps_color_choices() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Vivi Variant")
@@ -7856,8 +7745,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_combination_with_unbound_x_without_definition_fails() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Broken Vivi Variant")
@@ -7871,8 +7758,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_combination_with_named_self_where_tail_keeps_source_power() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Vivi Ornitier")
@@ -7904,8 +7789,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_color_that_opponent_land_could_produce_compiles_restricted_mana_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Exotic Orchard Variant")
@@ -7960,8 +7843,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_type_that_gate_you_control_could_produce_keeps_type_semantics() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Gond Gate Variant")
@@ -7998,8 +7879,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mana_ability_activate_only_if_you_control_an_artifact() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Spire Variant")
@@ -8024,8 +7903,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_any_color_with_unsupported_trailing_clause_fails() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Broken Orchard Variant")
@@ -8041,8 +7918,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_cost_increase_per_target_beyond_first_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fireball Variant")
@@ -8064,7 +7939,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-    #[cfg(ironsmith_runtime_parser_tests)]
+    #[cfg(ironsmith_runtime_legacy_parser_unit_tests)]
     #[test]
     fn parse_object_filter_rejects_controller_only_phrase() {
         let tokens = tokenize_line("you control", 0);
@@ -8076,8 +7951,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_set_life_total_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blessed Wind")
@@ -8094,8 +7967,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_discard_random_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Specter's Wail")
@@ -8111,8 +7982,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_discard_it_after_reveal_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Faadiyah Variant")
@@ -8130,8 +7999,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_opponent_creature_that_was_dealt_damage_this_turn() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Manticore Variant")
@@ -8156,8 +8023,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mindculling_draw_then_target_opponent_discards() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mindculling Variant")
@@ -8184,8 +8049,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_player_shuffles_library_activation() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Soldier of Fortune Variant")
@@ -8204,8 +8067,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_draw_then_look_top_card_of_each_players_library() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Case the Joint Variant")
@@ -8225,8 +8086,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_its_owner_shuffles_it_into_their_library() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Deglamer Variant")
@@ -8252,8 +8111,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_blink_keeps_targeted_shuffle_investigate_and_token_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blink")
@@ -8280,8 +8137,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_put_counters_on_each_creature_you_control_compiles_foreach() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Saga Counter Variant")
@@ -8304,8 +8159,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_remove_counters_from_among_creatures_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Tayam Cost Variant")
@@ -8338,8 +8191,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_remove_typed_counter_from_controlled_creature_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Quillspike Cost Variant")
@@ -8374,8 +8225,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_modal_activated_header_with_counter_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Power Conduit Variant")
@@ -8420,8 +8269,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_modal_activated_header_x_clause_rewrites_mode_x_values() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Gnostro Variant")
@@ -8448,8 +8295,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_remove_charge_counter_from_this_artifact_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ox Cart Variant")
@@ -8482,8 +8327,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_all_creatures_with_power_constraint() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Power Exile Variant")
@@ -8505,8 +8348,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_each_nonland_permanent_compiles_as_destroy_all() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Destroy Each Variant")
@@ -8530,8 +8371,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_all_permanents_except_artifacts_and_lands() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Scourglass Variant")
@@ -8557,8 +8396,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_target_creature_with_flying_keeps_keyword_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Destroy Flying Variant")
@@ -8583,8 +8420,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_target_creature_with_islandwalk_keeps_marker_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Destroy Islandwalk Variant")
@@ -8609,8 +8444,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destroy_target_creature_without_flying_keeps_exclusion_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Destroy NonFlying Variant")
@@ -8635,8 +8468,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_player_exiles_flashback_cards_from_their_graveyard() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Tombfire Variant")
@@ -8668,8 +8499,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_each_opponent_sacrifices_creature_of_their_choice_renders_compactly() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Each Opponent Sacrifice Variant")
@@ -8688,8 +8517,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_unless_controller_pays_life_keeps_unless_branch() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Unless Life Variant")
@@ -8713,8 +8540,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_damage_unless_controller_has_source_deal_damage() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blazing Salvo Variant")
@@ -8735,8 +8560,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_equip_keyword_displays_as_keyword_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Strider Harness Equip Variant")
@@ -8761,8 +8584,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skip_turn_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Meditate")
@@ -8779,8 +8600,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skip_draw_step_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fatigue")
@@ -8797,8 +8616,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skip_your_draw_step_inline_subject_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Null Profusion Variant")
@@ -8815,8 +8632,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skip_combat_phases_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "False Peace")
@@ -8833,8 +8648,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skip_next_combat_phase_this_turn_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Moment of Silence")
@@ -8851,8 +8664,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_cast_from_graveyard_trigger_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Secrets of the Dead Probe")
@@ -8868,8 +8679,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_cast_another_during_your_turn_trigger_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Geralf Qualifier Probe")
@@ -8887,8 +8696,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_cast_third_each_turn_trigger_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Third Spell Probe")
@@ -8904,8 +8711,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_pest_token_subtype_in_token_rendering() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Pest Summoning Probe")
@@ -8923,8 +8728,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_token_with_prowess_keyword_in_rendering() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Prowess Token Probe")
@@ -8940,8 +8743,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_named_source_damaged_by_trigger_as_this_creature() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rot Wolf Trigger Probe")
@@ -8959,8 +8760,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_damaged_by_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Enchanted Trigger Probe")
@@ -8976,8 +8775,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enters_as_copy_with_except_ability_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Evil Twin Variant")
@@ -9000,8 +8797,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_divided_damage_distribution_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fire at Will Variant").parse_text(
@@ -9017,8 +8812,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_verb_leading_line_does_not_fallback_to_static_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Nahiri Lithoforming Variant")
@@ -9032,8 +8825,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_choose_leading_line_does_not_fallback_to_static_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Rebuild City Variant").parse_text(
@@ -9046,8 +8837,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_spent_to_cast_conditional_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant").parse_text(
@@ -9060,8 +8849,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_would_enter_replacement_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Mistcaller Variant").parse_text(
@@ -9074,8 +8861,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_different_mana_value_constraint_clause() {
         let result =
@@ -9089,8 +8874,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_most_common_color_constraint_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
@@ -9104,8 +8887,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_power_vs_count_conditional_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Unified Strike Variant")
@@ -9119,8 +8900,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_put_into_graveyards_from_battlefield_count_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Structural Assault Variant")
@@ -9134,8 +8913,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spell_with_it_has_token_trigger_stays_as_spell_effects() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Make Mischief Variant")
@@ -9156,8 +8933,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_standalone_token_reminder_sentence() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sound the Call Variant")
@@ -9173,8 +8948,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_cast_this_spell_only_declare_attackers_step_builds_typed_restriction() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Declare Attackers Restriction Probe")
@@ -9200,8 +8973,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn this_spell_cast_restriction_runtime_requires_attacked_declare_attackers_step() {
         use crate::alternative_cast::CastingMethod;
@@ -9265,8 +9036,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn this_spell_cast_restriction_runtime_before_blockers_window() {
         use crate::alternative_cast::CastingMethod;
@@ -9319,8 +9088,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn this_spell_cast_restriction_runtime_requires_another_spell_cast_this_turn() {
         use crate::alternative_cast::CastingMethod;
@@ -9376,8 +9143,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn this_spell_cast_restriction_runtime_uses_doctor_subtype() {
         use crate::alternative_cast::CastingMethod;
@@ -9428,8 +9193,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_cumulative_upkeep_generic_line_builds_typed_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Cumulative Upkeep Variant")
@@ -9462,8 +9225,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn cumulative_upkeep_generic_runtime_pays_then_sacrifices_when_unpaid() {
         use crate::effects::{ExecutionContext, execute_effect};
@@ -9542,8 +9303,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_filter_granted_cumulative_upkeep_compiles_as_granted_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Breath of Dreams Variant")
@@ -9568,8 +9327,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_attached_granted_cumulative_upkeep_compiles_as_attached_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mana Chains Variant")
@@ -9595,8 +9352,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_nonstandard_cumulative_upkeep_line_stays_keyworded() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Varchild's War-Riders Probe")
@@ -9621,8 +9376,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_skulk_keyword_line_builds_skulk_static_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Skulk Probe")
@@ -9642,8 +9395,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_relative_power_blocking_rules_text_line_builds_static_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wandering Wolf Rules Text Probe")
@@ -9664,8 +9415,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn relative_power_blocking_rules_text_runtime_restricts_lower_power_blocks() {
         use crate::card::PowerToughness;
@@ -9741,8 +9490,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_ingest_keyword_line_builds_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ingest Probe")
@@ -9762,8 +9509,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_battle_cry_keyword_line_builds_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Battle Cry Probe")
@@ -9783,8 +9528,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_dethrone_keyword_line_builds_most_life_attack_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dethrone Probe")
@@ -9804,8 +9547,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_evolve_keyword_line_builds_etb_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Evolve Probe")
@@ -9829,8 +9570,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mentor_keyword_line_builds_attack_target_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mentor Probe")
@@ -9854,8 +9593,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_training_keyword_line_builds_greater_power_attack_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Training Probe")
@@ -9944,8 +9681,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_renown_keyword_line_builds_combat_damage_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Renown Probe")
@@ -9969,8 +9704,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_afterlife_keyword_line_builds_dies_token_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Afterlife Probe")
@@ -9996,8 +9729,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_fabricate_keyword_line_builds_etb_modal_choice() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fabricate Probe")
@@ -10021,8 +9752,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_this_creature_becomes_renowned_trigger_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Renowned Trigger Probe")
@@ -10043,8 +9772,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_investigate_for_each_clause_uses_prior_effect_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Declaration Variant")
@@ -10079,8 +9806,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_same_name_exile_until_source_leaves_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Deputy Variant")
@@ -10101,8 +9826,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_target_until_source_leaves_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Static Prison Variant")
@@ -10123,8 +9846,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_phase_out_until_leaves_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Oubliette Variant").parse_text(
@@ -10137,8 +9858,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_same_name_as_another_in_hand_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Hint Insanity Variant").parse_text(
@@ -10151,8 +9870,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_rejects_for_each_mana_from_spent_clause() {
         let result =
@@ -10166,8 +9883,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
@@ -10196,8 +9911,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_labeled_trigger_line_preserves_once_each_turn_suffix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Reach Label Variant")
@@ -10230,8 +9943,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_labeled_trigger_line_preserves_twice_each_turn_suffix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nadu Label Variant")
@@ -10265,8 +9976,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn reject_conditional_gain_control_clause_instead_of_partial_parse() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Exert Influence Variant")
@@ -10284,8 +9993,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_commander_creatures_have_granted_cost_reduction() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Acolyte of Bahamut Variant")
@@ -10301,8 +10008,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_reveal_targets_hand_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Peek Variant")
@@ -10319,8 +10024,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_surveil_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Surveil Card")
@@ -10337,8 +10040,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_transform_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Werewolf Shift")
@@ -10354,8 +10055,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_convert_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Autobot Shift")
@@ -10371,8 +10070,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_meld_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Meld Variant")
@@ -10399,8 +10096,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_populate_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wake Variant")
@@ -10416,8 +10111,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_populate_x_times_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Flowering Variant")
@@ -10432,8 +10125,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_monstrosity_static_designation_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fleecemane Variant")
@@ -10459,8 +10150,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_monstrosity_trigger_with_up_to_x_targets_from_text() {
         use crate::ability::AbilityKind;
@@ -10496,8 +10185,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_populate_created_this_way_followups_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Iteration Variant")
@@ -10518,8 +10205,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_populate_enters_tapped_and_attacking_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ghired Variant")
@@ -10538,8 +10223,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_detain_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Azorius Arrest Variant")
@@ -10555,8 +10238,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_detain_each_nonland_permanent_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Lavinia Variant")
@@ -10580,8 +10261,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_gets_dynamic_minus_x_plus_x() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Belbe's Armor Variant")
@@ -10600,8 +10279,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_targeted_gets_where_x_is_number_of_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Where X Gets Variant")
@@ -10624,8 +10301,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_gets_where_x_supports_signed_dynamic_replacement() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Signed Where X Variant")
@@ -10643,8 +10318,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_metalcraft_self_buff_preserves_condition_and_subject() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ardent Recruit Variant")
@@ -10669,8 +10342,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_domain_self_buff_preserves_for_each_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kavu Scout Variant")
@@ -10693,8 +10364,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_descend_condition_keeps_permanent_cards_qualifier() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Basking Capybara Variant")
@@ -10715,8 +10384,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_anthem_and_keyword_applies_condition_to_both() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Grant Variant")
@@ -10751,8 +10418,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_anthem_and_haste_keeps_pump_and_keyword() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Haste Variant")
@@ -10787,8 +10452,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_attached_anthem_keyword_and_activated_grant() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Careful Cultivation Variant")
@@ -10829,8 +10492,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_clawing_torment_attached_pronoun_as_attached_permanent() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Clawing Torment Variant")
@@ -10864,8 +10525,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_attached_anthem_and_loses_keyword() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Short Circuit Variant")
@@ -10886,8 +10545,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_equipment_granted_static_chain() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rune of Might Variant")
@@ -10921,8 +10578,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_soulbond_shared_attack_mill_equal_to_toughness() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Imperious Mindbreaker Variant")
@@ -10943,8 +10598,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
@@ -10962,8 +10615,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_condition_this_is_equipped_variant() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Armory Veteran Variant")
@@ -10988,8 +10639,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_condition_this_creature_is_untapped_variant() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Untapped Condition Variant")
@@ -11014,8 +10663,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_condition_you_own_card_exiled_with_counter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rex Condition Variant")
@@ -11042,8 +10689,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_threshold_additional_anthem_keeps_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Divine Sacrament Variant")
@@ -11068,8 +10713,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_threshold_enchanted_creature_has_keyword_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Aboshan Variant")
@@ -11091,8 +10734,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_threshold_cant_be_blocked_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Cephalid Variant")
@@ -11116,8 +10757,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_delirium_spell_keyword_has_hand_and_stack_zones() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Flash Variant")
@@ -11149,8 +10788,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_delirium_can_attack_as_though_no_defender_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Geist Variant")
@@ -11174,8 +10811,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_delirium_maximum_hand_size_formula_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Winter Variant")
@@ -11197,8 +10832,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_multi_keyword_grant_keeps_all_keywords() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Multi Keyword Variant")
@@ -11232,8 +10865,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_anthem_with_terminal_period() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dead Weight Style Variant")
@@ -11252,8 +10883,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_creatures_you_control_anthem_with_terminal_period() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Simple Team Anthem Variant")
@@ -11272,8 +10901,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_granted_keyword_and_must_attack_clause_keeps_both_parts() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Hellraiser Variant")
@@ -11289,8 +10916,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_anthem_and_unblockable_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Aether Tunnel Variant")
@@ -11309,8 +10934,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_anthem_and_changeling_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Amorphous Axe Variant")
@@ -11343,8 +10966,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_creature_spells_are_every_creature_type_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Maskwood Stack Variant")
@@ -11381,8 +11002,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_nonbattlefield_creature_cards_are_every_creature_type_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Maskwood Off-Battlefield Variant")
@@ -11426,8 +11045,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_permanent_spells_are_artifacts_in_addition_to_their_other_types_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Encroaching Stack Variant")
@@ -11464,8 +11081,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_nonbattlefield_nonland_permanent_cards_are_artifacts_in_addition_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Encroaching Off-Battlefield Variant")
@@ -11507,8 +11122,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_permanent_doesnt_untap_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Coma Veil Variant")
@@ -11531,8 +11144,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_gets_rejects_unsupported_trailing_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Unsupported Static Tail Variant")
@@ -11547,8 +11158,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mill_then_put_from_among_into_hand_with_if_you_dont() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ainok Wayfarer Variant")
@@ -11569,8 +11178,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mill_then_put_from_among_into_hand() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Six Variant")
@@ -11590,8 +11197,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mill_with_trailing_clause_fails_instead_of_silently_partial_parsing() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Midnight Tilling Variant")
@@ -11606,8 +11211,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_fireblast_style_alternative_cost_line_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Fireblast Variant")
@@ -11651,8 +11254,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_zero_mana_alternative_cost_line_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Trap Variant")
@@ -11671,8 +11272,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_if_self_free_cast_alternative_cost_line_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sivvi Probe")
@@ -11757,8 +11356,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_if_conditional_rather_than_alternative_cost_line_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sivvi Valor Probe")
@@ -11786,8 +11383,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_self_free_cast_alternative_cost_line_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Free Cast Probe")
@@ -11822,8 +11417,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_alternative_cost_with_trailing_clause_fails() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Treasure Alt Cost Variant")
@@ -11840,8 +11433,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_unless_any_player_pays_mana_prefix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rhystic Tutor Variant")
@@ -11863,8 +11454,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_yasharn_search_uses_generic_library_slots_bundle() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Yasharn Variant")
@@ -11894,8 +11483,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_gem_of_becoming_search_tracks_each_land_slot() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Gem of Becoming")
@@ -11927,8 +11514,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_construct_token_with_explicit_pt_does_not_force_karnstruct_stats() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sokenzan Smelter Variant")
@@ -11951,8 +11536,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_up_to_one_single_disjunction_stays_single_choice() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Scrollshift Variant")
@@ -11984,8 +11567,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_for_each_player_who_didnt_tracks_did_not_result() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Strongarm Tactics Variant")
@@ -12015,8 +11596,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_exile_target_player_hand_and_graveyard_bundle_sets_owner() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Identity Crisis Variant")
@@ -12036,8 +11615,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_self_enters_with_counters_as_static_not_spell_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB Counter Variant")
@@ -12064,8 +11641,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_this_artifact_enters_with_counters_and_source_remove_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ox Cart Variant")
@@ -12116,8 +11691,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_return_two_target_cards_uses_exact_target_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Soul Strings Count Variant")
@@ -12134,8 +11707,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn reject_target_player_dealt_damage_by_this_turn_subject() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Wicked Akuba Subject Variant")
@@ -12152,8 +11723,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_backdraft_tracks_historical_spell_damage_choice() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Backdraft")
@@ -12197,8 +11766,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_condition_equipped_creature_tapped_or_untapped() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Sword Condition Variant")
@@ -12230,8 +11797,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_static_condition_its_attacking() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kitesail Corsair Variant")
@@ -12255,8 +11820,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_put_that_card_into_hand_with_prior_reference() {
         let def =
@@ -12274,8 +11837,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_put_that_card_into_graveyard_with_prior_reference() {
         let def =
@@ -12295,8 +11856,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_put_land_from_hand_onto_battlefield_tapped() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Put Land Tapped Variant")
@@ -12313,8 +11872,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_counter_target_spell_if_it_matches_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Jaded Response Variant")
@@ -12330,8 +11887,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_instead_branch_referencing_target() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Electrostatic Bolt Variant")
@@ -12351,8 +11906,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_kicker_target_spell_mana_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Prohibit Variant")
@@ -12374,8 +11927,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_instead_branch_for_legendary_or_enchantment_creature() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Regents Authority Variant")
@@ -12396,8 +11947,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_instead_branch_for_human_target() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Flare of Faith Variant")
@@ -12418,8 +11967,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_instead_branch_with_trailing_gets_instead() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Groundswell Variant")
@@ -12441,8 +11988,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_conditional_landfall_history_predicate_instead_branch() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Groundswell Landfall Variant")
@@ -12464,8 +12009,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destination_first_put_onto_battlefield_under_your_control() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Thrilling Encore Variant")
@@ -12484,8 +12027,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_destination_first_put_attached_to_it_from_graveyard_or_hand() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Bruna Variant")
@@ -12507,8 +12048,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_has_keyword_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Lance Variant")
@@ -12524,8 +12063,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_you_control_enchanted_land_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Annex Variant")
@@ -12540,8 +12077,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_can_block_additional_creature_this_turn_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Anurid Variant")
@@ -12557,8 +12092,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_land_type_addition_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blanket Variant")
@@ -12573,8 +12106,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_nightcreep_style_land_type_change_uses_basic_land_type_lowering() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nightcreep Variant")
@@ -12604,8 +12135,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_lands_are_pt_creatures_still_lands_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
@@ -12631,8 +12160,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_lands_become_pt_creatures_until_end_of_turn_spell_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Life Variant")
@@ -12650,8 +12177,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_artifact_becomes_artifact_creature_until_end_of_turn_spell_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Capenna Express Variant")
@@ -12670,8 +12195,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_creature_becomes_vampire_in_addition_to_other_types_until_eot_spell_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Bloodline Variant")
@@ -12691,8 +12214,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_land_becomes_island_until_end_of_turn_spell_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Twiddle Land Variant")
@@ -12710,8 +12231,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_you_choose_nonland_card_from_revealed_hand_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Venarian Variant")
@@ -12729,8 +12248,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_choose_card_type_then_reveal_and_put_matching_cards() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Alrund Variant")
@@ -12748,8 +12265,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_ability_cost_reduction_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Training Grounds Variant")
@@ -12774,8 +12289,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activated_ability_cost_increase_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Brutal Suppression Variant")
@@ -12805,8 +12318,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_self_activated_ability_cost_reduction_for_each_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Channel Reducer Variant")
@@ -12825,8 +12336,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_gets_xx_where_x_creature_cards_in_graveyard() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wreath Variant")
@@ -12851,8 +12360,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_multiple_additional_land_plays_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Azusa Variant")
@@ -12872,8 +12379,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_counter_unless_pays_dynamic_mana_equal_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
@@ -12892,8 +12397,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_until_next_turn_whenever_trigger_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Dont Move Variant")
@@ -12913,8 +12416,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn reject_counter_ability_target_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
@@ -12933,8 +12434,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_creature_cant_block_this_creature_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Duct Crawler Variant")
@@ -12955,8 +12454,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_target_creature_blocks_this_creature_if_able_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rampant Elephant Variant")
@@ -12975,8 +12472,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_all_creatures_able_to_block_target_creature_do_so_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Alluring Scent Variant")
@@ -12995,8 +12490,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_curly_apostrophe_negated_untap_clause_with_tapped_duration() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kill Switch Apostrophe Variant")
@@ -13021,8 +12514,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn create_creature_token_with_food_reminder_stays_creature_token() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wolf Quarry Token Variant")
@@ -13042,8 +12533,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_for_each_player_put_from_graveyard_keeps_choice_non_targeted() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Exhume Variant")
@@ -13060,8 +12549,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_for_each_player_may_put_from_hand_keeps_choice_non_targeted() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Show and Tell Variant")
@@ -13078,8 +12565,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_unstable_experiment_draw_then_connive_preserves_draw() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Unstable Experiment Variant")
@@ -13101,8 +12586,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_grim_captains_call_then_do_same_for_subtypes_expands_each_return() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Grim Captain's Call Variant")
@@ -13126,8 +12609,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_each_player_return_with_additional_counter_appends_counter_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Pyrrhic Revival Variant")
@@ -13151,8 +12632,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_spin_into_myth_fateseal_appends_fateseal_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Spin into Myth Variant")
@@ -13183,8 +12662,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_mesmeric_sliver_retains_fateseal_keyword_action() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mesmeric Sliver Variant")
@@ -13202,8 +12679,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_adder_staff_boggart_clash_followup_stays_conditional() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Adder-Staff Boggart Variant")
@@ -13221,8 +12696,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_marvo_supports_defending_player_clash_and_win_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Marvo Variant")
@@ -13257,8 +12730,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_amass_clause_parses_structurally() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Widespread Brutality Variant")
@@ -13291,8 +12762,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_amass_reflexive_damage_amount_uses_amassed_army_power() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Foray of Orcs")
@@ -13315,8 +12784,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_amass_followup_mill_amount_uses_amassed_army_power() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Surrounded by Orcs")
@@ -13337,8 +12804,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_amass_followup_target_bound_uses_amassed_army_power() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Grishnakh Variant")
@@ -13362,8 +12827,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_choose_from_graveyard_then_put_under_your_control() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Scrounge Variant")
@@ -13389,8 +12852,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_parley_revealed_this_way_uses_tagged_nonland_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Parley Variant")
@@ -13421,8 +12882,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_cant_transform_static_clause_stays_static_restriction() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Immerwolf Restriction Variant")
@@ -13457,5 +12916,5 @@ fn scale_value(base: Value, factor: u32) -> Option<Value> {
     Some(value)
 }
 
-#[cfg(all(test, ironsmith_runtime_parser_tests))]
+#[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod tests;

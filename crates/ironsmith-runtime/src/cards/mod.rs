@@ -31,7 +31,6 @@ use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;
 use crate::effect::Effect;
-use crate::ids::CardId;
 #[path = "../../../ironsmith-registry/src/runtime_registry_impl.rs"]
 mod registry_impl;
 
@@ -544,8 +543,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_discard_this_card_activated_ability_as_hand_zone_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Bloodrush Probe")
@@ -581,8 +578,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_if_this_is_tapped_predicate_as_intervening_if() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Storage Land Probe")
@@ -607,8 +602,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_if_there_are_no_counters_on_this_predicate() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Depletion Land Probe")
@@ -627,8 +620,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_add_mana_for_each_counter_removed_this_way_uses_x_value() {
         use crate::ability::AbilityKind;
@@ -659,8 +650,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_activate_no_more_than_twice_each_turn_as_activation_limit() {
         use crate::ability::AbilityKind;
@@ -686,8 +675,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_flip_it_clause_as_flip_effect() {
         use crate::ability::AbilityKind;
@@ -735,20 +722,21 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_assigns_no_combat_damage_clause_as_combat_prevention() {
         use crate::ability::AbilityKind;
         use crate::effects::{
-            IfEffect, MayEffect, PreventAllCombatDamageFromEffect, SequenceEffect, TaggedEffect,
-            WithIdEffect,
+            IfEffect, MayEffect, PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect,
+            SequenceEffect, TaggedEffect, WithIdEffect,
         };
 
         fn contains_prevent(effect: &crate::effect::Effect) -> bool {
             if effect
-                .downcast_ref::<PreventAllCombatDamageFromEffect>()
+                .downcast_ref::<PreventAllCombatDamageEffect>()
                 .is_some()
+                || effect
+                    .downcast_ref::<PreventAllCombatDamageFromEffect>()
+                    .is_some()
             {
                 return true;
             }
@@ -787,13 +775,12 @@ mod tests {
 
         assert!(
             triggered.effects.iter().any(contains_prevent),
-            "expected PreventAllCombatDamageFromEffect in triggered effects"
+            "expected combat damage prevention in triggered effects, got {:#?}",
+            triggered.effects
         );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_look_at_top_then_put_some_into_hand_rest_into_graveyard() {
         use crate::effects::{ChooseObjectsEffect, LookAtTopCardsEffect};
@@ -821,8 +808,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_look_at_top_then_put_them_back_in_any_order() {
         use crate::effects::{LookAtTopCardsEffect, ReorderLibraryTopEffect};
@@ -848,8 +833,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_discover_keyword_action_clause() {
         use crate::effects::DiscoverEffect;
@@ -869,8 +852,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_become_basic_land_type_of_your_choice_until_eot() {
         use crate::effects::BecomeBasicLandTypeChoiceEffect;
@@ -900,8 +881,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_can_block_additional_creature_each_combat_static_ability() {
         use crate::static_abilities::StaticAbilityId;
@@ -924,8 +903,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn parse_enchanted_creature_cant_attack_or_block_static() {
         use crate::static_abilities::StaticAbilityId;
@@ -1042,8 +1019,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_prowess() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Prowess Probe")
@@ -1058,8 +1033,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_cipher() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Cipher Probe")
@@ -1070,8 +1043,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_split_second() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Split Second Probe")
@@ -1082,8 +1053,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_riot() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Riot Probe")
@@ -1094,8 +1063,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_unleash() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Unleash Probe")
@@ -1106,8 +1073,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_unearth() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Unearth Probe")
@@ -1120,8 +1085,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_outlast() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Outlast Probe")
@@ -1134,8 +1097,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_vanishing() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Vanishing Probe")
@@ -1148,8 +1109,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_devour() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Devour Probe")
@@ -1160,8 +1119,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_buyback() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Buyback Probe")
@@ -1172,8 +1129,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_bloodthirst() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Bloodthirst Probe")
@@ -1186,8 +1141,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_ward_pay_life() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Ward Pay Life Probe")
@@ -1200,8 +1153,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_bolster() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Bolster Probe")
@@ -1214,8 +1165,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_rebound() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Rebound Probe")
@@ -1226,8 +1175,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_parsed_cascade() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Cascade Probe")
@@ -1238,8 +1185,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_saruman_of_many_colors() {
         let text = "Ward—Discard an enchantment, instant, or sorcery card.\nWhenever you cast your second spell each turn, each opponent mills two cards. When one or more cards are milled this way, exile target enchantment, instant, or sorcery card with equal or lesser mana value than that spell from an opponent's graveyard. Copy the exiled card. You may cast the copy without paying its mana cost.";
@@ -1251,8 +1196,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_good_day_to_pie() {
         let text = "Tap up to two target creatures.\nWhenever you put a name sticker on a creature, you may return this card from your graveyard to your hand.";
@@ -1264,8 +1207,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_asari_captain() {
         let text = "Trample, haste\nWhenever a Samurai or Warrior you control attacks alone, it gets +1/+0 until end of turn for each Samurai or Warrior you control.";
@@ -1277,8 +1218,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_brine_comber() {
         let text = "Mana cost: {1}{W}{U}\nType: Creature — Spirit // Enchantment — Aura\nPower/Toughness: 2/2\nWhenever this creature enters or becomes the target of an Aura spell, create a 1/1 white Spirit creature token with flying.\nDisturb {W}{U} (You may cast this card from your graveyard transformed for its disturb cost.)";
@@ -1292,8 +1231,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_devoted_grafkeeper() {
         let text = "Mana cost: {W}{U}\nType: Creature — Human Peasant // Creature — Spirit\nPower/Toughness: 2/2\nWhen Devoted Grafkeeper enters, mill four cards.\nWhenever you cast a spell from your graveyard, tap target creature you don't control.\nDisturb {1}{W}{U} (You may cast this card from your graveyard transformed for its disturb cost.)";
@@ -1309,8 +1246,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_dokuchi_silencer() {
         let text = "Mana cost: {1}{B}\nType: Creature — Human Ninja\nPower/Toughness: 2/1\nNinjutsu {1}{B} ({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Dokuchi Silencer deals combat damage to a player, you may discard a card. When you do, destroy target creature or planeswalker that player controls.";
@@ -1329,8 +1264,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_deepcavern_imp() {
         let text = "Mana cost: {2}{B}\nType: Creature — Imp Rebel\nPower/Toughness: 2/2\nFlying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
@@ -1345,8 +1278,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_metropolis_angel() {
         let text = "Mana cost: {3}{W}{U}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\nFlying\nWhenever you attack with one or more creatures with counters on them, draw a card.";
@@ -1359,8 +1290,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_nadu_winged_wisdom() {
         let text = "Mana cost: {1}{G}{U}\nType: Legendary Creature — Bird Wizard\nPower/Toughness: 3/4\nFlying\nWhenever a creature you control becomes the target of a spell or ability, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand. This ability triggers only twice each turn.";
@@ -1373,8 +1302,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_radha_coalition_warlord() {
         let text = "Mana cost: {1}{R}{G}\nType: Legendary Creature — Elf Warrior\nPower/Toughness: 3/3\nDomain — Whenever Radha, Coalition Warlord enters or becomes tapped, another target creature you control gets +X/+X until end of turn, where X is the number of basic land types among lands you control.";
@@ -1387,8 +1314,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_rockslide_sorcerer() {
         let text = "Mana cost: {2}{R}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\nWhenever you cast an instant, sorcery, or Wizard spell, Rockslide Sorcerer deals 1 damage to any target.";
@@ -1401,8 +1326,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_shipwreck_sifters() {
         let text = "Mana cost: {1}{U}\nType: Creature — Spirit\nPower/Toughness: 1/2\nWhen Shipwreck Sifters enters, draw a card, then discard a card.\nWhenever a Spirit card or a card with disturb is put into your graveyard from anywhere, put a +1/+1 counter on Shipwreck Sifters.";
@@ -1415,8 +1338,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_symmetry_sage() {
         let text = "Mana cost: {U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nFlying\nMagecraft — Whenever you cast or copy an instant or sorcery spell, target creature you control has base power 3 until end of turn.";
@@ -1429,8 +1350,6 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-
-
     #[test]
     fn generated_definition_support_accepts_a_vampire_scrivener() {
         let text = "Mana cost: {3}{B}\nType: Creature — Vampire Warlock\nPower/Toughness: 2/2\nFlying\nWhenever you gain life during your turn, put a +1/+1 counter on Vampire Scrivener.\nWhenever you lose life during your turn, put a +1/+1 counter on Vampire Scrivener.";
