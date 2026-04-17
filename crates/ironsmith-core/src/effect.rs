@@ -128,11 +128,22 @@ pub enum DelayedTriggerSpec {
     BeginningOfEndStep(PlayerFilter),
     EndOfCombat,
     ThisDies,
+    Attacks(ObjectFilter),
+    AttacksOneOrMore(ObjectFilter),
+    Dies(ObjectFilter),
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),
     PutIntoGraveyardFromZone {
         filter: ObjectFilter,
         from: crate::zone::Zone,
+    },
+    SpellCast {
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        during_turn: Option<PlayerFilter>,
+        min_spells_this_turn: Option<u32>,
+        exact_spells_this_turn: Option<u32>,
+        from_not_hand: bool,
     },
 }
 
@@ -1073,6 +1084,44 @@ impl ScryEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SurveilEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl SurveilEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FatesealEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl FatesealEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EachPlayerScryEffect {
     pub count: Value,
     pub player_filter: PlayerFilter,
@@ -1114,6 +1163,28 @@ impl MillEffect {
 
     pub fn you(count: impl Into<Value>) -> Self {
         Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShuffleGraveyardIntoLibraryEffect {
+    pub player: PlayerFilter,
+}
+
+impl ShuffleGraveyardIntoLibraryEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShuffleHandAndGraveyardIntoLibraryEffect {
+    pub player: PlayerFilter,
+}
+
+impl ShuffleHandAndGraveyardIntoLibraryEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
     }
 }
 
@@ -1732,6 +1803,156 @@ impl ModifyPowerToughnessEffect {
 
     pub fn source(power: impl Into<Value>, toughness: impl Into<Value>, duration: Until) -> Self {
         Self::new(ChooseSpec::Source, power, toughness, duration)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FightEffect {
+    pub creature1: ChooseSpec,
+    pub creature2: ChooseSpec,
+}
+
+impl FightEffect {
+    pub fn new(creature1: ChooseSpec, creature2: ChooseSpec) -> Self {
+        Self {
+            creature1,
+            creature2,
+        }
+    }
+
+    pub fn you_vs_opponent() -> Self {
+        Self::new(ChooseSpec::creature(), ChooseSpec::creature())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExploreEffect {
+    pub target: ChooseSpec,
+}
+
+impl ExploreEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifestDreadEffect;
+
+impl ManifestDreadEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifestTopCardOfLibraryEffect {
+    pub player: PlayerFilter,
+}
+
+impl ManifestTopCardOfLibraryEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupportEffect {
+    pub amount: u32,
+}
+
+impl SupportEffect {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConniveEffect {
+    pub target: ChooseSpec,
+}
+
+impl ConniveEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DetainEffect {
+    pub target: ChooseSpec,
+}
+
+impl DetainEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GoadEffect {
+    pub target: ChooseSpec,
+}
+
+impl GoadEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenAttractionEffect;
+
+impl OpenAttractionEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdaptEffect {
+    pub amount: u32,
+}
+
+impl AdaptEffect {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackupEffect<A> {
+    pub amount: u32,
+    pub granted_abilities: Vec<A>,
+}
+
+impl<A> BackupEffect<A> {
+    pub fn new(amount: u32, granted_abilities: Vec<A>) -> Self {
+        Self {
+            amount,
+            granted_abilities,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BeholdEffect {
+    pub subtype: Subtype,
+    pub count: u32,
+    pub chooser: PlayerFilter,
+}
+
+impl BeholdEffect {
+    pub fn new(subtype: Subtype, count: u32, chooser: PlayerFilter) -> Self {
+        Self {
+            subtype,
+            count,
+            chooser,
+        }
+    }
+
+    pub fn you(subtype: Subtype, count: u32) -> Self {
+        Self::new(subtype, count, PlayerFilter::You)
     }
 }
 
@@ -3117,6 +3338,400 @@ impl LoseTheGameEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ChooseColorEffect {
+    pub chooser: PlayerFilter,
+}
+
+impl ChooseColorEffect {
+    pub fn new(chooser: PlayerFilter) -> Self {
+        Self { chooser }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseCreatureTypeEffect {
+    pub chooser: PlayerFilter,
+    pub excluded_subtypes: Vec<Subtype>,
+}
+
+impl ChooseCreatureTypeEffect {
+    pub fn new(chooser: PlayerFilter, excluded_subtypes: Vec<Subtype>) -> Self {
+        Self {
+            chooser,
+            excluded_subtypes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlipCoinEffect {
+    pub player: PlayerFilter,
+}
+
+impl FlipCoinEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetLifeTotalEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+}
+
+impl SetLifeTotalEffect {
+    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+        }
+    }
+
+    pub fn you(amount: impl Into<Value>) -> Self {
+        Self::new(amount, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExchangeLifeTotalsEffect {
+    pub player1: PlayerFilter,
+    pub player2: PlayerFilter,
+}
+
+impl ExchangeLifeTotalsEffect {
+    pub fn new(player1: PlayerFilter, player2: PlayerFilter) -> Self {
+        Self { player1, player2 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleManaPoolEffect {
+    pub player: PlayerFilter,
+}
+
+impl DoubleManaPoolEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipDrawStepEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipDrawStepEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipNextCombatPhaseThisTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipNextCombatPhaseThisTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdditionalLandPlaysEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+    pub duration: Until,
+}
+
+impl AdditionalLandPlaysEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter, duration: Until) -> Self {
+        Self {
+            count: count.into(),
+            player,
+            duration,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BecomeMonarchEffect {
+    pub player: PlayerFilter,
+}
+
+impl BecomeMonarchEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RingTemptsYouEffect {
+    pub player: PlayerFilter,
+}
+
+impl RingTemptsYouEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VentureIntoDungeonEffect {
+    pub player: PlayerFilter,
+    pub undercity_if_no_active: bool,
+}
+
+impl VentureIntoDungeonEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            undercity_if_no_active: false,
+        }
+    }
+
+    pub fn via_initiative(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            undercity_if_no_active: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TakeInitiativeEffect {
+    pub player: PlayerFilter,
+}
+
+impl TakeInitiativeEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PoisonCountersEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl PoisonCountersEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlCombatChoicesThisTurnEffect {
+    pub attackers: bool,
+    pub blockers: bool,
+}
+
+impl ControlCombatChoicesThisTurnEffect {
+    pub fn new(attackers: bool, blockers: bool) -> Self {
+        Self {
+            attackers,
+            blockers,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RollDieEffect {
+    pub player: PlayerFilter,
+    pub sides: u32,
+}
+
+impl RollDieEffect {
+    pub fn new(player: PlayerFilter, sides: u32) -> Self {
+        Self { player, sides }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmitGiftGivenEffect {
+    pub recipient: PlayerFilter,
+}
+
+impl EmitGiftGivenEffect {
+    pub fn new(recipient: PlayerFilter) -> Self {
+        Self { recipient }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseNamedOptionEffect {
+    pub chooser: PlayerFilter,
+    pub options: Vec<String>,
+}
+
+impl ChooseNamedOptionEffect {
+    pub fn new(chooser: PlayerFilter, options: Vec<String>) -> Self {
+        Self { chooser, options }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipCombatPhasesEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipCombatPhasesEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExchangeZonesEffect {
+    pub player: PlayerFilter,
+    pub zone1: crate::zone::Zone,
+    pub zone2: crate::zone::Zone,
+}
+
+impl ExchangeZonesEffect {
+    pub fn new(player: PlayerFilter, zone1: crate::zone::Zone, zone2: crate::zone::Zone) -> Self {
+        Self {
+            player,
+            zone1,
+            zone2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExchangeValuesEffect {
+    pub left: ExchangeValueOperand,
+    pub right: ExchangeValueOperand,
+    pub duration: Until,
+}
+
+impl ExchangeValuesEffect {
+    pub fn new(left: ExchangeValueOperand, right: ExchangeValueOperand, duration: Until) -> Self {
+        Self {
+            left,
+            right,
+            duration,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddManaOfLandProducedTypesEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+    pub land_filter: ObjectFilter,
+    pub allow_colorless: bool,
+    pub same_type: bool,
+}
+
+impl AddManaOfLandProducedTypesEffect {
+    pub fn new(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        land_filter: ObjectFilter,
+        allow_colorless: bool,
+        same_type: bool,
+    ) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            land_filter,
+            allow_colorless,
+            same_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagTriggeringDamageTargetEffect {
+    pub tag: TagKey,
+}
+
+impl TagTriggeringDamageTargetEffect {
+    pub fn new(tag: impl Into<TagKey>) -> Self {
+        Self { tag: tag.into() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConvertEffect {
+    pub target: ChooseSpec,
+}
+
+impl ConvertEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PutStickerEffect {
+    pub target: ChooseSpec,
+    pub action: crate::event_model::KeywordActionKind,
+}
+
+impl PutStickerEffect {
+    pub fn new(target: ChooseSpec, action: crate::event_model::KeywordActionKind) -> Self {
+        Self { target, action }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReorderGraveyardEffect {
+    pub player: PlayerFilter,
+}
+
+impl ReorderGraveyardEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExtraTurnEffect {
     pub player: PlayerFilter,
 }
@@ -3794,6 +4409,27 @@ pub struct RemoveUpToAnyCountersEffect {
 impl RemoveUpToAnyCountersEffect {
     pub fn new(max_count: impl Into<Value>, target: ChooseSpec) -> Self {
         Self {
+            max_count: max_count.into(),
+            target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RemoveUpToCountersEffect {
+    pub counter_type: crate::counter::CounterType,
+    pub max_count: Value,
+    pub target: ChooseSpec,
+}
+
+impl RemoveUpToCountersEffect {
+    pub fn new(
+        counter_type: crate::counter::CounterType,
+        max_count: impl Into<Value>,
+        target: ChooseSpec,
+    ) -> Self {
+        Self {
+            counter_type,
             max_count: max_count.into(),
             target,
         }

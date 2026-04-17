@@ -41,14 +41,14 @@ impl CostExecutableEffect for ChooseModeEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        let max_modes = match self.choose_count {
-            Value::Fixed(value) => value.max(0) as usize,
+        match self.choose_count {
+            Value::Fixed(_) => {}
             _ => {
                 return Err(CostValidationError::Other(
                     "dynamic modal cost counts are not supported".to_string(),
                 ));
             }
-        };
+        }
         let min_modes = match &self.min_choose_count {
             Value::Fixed(value) => (*value).max(0) as usize,
             _ => {

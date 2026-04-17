@@ -12,7 +12,6 @@
 
 use crate::color::Color;
 use crate::effect::{Effect, Until};
-use crate::filter::ObjectFilterExt as _;
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 pub use ironsmith_core::{DamageFilter, PreventionTarget};

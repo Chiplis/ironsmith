@@ -3,6 +3,8 @@
 //! This module extends the CardBuilder with methods for adding abilities,
 //! making it easy to define cards with their complete gameplay mechanics.
 
+#![allow(dead_code)]
+
 use crate::ability::{
     self, Ability, AbilityKind, ActivationTiming, LevelAbility, TriggeredAbility,
 };
@@ -81,6 +83,7 @@ impl ParseCacheKey {
 type CachedParseResult = Result<CardDefinition, CardTextError>;
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[allow(dead_code)]
 #[path = "../../../ironsmith-registry/src/compiler_runtime.rs"]
 mod compiler_runtime_for_tests;
 
@@ -4501,7 +4504,10 @@ mod target_parse_tests {
                 assert_eq!(filter.tagged_constraints.len(), 1);
                 let constraint = &filter.tagged_constraints[0];
                 assert_eq!(constraint.tag.as_str(), IT_TAG);
-                assert_eq!(constraint.relation, crate::TaggedOpbjectRelation::IsTaggedObject);
+                assert_eq!(
+                    constraint.relation,
+                    crate::TaggedOpbjectRelation::IsTaggedObject
+                );
             }
             _ => panic!("expected object target"),
         }
@@ -4552,7 +4558,10 @@ mod target_parse_tests {
         assert_eq!(filter.tagged_constraints.len(), 1);
         let constraint = &filter.tagged_constraints[0];
         assert_eq!(constraint.tag.as_str(), IT_TAG);
-        assert_eq!(constraint.relation, crate::TaggedOpbjectRelation::SharesCardType);
+        assert_eq!(
+            constraint.relation,
+            crate::TaggedOpbjectRelation::SharesCardType
+        );
     }
 
     #[test]
@@ -6060,7 +6069,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(
+                &crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+            ),
             "expected static SetBasePowerToughnessForFilter, got {static_ids:?}"
         );
 
@@ -6105,7 +6116,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
+            static_ids
+                .contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
             "expected lose-all-abilities static, got {static_ids:?}"
         );
         assert!(
@@ -6121,7 +6133,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected set-colors static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(
+                &crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+            ),
             "expected set-base-power/toughness static, got {static_ids:?}"
         );
     }
@@ -6152,7 +6166,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             def.alternative_casts
         );
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
+            static_ids
+                .contains(&crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter),
             "expected lose-all-abilities static, got {static_ids:?}"
         );
         assert!(
@@ -6168,7 +6183,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected set-colors static, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(
+                &crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+            ),
             "expected set-base-power/toughness static, got {static_ids:?}"
         );
     }
@@ -12150,7 +12167,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected AddCardTypes static ability for lands becoming creatures, got {static_ids:?}"
         );
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter),
+            static_ids.contains(
+                &crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+            ),
             "expected SetBasePowerToughnessForFilter static ability for lands becoming 1/1, got {static_ids:?}"
         );
     }
@@ -12279,7 +12298,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction),
+            static_ids
+                .contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction),
             "expected activated-ability cost reduction static ability, got {static_ids:?}"
         );
     }
@@ -12308,7 +12328,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .collect();
         assert!(
-            static_ids.contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostIncrease),
+            static_ids
+                .contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostIncrease),
             "expected activated-ability cost increase static ability, got {static_ids:?}"
         );
     }

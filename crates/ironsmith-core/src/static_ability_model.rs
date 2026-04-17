@@ -177,6 +177,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         text: String,
     },
     Ward(TotalCost<C>),
+    Morph(TotalCost<C>),
+    Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
     ExertAttack {
         only_if_not_exerted_this_turn: bool,
@@ -600,6 +602,12 @@ where
             StaticAbilityPayload::Ward(cost) => {
                 StaticAbilityPayload::Ward(map_total_cost(cost, map_cost)?)
             }
+            StaticAbilityPayload::Morph(cost) => {
+                StaticAbilityPayload::Morph(map_total_cost(cost, map_cost)?)
+            }
+            StaticAbilityPayload::Megamorph(cost) => {
+                StaticAbilityPayload::Megamorph(map_total_cost(cost, map_cost)?)
+            }
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
             }
@@ -957,12 +965,20 @@ impl<
         }
     }
 
-    pub fn morph(_cost: TotalCost<C>) -> Self {
-        Self::new("morph")
+    pub fn morph(cost: TotalCost<C>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Morph),
+            label: "morph".to_string(),
+            payload: StaticAbilityPayload::Morph(cost),
+        }
     }
 
-    pub fn megamorph(_cost: TotalCost<C>) -> Self {
-        Self::new("megamorph")
+    pub fn megamorph(cost: TotalCost<C>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Megamorph),
+            label: "megamorph".to_string(),
+            payload: StaticAbilityPayload::Megamorph(cost),
+        }
     }
 
     pub fn keyword_marker(marker: impl std::fmt::Debug) -> Self {

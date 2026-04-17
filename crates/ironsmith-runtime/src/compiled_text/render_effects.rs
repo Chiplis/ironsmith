@@ -51,6 +51,39 @@ fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Z
     choose.filter.zone.or(choose.zone)
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct SacrificeView<'a> {
+    filter: &'a ObjectFilter,
+    count: &'a Value,
+    player: &'a PlayerFilter,
+}
+
+fn sacrifice_view(effect: &Effect) -> Option<SacrificeView<'_>> {
+    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+        return Some(SacrificeView {
+            filter: &sacrifice.filter,
+            count: &sacrifice.count,
+            player: &sacrifice.player,
+        });
+    }
+    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>() {
+        return Some(SacrificeView {
+            filter: &sacrifice.filter,
+            count: &sacrifice.count,
+            player: &sacrifice.player,
+        });
+    }
+    None
+}
+
+fn sacrifice_view_unwrapped(effect: &Effect) -> Option<SacrificeView<'_>> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        sacrifice_view(&with_id.effect)
+    } else {
+        sacrifice_view(effect)
+    }
+}
+
 fn choose_search_zones(choose: &crate::effects::ChooseObjectsEffect) -> Option<Vec<Zone>> {
     let primary_zone = choose.filter.zone.or(choose.zone)?;
     let mut zones = vec![primary_zone];
@@ -935,16 +968,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 return None;
             }
 
-            let sacrifice =
-                if let Some(with_id) = effects[1].downcast_ref::<crate::effects::WithIdEffect>() {
-                    with_id
-                        .effect
-                        .downcast_ref::<crate::effects::SacrificeEffect>()?
-                } else {
-                    effects[1].downcast_ref::<crate::effects::SacrificeEffect>()?
-                };
-            if sacrifice.player != choose.chooser
-                || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
+            let sacrifice = sacrifice_view_unwrapped(effects[1])?;
+            if sacrifice.player != &choose.chooser
+                || !sacrifice_uses_chosen_tag(sacrifice.filter, choose.tag.as_str())
             {
                 return None;
             }
@@ -1905,9 +1931,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(with_id) = filtered[idx + 1].downcast_ref::<crate::effects::WithIdEffect>()
-            && let Some(sacrifice) = with_id
-                .effect
-                .downcast_ref::<crate::effects::SacrificeEffect>()
+            && let Some(sacrifice) = sacrifice_view(&with_id.effect)
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
         {
             parts.push(compact);
@@ -1917,8 +1941,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(sacrifice) =
-                filtered[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
+            && let Some(sacrifice) = sacrifice_view(filtered[idx + 1])
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
         {
             parts.push(compact);
@@ -2703,18 +2726,52 @@ mod tests {
                 tag: TagKey::from("sacrificed_0"),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
-        let sacrifice = crate::effects::SacrificeEffect::player(
+        let sacrifice = Effect::new(crate::effects::SacrificeEffect::player(
             sacrifice_filter.clone(),
             Value::Count(sacrifice_filter),
             PlayerFilter::You,
-        );
+        ));
 
-        let compact = describe_choose_then_sacrifice(&choose, &sacrifice)
-            .expect("any-number sacrifice should compact");
+        let compact = describe_choose_then_sacrifice(
+            &choose,
+            sacrifice_view(&sacrifice).expect("sacrifice view"),
+        )
+        .expect("any-number sacrifice should compact");
         assert_eq!(
             normalize_cost_phrase(&compact),
             "Sacrifice any number of creatures"
         );
+    }
+
+    #[test]
+    fn describe_choose_then_sacrifice_compacts_sacrifice_player_effect() {
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+            ChoiceCount::exactly(1),
+            PlayerFilter::Opponent,
+            TagKey::from("sacrificed_0"),
+        )
+        .in_zone(Zone::Battlefield);
+
+        let mut sacrifice_filter = ObjectFilter::creature();
+        sacrifice_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("sacrificed_0"),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let sacrifice = Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+            sacrifice_filter,
+            Value::Fixed(1),
+            PlayerFilter::Opponent,
+        ));
+
+        let compact = describe_choose_then_sacrifice(
+            &choose,
+            sacrifice_view(&sacrifice).expect("sacrifice-player view"),
+        )
+        .expect("sacrifice-player effect should compact");
+        assert_eq!(compact, "an opponent sacrifices a creature of their choice");
     }
 
     #[test]
@@ -2832,9 +2889,7 @@ pub(super) fn describe_cost_list(costs: &[crate::costs::Cost]) -> String {
             && let Some(choose) = costs[idx]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-            && let Some(sacrifice) = costs[idx + 1]
-                .effect_ref()
-                .and_then(|effect| effect.downcast_ref::<crate::effects::SacrificeEffect>())
+            && let Some(sacrifice) = costs[idx + 1].effect_ref().and_then(sacrifice_view)
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
         {
             parts.push(normalize_cost_phrase(&compact));
@@ -3276,14 +3331,14 @@ pub(super) fn describe_for_players_choose_types_then_sacrifice_rest(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
     let (tail, choose_effects) = for_players.effects.split_last()?;
-    let sacrifice = tail.downcast_ref::<crate::effects::SacrificeEffect>()?;
-    if sacrifice.player != PlayerFilter::IteratedPlayer {
+    let sacrifice = sacrifice_view(tail)?;
+    if sacrifice.player != &PlayerFilter::IteratedPlayer {
         return None;
     }
-    let Value::Count(count_filter) = &sacrifice.count else {
+    let Value::Count(count_filter) = sacrifice.count else {
         return None;
     };
-    if count_filter != &sacrifice.filter {
+    if count_filter != sacrifice.filter {
         return None;
     }
 
@@ -3355,14 +3410,14 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
         return None;
     }
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let sacrifice = for_players.effects[1].downcast_ref::<crate::effects::SacrificeEffect>()?;
+    let sacrifice = sacrifice_view(&for_players.effects[1])?;
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
         || !choose.count.is_single()
         || choose.chooser != PlayerFilter::IteratedPlayer
-        || !matches!(sacrifice.count, Value::Fixed(1))
-        || sacrifice.player != PlayerFilter::IteratedPlayer
-        || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
+        || !matches!(sacrifice.count, Value::Fixed(value) if *value == 1)
+        || sacrifice.player != &PlayerFilter::IteratedPlayer
+        || !sacrifice_uses_chosen_tag(sacrifice.filter, choose.tag.as_str())
     {
         return None;
     }
@@ -3379,7 +3434,7 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
 
 pub(super) fn describe_choose_then_sacrifice(
     choose: &crate::effects::ChooseObjectsEffect,
-    sacrifice: &crate::effects::SacrificeEffect,
+    sacrifice: SacrificeView<'_>,
 ) -> Option<String> {
     let choose_is_any_number = choose.count.is_any_number();
     let choose_exact = if choose_is_any_number {
@@ -3388,17 +3443,17 @@ pub(super) fn describe_choose_then_sacrifice(
         choose.count.max.filter(|max| *max == choose.count.min)
     };
     let sacrifice_count = match sacrifice.count {
-        Value::Fixed(value) if value > 0 => Some(value as usize),
+        Value::Fixed(value) if *value > 0 => Some(*value as usize),
         _ => None,
     };
     let sacrifice_any_number = matches!(
-        &sacrifice.count,
-        Value::Count(count_filter) if count_filter == &sacrifice.filter
+        sacrifice.count,
+        Value::Count(count_filter) if count_filter == sacrifice.filter
     );
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
-        || sacrifice.player != choose.chooser
-        || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
+        || sacrifice.player != &choose.chooser
+        || !sacrifice_uses_chosen_tag(sacrifice.filter, choose.tag.as_str())
     {
         return None;
     }
@@ -3441,6 +3496,59 @@ pub(super) fn describe_choose_then_sacrifice(
         let chosen = pluralize_noun_phrase(&chosen);
         Some(format!("{player} {verb} {count_text} {chosen}"))
     }
+}
+
+fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
+    let player = describe_player_filter(sacrifice.player);
+    let verb = player_verb(&player, "sacrifice", "sacrifices");
+    if let Value::Count(count_filter) = sacrifice.count
+        && count_filter == sacrifice.filter
+    {
+        let mut noun = sacrifice.filter.description();
+        if let Some(rest) = noun.strip_prefix("target player's ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("that player's ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("the active player's ") {
+            noun = rest.to_string();
+        }
+        if let Some(rest) = noun.strip_prefix("a ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("an ") {
+            noun = rest.to_string();
+        }
+        return format!("{player} {verb} all {}", pluralize_noun_phrase(&noun));
+    }
+    if matches!(sacrifice.count, Value::Fixed(value) if *value == 1) {
+        if let Some(rest) = sacrifice
+            .filter
+            .description()
+            .strip_prefix("target player's ")
+        {
+            return format!("{player} {verb} {}", with_indefinite_article(rest));
+        }
+        if let Some(rest) = sacrifice
+            .filter
+            .description()
+            .strip_prefix("that player's ")
+        {
+            return format!("{player} {verb} {}", with_indefinite_article(rest));
+        }
+        if let Some(rest) = sacrifice
+            .filter
+            .description()
+            .strip_prefix("the active player's ")
+        {
+            return format!("{player} {verb} {}", with_indefinite_article(rest));
+        }
+    }
+    format!(
+        "{} {} {} {}",
+        player,
+        verb,
+        describe_object_count(sacrifice.count),
+        sacrifice.filter.description()
+    )
 }
 
 pub(super) fn describe_choose_then_destroy(
@@ -4841,6 +4949,7 @@ pub(super) fn for_each_moves_unselected_to_zone(
     )
 }
 
+#[allow(dead_code)]
 pub(super) fn for_each_moves_unselected_to_library_bottom(
     for_each: &crate::effects::ForEachTaggedEffect,
     looked_tag: &str,
@@ -9181,57 +9290,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&attach.target)
         );
     }
-    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
-        let player = describe_player_filter(&sacrifice.player);
-        let verb = player_verb(&player, "sacrifice", "sacrifices");
-        if let Value::Count(count_filter) = &sacrifice.count
-            && count_filter == &sacrifice.filter
-        {
-            let mut noun = sacrifice.filter.description();
-            if let Some(rest) = noun.strip_prefix("target player's ") {
-                noun = rest.to_string();
-            } else if let Some(rest) = noun.strip_prefix("that player's ") {
-                noun = rest.to_string();
-            } else if let Some(rest) = noun.strip_prefix("the active player's ") {
-                noun = rest.to_string();
-            }
-            if let Some(rest) = noun.strip_prefix("a ") {
-                noun = rest.to_string();
-            } else if let Some(rest) = noun.strip_prefix("an ") {
-                noun = rest.to_string();
-            }
-            return format!("{player} {verb} all {}", pluralize_noun_phrase(&noun));
-        }
-        if matches!(sacrifice.count, Value::Fixed(1)) {
-            if let Some(rest) = sacrifice
-                .filter
-                .description()
-                .strip_prefix("target player's ")
-            {
-                return format!("{player} {verb} {}", with_indefinite_article(rest));
-            }
-            if let Some(rest) = sacrifice
-                .filter
-                .description()
-                .strip_prefix("that player's ")
-            {
-                return format!("{player} {verb} {}", with_indefinite_article(rest));
-            }
-            if let Some(rest) = sacrifice
-                .filter
-                .description()
-                .strip_prefix("the active player's ")
-            {
-                return format!("{player} {verb} {}", with_indefinite_article(rest));
-            }
-        }
-        return format!(
-            "{} {} {} {}",
-            player,
-            verb,
-            describe_object_count(&sacrifice.count),
-            sacrifice.filter.description()
-        );
+    if let Some(sacrifice) = sacrifice_view(effect) {
+        return describe_sacrifice_effect(sacrifice);
     }
     if let Some(sacrifice_target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
         return format!(

@@ -372,6 +372,11 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
+            ironsmith_core::DelayedTriggerSpec::Attacks(filter) => Self::attacks(filter),
+            ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter) => {
+                Self::attacks_one_or_more(filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::Dies(filter) => Self::dies(filter),
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }
@@ -386,6 +391,21 @@ impl super::Trigger {
                         .filter(filter),
                 )
             }
+            ironsmith_core::DelayedTriggerSpec::SpellCast {
+                filter,
+                caster,
+                during_turn,
+                min_spells_this_turn,
+                exact_spells_this_turn,
+                from_not_hand,
+            } => Self::spell_cast_qualified(
+                filter,
+                caster,
+                during_turn,
+                min_spells_this_turn,
+                exact_spells_this_turn,
+                from_not_hand,
+            ),
         }
     }
 

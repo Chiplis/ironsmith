@@ -3,9 +3,12 @@
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
-use crate::effects::{BecomeCreatureTypeChoiceEffect, EffectExecutor};
+use crate::effects::{
+    BecomeCreatureTypeChoiceEffect, CostExecutableEffect, CostValidationError, EffectExecutor,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 use crate::types::Subtype;
 
@@ -33,6 +36,10 @@ impl ChooseCreatureTypeEffect {
 }
 
 impl EffectExecutor for ChooseCreatureTypeEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -71,6 +78,17 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
 
         game.set_chosen_creature_type(ctx.source, subtype_options[chosen]);
         Ok(EffectOutcome::count(1))
+    }
+}
+
+impl CostExecutableEffect for ChooseCreatureTypeEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        Ok(())
     }
 }
 

@@ -13,7 +13,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use ironsmith::card::LinkedFaceLayout;
-use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
+use ironsmith::cards::{
+    CardDefinition, generated_definition_has_unimplemented_content,
+    generated_definition_unsupported_mechanics_message,
+};
 use ironsmith::compiled_text::canonical_compiled_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
@@ -43,6 +46,13 @@ query FetchOracleCardTagPage($slug: String!, $type: TagType!, $page: Int) {
   }
 }
 "#;
+
+fn read_sqlite_count(row: &rusqlite::Row<'_>) -> rusqlite::Result<usize> {
+    let count = row.get::<_, i64>(0)?;
+    usize::try_from(count).map_err(|err| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Integer, Box::new(err))
+    })
+}
 
 fn strip_parenthetical_text(text: &str) -> String {
     text.lines()
@@ -315,14 +325,26 @@ pub fn compile_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapsh
     snapshot_from_attempt(payload, &attempt)
 }
 
+pub fn compile_strict_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
+    let attempt = parse_card_payload(payload, false);
+    snapshot_from_attempt(payload, &attempt)
+}
+
 pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> CompilationSnapshot {
-    let mut snapshot = compile_snapshot_from_payload(payload);
+    let attempt = parse_card_payload_with_fallback(payload);
+    let unsupported_mechanics_message = attempt
+        .definition
+        .as_ref()
+        .and_then(generated_definition_unsupported_mechanics_message);
+    let mut snapshot = snapshot_from_attempt(payload, &attempt);
     if snapshot.parse_status == ParseStatus::StrictCompiled
         && (snapshot.has_unimplemented || snapshot.semantic_mismatch)
     {
         snapshot.parse_status = ParseStatus::ParseFailed;
         snapshot.parse_error = Some(if snapshot.has_unimplemented {
-            "generated definition still contains unimplemented content".to_string()
+            unsupported_mechanics_message.unwrap_or_else(|| {
+                "generated definition still contains unimplemented content".to_string()
+            })
         } else {
             "compiled output still semantically mismatches the oracle text".to_string()
         });
@@ -404,7 +426,7 @@ impl CompilationSnapshot {
             oracle_text: stored_oracle_text,
             raw_oracle_text: oracle_text.to_string(),
             parse_status,
-            parse_error,
+            parse_error: parse_error.map(|error| normalize_debug_card_ids(&error)),
             compiled_text,
             compiled_card_definition,
             oracle_coverage,
@@ -867,7 +889,7 @@ impl CardStatusDb {
 
         let tx = self.conn.transaction()?;
         let existing_count: usize =
-            tx.query_row("SELECT COUNT(*) FROM oracle_tag", [], |row| row.get(0))?;
+            tx.query_row("SELECT COUNT(*) FROM oracle_tag", [], read_sqlite_count)?;
         tx.execute("DELETE FROM oracle_tag", [])?;
 
         let mut inserted = 0usize;
@@ -1007,7 +1029,7 @@ impl CardStatusDb {
                  WHERE allowed.card_name = registry_card.card_name
              )",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
         tx.execute(
             "DELETE FROM registry_card
@@ -1067,7 +1089,7 @@ impl CardStatusDb {
                  WHERE allowed.card_name = card_compilation.card_name
              )",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
         let compilation_rows_deleted: usize = tx.query_row(
             "SELECT COUNT(*)
@@ -1078,7 +1100,7 @@ impl CardStatusDb {
                  WHERE allowed.card_name = card_compilation.card_name
              )",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
         let tag_rows_deleted: usize = tx.query_row(
             "SELECT COUNT(*)
@@ -1089,7 +1111,7 @@ impl CardStatusDb {
                  WHERE allowed.card_name = card_tagging.card_name
              )",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
 
         tx.execute(
@@ -1136,7 +1158,7 @@ impl CardStatusDb {
         let distinct_cards_retained: usize = tx.query_row(
             "SELECT COUNT(DISTINCT card_name) FROM card_compilation",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
         let compilation_rows_deleted: usize = tx.query_row(
             "SELECT COUNT(*)
@@ -1146,7 +1168,7 @@ impl CardStatusDb {
                  FROM latest_card_observation
              )",
             [],
-            |row| row.get(0),
+            read_sqlite_count,
         )?;
 
         tx.execute(
@@ -1216,9 +1238,9 @@ impl CardStatusDb {
     }
 
     pub fn registry_card_count(&self) -> Result<usize, Box<dyn Error>> {
-        let count = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM registry_card", [], |row| row.get(0))?;
+        let count =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM registry_card", [], read_sqlite_count)?;
         Ok(count)
     }
 }
@@ -1806,7 +1828,61 @@ fn stable_compiled_definition_snapshot(definition: &CardDefinition) -> String {
     for ability in &mut sanitized.abilities {
         ability.text = None;
     }
-    format!("{sanitized:#?}")
+    normalize_debug_card_ids(&format!("{sanitized:#?}"))
+}
+
+fn normalize_debug_card_ids(snapshot: &str) -> String {
+    let mut normalized = Vec::new();
+    let mut lines = snapshot.lines().peekable();
+    while let Some(line) = lines.next() {
+        normalized.push(line.to_string());
+        if !line.trim().ends_with("CardId(") {
+            continue;
+        }
+
+        let Some(next_line) = lines.peek() else {
+            continue;
+        };
+        let trimmed = next_line.trim();
+        let Some(number) = trimmed.strip_suffix(',') else {
+            continue;
+        };
+        if !number.chars().all(|ch| ch.is_ascii_digit()) {
+            continue;
+        }
+
+        let indent_len = next_line.len().saturating_sub(next_line.trim_start().len());
+        let indent = " ".repeat(indent_len);
+        normalized.push(format!("{indent}{FIXED_SNAPSHOT_CARD_ID},"));
+        lines.next();
+    }
+    normalize_inline_card_ids(&normalized.join("\n"))
+}
+
+fn normalize_inline_card_ids(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find("CardId(") {
+        let (prefix, after_prefix) = rest.split_at(idx);
+        out.push_str(prefix);
+
+        let after_marker = &after_prefix["CardId(".len()..];
+        let digit_len = after_marker
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if digit_len == 0 || !after_marker[digit_len..].starts_with(')') {
+            out.push_str("CardId(");
+            rest = after_marker;
+            continue;
+        }
+
+        out.push_str(&format!("CardId({FIXED_SNAPSHOT_CARD_ID})"));
+        rest = &after_marker[digit_len + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn get_first_face(card: &Value) -> Option<&Value> {
@@ -1971,6 +2047,44 @@ mod tests {
             .expect("system time")
             .as_nanos();
         env::temp_dir().join(format!("ironsmith-{name}-{nanos}.sqlite3"))
+    }
+
+    #[test]
+    fn normalize_debug_card_ids_replaces_nested_generated_ids() {
+        let snapshot = "\
+CardDefinition {
+    card: Card {
+        id: CardId(
+            1,
+        ),
+    },
+    token: CardDefinition {
+        card: Card {
+            id: CardId(
+                2368,
+            ),
+        },
+    },
+}";
+
+        let normalized = normalize_debug_card_ids(snapshot);
+
+        assert!(normalized.contains("            1,"));
+        assert!(
+            !normalized.contains("2368"),
+            "generated nested card ids should not affect snapshot hashes"
+        );
+    }
+
+    #[test]
+    fn normalize_debug_card_ids_replaces_inline_generated_ids() {
+        let snapshot = "parse failed: Effect(CreateTokenEffect { token: CardDefinition { card: Card { id: CardId(1520), name: \"Wizard\" } } }); oracle-only fallback also failed: CardId(1522)";
+
+        let normalized = normalize_debug_card_ids(snapshot);
+
+        assert!(!normalized.contains("1520"));
+        assert!(!normalized.contains("1522"));
+        assert_eq!(normalized.matches("CardId(1)").count(), 2);
     }
 
     fn lightning_bolt_payload() -> CardPayload {

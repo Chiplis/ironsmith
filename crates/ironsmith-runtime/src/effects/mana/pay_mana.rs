@@ -3,13 +3,13 @@
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_from_spec;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::special_actions::{SpecialAction, can_perform, perform};
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect that asks a player to pay a mana cost.
 ///
@@ -130,6 +130,10 @@ fn try_pay_interactively(
 }
 
 impl EffectExecutor for PayManaEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -153,6 +157,45 @@ impl EffectExecutor for PayManaEffect {
 
     fn target_description(&self) -> &'static str {
         "player to pay mana"
+    }
+}
+
+impl CostExecutableEffect for PayManaEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let player_id = match self.player.inner() {
+            ChooseSpec::Player(PlayerFilter::You | PlayerFilter::EffectController) => controller,
+            ChooseSpec::Player(PlayerFilter::Specific(player))
+            | ChooseSpec::SpecificPlayer(player) => *player,
+            ChooseSpec::SourceController => game
+                .object(source)
+                .map(|object| object.controller)
+                .unwrap_or(controller),
+            _ => controller,
+        };
+        let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+            player_id,
+            Some(source),
+            &self.cost,
+            crate::costs::PaymentReason::Effect,
+        );
+        if game.can_pay_mana_cost_with_reason(
+            player_id,
+            Some(source),
+            &adjusted_cost,
+            0,
+            crate::costs::PaymentReason::Effect,
+        ) {
+            Ok(())
+        } else {
+            Err(CostValidationError::Other(
+                "not enough mana available to pay cost".to_string(),
+            ))
+        }
     }
 }
 

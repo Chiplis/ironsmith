@@ -1,6 +1,5 @@
 //! Or trigger combinator - matches if any of the inner triggers match.
 
-use crate::filter::ObjectFilterExt as _;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{Trigger, TriggerEvent};
 

@@ -1,12 +1,14 @@
 //! Move to zone effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
+use crate::filter::FilterContext;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
 use super::{
@@ -17,7 +19,61 @@ use super::{
 pub use ironsmith_core::BattlefieldController;
 pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect;
 
+fn fixed_cost_filter(effect: &MoveToZoneEffect) -> Option<(&ObjectFilter, usize)> {
+    let ChooseSpec::Object(filter) = effect.target.base() else {
+        return None;
+    };
+    let count = effect.target.count();
+    if count.min == 0 || count.max != Some(count.min) {
+        return None;
+    }
+    Some((filter, count.min as usize))
+}
+
+fn matching_cost_candidate_count(
+    game: &GameState,
+    filter: &ObjectFilter,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+) -> usize {
+    let filter_ctx = FilterContext::new(controller).with_source(source);
+    let candidate_ids: Vec<_> = match filter.zone {
+        Some(Zone::Hand) => game
+            .players
+            .iter()
+            .flat_map(|player| player.hand.iter().copied())
+            .collect(),
+        Some(Zone::Graveyard) => game
+            .players
+            .iter()
+            .flat_map(|player| player.graveyard.iter().copied())
+            .collect(),
+        Some(Zone::Battlefield) => game.battlefield.clone(),
+        Some(Zone::Library) => game
+            .players
+            .iter()
+            .flat_map(|player| player.library.iter().copied())
+            .collect(),
+        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+        Some(Zone::Exile) => game.exile.clone(),
+        Some(Zone::Command) => game.command_zone.clone(),
+        None => Vec::new(),
+    };
+
+    candidate_ids
+        .into_iter()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        })
+        .count()
+}
+
 impl EffectExecutor for MoveToZoneEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -165,6 +221,31 @@ impl EffectExecutor for MoveToZoneEffect {
 
     fn target_description(&self) -> &'static str {
         "target to move"
+    }
+}
+
+impl CostExecutableEffect for MoveToZoneEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        if matches!(self.target.base(), ChooseSpec::Source) && game.object(source).is_some() {
+            return Ok(());
+        }
+
+        if let Some((filter, count)) = fixed_cost_filter(self) {
+            let matching = matching_cost_candidate_count(game, filter, source, controller);
+            if matching >= count {
+                return Ok(());
+            }
+            return Err(CostValidationError::NotEnoughCards);
+        }
+
+        Err(CostValidationError::Other(
+            "unsupported move-to-zone cost".to_string(),
+        ))
     }
 }
 

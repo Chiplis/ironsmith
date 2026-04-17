@@ -1,6 +1,7 @@
 pub mod builders;
 
 #[cfg(not(test))]
+#[allow(dead_code)]
 #[path = "../../../ironsmith-runtime/src/cards/definitions/mod.rs"]
 pub mod definitions;
 

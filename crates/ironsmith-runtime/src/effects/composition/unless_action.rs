@@ -3,11 +3,11 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
-use crate::ids::PlayerId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 
 fn execute_effect_sequence(
@@ -43,6 +43,23 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
                 .map(|_| player_id)
         })
         .collect()
+}
+
+fn cost_effect_sequence_can_execute(
+    effects: &[Effect],
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> Result<(), CostValidationError> {
+    for effect in effects {
+        let Some(cost_effect) = effect.0.as_cost_executable() else {
+            return Err(CostValidationError::Other(format!(
+                "unless-action branch contains a non-cost effect: {effect:?}"
+            )));
+        };
+        CostExecutableEffect::can_execute_as_cost(cost_effect, game, source, controller)?;
+    }
+    Ok(())
 }
 
 /// Effect that executes main effects unless a player performs an alternative action.
@@ -84,6 +101,10 @@ impl UnlessActionEffect {
 impl EffectExecutor for UnlessActionEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
     }
 
     fn execute(
@@ -146,6 +167,26 @@ impl EffectExecutor for UnlessActionEffect {
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         super::target_metadata::first_target_count(&[&self.effects])
+    }
+}
+
+impl CostExecutableEffect for UnlessActionEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let main = cost_effect_sequence_can_execute(&self.effects, game, source, controller);
+        let alternative =
+            cost_effect_sequence_can_execute(&self.alternative, game, source, controller);
+        if main.is_ok() || alternative.is_ok() {
+            Ok(())
+        } else {
+            Err(CostValidationError::Other(format!(
+                "neither unless-action branch can be paid as a cost: main={main:?}; alternative={alternative:?}"
+            )))
+        }
     }
 }
 

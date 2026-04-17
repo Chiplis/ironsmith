@@ -3,10 +3,11 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 
 /// Effect that offers an optional choice to the player.
@@ -84,6 +85,10 @@ impl EffectExecutor for MayEffect {
         Box::new(self.clone())
     }
 
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -158,6 +163,17 @@ impl EffectExecutor for MayEffect {
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         super::target_metadata::first_target_count(&[&self.effects])
+    }
+}
+
+impl CostExecutableEffect for MayEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        Ok(())
     }
 }
 

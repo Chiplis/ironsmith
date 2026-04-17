@@ -48,6 +48,7 @@ pub(crate) fn valid_targets_with_tags(
         .collect()
 }
 
+#[allow(dead_code)]
 pub fn valid_targets(
     effect: &RemoveAnyCountersAmongEffect,
     game: &GameState,

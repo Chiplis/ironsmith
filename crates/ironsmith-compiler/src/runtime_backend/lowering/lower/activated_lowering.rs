@@ -32,8 +32,11 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
         }
     }
 
-    cost.costs().iter().any(|component| {
-        component.effect_ref().is_some_and(|effect| {
+    cost.costs().iter().any(|component| match component {
+        Cost::Mana(cost) => cost.has_x(),
+        Cost::Energy(amount) | Cost::Life(amount) | Cost::Mill(amount) => value_uses_x(amount),
+        Cost::RemoveAnyCountersFromSource { display_x, .. } => *display_x,
+        Cost::Effect(effect) => {
             effect
                 .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
                 .is_some_and(|effect| effect.display_x)
@@ -54,8 +57,9 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
                     .is_some_and(|effect| value_uses_x(&effect.amount))
                 || effect
                     .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                    .is_some_and(|_| false)
-        })
+                    .is_some_and(|effect| value_uses_x(&effect.count))
+        }
+        _ => false,
     })
 }
 

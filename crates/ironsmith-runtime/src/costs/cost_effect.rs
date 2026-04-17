@@ -42,7 +42,9 @@ impl CostEffect {
         if effect.0.as_cost_executable().is_some() {
             Ok(Self { effect })
         } else {
-            Err("effect is not marked as cost-executable".to_string())
+            Err(format!(
+                "effect is not marked as cost-executable: {effect:?}"
+            ))
         }
     }
 }

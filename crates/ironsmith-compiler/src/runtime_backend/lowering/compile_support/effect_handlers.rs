@@ -26,6 +26,28 @@ fn compile_delayed_trigger_spec(
             },
         ),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        TriggerSpec::Attacks(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
+        }
+        TriggerSpec::AttacksOneOrMore(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter.clone()),
+        ),
+        TriggerSpec::Dies(filter) => Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone())),
+        TriggerSpec::SpellCast {
+            filter,
+            caster,
+            during_turn,
+            min_spells_this_turn,
+            exact_spells_this_turn,
+            from_not_hand,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::SpellCast {
+            filter: filter.clone(),
+            caster: caster.clone(),
+            during_turn: during_turn.clone(),
+            min_spells_this_turn: *min_spells_this_turn,
+            exact_spells_this_turn: *exact_spells_this_turn,
+            from_not_hand: *from_not_hand,
+        }),
         other => Err(CardTextError::ParseError(format!(
             "unsupported delayed trigger spec: {other:?}"
         ))),

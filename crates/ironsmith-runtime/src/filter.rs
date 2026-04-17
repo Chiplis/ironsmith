@@ -52,7 +52,7 @@ fn expand_semantic_subtypes(chars: &mut crate::continuous::CalculatedCharacteris
     }
 }
 
-trait TaggedConstraintSubject {
+pub(crate) trait TaggedConstraintSubject {
     fn subject_object_id(&self) -> ObjectId;
     fn subject_stable_id(&self) -> StableId;
     fn subject_name(&self) -> &str;
@@ -64,7 +64,7 @@ trait TaggedConstraintSubject {
     fn subject_attached_to(&self) -> Option<ObjectId>;
 }
 
-trait TailMatchSubject: TaggedConstraintSubject {
+pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_object_id(&self) -> ObjectId;
     fn tail_name(&self) -> &str;
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32>;
@@ -846,6 +846,7 @@ pub(crate) trait ObjectFilterExt {
         game: &crate::game_state::GameState,
     ) -> bool;
 
+    #[allow(dead_code)]
     fn description(&self) -> String;
 }
 
@@ -3234,6 +3235,7 @@ impl ObjectFilterExt for ObjectFilter {
     }
 }
 
+#[allow(dead_code)]
 fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> Option<String> {
     if any_of.len() < 2 {
         return None;
@@ -3381,6 +3383,7 @@ fn attacking_defending_player_for_object(
     }
 }
 
+#[allow(dead_code)]
 fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Any => "a player's".to_string(),
@@ -3468,10 +3471,12 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn describe_card_type_word(card_type: CardType) -> &'static str {
     card_type.name()
 }
 
+#[allow(dead_code)]
 fn describe_card_type_list(card_types: &[CardType]) -> String {
     match card_types {
         [] => String::new(),
@@ -3488,6 +3493,7 @@ fn describe_card_type_list(card_types: &[CardType]) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn describe_card_type_source_phrase(card_types: &[CardType]) -> String {
     let types = describe_card_type_list(card_types);
     if types.is_empty() {
@@ -3505,6 +3511,7 @@ fn describe_card_type_source_phrase(card_types: &[CardType]) -> String {
     format!("{article} {types}")
 }
 
+#[allow(dead_code)]
 fn describe_stack_object_kind(kind: StackObjectKind) -> &'static str {
     match kind {
         StackObjectKind::Spell => "spell",
@@ -3737,6 +3744,7 @@ fn snapshot_has_tap_activated_ability(snapshot: &crate::snapshot::ObjectSnapshot
         })
 }
 
+#[allow(dead_code)]
 fn describe_counter_constraint(constraint: CounterConstraint) -> String {
     match constraint {
         CounterConstraint::Any => "a counter".to_string(),
@@ -3746,6 +3754,7 @@ fn describe_counter_constraint(constraint: CounterConstraint) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
         AlternativeCastKind::Dash => "dash",
@@ -3757,6 +3766,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'static str> {
     use StaticAbilityId::*;
     match ability_id {
@@ -3791,6 +3801,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
     }
 }
 
+#[allow(dead_code)]
 fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &crate::effect::Value) -> String {
         use crate::effect::Value;

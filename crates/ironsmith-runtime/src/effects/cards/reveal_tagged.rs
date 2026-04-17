@@ -5,13 +5,18 @@
 
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId};
 use crate::tag::TagKey;
 pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
 impl EffectExecutor for RevealTaggedEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -69,6 +74,17 @@ impl EffectExecutor for RevealTaggedEffect {
             .collect::<Vec<_>>();
 
         Ok(EffectOutcome::count(count as i32).with_events(reveal_events))
+    }
+}
+
+impl CostExecutableEffect for RevealTaggedEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        Ok(())
     }
 }
 

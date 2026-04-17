@@ -3,7 +3,6 @@
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
-use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::target::PlayerFilter;
 

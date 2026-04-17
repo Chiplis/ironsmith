@@ -530,6 +530,10 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::pregame_action(kind.clone(), text.clone())
             }
             ironsmith_core::StaticAbilityPayload::Ward(cost) => StaticAbility::ward(cost.clone()),
+            ironsmith_core::StaticAbilityPayload::Morph(cost) => StaticAbility::morph(cost.clone()),
+            ironsmith_core::StaticAbilityPayload::Megamorph(cost) => {
+                StaticAbility::megamorph(cost.clone())
+            }
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }

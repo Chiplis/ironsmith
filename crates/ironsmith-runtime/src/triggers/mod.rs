@@ -41,7 +41,6 @@
 //! let matches = trigger.matches(&event, &ctx);
 //! ```
 
-use crate::filter::ObjectFilterExt as _;
 pub mod check;
 pub mod event;
 pub mod matcher_trait;

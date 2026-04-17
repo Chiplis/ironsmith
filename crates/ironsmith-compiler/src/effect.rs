@@ -1,6 +1,6 @@
 use crate::effects::{
     ChooseModeEffect, ConditionalEffect, DealDamageEffect, HauntExileEffect, IfEffect,
-    PutCountersEffect, SearchLibrarySlot, SearchLibrarySlotsEffect, WithIdEffect,
+    PutCountersEffect, SearchLibrarySlotsEffect, WithIdEffect,
 };
 pub use ironsmith_core::{
     ChoiceCount, Comparison, Condition, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
@@ -375,13 +375,15 @@ impl Effect {
     }
 
     pub fn remove_up_to_counters(
-        _counter_type: crate::object::CounterType,
-        _amount: impl Into<Value>,
-        _target: crate::target::ChooseSpec,
+        counter_type: crate::object::CounterType,
+        amount: impl Into<Value>,
+        target: crate::target::ChooseSpec,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "remove_up_to_counters".into(),
-        })
+        Self::new(crate::effects::RemoveUpToCountersEffect::new(
+            counter_type,
+            amount,
+            target,
+        ))
     }
 
     pub fn remove_up_to_any_counters(
@@ -394,14 +396,15 @@ impl Effect {
     }
 
     pub fn search_library_to_hand(filter: crate::target::ObjectFilter, optional: bool) -> Self {
-        let slot = if optional {
-            SearchLibrarySlot::optional(filter)
-        } else {
-            SearchLibrarySlot::required(filter)
-        };
-        Self::new(crate::effects::PlaceholderEffect {
-            label: format!("search_library_to_hand:{slot:?}"),
-        })
+        let mut effect = crate::effects::SearchLibraryEffect::to_hand(
+            filter,
+            crate::target::PlayerFilter::You,
+            false,
+        );
+        if optional {
+            effect = effect.with_search_mode(SearchSelectionMode::Optional);
+        }
+        Self::new(effect)
     }
 
     pub fn search_library_slots_to_hand(
@@ -508,14 +511,14 @@ impl Effect {
     }
 
     pub fn pump(
-        _power: i32,
-        _toughness: i32,
-        _target: crate::target::ChooseSpec,
-        _until: Until,
+        power: i32,
+        toughness: i32,
+        target: crate::target::ChooseSpec,
+        until: Until,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "pump".into(),
-        })
+        Self::new(crate::effects::ModifyPowerToughnessEffect::new(
+            target, power, toughness, until,
+        ))
     }
 
     pub fn return_from_graveyard_to_battlefield(
@@ -682,43 +685,31 @@ impl Effect {
     }
 
     pub fn explore(target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: format!("explore:{target:?}"),
-        })
+        Self::new(crate::effects::ExploreEffect::new(target))
     }
 
     pub fn open_attraction() -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "open_attraction".into(),
-        })
+        Self::new(crate::effects::OpenAttractionEffect::new())
     }
 
-    pub fn manifest_top_card_of_library(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "manifest_top_card_of_library".into(),
-        })
+    pub fn manifest_top_card_of_library(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ManifestTopCardOfLibraryEffect::new(player))
     }
 
     pub fn manifest_dread() -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "manifest_dread".into(),
-        })
+        Self::new(crate::effects::ManifestDreadEffect::new())
     }
 
     pub fn bolster(amount: u32) -> Self {
         Self::new(crate::effects::BolsterEffect::new(amount))
     }
 
-    pub fn support(_amount: u32) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "support".into(),
-        })
+    pub fn support(amount: u32) -> Self {
+        Self::new(crate::effects::SupportEffect::new(amount))
     }
 
-    pub fn adapt(_amount: u32) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "adapt".into(),
-        })
+    pub fn adapt(amount: u32) -> Self {
+        Self::new(crate::effects::AdaptEffect::new(amount))
     }
 
     pub fn attach_to(target: crate::target::ChooseSpec) -> Self {
@@ -744,10 +735,8 @@ impl Effect {
         Self::new(crate::effects::ReturnToHandEffect::all(filter))
     }
 
-    pub fn return_to_hand(_target: impl Into<crate::target::ChooseSpec>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "return_to_hand".into(),
-        })
+    pub fn return_to_hand(target: impl Into<crate::target::ChooseSpec>) -> Self {
+        Self::new(crate::effects::ReturnToHandEffect::with_spec(target.into()))
     }
 
     pub fn repeat_effects(count: Value, effects: Vec<Effect>) -> Self {
@@ -768,14 +757,10 @@ impl Effect {
         Self::new(crate::effects::RegenerateEffect::new(target, until))
     }
 
-    pub fn prevent_damage(
-        _amount: Value,
-        _target: crate::target::ChooseSpec,
-        _until: Until,
-    ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "prevent_damage".into(),
-        })
+    pub fn prevent_damage(amount: Value, target: crate::target::ChooseSpec, until: Until) -> Self {
+        Self::new(crate::effects::PreventDamageEffect::new(
+            amount, target, until,
+        ))
     }
 
     pub fn prevent_all_combat_damage(until: Until) -> Self {
@@ -825,28 +810,20 @@ impl Effect {
         ))
     }
 
-    pub fn roll_die(_sides: u32, _player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "roll_die".into(),
-        })
+    pub fn roll_die(sides: u32, player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::RollDieEffect::new(player, sides))
     }
 
-    pub fn fight(_a: crate::target::ChooseSpec, _b: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "fight".into(),
-        })
+    pub fn fight(a: crate::target::ChooseSpec, b: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::FightEffect::new(a, b))
     }
 
-    pub fn exile(_target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "exile".into(),
-        })
+    pub fn exile(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::ExileEffect::with_spec(target))
     }
 
-    pub fn emit_gift_given(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "emit_gift_given".into(),
-        })
+    pub fn emit_gift_given(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::EmitGiftGivenEffect::new(player))
     }
 
     pub fn draw(count: impl Into<Value>) -> Self {
@@ -910,10 +887,8 @@ impl Effect {
         Self::new(crate::effects::LoseTheGameEffect::you())
     }
 
-    pub fn lose_the_game_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "lose_the_game_player".into(),
-        })
+    pub fn lose_the_game_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::LoseTheGameEffect::new(player))
     }
 
     pub fn win_the_game() -> Self {
@@ -938,22 +913,16 @@ impl Effect {
         Self::new(crate::effects::CreateEmblemEffect::new(description))
     }
 
-    pub fn convert(_target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "convert".into(),
-        })
+    pub fn convert(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::ConvertEffect::new(target))
     }
 
-    pub fn connive(_target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "connive".into(),
-        })
+    pub fn connive(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::ConniveEffect::new(target))
     }
 
-    pub fn behold(_subtype: crate::types::Subtype, _count: u32) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "behold".into(),
-        })
+    pub fn behold(subtype: crate::types::Subtype, count: u32) -> Self {
+        Self::new(crate::effects::BeholdEffect::you(subtype, count))
     }
 
     pub fn add_mana(mana: Vec<crate::mana::ManaSymbol>) -> Self {
@@ -1019,16 +988,19 @@ impl Effect {
     }
 
     pub fn add_mana_of_land_produced_types_player(
-        _amount: impl Into<Value>,
-        _player: crate::target::PlayerFilter,
-        _filter: impl std::fmt::Debug,
-        _allow_colorless: bool,
-        _same_type: bool,
+        amount: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        allow_colorless: bool,
+        same_type: bool,
     ) -> Self {
-        let _ = _amount.into();
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "add_mana_of_land_produced_types_player".into(),
-        })
+        Self::new(crate::effects::AddManaOfLandProducedTypesEffect::new(
+            amount,
+            player,
+            filter,
+            allow_colorless,
+            same_type,
+        ))
     }
 
     pub fn add_mana_from_commander_color_identity(amount: impl Into<Value>) -> Self {
@@ -1061,16 +1033,12 @@ impl Effect {
         ))
     }
 
-    pub fn detain(_target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "detain".into(),
-        })
+    pub fn detain(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::DetainEffect::new(target))
     }
 
-    pub fn goad(_target: crate::target::ChooseSpec) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "goad".into(),
-        })
+    pub fn goad(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::GoadEffect::new(target))
     }
 
     pub fn return_from_graveyard_to_hand(target: crate::target::ChooseSpec) -> Self {
@@ -1133,10 +1101,8 @@ impl Effect {
         ))
     }
 
-    pub fn choose_color(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "choose_color".into(),
-        })
+    pub fn choose_color(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ChooseColorEffect::new(player))
     }
 
     pub fn choose_card_type(
@@ -1146,22 +1112,20 @@ impl Effect {
         Self::new(crate::effects::ChooseCardTypeEffect::new(player, options))
     }
 
-    pub fn choose_named_option(
-        _player: crate::target::PlayerFilter,
-        _options: Vec<String>,
-    ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "choose_named_option".into(),
-        })
+    pub fn choose_named_option(player: crate::target::PlayerFilter, options: Vec<String>) -> Self {
+        Self::new(crate::effects::ChooseNamedOptionEffect::new(
+            player, options,
+        ))
     }
 
     pub fn choose_creature_type(
-        _player: crate::target::PlayerFilter,
-        _excluded_subtypes: Vec<crate::types::Subtype>,
+        player: crate::target::PlayerFilter,
+        excluded_subtypes: Vec<crate::types::Subtype>,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "choose_creature_type".into(),
-        })
+        Self::new(crate::effects::ChooseCreatureTypeEffect::new(
+            player,
+            excluded_subtypes,
+        ))
     }
 
     pub fn may_choose_new_targets_player(
@@ -1178,10 +1142,11 @@ impl Effect {
         Self::conditional(condition, if_true, Vec::new())
     }
 
-    pub fn put_sticker(_target: crate::target::ChooseSpec, _action: impl std::fmt::Debug) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "put_sticker".into(),
-        })
+    pub fn put_sticker(
+        target: crate::target::ChooseSpec,
+        action: crate::events::KeywordActionKind,
+    ) -> Self {
+        Self::new(crate::effects::PutStickerEffect::new(target, action))
     }
 
     pub fn investigate_player(
@@ -1206,16 +1171,12 @@ impl Effect {
         Self::new(crate::effects::CipherEffect::new())
     }
 
-    pub fn backup(_amount: u32, _abilities: Vec<crate::ability::Ability>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "backup".into(),
-        })
+    pub fn backup(amount: u32, abilities: Vec<crate::ability::Ability>) -> Self {
+        Self::new(crate::effects::BackupEffect::new(amount, abilities))
     }
 
-    pub fn flip_coin(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "flip_coin".into(),
-        })
+    pub fn flip_coin(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::FlipCoinEffect::new(player))
     }
 
     pub fn shuffle_objects_into_library(
@@ -1228,22 +1189,22 @@ impl Effect {
     }
 
     pub fn exchange_life_totals(
-        _player1: crate::target::PlayerFilter,
-        _player2: crate::target::PlayerFilter,
+        player1: crate::target::PlayerFilter,
+        player2: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "exchange_life_totals".into(),
-        })
+        Self::new(crate::effects::ExchangeLifeTotalsEffect::new(
+            player1, player2,
+        ))
     }
 
     pub fn exchange_zones(
-        _player: crate::target::PlayerFilter,
-        _left: crate::zone::Zone,
-        _right: crate::zone::Zone,
+        player: crate::target::PlayerFilter,
+        left: crate::zone::Zone,
+        right: crate::zone::Zone,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "exchange_zones".into(),
-        })
+        Self::new(crate::effects::ExchangeZonesEffect::new(
+            player, left, right,
+        ))
     }
 
     pub fn exchange_text_boxes(target: crate::target::ChooseSpec) -> Self {
@@ -1251,13 +1212,13 @@ impl Effect {
     }
 
     pub fn exchange_values(
-        _left: impl std::fmt::Debug,
-        _right: impl std::fmt::Debug,
-        _until: Until,
+        left: crate::effects::ExchangeValueOperand,
+        right: crate::effects::ExchangeValueOperand,
+        until: Until,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "exchange_values".into(),
-        })
+        Self::new(crate::effects::ExchangeValuesEffect::new(
+            left, right, until,
+        ))
     }
 
     pub fn grant_play_from_graveyard_until_eot(player: crate::target::PlayerFilter) -> Self {
@@ -1268,43 +1229,33 @@ impl Effect {
         ))
     }
 
-    pub fn double_mana_pool_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "double_mana_pool_player".into(),
-        })
+    pub fn double_mana_pool_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::DoubleManaPoolEffect::new(player))
     }
 
     pub fn set_life_total_player(
-        _amount: impl Into<Value>,
-        _player: crate::target::PlayerFilter,
+        amount: impl Into<Value>,
+        player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "set_life_total_player".into(),
-        })
+        Self::new(crate::effects::SetLifeTotalEffect::new(amount, player))
     }
 
-    pub fn skip_turn_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "skip_turn_player".into(),
-        })
+    pub fn skip_turn_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipTurnEffect::new(player))
     }
 
-    pub fn skip_combat_phases_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "skip_combat_phases_player".into(),
-        })
+    pub fn skip_combat_phases_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipCombatPhasesEffect::new(player))
     }
 
-    pub fn skip_next_combat_phase_this_turn_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "skip_next_combat_phase_this_turn_player".into(),
-        })
+    pub fn skip_next_combat_phase_this_turn_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipNextCombatPhaseThisTurnEffect::new(
+            player,
+        ))
     }
 
-    pub fn skip_draw_step_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "skip_draw_step_player".into(),
-        })
+    pub fn skip_draw_step_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipDrawStepEffect::new(player))
     }
 
     pub fn mill(count: impl Into<Value>) -> Self {
@@ -1316,13 +1267,13 @@ impl Effect {
     }
 
     pub fn additional_land_plays(
-        _count: Value,
-        _player: crate::target::PlayerFilter,
-        _until: Until,
+        count: Value,
+        player: crate::target::PlayerFilter,
+        until: Until,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "additional_land_plays".into(),
-        })
+        Self::new(crate::effects::AdditionalLandPlaysEffect::new(
+            count, player, until,
+        ))
     }
 
     pub fn grant_next_spell_ability_this_turn(
@@ -1371,34 +1322,26 @@ impl Effect {
         Self::new(crate::effects::NinjutsuEffect::new())
     }
 
-    pub fn ring_tempts_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "ring_tempts_player".into(),
-        })
+    pub fn ring_tempts_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::RingTemptsYouEffect::new(player))
     }
 
-    pub fn venture_into_undercity_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "venture_into_undercity_player".into(),
-        })
+    pub fn venture_into_undercity_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::VentureIntoDungeonEffect::via_initiative(
+            player,
+        ))
     }
 
-    pub fn venture_into_dungeon_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "venture_into_dungeon_player".into(),
-        })
+    pub fn venture_into_dungeon_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::VentureIntoDungeonEffect::new(player))
     }
 
-    pub fn become_monarch_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "become_monarch_player".into(),
-        })
+    pub fn become_monarch_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::BecomeMonarchEffect::new(player))
     }
 
-    pub fn take_initiative_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "take_initiative_player".into(),
-        })
+    pub fn take_initiative_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::TakeInitiativeEffect::new(player))
     }
 
     pub fn cast_tagged(
@@ -1433,10 +1376,10 @@ impl Effect {
         ))
     }
 
-    pub fn control_combat_choices_this_turn(_attackers: bool, _blockers: bool) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "control_combat_choices_this_turn".into(),
-        })
+    pub fn control_combat_choices_this_turn(attackers: bool, blockers: bool) -> Self {
+        Self::new(crate::effects::ControlCombatChoicesThisTurnEffect::new(
+            attackers, blockers,
+        ))
     }
 
     pub fn create_tokens(token: crate::cards::CardDefinition, count: impl Into<Value>) -> Self {
@@ -1444,18 +1387,14 @@ impl Effect {
     }
 
     pub fn poison_counters_player(
-        _count: impl Into<Value>,
-        _player: crate::target::PlayerFilter,
+        count: impl Into<Value>,
+        player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "poison_counters_player".into(),
-        })
+        Self::new(crate::effects::PoisonCountersEffect::new(count, player))
     }
 
-    pub fn poison_counters(_count: impl Into<Value>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "poison_counters".into(),
-        })
+    pub fn poison_counters(count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::PoisonCountersEffect::you(count))
     }
 
     pub fn energy_counters(count: impl Into<Value>) -> Self {
@@ -1477,16 +1416,12 @@ impl Effect {
         Self::new(crate::effects::ScryEffect::new(count, player))
     }
 
-    pub fn fateseal(_count: impl Into<Value>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "fateseal".into(),
-        })
+    pub fn fateseal(count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::FatesealEffect::you(count))
     }
 
-    pub fn fateseal_player(_count: impl Into<Value>, _player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "fateseal_player".into(),
-        })
+    pub fn fateseal_player(count: impl Into<Value>, player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::FatesealEffect::new(count, player))
     }
 
     pub fn discover(count: impl Into<Value>) -> Self {
@@ -1526,23 +1461,19 @@ impl Effect {
     }
 
     pub fn shuffle_hand_and_graveyard_into_library_player(
-        _player: crate::target::PlayerFilter,
+        player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "shuffle_hand_and_graveyard_into_library_player".into(),
-        })
+        Self::new(crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect::new(player))
     }
 
-    pub fn shuffle_graveyard_into_library_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "shuffle_graveyard_into_library_player".into(),
-        })
+    pub fn shuffle_graveyard_into_library_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ShuffleGraveyardIntoLibraryEffect::new(
+            player,
+        ))
     }
 
-    pub fn reorder_graveyard_player(_player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "reorder_graveyard_player".into(),
-        })
+    pub fn reorder_graveyard_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ReorderGraveyardEffect::new(player))
     }
 
     pub fn cant_until(restriction: Restriction, until: Until) -> Self {
@@ -1580,37 +1511,41 @@ impl Effect {
         ))
     }
 
-    pub fn surveil(_count: impl Into<Value>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "surveil".into(),
-        })
+    pub fn surveil(count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::SurveilEffect::you(count))
     }
 
-    pub fn surveil_player(_count: impl Into<Value>, _player: crate::target::PlayerFilter) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "surveil_player".into(),
-        })
+    pub fn surveil_player(count: impl Into<Value>, player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SurveilEffect::new(count, player))
     }
 
     pub fn counter_unless_pays(
-        _target: crate::target::ChooseSpec,
-        _mana: Vec<crate::mana::ManaSymbol>,
+        target: crate::target::ChooseSpec,
+        mana: Vec<crate::mana::ManaSymbol>,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "counter_unless_pays".into(),
-        })
+        Self::unless_pays(
+            vec![Self::counter(target)],
+            crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+            mana,
+        )
     }
 
     pub fn unless_pays_with_life_additional_and_multiplier(
-        _effects: Vec<Effect>,
-        _player: crate::target::PlayerFilter,
-        _mana_symbols_per_counter: Vec<crate::mana::ManaSymbol>,
-        _life: Option<Value>,
-        _additional_generic: Option<Value>,
-        _multiplier: Option<Value>,
+        effects: Vec<Effect>,
+        player: crate::target::PlayerFilter,
+        mana_symbols_per_counter: Vec<crate::mana::ManaSymbol>,
+        life: Option<Value>,
+        additional_generic: Option<Value>,
+        multiplier: Option<Value>,
     ) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "unless_pays_with_life_additional_and_multiplier".into(),
+        Self::new(crate::effects::UnlessPaysEffect {
+            player,
+            effects,
+            mana: mana_symbols_per_counter,
+            life,
+            additional_generic,
+            x_value: None,
+            mana_multiplier: multiplier,
         })
     }
 
@@ -1630,10 +1565,8 @@ impl Effect {
         Self::new(crate::effects::TagTriggeringObjectEffect::new(tag))
     }
 
-    pub fn tag_triggering_damage_target(_tag: impl Into<crate::tag::TagKey>) -> Self {
-        Self::new(crate::effects::PlaceholderEffect {
-            label: "tag_triggering_damage_target".into(),
-        })
+    pub fn tag_triggering_damage_target(tag: impl Into<crate::tag::TagKey>) -> Self {
+        Self::new(crate::effects::TagTriggeringDamageTargetEffect::new(tag))
     }
 
     pub fn put_tagged_remainder_on_library_bottom(

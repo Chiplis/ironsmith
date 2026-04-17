@@ -17,7 +17,6 @@
 //!     .on(ObjectFilter::creature().you_control());
 //! ```
 
-use crate::filter::ObjectFilterExt as _;
 use crate::filter::{ObjectFilter, PlayerFilter};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;

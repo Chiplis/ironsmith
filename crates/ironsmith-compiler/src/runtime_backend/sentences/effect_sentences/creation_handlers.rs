@@ -514,7 +514,7 @@ pub(crate) fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let mut player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
     let has_unsupported_dynamic_count = grammar::words_match_any_prefix(
         tokens,
@@ -973,6 +973,12 @@ pub(crate) fn parse_create(
 
     tapped |= word_slice_contains(&modifier_tail_words, "tapped");
     attacking |= word_slice_contains(&modifier_tail_words, "attacking");
+    if attacking
+        && matches!(player, PlayerAst::That)
+        && word_slice_contains_sequence(&modifier_tail_words, &["attacking", "that", "player"])
+    {
+        player = PlayerAst::You;
+    }
     let (sacrifice_at_next_end_step, exile_at_next_end_step) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let references_iterated_object = attached_to_target

@@ -40,7 +40,6 @@ impl EffectExecutor for ControlPlayerEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game_state::{PlayerControlDuration, PlayerControlStart};
     use crate::ids::PlayerId;
     use crate::target::PlayerFilter;
 

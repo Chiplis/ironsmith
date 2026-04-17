@@ -11,7 +11,9 @@ use crate::cards::CardDefinitionBuilder;
 use crate::cards::definitions::*;
 use crate::ids::CardId;
 use crate::static_abilities::StaticAbilityId;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(any(test, feature = "handwritten-parse-support"))]
+use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
 /// Registry of all card definitions.
@@ -88,7 +90,7 @@ impl CardRegistry {
                 continue;
             }
 
-            let Some((resolved_name, parse_block)) =
+            let Some((resolved_name, _parse_block)) =
                 generated_registry::generated_parser_card_parse_source(normalized)
             else {
                 continue;
@@ -118,7 +120,7 @@ impl CardRegistry {
             #[cfg(all(feature = "handwritten-parse-support", not(test)))]
             {
                 let Ok(definition) =
-                    compile_generated_parser_card_allow_unsupported(&resolved_name, &parse_block)
+                    compile_generated_parser_card_allow_unsupported(&resolved_name, &_parse_block)
                 else {
                     continue;
                 };
@@ -599,6 +601,7 @@ fn try_compile_builtin_card_by_name(_name: &str) -> Option<CardDefinition> {
     None
 }
 
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 fn normalize_card_constructor_key(name: &str) -> String {
     let mut normalized = String::with_capacity(name.len());
     let mut previous_was_separator = false;
@@ -619,6 +622,7 @@ fn normalize_card_constructor_key(name: &str) -> String {
     normalized.trim_matches('_').to_string()
 }
 
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 fn requested_constructor_keys(name: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     let full_key = normalize_card_constructor_key(name);
@@ -636,6 +640,7 @@ fn requested_constructor_keys(name: &str) -> HashSet<String> {
     keys
 }
 
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 fn constructor_key_matches_any_request(
     constructor_key: &str,
     requested_keys: &HashSet<String>,
@@ -668,6 +673,7 @@ fn loose_name_match<'a>(registry: &'a CardRegistry, requested: &str) -> Option<&
     })
 }
 
+#[cfg(any(test, feature = "handwritten-parse-support"))]
 fn first_face_lookup<'a>(
     registry: &'a CardRegistry,
     requested: &str,
@@ -813,6 +819,31 @@ fn extract_fallback_reason(display: &str) -> String {
     compact_generated_support_text(body)
 }
 
+fn raw_runtime_marker_issue(definition: &CardDefinition) -> Option<String> {
+    let raw_debug = format!("{definition:#?}");
+    let raw_lower = raw_debug.to_ascii_lowercase();
+    let marker_index = ["unimplemented", "unsupported"]
+        .iter()
+        .filter_map(|needle| raw_lower.find(needle))
+        .min()?;
+    let line_start = raw_debug[..marker_index]
+        .rfind('\n')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let line_end = raw_debug[marker_index..]
+        .find('\n')
+        .map(|index| marker_index + index)
+        .unwrap_or(raw_debug.len());
+    let marker_line = raw_debug[line_start..line_end].trim();
+    if marker_line.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "runtime marker: {}",
+        compact_generated_support_text(marker_line)
+    ))
+}
+
 pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -> Vec<String> {
     let mut issues: Vec<String> = Vec::new();
 
@@ -858,13 +889,16 @@ pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -
     }
 
     if issues.is_empty() && generated_definition_has_unimplemented_content(definition) {
-        issues.push("contains unimplemented runtime markers".to_string());
+        issues.push(
+            raw_runtime_marker_issue(definition)
+                .unwrap_or_else(|| "contains unimplemented runtime markers".to_string()),
+        );
     }
 
     issues
 }
 
-pub(crate) fn generated_definition_unsupported_mechanics_message(
+pub fn generated_definition_unsupported_mechanics_message(
     definition: &CardDefinition,
 ) -> Option<String> {
     let issues = generated_definition_support_issues(definition);

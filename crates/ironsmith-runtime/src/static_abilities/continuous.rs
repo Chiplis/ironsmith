@@ -13,7 +13,7 @@ use crate::continuous::{
 };
 use crate::effect::{Comparison, Value};
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::{ObjectFilterExt as _, PlayerFilterExt, TaggedOpbjectRelation};
+use crate::filter::{PlayerFilterExt, TaggedOpbjectRelation};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
