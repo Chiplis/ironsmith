@@ -948,6 +948,15 @@ where
             ),
         ));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::CumulativeUpkeepEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::CumulativeUpkeepEffect::new(
+            payload.player.clone(),
+            convert_effects(payload.payment.iter().cloned(), hooks)?,
+            convert_effects(payload.failure.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ChooseNewTargetsEffect>(&effect)
     {
@@ -1311,10 +1320,6 @@ where
         crate::effects::mana::AddManaOfImprintedColorsEffect,
         crate::effects::AddScaledManaEffect,
     );
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::PlaceholderEffect>(&effect) {
-        return Err(hooks.unsupported_effect(format!("placeholder effect `{}`", payload.label)));
-    }
-
     Err(hooks.unsupported_effect(format!(
         "no runtime conversion registered for compiler effect payload `{}`",
         M::payload_type_name(&effect)

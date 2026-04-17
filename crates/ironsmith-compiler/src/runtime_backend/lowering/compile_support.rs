@@ -1965,6 +1965,61 @@ fn try_parse_quoted_token_rules_text(
     Some(parsed)
 }
 
+fn apply_token_keyword_rules_text(
+    mut builder: CardDefinitionBuilder,
+    rules_text: &str,
+) -> Option<CardDefinitionBuilder> {
+    let tokens = crate::runtime_backend::lexer::lex_line(rules_text, 0).ok()?;
+    let actions = crate::runtime_backend::keyword_static::parse_ability_line(&tokens)?;
+    for action in actions {
+        builder = builder.apply_keyword_action(action);
+    }
+    Some(builder)
+}
+
+fn apply_quoted_token_keyword_rules_text(
+    builder: CardDefinitionBuilder,
+    source_text: &str,
+) -> (CardDefinitionBuilder, bool) {
+    let Some(quoted) = extract_double_quoted_token_rules_text(source_text) else {
+        return (builder, false);
+    };
+    let quoted_lower = quoted.to_ascii_lowercase();
+    let looks_triggered = quoted_lower.starts_with("when ")
+        || quoted_lower.starts_with("whenever ")
+        || quoted_lower.starts_with("at ");
+    let looks_activated = quoted.contains(':');
+    if looks_triggered || looks_activated {
+        return (builder, false);
+    }
+
+    match apply_token_keyword_rules_text(builder.clone(), &quoted) {
+        Some(next) => (next, true),
+        None => (builder, false),
+    }
+}
+
+fn token_cumulative_upkeep_text_from_words(words: &[&str]) -> Option<String> {
+    let upkeep_idx = find_word_sequence_start(words, &["cumulative", "upkeep"])?;
+    let mut cost_symbols = Vec::new();
+    for word in &words[upkeep_idx + 2..] {
+        if matches!(*word, "when" | "whenever" | "at") {
+            break;
+        }
+        let Some(symbol) = parse_token_mana_symbol(word) else {
+            break;
+        };
+        cost_symbols.push(symbol);
+    }
+
+    Some(if cost_symbols.is_empty() {
+        "Cumulative upkeep".to_string()
+    } else {
+        let cost = crate::mana::ManaCost::from_symbols(cost_symbols).to_oracle();
+        format!("Cumulative upkeep {cost}")
+    })
+}
+
 pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
@@ -3143,27 +3198,14 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if has_word("reach") {
             builder = builder.reach();
         }
-        if let Some(upkeep_idx) =
-            find_word_sequence_start(words.as_slice(), &["cumulative", "upkeep"])
+        let (next_builder, applied_quoted_keyword) =
+            apply_quoted_token_keyword_rules_text(builder, name);
+        builder = next_builder;
+        if !applied_quoted_keyword
+            && let Some(text) = token_cumulative_upkeep_text_from_words(words.as_slice())
+            && let Some(next) = apply_token_keyword_rules_text(builder.clone(), &text)
         {
-            let mut cost_symbols = Vec::new();
-            for word in &words[upkeep_idx + 2..] {
-                if matches!(*word, "when" | "whenever" | "at") {
-                    break;
-                }
-                let Some(symbol) = parse_token_mana_symbol(word) else {
-                    break;
-                };
-                cost_symbols.push(symbol);
-            }
-            let text = if cost_symbols.is_empty() {
-                "Cumulative upkeep".to_string()
-            } else {
-                let cost = crate::mana::ManaCost::from_symbols(cost_symbols).to_oracle();
-                format!("Cumulative upkeep {cost}")
-            };
-            builder =
-                builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)));
+            builder = next;
         }
         if let Some(symbol) = parse_token_tap_add_single_mana_symbol(&words) {
             builder = builder.with_ability(token_tap_add_single_mana_ability(symbol));
@@ -3878,6 +3920,25 @@ mod parse_compile_tests {
         assert!(
             debug.contains("RemoveCardTypes"),
             "expected quoted trigger to compile into a real remove-card-types effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn token_definition_lowers_quoted_cumulative_upkeep_keyword() {
+        let source_text =
+            "1/1 green Splinter creature token with flying and \"Cumulative upkeep {G}\"";
+
+        let def =
+            token_definition_for(source_text).expect("quoted cumulative upkeep should build token");
+        let debug = format!("{def:#?}");
+
+        assert!(
+            debug.contains("CumulativeUpkeepEffect"),
+            "expected quoted cumulative upkeep to lower into a real effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("label: \"Cumulative upkeep {G}\""),
+            "quoted cumulative upkeep should not remain a keyword marker, got {debug}"
         );
     }
 

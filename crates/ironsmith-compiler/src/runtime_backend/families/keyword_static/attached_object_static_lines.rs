@@ -17,18 +17,6 @@ pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
     }
 }
 
-fn scale_value_by_factor(base: Value, factor: u32) -> Option<Value> {
-    if factor == 0 {
-        return None;
-    }
-
-    let mut value = base.clone();
-    for _ in 1..factor {
-        value = Value::Add(Box::new(value), Box::new(base.clone()));
-    }
-    Some(value)
-}
-
 fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::runtime_backend::lexer::token_word_refs(tokens)
 }
@@ -253,30 +241,20 @@ fn parse_attached_nonstatic_keyword_ability(
 }
 
 pub(crate) fn cumulative_upkeep_granted_ability(
-    mana_symbols_per_counter: Vec<ManaSymbol>,
-    life_per_counter: u32,
+    total_cost: TotalCost,
     text: String,
 ) -> Ability {
-    let age_count = Value::CountersOnSource(CounterType::Age);
-    let life = scale_value_by_factor(age_count.clone(), life_per_counter);
-    let mana_multiplier = if mana_symbols_per_counter.is_empty() {
-        None
-    } else {
-        Some(age_count)
-    };
+    let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::put_counters_on_source(CounterType::Age, 1),
-                Effect::unless_pays_with_life_additional_and_multiplier(
-                    vec![Effect::sacrifice_source()],
+                Effect::cumulative_upkeep(
+                    payment_effects,
                     PlayerFilter::You,
-                    mana_symbols_per_counter,
-                    life,
-                    None,
-                    mana_multiplier,
+                    vec![Effect::sacrifice_source()],
                 ),
             ]),
             choices: vec![],
@@ -316,16 +294,11 @@ pub(crate) fn parse_equipped_creature_has_line(
             });
             continue;
         }
-        if let KeywordAction::CumulativeUpkeep {
-            mana_symbols_per_counter,
-            life_per_counter,
-            text,
-        } = action
+        if let KeywordAction::CumulativeUpkeep { total_cost, text } = action
         {
             extra_grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(
-                    mana_symbols_per_counter,
-                    life_per_counter,
+                    total_cost,
                     text.clone(),
                 )),
                 display: format!("equipped creature has {}", text.to_ascii_lowercase()),
@@ -435,17 +408,12 @@ pub(crate) fn parse_enchanted_creature_has_line(
             });
             continue;
         }
-        if let KeywordAction::CumulativeUpkeep {
-            mana_symbols_per_counter,
-            life_per_counter,
-            text,
-        } = action
+        if let KeywordAction::CumulativeUpkeep { total_cost, text } = action
         {
             let ability_text = format!("{subject} has {}", text.to_ascii_lowercase());
             out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(
-                    mana_symbols_per_counter,
-                    life_per_counter,
+                    total_cost,
                     text,
                 )),
                 display: ability_text,

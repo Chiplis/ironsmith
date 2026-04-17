@@ -42,7 +42,6 @@ pub use crate::target::{ObjectFilter, PlayerFilter};
 pub use crate::types::CardType;
 use crate::types::{Subtype, Supertype};
 pub use ironsmith_core::CardId;
-use ironsmith_core::CostComponent as _;
 
 #[cfg(test)]
 pub(crate) mod document_parser {
@@ -76,47 +75,6 @@ pub(crate) fn replace_whole_word_case_insensitive(
     replacement: &str,
 ) -> String {
     input.replace(needle, replacement)
-}
-
-fn cost_to_payment_effect(cost: &crate::costs::Cost) -> Option<crate::effect::Effect> {
-    match cost {
-        crate::costs::Cost::Mana(mana_cost) => Some(crate::effect::Effect::new(
-            crate::effects::PayManaEffect::new(
-                mana_cost.clone(),
-                crate::target::ChooseSpec::SourceController,
-            ),
-        )),
-        crate::costs::Cost::Discard { count, card_types } => {
-            let filter = if card_types.is_empty() {
-                None
-            } else {
-                let mut filter = crate::target::ObjectFilter::default();
-                filter.card_types = card_types.clone();
-                filter.zone = Some(crate::zone::Zone::Hand);
-                Some(filter)
-            };
-            Some(crate::effect::Effect::discard_player_filtered(
-                *count,
-                crate::target::PlayerFilter::You,
-                false,
-                filter,
-            ))
-        }
-        crate::costs::Cost::DiscardHand => Some(crate::effect::Effect::discard_hand()),
-        crate::costs::Cost::Effect(effect) => Some(effect.clone()),
-        _ => None,
-    }
-}
-
-fn total_cost_to_payment_effects(total_cost: &TotalCost) -> Vec<crate::effect::Effect> {
-    total_cost
-        .costs()
-        .iter()
-        .map(|cost| {
-            cost_to_payment_effect(cost)
-                .unwrap_or_else(|| panic!("unsupported echo cost component: {}", cost.display()))
-        })
-        .collect()
 }
 
 pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
@@ -342,6 +300,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Overload(cost) => self.overload(cost),
             KeywordAction::Echo { total_cost, text } => self.echo(total_cost, text),
+            KeywordAction::CumulativeUpkeep { total_cost, text } => {
+                self.cumulative_upkeep(total_cost, text)
+            }
             KeywordAction::Enlist => self.enlist(),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
@@ -1042,7 +1003,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn echo(self, total_cost: TotalCost, text: String) -> Self {
-        let payment_effects = total_cost_to_payment_effects(&total_cost);
+        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
         self.with_ability(
             crate::ability::Ability::static_ability(
@@ -1083,6 +1044,33 @@ impl CardDefinitionBuilder {
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
             text: None,
+        })
+    }
+
+    pub fn cumulative_upkeep(self, total_cost: TotalCost, text: String) -> Self {
+        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::beginning_of_upkeep(
+                    crate::target::PlayerFilter::You,
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::put_counters_on_source(
+                        crate::object::CounterType::Age,
+                        1,
+                    ),
+                    crate::effect::Effect::cumulative_upkeep(
+                        payment_effects,
+                        crate::target::PlayerFilter::You,
+                        vec![crate::effect::Effect::sacrifice_source()],
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some(text),
         })
     }
 

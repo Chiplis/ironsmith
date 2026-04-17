@@ -3041,25 +3041,17 @@ impl StaticAbilityKind for KeywordMarker {
     }
 }
 
-/// Non-semantic static rule text placeholder preserved by parser/builder.
+/// Allows a player to continuously see the top card of their library.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuleTextPlaceholder {
-    pub text: String,
-}
+pub struct LookAtTopCardOfLibrary;
 
-impl RuleTextPlaceholder {
-    pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
-    }
-}
-
-impl StaticAbilityKind for RuleTextPlaceholder {
+impl StaticAbilityKind for LookAtTopCardOfLibrary {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::RuleTextPlaceholder
+        StaticAbilityId::LookAtTopCardOfLibrary
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        "You may look at the top card of your library any time.".to_string()
     }
 }
 
@@ -3381,10 +3373,13 @@ mod tests {
     }
 
     #[test]
-    fn test_rule_text_placeholder() {
-        let ability = RuleTextPlaceholder::new("Test rule text.");
-        assert_eq!(ability.id(), StaticAbilityId::RuleTextPlaceholder);
-        assert_eq!(ability.display(), "Test rule text.");
+    fn test_look_at_top_card_of_library() {
+        let ability = LookAtTopCardOfLibrary;
+        assert_eq!(ability.id(), StaticAbilityId::LookAtTopCardOfLibrary);
+        assert_eq!(
+            ability.display(),
+            "You may look at the top card of your library any time."
+        );
     }
 
     #[test]

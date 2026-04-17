@@ -551,7 +551,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else if matches!(
                     id,
                     StaticAbilityId::KeywordMarker
-                        | StaticAbilityId::RuleTextPlaceholder
                         | StaticAbilityId::KeywordFallbackText
                         | StaticAbilityId::RuleFallbackText
                 ) {

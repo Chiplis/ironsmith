@@ -2489,8 +2489,8 @@ impl StaticAbility {
         Self::keyword_fallback_text(marker)
     }
 
-    pub fn rule_text_placeholder(text: impl Into<String>) -> Self {
-        Self::rule_fallback_text(text)
+    pub fn look_at_top_card_of_library() -> Self {
+        Self::new(LookAtTopCardOfLibrary)
     }
 
     pub fn unsupported_parser_line(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {

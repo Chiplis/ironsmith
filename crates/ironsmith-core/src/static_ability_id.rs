@@ -187,6 +187,7 @@ pub enum StaticAbilityId {
     ReduceMaximumHandSize,
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
+    LookAtTopCardOfLibrary,
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -206,7 +207,6 @@ pub enum StaticAbilityId {
     PregameAction,
     KeywordText,
     KeywordMarker,
-    RuleTextPlaceholder,
     KeywordFallbackText,
     RuleFallbackText,
     UnsupportedParserLine,
@@ -399,6 +399,7 @@ impl StaticAbilityId {
             | ReduceMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
+            | LookAtTopCardOfLibrary
             | LibraryOfLengDiscardReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard
@@ -418,7 +419,6 @@ impl StaticAbilityId {
             | PregameAction
             | KeywordText
             | KeywordMarker
-            | RuleTextPlaceholder
             | KeywordFallbackText
             | RuleFallbackText
             | UnsupportedParserLine

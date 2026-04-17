@@ -4375,7 +4375,7 @@ mod keyword_behavior_tests {
             "expected typed enters-with-counters static ability, got {static_ids:?}"
         );
         assert!(
-            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
             "self etb x counters should not remain a placeholder static ability: {static_ids:?}"
         );
     }
@@ -4404,7 +4404,7 @@ mod keyword_behavior_tests {
             "expected conditional enters-with-counters ability, got {static_ids:?}"
         );
         assert!(
-            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
             "self etb opponent-life-loss conditional should not remain placeholder fallback: {static_ids:?}"
         );
     }
@@ -6569,7 +6569,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder")
+                && !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::KeywordFallbackText")
                 && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "daybound should not compile via placeholder/marker ability ids: {debug}"
@@ -8977,7 +8977,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder")
+                && !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::KeywordFallbackText")
                 && !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::UnsupportedParserLine"),
@@ -9118,7 +9118,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let debug = format!("{:?}", def.abilities);
         assert!(
-            !debug.contains("StaticAbilityId::RuleTextPlaceholder")
+            !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::KeywordMarker"),
             "cast-another-spell restriction should be typed, got {debug}"
         );
@@ -9225,7 +9225,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder")
+                && !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::KeywordFallbackText")
                 && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "cumulative upkeep {{1}} should not compile as fallback marker ability: {debug}"
@@ -9402,7 +9402,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "skulk should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9421,7 +9421,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder")
+                && !debug.contains("StaticAbilityId::RuleFallbackText")
                 && !debug.contains("StaticAbilityId::UnsupportedParserLine"),
             "relative-power blocking rules text should not compile as placeholder ability: {debug}"
         );
@@ -9516,7 +9516,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "ingest should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9535,7 +9535,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "battle cry should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9554,7 +9554,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "dethrone should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9577,7 +9577,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "evolve should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9600,7 +9600,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "mentor should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9625,7 +9625,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "training should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9711,7 +9711,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "renown should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9736,7 +9736,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "afterlife should not compile as placeholder marker ability: {debug}"
         );
     }
@@ -9759,7 +9759,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
-                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+                && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "fabricate should not compile as placeholder marker ability: {debug}"
         );
     }

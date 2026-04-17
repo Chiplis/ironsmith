@@ -67,7 +67,11 @@ mod tests {
     #[test]
     fn conquerors_galleon_and_foothold_are_linked_transform_faces() {
         crate::cards::clear_runtime_custom_cards();
-        let registry = crate::cards::CardRegistry::with_builtin_cards();
+        let registry = crate::cards::CardRegistry::with_builtin_cards_for_names([
+            "Conqueror's Galleon",
+            "Conqueror's Galleon // Conqueror's Foothold",
+            "Conqueror's Foothold",
+        ]);
         let galleon = registry
             .get("Conqueror's Galleon // Conqueror's Foothold")
             .expect("galleon should be in builtin registry");

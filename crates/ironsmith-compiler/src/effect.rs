@@ -189,11 +189,6 @@ impl Effect {
             .downcast_ref::<crate::effects::TaggedEffect>()
     }
 
-    pub fn as_placeholder(&self) -> Option<&crate::effects::PlaceholderEffect> {
-        self.payload_any()
-            .downcast_ref::<crate::effects::PlaceholderEffect>()
-    }
-
     pub fn as_schedule_delayed_trigger(
         &self,
     ) -> Option<&crate::effects::ScheduleDelayedTriggerEffect> {
@@ -592,6 +587,16 @@ impl Effect {
             x_value: None,
             mana_multiplier: None,
         })
+    }
+
+    pub fn cumulative_upkeep(
+        payment: Vec<Effect>,
+        player: crate::target::PlayerFilter,
+        failure: Vec<Effect>,
+    ) -> Self {
+        Self::new(crate::effects::CumulativeUpkeepEffect::new(
+            player, payment, failure,
+        ))
     }
 
     pub fn unless_action(

@@ -133,6 +133,7 @@ function buildActivatableMap(decision) {
 
 function ZoneCountInline({ player }) {
   const counts = zoneCounts(player);
+  const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
     <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
       {counts.map((entry) => (
@@ -141,6 +142,15 @@ function ZoneCountInline({ player }) {
           <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
         </span>
       ))}
+      {libraryTopName && (
+        <span
+          className="max-w-[220px] truncate rounded-none border border-[#466f96]/70 bg-[#081523]/90 px-1.5 py-0.5 text-[#dceeff]"
+          title={`Top card: ${libraryTopName}`}
+        >
+          <span className="font-bold text-[#c1d4ea]">Top</span>{" "}
+          <span className="font-semibold text-[#f0f7ff]">{libraryTopName}</span>
+        </span>
+      )}
     </div>
   );
 }
@@ -730,7 +740,11 @@ export default function MyZone({
                   </div>
                 )}
                 {entry.zone === "library" ? (
-                  <DeckZonePile count={displayCount} />
+                  <DeckZonePile
+                    count={displayCount}
+                    canViewTop={player.can_view_library_top}
+                    topCardName={player.library_top}
+                  />
                 ) : (
                   <BattlefieldRow
                     cards={displayCards}

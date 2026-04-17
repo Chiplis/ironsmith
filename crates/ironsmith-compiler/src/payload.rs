@@ -2,7 +2,7 @@ use crate::ability::ActivationTiming;
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::filter::ObjectFilter;
-use crate::mana::{ManaCost, ManaSymbol};
+use crate::mana::ManaCost;
 use crate::static_abilities::LandwalkKind;
 use crate::types::{CardType, Subtype};
 
@@ -80,8 +80,7 @@ pub enum KeywordAction {
         text: String,
     },
     CumulativeUpkeep {
-        mana_symbols_per_counter: Vec<ManaSymbol>,
-        life_per_counter: u32,
+        total_cost: TotalCost,
         text: String,
     },
     Casualty(u32),

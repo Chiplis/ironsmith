@@ -5427,9 +5427,7 @@ pub(crate) fn parse_you_may_look_top_card_any_time_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_you_may_look_top_card_any_time_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::rule_text_placeholder(
-            "You may look at the top card of your library any time.",
-        )));
+        return Ok(Some(StaticAbility::look_at_top_card_of_library()));
     }
     Ok(None)
 }

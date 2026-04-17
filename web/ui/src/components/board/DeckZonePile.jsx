@@ -3,9 +3,10 @@ function normalizeCount(value) {
   return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
 }
 
-export default function DeckZonePile({ count }) {
+export default function DeckZonePile({ count, topCardName = null, canViewTop = false }) {
   const deckCount = normalizeCount(count);
   const stackDepth = Math.min(Math.max(deckCount, 1), 4);
+  const visibleTopCard = canViewTop ? String(topCardName || "Empty") : "";
 
   return (
     <section className="deck-zone-pile relative h-full min-h-[148px] overflow-hidden rounded-none border border-[#34485f] bg-[linear-gradient(180deg,rgba(12,20,31,0.98),rgba(7,12,19,0.98))] shadow-[inset_0_1px_0_rgba(170,208,245,0.08),0_10px_24px_rgba(0,0,0,0.22)]">
@@ -36,8 +37,18 @@ export default function DeckZonePile({ count }) {
                   <div className="absolute inset-x-[13px] top-[48%] h-px bg-[rgba(158,196,232,0.11)]" />
                   <div className="absolute inset-x-[13px] top-[59%] h-px bg-[rgba(158,196,232,0.09)]" />
                   {isFront && (
-                    <div className="absolute inset-x-0 bottom-[10px] text-center text-[12px] font-bold uppercase tracking-[0.28em] text-[#d5e7fb]">
-                      Deck
+                    <div className="absolute inset-x-[7px] bottom-[10px] text-center">
+                      <div className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#d5e7fb]">
+                        Deck
+                      </div>
+                      {visibleTopCard && (
+                        <div
+                          className="mt-1 truncate rounded-none border border-[#78a6d8]/35 bg-[#07111c]/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#e5f2ff]"
+                          title={`Top card: ${visibleTopCard}`}
+                        >
+                          {visibleTopCard}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -52,7 +63,9 @@ export default function DeckZonePile({ count }) {
                 Deck
               </div>
               <div className="text-[12px] text-[#a9c1dc]">
-                {deckCount === 0 ? "Empty" : `${deckCount} card${deckCount === 1 ? "" : "s"}`}
+                {visibleTopCard
+                  ? `Top: ${visibleTopCard}`
+                  : deckCount === 0 ? "Empty" : `${deckCount} card${deckCount === 1 ? "" : "s"}`}
               </div>
             </div>
             <div className="deck-zone-count rounded-none border border-[#4d6987] bg-[rgba(10,18,27,0.94)] px-2.5 py-1 text-[18px] font-bold leading-none text-[#e3efff] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">

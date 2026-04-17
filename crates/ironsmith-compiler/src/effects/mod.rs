@@ -12,7 +12,8 @@ pub use ironsmith_core::{
     ConditionalEffect as CoreConditionalEffect, ConniveEffect, ConsultTopOfLibraryEffect,
     ConsultTopOfLibraryStopRule, ControlCombatChoicesThisTurnEffect, ControlPlayerEffect,
     ConvertEffect, CopySpellEffect, CounterEffect, CreateEmblemEffect as CoreCreateEmblemEffect,
-    CreateTokenEffect as CoreCreateTokenEffect, CrewCostEffect, DealDamageEffect,
+    CreateTokenEffect as CoreCreateTokenEffect, CrewCostEffect,
+    CumulativeUpkeepEffect as CoreCumulativeUpkeepEffect, DealDamageEffect,
     DealDistributedDamageEffect, DelayedTriggerSpec, DestroyEffect, DestroyNoRegenerationEffect,
     DetainEffect, DiscardEffect, DiscardHandEffect, DiscoverEffect, DoubleManaPoolEffect,
     DrawCardsEffect, DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect,
@@ -37,8 +38,8 @@ pub use ironsmith_core::{
     ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveToLibraryNthFromTopEffect, MoveToZoneEffect,
     NewTargetRestriction, NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect,
-    PayEnergyEffect, PayManaEffect, PhaseOutEffect, PlaceholderEffect, PoisonCountersEffect,
-    PopulateEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
+    PayEnergyEffect, PayManaEffect, PhaseOutEffect, PoisonCountersEffect, PopulateEffect,
+    PreventAllCombatDamageEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect, PutCountersEffect,
@@ -72,6 +73,7 @@ pub type ChooseModeEffect = CoreChooseModeEffect<Effect>;
 pub type CreateEmblemEffect = CoreCreateEmblemEffect<crate::effect::EmblemDescription>;
 pub type CreateTokenEffect = CoreCreateTokenEffect<crate::cards::CardDefinition>;
 pub type ConditionalEffect = CoreConditionalEffect<Effect>;
+pub type CumulativeUpkeepEffect = CoreCumulativeUpkeepEffect<Effect>;
 pub type ExecuteWithSourceEffect = CoreExecuteWithSourceEffect<Effect>;
 pub type ForEachObject = CoreForEachObject<Effect>;
 pub type HauntExileEffect = CoreHauntExileEffect<Effect>;
@@ -132,7 +134,6 @@ pub mod cards {
 pub mod continuous {
     #[derive(Debug, Clone, PartialEq)]
     pub enum RuntimeModification {
-        Placeholder(String),
         ModifyPowerToughness {
             power: crate::effect::Value,
             toughness: crate::effect::Value,

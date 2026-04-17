@@ -128,11 +128,6 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
         modification: compiler::effects::continuous::RuntimeModification,
     ) -> Result<ironsmith::effects::continuous::RuntimeModification, Self::Error> {
         Ok(match modification {
-            compiler::effects::continuous::RuntimeModification::Placeholder(label) => {
-                return Err(CompilerIntegrationError::UnsupportedEffect {
-                    detail: format!("continuous runtime placeholder `{label}`"),
-                });
-            }
             compiler::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
                 toughness,
@@ -623,6 +618,26 @@ mod tests {
                 "Teysa, Envoy of Ghosts",
                 "Mana cost: {5}{W}{B}\nType: Legendary Creature — Human Advisor\nPower/Toughness: 4/4\nProtection from creatures",
                 "Protection",
+            ),
+            (
+                "Top Library Fixture",
+                "Mana cost: {2}{G}\nType: Creature — Bird\nPower/Toughness: 2/3\nYou may look at the top card of your library any time.",
+                "LookAtTopCardOfLibrary",
+            ),
+            (
+                "Mystic Remora",
+                "Mana cost: {U}\nType: Enchantment\nCumulative upkeep {1}",
+                "CumulativeUpkeepEffect",
+            ),
+            (
+                "Cumulative Discard Fixture",
+                "Mana cost: {1}{B}\nType: Enchantment\nCumulative upkeep—Discard a card.",
+                "DiscardEffect",
+            ),
+            (
+                "Cumulative Choice Fixture",
+                "Mana cost: {G}{W}\nType: Enchantment\nCumulative upkeep {G} or {W}",
+                "UnlessActionEffect",
             ),
         ];
 

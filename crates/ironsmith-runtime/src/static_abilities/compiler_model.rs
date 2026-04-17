@@ -113,6 +113,7 @@ impl StaticAbility {
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }
+            Some(StaticAbilityId::LookAtTopCardOfLibrary) => Self::look_at_top_card_of_library(),
             Some(StaticAbilityId::EntersTapped) => Self::enters_tapped_ability(),
             Some(StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands) => {
                 Self::enters_tapped_unless_control_two_or_more_other_lands()
@@ -132,7 +133,6 @@ impl StaticAbility {
             Some(StaticAbilityId::CanBeCommander) => Self::can_be_commander(),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),
-            Some(StaticAbilityId::RuleTextPlaceholder) => Self::rule_text_placeholder(label),
             Some(StaticAbilityId::KeywordFallbackText) => Self::keyword_fallback_text(label),
             Some(StaticAbilityId::RuleFallbackText) => Self::rule_fallback_text(label),
             Some(StaticAbilityId::UnsupportedParserLine) => {

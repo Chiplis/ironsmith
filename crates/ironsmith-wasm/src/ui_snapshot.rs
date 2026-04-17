@@ -9,6 +9,7 @@ use ironsmith::game_state::{
     GameState, Target, UiBattlefieldTransition, UiBattlefieldTransitionKind,
 };
 use ironsmith::ids::{ObjectId, PlayerId};
+use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::types::CardType;
 use ironsmith::zone::Zone;
 
@@ -317,6 +318,15 @@ fn pseudo_hand_glow_kind_for_zone_card(
         .then_some("extra")
 }
 
+fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|object| {
+            object.controller == player
+                && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
+        })
+    })
+}
+
 fn build_zone_card_snapshot(
     game: &GameState,
     perspective: PlayerId,
@@ -489,6 +499,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) life: i32,
     pub(super) mana_pool: ManaPoolSnapshot,
     pub(super) can_view_hand: bool,
+    pub(super) can_view_library_top: bool,
     pub(super) hand_size: usize,
     pub(super) library_size: usize,
     pub(super) graveyard_size: usize,
@@ -580,8 +591,11 @@ impl GameSnapshot {
                 let visible_hand_ids = visible_hand_view
                     .map(|view| view.cards.iter().copied().collect::<HashSet<_>>());
                 let can_view_hand = is_perspective_player || visible_hand_view.is_some();
+                let can_view_library_top =
+                    is_perspective_player && can_view_own_library_top(game, p.id);
                 PlayerSnapshot {
                     can_view_hand,
+                    can_view_library_top,
                     hand_cards: if can_view_hand {
                         p.hand
                             .iter()
@@ -665,11 +679,14 @@ impl GameSnapshot {
                             )
                         })
                         .collect(),
-                    library_top: p
-                        .library
-                        .last()
-                        .and_then(|id| game.object(*id))
-                        .map(|o| o.name.clone()),
+                    library_top: can_view_library_top
+                        .then(|| {
+                            p.library
+                                .last()
+                                .and_then(|id| game.object(*id))
+                                .map(|o| o.name.clone())
+                        })
+                        .flatten(),
                     graveyard_top: p
                         .graveyard
                         .last()

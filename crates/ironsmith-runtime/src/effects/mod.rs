@@ -104,8 +104,8 @@ pub use combat::{
 pub use composition::{
     AdaptEffect, BackupEffect, BeholdEffect, BolsterEffect, CastEncodedCardCopyEffect,
     ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect, CipherEffect,
-    ConditionalEffect, CounterAbilityEffect, DevourEffect, EmitGiftGivenEffect,
-    EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
+    ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
+    EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, LocalRewriteEffect, ManifestDreadEffect,
     ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,

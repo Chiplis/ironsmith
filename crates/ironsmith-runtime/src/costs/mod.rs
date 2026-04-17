@@ -186,9 +186,6 @@ impl Cost {
             ironsmith_core::Cost::ReturnSelfToHand => Self::return_self_to_hand(),
             ironsmith_core::Cost::Effect(effect) => Self::try_from_runtime_effect(effect)
                 .map_err(|detail| format!("effect-backed cost is not cost-executable: {detail}"))?,
-            ironsmith_core::Cost::Placeholder(label) => {
-                return Err(format!("untyped compiler cost placeholder: {label}"));
-            }
         })
     }
 

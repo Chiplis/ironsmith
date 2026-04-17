@@ -3444,19 +3444,12 @@ pub(crate) fn parse_heterogeneous_granted_tail(
 
         if let Some(actions) = parse_granted_keyword_fragment(&segment) {
             reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-            if let [
-                KeywordAction::CumulativeUpkeep {
-                    mana_symbols_per_counter,
-                    life_per_counter,
-                    text,
-                },
-            ] = actions.as_slice()
+            if let [KeywordAction::CumulativeUpkeep { total_cost, text }] = actions.as_slice()
             {
                 parsed.granted_object_abilities.push((
                     ParsedAbility {
                         ability: cumulative_upkeep_granted_ability(
-                            mana_symbols_per_counter.clone(),
-                            *life_per_counter,
+                            total_cost.clone(),
                             text.clone(),
                         )
                         .into(),

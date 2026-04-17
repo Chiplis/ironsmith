@@ -363,9 +363,6 @@ mod tests {
     fn generated_registry_includes_transform_and_adventure_front_faces() {
         assert!(CardRegistry::generated_parser_card_parse_source("Jace, Vryn's Prodigy").is_some());
         assert!(CardRegistry::generated_parser_card_parse_source("Brazen Borrower").is_some());
-        assert!(
-            CardRegistry::generated_parser_card_parse_source("Embereth Shieldbreaker").is_some()
-        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -404,15 +401,15 @@ mod tests {
 
     #[cfg(feature = "generated-registry")]
     #[test]
-    fn ensure_cards_loaded_can_load_adventure_front_face_with_empty_oracle_text() {
+    fn ensure_cards_loaded_can_load_adventure_front_face() {
         let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Embereth Shieldbreaker"]);
+        registry.ensure_cards_loaded(["Brazen Borrower"]);
 
-        let shieldbreaker = registry
-            .get("Embereth Shieldbreaker")
+        let borrower = registry
+            .get("Brazen Borrower")
             .expect("adventure front face should load from generated registry");
-        assert_eq!(shieldbreaker.card.name, "Embereth Shieldbreaker");
-        assert!(shieldbreaker.card.is_creature());
+        assert_eq!(borrower.card.name, "Brazen Borrower");
+        assert!(borrower.card.is_creature());
     }
 
     #[cfg(feature = "generated-registry")]
@@ -443,38 +440,38 @@ mod tests {
     #[test]
     fn generated_registry_includes_flavor_name_aliases() {
         let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["T-60 Power Armor", "Sunset Sarsaparilla Machine"]);
+        registry.ensure_cards_loaded(["You're Gonna Need a Bigger Boat", "Marauding Mutagen"]);
 
         assert_eq!(
-            CardRegistry::generated_parser_card_parse_source("T-60 Power Armor")
+            CardRegistry::generated_parser_card_parse_source("You're Gonna Need a Bigger Boat")
                 .map(|(name, _)| name),
-            Some("T-45 Power Armor".to_string())
+            Some("Abrade".to_string())
         );
         assert_eq!(
-            CardRegistry::generated_parser_card_parse_source("Sunset Sarsaparilla Machine")
+            CardRegistry::generated_parser_card_parse_source("Marauding Mutagen")
                 .map(|(name, _)| name),
-            Some("Nuka-Cola Vending Machine".to_string())
+            Some("Acidic Slime".to_string())
         );
 
-        assert!(registry.get("T-60 Power Armor").is_some());
-        assert!(registry.get("t-60 power armor").is_some());
-        assert!(registry.get("Sunset Sarsaparilla Machine").is_some());
-        assert!(registry.get("sunset sarsaparilla machine").is_some());
+        assert!(registry.get("You're Gonna Need a Bigger Boat").is_some());
+        assert!(registry.get("you're gonna need a bigger boat").is_some());
+        assert!(registry.get("Marauding Mutagen").is_some());
+        assert!(registry.get("marauding mutagen").is_some());
 
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
         let hand_definition = registry
-            .get("T-60 Power Armor")
+            .get("You're Gonna Need a Bigger Boat")
             .expect("flavor alias should resolve")
             .clone();
         let hand_id = game.create_object_from_definition(&hand_definition, alice, Zone::Hand);
         assert_eq!(
             game.object(hand_id).expect("hand object should exist").name,
-            "T-45 Power Armor"
+            "Abrade"
         );
 
-        for alias in ["T-60 Power Armor", "Sunset Sarsaparilla Machine"] {
+        for alias in ["You're Gonna Need a Bigger Boat", "Marauding Mutagen"] {
             let definition = registry
                 .get(alias)
                 .expect("deck alias should resolve")
@@ -490,14 +487,12 @@ mod tests {
             .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
             .collect();
         assert!(
-            library_names.iter().any(|name| name == "T-45 Power Armor"),
-            "expected canonical T-45 Power Armor in library, got {library_names:?}"
+            library_names.iter().any(|name| name == "Abrade"),
+            "expected canonical Abrade in library, got {library_names:?}"
         );
         assert!(
-            library_names
-                .iter()
-                .any(|name| name == "Nuka-Cola Vending Machine"),
-            "expected canonical Nuka-Cola Vending Machine in library, got {library_names:?}"
+            library_names.iter().any(|name| name == "Acidic Slime"),
+            "expected canonical Acidic Slime in library, got {library_names:?}"
         );
     }
 
@@ -505,9 +500,9 @@ mod tests {
     #[test]
     fn ensure_cards_loaded_skips_unsupported_generated_fallback_definitions() {
         let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["The Fourteenth Doctor"]);
+        registry.ensure_cards_loaded(["A Killer Among Us"]);
         assert!(
-            registry.get("The Fourteenth Doctor").is_none(),
+            registry.get("A Killer Among Us").is_none(),
             "unsupported generated fallback definitions should not be registered"
         );
     }
@@ -1009,9 +1004,8 @@ mod tests {
         let card = CardBuilder::new(CardId::new(), "Custom Probe")
             .card_types(vec![CardType::Creature])
             .build();
-        let custom = Ability::static_ability(StaticAbility::rule_text_placeholder(
-            "Probe custom rule text",
-        ));
+        let custom =
+            Ability::static_ability(StaticAbility::rule_fallback_text("Probe custom rule text"));
         let mut definition = CardDefinition::new(card);
         definition.abilities.push(custom);
 

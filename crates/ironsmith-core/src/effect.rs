@@ -2858,11 +2858,6 @@ pub struct RemoveAnyCountersFromSourceEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PlaceholderEffect {
-    pub label: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct DealDistributedDamageEffect {
     pub amount: Value,
     pub target: ChooseSpec,
@@ -5036,6 +5031,23 @@ pub struct UnlessPaysEffect<E> {
     pub additional_generic: Option<Value>,
     pub x_value: Option<Value>,
     pub mana_multiplier: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CumulativeUpkeepEffect<E> {
+    pub player: PlayerFilter,
+    pub payment: Vec<E>,
+    pub failure: Vec<E>,
+}
+
+impl<E> CumulativeUpkeepEffect<E> {
+    pub fn new(player: PlayerFilter, payment: Vec<E>, failure: Vec<E>) -> Self {
+        Self {
+            player,
+            payment,
+            failure,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

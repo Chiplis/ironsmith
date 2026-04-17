@@ -96,6 +96,83 @@ pub(crate) fn leading_mana_symbols_to_oracle(words: &[&str]) -> Option<(String, 
     Some((ManaCost::from_pips(pips).to_oracle(), consumed))
 }
 
+fn cumulative_upkeep_text(words: &[&str]) -> String {
+    let mut text = "Cumulative upkeep".to_string();
+    let tail = words.get(2..).unwrap_or_default();
+    if tail.is_empty() {
+        return text;
+    }
+
+    if tail.first().copied() == Some("add")
+        && let Some((cost, consumed)) = leading_mana_symbols_to_oracle(&tail[1..])
+        && consumed + 1 == tail.len()
+    {
+        return format!("Cumulative upkeep—Add {cost}");
+    }
+    if let Some((cost, consumed)) = leading_mana_symbols_to_oracle(tail)
+        && consumed == tail.len()
+    {
+        return format!("Cumulative upkeep {cost}");
+    }
+    if tail.len() == 3
+        && tail[1] == "or"
+        && let (Some((left, 1)), Some((right, 1))) = (
+            leading_mana_symbols_to_oracle(&tail[..1]),
+            leading_mana_symbols_to_oracle(&tail[2..3]),
+        )
+    {
+        return format!("Cumulative upkeep {left} or {right}");
+    }
+
+    let mut tail_text = tail.join(" ");
+    if let Some(first) = tail_text.chars().next() {
+        let upper = first.to_ascii_uppercase().to_string();
+        let rest = &tail_text[first.len_utf8()..];
+        tail_text = format!("{upper}{rest}");
+    }
+    text = format!("Cumulative upkeep—{tail_text}");
+    text
+}
+
+fn payment_effects_to_total_cost(effects: Vec<Effect>) -> TotalCost {
+    TotalCost::from_costs(
+        effects
+            .into_iter()
+            .map(crate::costs::Cost::effect)
+            .collect(),
+    )
+}
+
+fn parse_cumulative_upkeep_payment_effects(tokens: &[OwnedLexToken]) -> Option<Vec<Effect>> {
+    let trimmed = trim_edge_punctuation(&trim_commas(tokens));
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(or_idx) = trimmed.iter().position(|token| token.is_word("or")) {
+        let left = parse_cumulative_upkeep_payment_effects(&trimmed[..or_idx])?;
+        let right = parse_cumulative_upkeep_payment_effects(&trimmed[or_idx + 1..])?;
+        return Some(vec![Effect::unless_action(left, right, PlayerFilter::You)]);
+    }
+
+    if let Ok(total_cost) = parse_activation_cost(&trimmed) {
+        let effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+        if !effects.is_empty() {
+            return Some(effects);
+        }
+    }
+
+    let ast = parse_effect_sentences_lexed(&trimmed).ok()?;
+    let mut ctx = crate::runtime_backend::EffectLoweringContext::new();
+    let (effects, choices) =
+        crate::runtime_backend::compile_support::compile_effects(&ast, &mut ctx).ok()?;
+    if choices.is_empty() && !effects.is_empty() {
+        Some(effects)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
     match keyword {
         "banding" => Some("banding"),
@@ -401,81 +478,15 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         let reminder_start =
             find_index(phrase_tokens, |token| token.is_period()).unwrap_or(phrase_tokens.len());
         let cost_tokens = trim_commas(&phrase_tokens[2..reminder_start]).to_vec();
-        let cost_word_view = ActivationRestrictionCompatWords::new(&cost_tokens);
-        let cost_words = cost_word_view.to_word_refs();
+        let text = cumulative_upkeep_text(&words);
 
-        if cost_words.len() == 3
-            && cost_words[0] == "pay"
-            && cost_words[2] == "life"
-            && let Ok(life_per_counter) = cost_words[1].parse::<u32>()
-            && life_per_counter > 0
-        {
+        if let Some(payment_effects) = parse_cumulative_upkeep_payment_effects(&cost_tokens) {
             return Some(KeywordAction::CumulativeUpkeep {
-                mana_symbols_per_counter: Vec::new(),
-                life_per_counter,
-                text: format!("Cumulative upkeep—Pay {life_per_counter} life"),
+                total_cost: payment_effects_to_total_cost(payment_effects),
+                text,
             });
         }
 
-        let mut pips = Vec::new();
-        let mut parsed_all = !cost_tokens.is_empty();
-        for token in &cost_tokens {
-            let Some(group) = mana_pips_from_token(token) else {
-                parsed_all = false;
-                break;
-            };
-            pips.push(group);
-        }
-        if parsed_all && !pips.is_empty() {
-            let cost = crate::mana::ManaCost::from_pips(pips.clone()).to_oracle();
-            let mut mana_symbols_per_counter = Vec::new();
-            let mut flattenable = true;
-            for pip in pips {
-                let [symbol] = pip.as_slice() else {
-                    flattenable = false;
-                    break;
-                };
-                mana_symbols_per_counter.push(*symbol);
-            }
-            if flattenable && !mana_symbols_per_counter.is_empty() {
-                return Some(KeywordAction::CumulativeUpkeep {
-                    mana_symbols_per_counter,
-                    life_per_counter: 0,
-                    text: format!("Cumulative upkeep {cost}"),
-                });
-            }
-        }
-
-        let mut text = "Cumulative upkeep".to_string();
-        let tail = &words[2..];
-        if !tail.is_empty() {
-            if tail.first().copied() == Some("add")
-                && let Some((cost, consumed)) = leading_mana_symbols_to_oracle(&tail[1..])
-                && consumed + 1 == tail.len()
-            {
-                text = format!("Cumulative upkeep—Add {cost}");
-            } else if let Some((cost, consumed)) = leading_mana_symbols_to_oracle(tail)
-                && consumed == tail.len()
-            {
-                text = format!("Cumulative upkeep {cost}");
-            } else if tail.len() == 3
-                && tail[1] == "or"
-                && let (Some((left, 1)), Some((right, 1))) = (
-                    leading_mana_symbols_to_oracle(&tail[..1]),
-                    leading_mana_symbols_to_oracle(&tail[2..3]),
-                )
-            {
-                text = format!("Cumulative upkeep {left} or {right}");
-            } else {
-                let mut tail_text = tail.join(" ");
-                if let Some(first) = tail_text.chars().next() {
-                    let upper = first.to_ascii_uppercase().to_string();
-                    let rest = &tail_text[first.len_utf8()..];
-                    tail_text = format!("{upper}{rest}");
-                }
-                text = format!("Cumulative upkeep—{tail_text}");
-            }
-        }
         return Some(KeywordAction::MarkerText(text));
     }
 

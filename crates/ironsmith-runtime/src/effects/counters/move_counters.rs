@@ -75,7 +75,7 @@ mod tests {
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::object::Object;
+    use crate::object::{CounterType, Object};
     use crate::types::CardType;
     use crate::zone::Zone;
 

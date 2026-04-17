@@ -240,7 +240,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if matches!(
                         static_ability.id(),
                         StaticAbilityId::KeywordMarker
-                            | StaticAbilityId::RuleTextPlaceholder
                             | StaticAbilityId::KeywordFallbackText
                             | StaticAbilityId::RuleFallbackText
                             | StaticAbilityId::UnsupportedParserLine

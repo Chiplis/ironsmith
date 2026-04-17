@@ -6205,7 +6205,7 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             "You may look at the top card of your library any time.",
             super::grammar::abilities::is_you_may_look_top_card_any_time_line_lexed as Probe,
             super::keyword_static::parse_you_may_look_top_card_any_time_line as Parser,
-            crate::static_abilities::StaticAbilityId::RuleFallbackText,
+            crate::static_abilities::StaticAbilityId::LookAtTopCardOfLibrary,
         ),
         (
             "You may cast this spell as though it had flash.",

@@ -36,7 +36,6 @@ pub enum Cost<E> {
     },
     ReturnSelfToHand,
     Effect(E),
-    Placeholder(String),
 }
 
 impl<E> Cost<E> {
@@ -196,7 +195,6 @@ impl<E> Cost<E> {
             },
             Self::ReturnSelfToHand => Cost::ReturnSelfToHand,
             Self::Effect(effect) => Cost::Effect(map_effect(effect)?),
-            Self::Placeholder(label) => Cost::Placeholder(label),
         })
     }
 }
@@ -238,7 +236,6 @@ where
             Self::ExileFromHand { count, .. } => format!("exile {count} card(s) from hand"),
             Self::ReturnSelfToHand => "return this permanent to its owner's hand".to_string(),
             Self::Effect(_) => "effect".to_string(),
-            Self::Placeholder(text) => text.clone(),
         }
     }
 

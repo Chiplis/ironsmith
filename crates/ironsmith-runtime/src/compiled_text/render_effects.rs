@@ -12676,7 +12676,6 @@ pub(super) fn describe_ability(
                 let prefer_source_surface = matches!(
                     static_ability.id(),
                     crate::static_abilities::StaticAbilityId::KeywordMarker
-                        | crate::static_abilities::StaticAbilityId::RuleTextPlaceholder
                         | crate::static_abilities::StaticAbilityId::KeywordFallbackText
                         | crate::static_abilities::StaticAbilityId::RuleFallbackText
                         | crate::static_abilities::StaticAbilityId::UnsupportedParserLine

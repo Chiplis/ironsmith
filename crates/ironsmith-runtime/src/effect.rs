@@ -2487,6 +2487,18 @@ impl Effect {
         Self::unless_pays_with_life(effects, player, mana, None)
     }
 
+    /// Cumulative upkeep payment: execute `payment` once per age counter, or
+    /// execute `failure` if the player declines or cannot complete payment.
+    pub fn cumulative_upkeep(
+        payment: Vec<Effect>,
+        player: PlayerFilter,
+        failure: Vec<Effect>,
+    ) -> Self {
+        Self::new(crate::effects::CumulativeUpkeepEffect::new(
+            player, payment, failure,
+        ))
+    }
+
     /// "X unless you/they pay {mana} and/or life" - execute effects unless paid.
     pub fn unless_pays_with_life(
         effects: Vec<Effect>,

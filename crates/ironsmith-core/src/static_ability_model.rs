@@ -2072,10 +2072,10 @@ impl<
     pub fn remove_ability(_filter: ObjectFilter, _ability: StaticAbility<T, E, C, Cond>) -> Self {
         Self::new("remove ability")
     }
-    pub fn rule_text_placeholder(_text: impl Into<String>) -> Self {
+    pub fn look_at_top_card_of_library() -> Self {
         Self {
-            id: Some(StaticAbilityId::RuleFallbackText),
-            label: "rule text placeholder".into(),
+            id: Some(StaticAbilityId::LookAtTopCardOfLibrary),
+            label: "You may look at the top card of your library any time.".into(),
             payload: StaticAbilityPayload::None,
         }
     }

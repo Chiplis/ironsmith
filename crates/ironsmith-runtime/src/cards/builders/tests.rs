@@ -677,7 +677,7 @@ fn test_parse_devour_keyword_line_compiles_without_unsupported_marker() {
     );
     assert!(
         !debug.contains("KeywordMarker")
-            && !debug.contains("RuleTextPlaceholder")
+            && !debug.contains("RuleFallbackText")
             && !debug.contains("UnsupportedParserLine"),
         "devour parse should avoid unsupported placeholders, got {debug}"
     );
@@ -701,7 +701,7 @@ fn test_parse_bloodthirst_keyword_line_compiles_without_unsupported_marker() {
     );
     assert!(
         !debug.contains("KeywordMarker")
-            && !debug.contains("RuleTextPlaceholder")
+            && !debug.contains("RuleFallbackText")
             && !debug.contains("UnsupportedParserLine"),
         "bloodthirst parse should avoid unsupported placeholders, got {debug}"
     );
@@ -1385,7 +1385,7 @@ fn test_parse_choose_basic_land_type_as_enters_for_aura() {
         .collect();
     assert!(ids.contains(&StaticAbilityId::ChooseBasicLandTypeAsEnters));
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "expected typed basic-land-type-as-enters static ability, got {ids:?}"
     );
 }
@@ -1431,7 +1431,7 @@ fn test_parse_choose_player_as_enters_without_placeholder() {
         .collect();
     assert!(ids.contains(&StaticAbilityId::ChoosePlayerAsEnters));
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "expected typed choose-player-as-enters static ability, got {ids:?}"
     );
 }
@@ -1458,7 +1458,7 @@ fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {
     assert!(ids.contains(&StaticAbilityId::ChooseBasicLandTypeAsEnters));
     assert!(ids.contains(&StaticAbilityId::EnchantedLandIsChosenType));
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder)
+        !ids.contains(&StaticAbilityId::RuleFallbackText)
             && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
         "expected typed chosen-type Aura static abilities, got {ids:?}"
     );
@@ -1547,7 +1547,7 @@ fn test_roaming_throne_variant_parses_without_placeholders() {
     assert!(ids.contains(&StaticAbilityId::AddChosenCreatureType));
     assert!(ids.contains(&StaticAbilityId::DuplicateMatchingTriggeredAbilities));
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder)
+        !ids.contains(&StaticAbilityId::RuleFallbackText)
             && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
         "expected typed Roaming Throne static abilities, got {ids:?}"
     );
@@ -1647,7 +1647,7 @@ fn test_parse_this_cost_is_reduced_by_basic_land_types_without_placeholder() {
         };
         assert_ne!(
             static_ability.id(),
-            StaticAbilityId::RuleTextPlaceholder,
+            StaticAbilityId::RuleFallbackText,
             "expected typed reduction, got placeholder static ability"
         );
         if static_ability.this_spell_cost_reduction().is_some() {
@@ -3610,7 +3610,7 @@ fn test_parse_cascade_keyword_line() {
     );
     assert!(
         !debug.contains("staticabilityid::keywordmarker")
-            && !debug.contains("staticabilityid::ruletextplaceholder"),
+            && !debug.contains("staticabilityid::rulefallbacktext"),
         "expected cascade to compile without placeholder static abilities, got {debug}"
     );
 }
@@ -3675,7 +3675,7 @@ fn test_parse_riot_keyword_line() {
     );
     assert!(
         !abilities_debug.contains("StaticAbilityId::KeywordMarker")
-            && !abilities_debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            && !abilities_debug.contains("StaticAbilityId::RuleFallbackText"),
         "riot should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
@@ -3700,7 +3700,7 @@ fn test_parse_unleash_keyword_line() {
     );
     assert!(
         !abilities_debug.contains("StaticAbilityId::KeywordMarker")
-            && !abilities_debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            && !abilities_debug.contains("StaticAbilityId::RuleFallbackText"),
         "unleash should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
@@ -3720,7 +3720,7 @@ fn test_parse_zhur_taa_goblin_riot_keyword_line() {
     );
     assert!(
         !abilities_debug.contains("StaticAbilityId::KeywordMarker")
-            && !abilities_debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            && !abilities_debug.contains("StaticAbilityId::RuleFallbackText"),
         "zhur-taa goblin riot should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
@@ -3975,7 +3975,7 @@ fn test_parse_bestow_keyword_line() {
         .collect::<Vec<_>>();
     assert!(
         !static_ids.contains(&StaticAbilityId::KeywordMarker)
-            && !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder)
+            && !static_ids.contains(&StaticAbilityId::RuleFallbackText)
             && !static_ids.contains(&StaticAbilityId::UnsupportedParserLine),
         "bestow line should compile without placeholder static abilities, got {static_ids:?}"
     );
@@ -4013,7 +4013,7 @@ fn test_parse_bestow_keyword_line_with_extra_cost_clause() {
     let debug = format!("{def:?}");
     assert!(
         !debug.contains("KeywordMarker")
-            && !debug.contains("RuleTextPlaceholder")
+            && !debug.contains("RuleFallbackText")
             && !debug.contains("UnsupportedParserLine"),
         "bestow extra-cost line should avoid placeholder fallback, got {debug}"
     );
@@ -5940,7 +5940,7 @@ fn parse_tayam_oracle_text_regression() {
         "expected ETB counter replacement static ability, got {static_ids:?}"
     );
     assert!(
-        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !static_ids.contains(&StaticAbilityId::RuleFallbackText),
         "tayam oracle text should not fall back to placeholder static ability: {static_ids:?}"
     );
 
@@ -6016,7 +6016,7 @@ fn parse_enters_with_counter_if_you_attacked_this_turn_line() {
         "expected conditional enters-with-counters ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "raid enters-with-counter should not fall back to placeholder static ability: {ids:?}"
     );
 
@@ -6048,7 +6048,7 @@ fn parse_enters_with_x_plus_one_counters_line_is_typed_static() {
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "x enters-with-counters should not fall back to placeholder static ability: {ids:?}"
     );
 }
@@ -6076,7 +6076,7 @@ fn parse_enters_with_counter_if_opponent_lost_life_is_typed_static() {
         "expected conditional enters-with-counters ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "opponent-life-loss conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6104,7 +6104,7 @@ fn parse_enters_with_counter_if_creature_died_this_turn_is_typed_static() {
         "expected conditional enters-with-counters ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "creature-died conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6132,7 +6132,7 @@ fn parse_enters_with_counter_if_permanent_left_under_your_control_is_typed_stati
         "expected conditional enters-with-counters ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "permanent-left conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6192,7 +6192,7 @@ fn parse_enters_with_counter_for_each_time_it_was_kicked_line() {
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "for-each-time-kicked variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6226,7 +6226,7 @@ fn parse_enters_with_counter_for_each_creature_card_in_your_graveyard_line() {
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "graveyard-count enters-with-counter variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6254,7 +6254,7 @@ fn parse_enters_with_counter_equal_to_number_of_creature_cards_in_your_graveyard
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "equal-to-count enters-with-counter variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6282,7 +6282,7 @@ fn parse_enters_with_counter_if_you_control_creature_with_power_four_or_greater_
         "expected conditional enters-with-counters ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "control-power conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6310,7 +6310,7 @@ fn parse_enters_with_counter_for_each_other_creature_and_or_artifact_you_control
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "for-each-other-creature-and-or-artifact variant should not use placeholder fallback: {ids:?}"
     );
 }
@@ -6342,7 +6342,7 @@ fn parse_enters_with_counter_if_x_is_five_or_more_additional_x_line() {
         "expected conditional additional enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "x-threshold additional enters-with-counters variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6377,7 +6377,7 @@ fn parse_enters_with_counter_where_x_is_total_life_lost_by_opponents_this_turn_l
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "where-x-total-life-lost variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6412,7 +6412,7 @@ fn parse_enters_with_counter_unless_two_or_more_colors_of_mana_were_spent_to_cas
         "expected conditional enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "unless-colors-spent variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6447,7 +6447,7 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
         "expected conditional enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "cast-two-spells conditional variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6486,7 +6486,7 @@ fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_d
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "equal-to-greatest-cards-drawn variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6521,7 +6521,7 @@ fn parse_enters_with_counter_plus_additional_for_each_other_creature_you_control
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "plus-additional-for-each variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6555,7 +6555,7 @@ fn parse_enters_with_counter_for_each_magic_game_you_lost_line() {
         "expected typed enters-with-counters static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleFallbackText),
         "match-history variant should not use placeholder fallback: {ids:?}"
     );
 
@@ -6607,7 +6607,7 @@ fn parse_as_this_land_enters_reveal_if_you_dont_enters_tapped_line() {
         "expected generic enters-tapped-unless replacement, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "reveal-if-you-dont clause should not emit placeholder static ability: {ids:?}"
     );
 
@@ -6641,7 +6641,7 @@ fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
         "expected generic enters-tapped-unless replacement, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "reveal-unless-or-control clause should not emit placeholder static ability: {ids:?}"
     );
 
@@ -11897,7 +11897,7 @@ fn parse_recommission_text_parses_typed_counter_followup() {
         })
         .collect();
     assert!(
-        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !static_ids.contains(&StaticAbilityId::RuleFallbackText),
         "recommission followup should not emit static placeholder fallback: {static_ids:?}"
     );
 }
@@ -11925,7 +11925,7 @@ fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
         })
         .collect();
     assert!(
-        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !static_ids.contains(&StaticAbilityId::RuleFallbackText),
         "time-twist followup should not emit static placeholder fallback: {static_ids:?}"
     );
 }
@@ -12051,7 +12051,7 @@ fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
         "expected typed optional-untap static ability, got {static_ids:?}"
     );
     assert!(
-        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !static_ids.contains(&StaticAbilityId::RuleFallbackText),
         "optional untap should not parse as placeholder static ability: {static_ids:?}"
     );
 }
@@ -12356,7 +12356,7 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
         "expected generic cant-attack-unless condition restriction, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "defending-player-land-subtype restriction should not emit rule text placeholders, got {ids:?}"
     );
 
@@ -12396,7 +12396,7 @@ fn parse_cant_attack_unless_youve_cast_creature_spell_this_turn_line() {
         "expected cast-creature-spell attack restriction, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "cast-creature-spell attack restriction should not emit rule text placeholders, got {ids:?}"
     );
 
@@ -12436,7 +12436,7 @@ fn parse_cant_attack_unless_youve_cast_noncreature_spell_this_turn_line() {
         "expected cast-noncreature-spell attack restriction, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "cast-noncreature-spell attack restriction should not emit rule text placeholders, got {ids:?}"
     );
 
@@ -12476,7 +12476,7 @@ fn parse_cant_attack_unless_control_more_creatures_than_defending_player_line() 
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "control-more-creatures restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12519,7 +12519,7 @@ fn parse_cant_attack_unless_defending_player_is_poisoned_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "defending-player-poisoned restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12546,7 +12546,7 @@ fn parse_cant_attack_unless_black_or_green_creature_also_attacks_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "also-attacks restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12573,7 +12573,7 @@ fn parse_cant_attack_unless_sacrifice_a_land_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "sacrifice-land restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12600,7 +12600,7 @@ fn parse_cant_attack_unless_sacrifice_two_islands_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "sacrifice-two-islands restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12627,7 +12627,7 @@ fn parse_cant_attack_unless_pay_per_plus_one_plus_one_counter_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "pay-per-counter restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12654,7 +12654,7 @@ fn parse_cant_attack_unless_defending_player_is_the_monarch_line() {
         "expected typed cant-attack-unless condition static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "monarch restriction should not emit placeholders, got {ids:?}"
     );
 }
@@ -12685,7 +12685,7 @@ fn parse_collective_restraint_domain_attack_tax_line() {
         "expected collective-restraint attack tax static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "collective-restraint line should not emit rule text placeholders, got {ids:?}"
     );
 
@@ -12732,7 +12732,7 @@ fn parse_fixed_attack_tax_line() {
         "expected fixed attack-tax static ability, got {ids:?}"
     );
     assert!(
-        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !ids.contains(&StaticAbilityId::RuleFallbackText),
         "fixed attack-tax line should not emit rule text placeholders, got {ids:?}"
     );
 }
@@ -20463,7 +20463,7 @@ fn parse_as_long_as_it_attacked_this_turn_condition_line() {
         })
         .collect();
     assert!(
-        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        !static_ids.contains(&StaticAbilityId::RuleFallbackText),
         "attacked-this-turn static line should not fall back to placeholder static ability: {static_ids:?}"
     );
 
@@ -26522,7 +26522,7 @@ fn parse_gandalf_flash_union_uses_generic_permission_parser() {
         debug.contains("any_of")
             && debug.contains("Legendary")
             && debug.contains("Artifact")
-            && !debug.contains("RuleTextPlaceholder"),
+            && !debug.contains("RuleFallbackText"),
         "expected shared permission filter union without placeholders, got {debug}"
     );
 }
