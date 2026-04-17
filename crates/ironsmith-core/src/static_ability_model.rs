@@ -186,6 +186,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         display: String,
     },
     EquipmentGrant(Vec<StaticAbility<T, E, C, Cond>>),
+    SoulbondSharedPowerToughness {
+        power: i32,
+        toughness: i32,
+    },
+    SoulbondSharedAbility(Box<StaticAbility<T, E, C, Cond>>),
+    SoulbondSharedObjectAbility(Box<AbilityModel<T, E, C, Cond>>),
     RemoveAllAbilities(ObjectFilter),
     RemoveAllAbilitiesExceptMana(ObjectFilter),
     SetBasePowerToughness {
@@ -633,6 +639,25 @@ where
                     )?);
                 }
                 StaticAbilityPayload::EquipmentGrant(mapped)
+            }
+            StaticAbilityPayload::SoulbondSharedPowerToughness { power, toughness } => {
+                StaticAbilityPayload::SoulbondSharedPowerToughness { power, toughness }
+            }
+            StaticAbilityPayload::SoulbondSharedAbility(ability) => {
+                StaticAbilityPayload::SoulbondSharedAbility(Box::new(map_static_ability(
+                    *ability,
+                    map_trigger,
+                    map_effect,
+                    map_cost,
+                )?))
+            }
+            StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
+                StaticAbilityPayload::SoulbondSharedObjectAbility(Box::new(map_ability(
+                    *ability,
+                    map_trigger,
+                    map_effect,
+                    map_cost,
+                )?))
             }
             StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbilityPayload::RemoveAllAbilities(filter)
@@ -1598,8 +1623,18 @@ impl<
             payload: StaticAbilityPayload::EquipmentGrant(abilities),
         }
     }
-    pub fn soulbond_shared_object_ability(_ability: AbilityModel<T, E, C, Cond>) -> Self {
-        Self::new("soulbond shared object ability")
+    pub fn soulbond_shared_object_ability(ability: AbilityModel<T, E, C, Cond>) -> Self {
+        let text = ability
+            .text
+            .clone()
+            .unwrap_or_else(|| "an ability".to_string());
+        Self {
+            id: Some(StaticAbilityId::SoulbondSharedBonus),
+            label: format!(
+                "As long as this creature is paired with another creature, both creatures have \"{text}\""
+            ),
+            payload: StaticAbilityPayload::SoulbondSharedObjectAbility(Box::new(ability)),
+        }
     }
     pub fn grant_object_ability_for_filter(
         filter: ObjectFilter,
@@ -1716,11 +1751,33 @@ impl<
     pub fn set_name(_filter: impl std::fmt::Debug, _name: impl Into<String>) -> Self {
         Self::new("set name")
     }
-    pub fn soulbond_shared_power_toughness(_power: i32, _toughness: i32) -> Self {
-        Self::new("soulbond shared power toughness")
+    pub fn soulbond_shared_power_toughness(power: i32, toughness: i32) -> Self {
+        let signed = |value: i32| {
+            if value >= 0 {
+                format!("+{value}")
+            } else {
+                value.to_string()
+            }
+        };
+        Self {
+            id: Some(StaticAbilityId::SoulbondSharedBonus),
+            label: format!(
+                "As long as this creature is paired with another creature, each of those creatures gets {}/{}",
+                signed(power),
+                signed(toughness)
+            ),
+            payload: StaticAbilityPayload::SoulbondSharedPowerToughness { power, toughness },
+        }
     }
-    pub fn soulbond_shared_ability(_ability: StaticAbility<T, E, C, Cond>) -> Self {
-        Self::new("soulbond shared ability")
+    pub fn soulbond_shared_ability(ability: StaticAbility<T, E, C, Cond>) -> Self {
+        let label = ability.display();
+        Self {
+            id: Some(StaticAbilityId::SoulbondSharedBonus),
+            label: format!(
+                "As long as this creature is paired with another creature, both creatures have {label}"
+            ),
+            payload: StaticAbilityPayload::SoulbondSharedAbility(Box::new(ability)),
+        }
     }
     pub fn add_colors(_filter: impl std::fmt::Debug, _colors: ColorSet) -> Self {
         Self::new("add colors")

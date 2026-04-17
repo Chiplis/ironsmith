@@ -151,12 +151,11 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::ProtectionFromCardType(card_type) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),
         )),
-        KeywordAction::ProtectionFromSubtype(subtype) => {
-            Some(StaticAbility::keyword_marker(format!(
-                "protection from {}",
-                subtype.to_string().to_ascii_lowercase()
-            )))
-        }
+        KeywordAction::ProtectionFromSubtype(subtype) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Permanents(
+                ObjectFilter::default().with_subtype(subtype),
+            ),
+        )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(

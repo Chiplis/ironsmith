@@ -409,6 +409,9 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if spell_like_card {
         push_abilities(&mut out);
     }
+    if def.has_fuse {
+        out.push("Fuse".to_string());
+    }
     out.extend(alternative_cast_lines);
     let normalized = out
         .into_iter()

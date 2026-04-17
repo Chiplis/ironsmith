@@ -9,25 +9,17 @@ use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
+pub use ironsmith_core::EvolveEffect;
 
 /// "Put a +1/+1 counter on this creature if a larger creature entered under your control."
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EvolveEffect;
+fn effective_power(game: &GameState, id: crate::ids::ObjectId) -> Option<i32> {
+    game.calculated_power(id)
+        .or_else(|| game.object(id).and_then(|obj| obj.power()))
+}
 
-impl EvolveEffect {
-    pub const fn new() -> Self {
-        Self
-    }
-
-    fn effective_power(game: &GameState, id: crate::ids::ObjectId) -> Option<i32> {
-        game.calculated_power(id)
-            .or_else(|| game.object(id).and_then(|obj| obj.power()))
-    }
-
-    fn effective_toughness(game: &GameState, id: crate::ids::ObjectId) -> Option<i32> {
-        game.calculated_toughness(id)
-            .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
-    }
+fn effective_toughness(game: &GameState, id: crate::ids::ObjectId) -> Option<i32> {
+    game.calculated_toughness(id)
+        .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
 }
 
 impl EffectExecutor for EvolveEffect {
@@ -62,16 +54,16 @@ impl EffectExecutor for EvolveEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let Some(source_power) = Self::effective_power(game, source_id) else {
+        let Some(source_power) = effective_power(game, source_id) else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(source_toughness) = Self::effective_toughness(game, source_id) else {
+        let Some(source_toughness) = effective_toughness(game, source_id) else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(entered_power) = Self::effective_power(game, entered_id) else {
+        let Some(entered_power) = effective_power(game, entered_id) else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(entered_toughness) = Self::effective_toughness(game, entered_id) else {
+        let Some(entered_toughness) = effective_toughness(game, entered_id) else {
             return Ok(EffectOutcome::count(0));
         };
 

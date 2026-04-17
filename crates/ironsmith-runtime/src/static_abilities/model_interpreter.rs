@@ -555,6 +555,18 @@ impl StaticAbilityModelInterpreter {
                         .collect(),
                 )
             }
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedPowerToughness {
+                power,
+                toughness,
+            } => StaticAbility::soulbond_shared_power_toughness(*power, *toughness),
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedAbility(ability) => {
+                StaticAbility::soulbond_shared_ability(StaticAbility::from_model(
+                    (**ability).clone(),
+                ))
+            }
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
+                StaticAbility::soulbond_shared_object_ability(Self::ability_from_model(ability))
+            }
             ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbility::remove_all_abilities(filter.clone())
             }

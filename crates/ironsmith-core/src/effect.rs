@@ -3796,6 +3796,39 @@ impl MoveAllCountersEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MoveCountersEffect {
+    pub counter_type: crate::counter::CounterType,
+    pub count: Value,
+    pub from: ChooseSpec,
+    pub to: ChooseSpec,
+}
+
+impl MoveCountersEffect {
+    pub fn new(
+        counter_type: crate::counter::CounterType,
+        count: impl Into<Value>,
+        from: ChooseSpec,
+        to: ChooseSpec,
+    ) -> Self {
+        Self {
+            counter_type,
+            count: count.into(),
+            from,
+            to,
+        }
+    }
+
+    pub fn plus_one_counters(count: impl Into<Value>) -> Self {
+        Self::new(
+            crate::counter::CounterType::PlusOnePlusOne,
+            count,
+            ChooseSpec::creature(),
+            ChooseSpec::creature(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProliferateEffect {
     pub count: Value,
 }
@@ -4623,6 +4656,24 @@ pub struct MonstrosityEffect {
 impl MonstrosityEffect {
     pub fn new(n: impl Into<Value>) -> Self {
         Self { n: n.into() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EvolveEffect;
+
+impl EvolveEffect {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SoulbondPairEffect;
+
+impl SoulbondPairEffect {
+    pub const fn new() -> Self {
+        Self
     }
 }
 

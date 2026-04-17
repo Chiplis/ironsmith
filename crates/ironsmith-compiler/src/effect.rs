@@ -511,8 +511,8 @@ impl Effect {
     }
 
     pub fn pump(
-        power: i32,
-        toughness: i32,
+        power: impl Into<Value>,
+        toughness: impl Into<Value>,
         target: crate::target::ChooseSpec,
         until: Until,
     ) -> Self {

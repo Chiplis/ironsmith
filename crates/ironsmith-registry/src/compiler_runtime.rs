@@ -552,6 +552,100 @@ mod tests {
     }
 
     #[test]
+    fn supported_keyword_mechanics_do_not_lower_to_keyword_markers() {
+        let cases = [
+            (
+                "Grapeshot",
+                "Mana cost: {1}{R}\nType: Sorcery\nGrapeshot deals 1 damage to any target.\nStorm",
+                "CopySpellEffect",
+            ),
+            (
+                "Alive // Well",
+                "Mana cost: {3}{G}\nType: Sorcery\nCreate a 3/3 green Centaur creature token.\nFuse",
+                "has_fuse: true",
+            ),
+            (
+                "Akrasan Squire",
+                "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nExalted",
+                "exalted_attacker",
+            ),
+            (
+                "Abstruse Interference",
+                "Mana cost: {2}{U}\nType: Instant\nDevoid\nCounter target spell unless its controller pays {1}.",
+                "MakeColorless",
+            ),
+            (
+                "Accorder Paladin",
+                "Mana cost: {1}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/1\nBattle cry",
+                "ModifyPowerToughnessEffect",
+            ),
+            (
+                "Adaptive Snapjaw",
+                "Mana cost: {4}{G}\nType: Creature — Lizard Beast\nPower/Toughness: 6/2\nEvolve",
+                "EvolveEffect",
+            ),
+            (
+                "Bilious Skulldweller",
+                "Mana cost: {B}\nType: Creature — Phyrexian Insect\nPower/Toughness: 1/1\nDeathtouch\nToxic 1",
+                "PoisonCountersEffect",
+            ),
+            (
+                "Doomed Traveler",
+                "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAfterlife 1",
+                "CreateTokenEffect",
+            ),
+            (
+                "Cached Defenses",
+                "Mana cost: {2}{G}\nType: Sorcery\nBolster 3.",
+                "BolsterEffect",
+            ),
+            (
+                "Aquastrand Spider",
+                "Mana cost: {1}{G}\nType: Creature — Spider Mutant\nPower/Toughness: 0/0\nGraft 2\n{G}: Target creature with a +1/+1 counter on it gains reach until end of turn.",
+                "MoveCountersEffect",
+            ),
+            (
+                "Arcbound Worker",
+                "Mana cost: {1}\nType: Artifact Creature — Construct\nPower/Toughness: 0/0\nModular 1",
+                "modular_triggering_object",
+            ),
+            (
+                "Ronin Houndmaster",
+                "Mana cost: {2}{R}\nType: Creature — Human Samurai\nPower/Toughness: 2/2\nBushido 1",
+                "ModifyPowerToughnessEffect",
+            ),
+            (
+                "Ulamog's Crusher",
+                "Mana cost: {8}\nType: Creature — Eldrazi\nPower/Toughness: 8/8\nAnnihilator 2",
+                "SacrificePlayerEffect",
+            ),
+            (
+                "Teysa, Envoy of Ghosts",
+                "Mana cost: {5}{W}{B}\nType: Legendary Creature — Human Advisor\nPower/Toughness: 4/4\nProtection from creatures",
+                "Protection",
+            ),
+        ];
+
+        for (name, text, expected_debug) in cases {
+            let definition = compile_to_runtime_definition(name, text, false)
+                .unwrap_or_else(|err| panic!("{name} should compile: {err}"));
+            let debug = format!("{definition:#?}");
+            assert!(
+                !debug.contains("KeywordMarker"),
+                "{name} should not lower supported mechanics to KeywordMarker:\n{debug}"
+            );
+            assert!(
+                !debug.contains("RuleFallbackText"),
+                "{name} should not lower supported mechanics to RuleFallbackText:\n{debug}"
+            );
+            assert!(
+                debug.contains(expected_debug),
+                "{name} should contain {expected_debug}, got:\n{debug}"
+            );
+        }
+    }
+
+    #[test]
     fn compiler_integrated_definitions_execute_normally_in_runtime() {
         let definition = compile_to_runtime_definition(
             "Llanowar Elves",

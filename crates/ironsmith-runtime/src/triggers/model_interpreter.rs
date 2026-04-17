@@ -71,6 +71,12 @@ pub(crate) fn interpret_trigger_model(
     Ok(match trigger.kind {
         TriggerKind::StateBased { display } => crate::triggers::Trigger::state_based(display),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
+        TriggerKind::ThisAttacksPlayerWithMostLife => {
+            crate::triggers::Trigger::this_attacks_player_with_most_life()
+        }
+        TriggerKind::ThisAttacksWithGreaterPower => {
+            crate::triggers::Trigger::this_attacks_with_greater_power()
+        }
         TriggerKind::ThisAttacksWithExactNOthers { count } => {
             crate::triggers::Trigger::this_attacks_with_exact_n_others(count)
         }

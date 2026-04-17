@@ -1,71 +1,11 @@
 //! Move counters effect implementation.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::object::CounterType;
-use crate::target::ChooseSpec;
-
-/// Effect that moves counters from one permanent to another.
-///
-/// # Fields
-///
-/// * `counter_type` - The type of counter to move
-/// * `count` - How many counters to move
-/// * `from` - Source permanent (first target)
-/// * `to` - Destination permanent (second target)
-///
-/// # Example
-///
-/// ```ignore
-/// // Move two +1/+1 counters from one creature to another
-/// let effect = MoveCountersEffect::new(
-///     CounterType::PlusOnePlusOne,
-///     2,
-///     ChooseSpec::creature(),
-///     ChooseSpec::creature(),
-/// );
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct MoveCountersEffect {
-    /// The type of counter to move.
-    pub counter_type: CounterType,
-    /// How many counters to move.
-    pub count: Value,
-    /// Source permanent (first target).
-    pub from: ChooseSpec,
-    /// Destination permanent (second target).
-    pub to: ChooseSpec,
-}
-
-impl MoveCountersEffect {
-    /// Create a new move counters effect.
-    pub fn new(
-        counter_type: CounterType,
-        count: impl Into<Value>,
-        from: ChooseSpec,
-        to: ChooseSpec,
-    ) -> Self {
-        Self {
-            counter_type,
-            count: count.into(),
-            from,
-            to,
-        }
-    }
-
-    /// Create an effect that moves +1/+1 counters between creatures.
-    pub fn plus_one_counters(count: impl Into<Value>) -> Self {
-        Self::new(
-            CounterType::PlusOnePlusOne,
-            count,
-            ChooseSpec::creature(),
-            ChooseSpec::creature(),
-        )
-    }
-}
+pub use ironsmith_core::MoveCountersEffect;
 
 impl EffectExecutor for MoveCountersEffect {
     fn execute(
@@ -119,7 +59,7 @@ impl EffectExecutor for MoveCountersEffect {
         Ok(outcome)
     }
 
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
         Some(&self.from)
     }
 

@@ -727,6 +727,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::MoveCountersEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ProliferateEffect>(&effect) {
         return Ok(converted);
     }
@@ -1269,6 +1272,7 @@ where
         crate::effects::DrawCardsEffect,
         crate::effects::EachPlayerScryEffect,
         crate::effects::EarthbendEffect,
+        crate::effects::EvolveEffect,
         crate::effects::ExchangeControlEffect,
         crate::effects::ExertCostEffect,
         crate::effects::ExileEffect,
@@ -1280,6 +1284,7 @@ where
         crate::effects::MeldEffect,
         crate::effects::MillEffect,
         crate::effects::ModifyPowerToughnessEffect,
+        crate::effects::MoveCountersEffect,
         crate::effects::MoveToLibraryNthFromTopEffect,
         crate::effects::MoveToZoneEffect,
         crate::effects::PayEnergyEffect,
@@ -1297,6 +1302,7 @@ where
         crate::effects::ScryEffect,
         crate::effects::SearchLibraryEffect,
         crate::effects::SearchLibrarySlotsEffect,
+        crate::effects::SoulbondPairEffect,
         crate::effects::TagMatchingObjectsEffect,
         crate::effects::TargetOnlyEffect,
         crate::effects::TapEffect,

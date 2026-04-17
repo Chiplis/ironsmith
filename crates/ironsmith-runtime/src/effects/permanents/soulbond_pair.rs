@@ -7,42 +7,30 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::zone::Zone;
+pub use ironsmith_core::SoulbondPairEffect;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct SoulbondPairEffect;
+fn source_is_valid(game: &GameState, source: ObjectId, controller: PlayerId) -> bool {
+    game.object(source).is_some_and(|object| {
+        object.zone == Zone::Battlefield
+            && game.current_is_creature(source)
+            && object.controller == controller
+    })
+}
 
-impl SoulbondPairEffect {
-    pub const fn new() -> Self {
-        Self
-    }
-
-    fn source_is_valid(game: &GameState, source: ObjectId, controller: PlayerId) -> bool {
-        game.object(source).is_some_and(|object| {
-            object.zone == Zone::Battlefield
-                && game.current_is_creature(source)
-                && object.controller == controller
-        })
-    }
-
-    fn candidate_creatures(
-        game: &GameState,
-        source: ObjectId,
-        controller: PlayerId,
-    ) -> Vec<ObjectId> {
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|id| *id != source)
-            .filter(|id| {
-                game.object(*id).is_some_and(|object| {
-                    object.zone == Zone::Battlefield
-                        && game.current_is_creature(*id)
-                        && object.controller == controller
-                })
+fn candidate_creatures(game: &GameState, source: ObjectId, controller: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| *id != source)
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.zone == Zone::Battlefield
+                    && game.current_is_creature(*id)
+                    && object.controller == controller
             })
-            .filter(|id| !game.is_soulbond_paired(*id))
-            .collect()
-    }
+        })
+        .filter(|id| !game.is_soulbond_paired(*id))
+        .collect()
 }
 
 impl EffectExecutor for SoulbondPairEffect {
@@ -52,11 +40,11 @@ impl EffectExecutor for SoulbondPairEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let source = ctx.source;
-        if !Self::source_is_valid(game, source, ctx.controller) || game.is_soulbond_paired(source) {
+        if !source_is_valid(game, source, ctx.controller) || game.is_soulbond_paired(source) {
             return Ok(EffectOutcome::count(0));
         }
 
-        let candidates = Self::candidate_creatures(game, source, ctx.controller);
+        let candidates = candidate_creatures(game, source, ctx.controller);
         if candidates.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
@@ -91,7 +79,7 @@ impl EffectExecutor for SoulbondPairEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        if !Self::source_is_valid(game, source, ctx.controller)
+        if !source_is_valid(game, source, ctx.controller)
             || game.is_soulbond_paired(source)
             || game.is_soulbond_paired(partner)
         {
