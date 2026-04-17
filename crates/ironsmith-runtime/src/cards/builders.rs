@@ -6963,10 +6963,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "strict parse should not alias the permissive cache entry"
         );
 
-        let permissive = builder
-            .clone()
-            .parse_text_allow_unsupported(text)
-            .expect("allow_unsupported parse should succeed");
+        let permissive = builder.clone().parse_text_allow_unsupported(text);
+        assert!(
+            permissive.is_err(),
+            "allow_unsupported should also fail when it would emit a placeholder"
+        );
         assert!(
             lookup_cached_parse(&strict_key).is_some(),
             "strict parse cache entry should remain intact"
@@ -6976,9 +6977,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "allow_unsupported mode should use a distinct cache entry"
         );
 
-        let permissive_repeat = builder
-            .parse_text_allow_unsupported(text)
-            .expect("repeated allow_unsupported parse should succeed");
+        let permissive_repeat = builder.parse_text_allow_unsupported(text);
         assert!(
             lookup_cached_parse(&permissive_key).is_some(),
             "repeating the permissive parse should preserve its cache entry"
@@ -10739,7 +10738,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let abilities_debug = format!("{:#?}", def.abilities);
         assert!(
-            abilities_debug.contains("GrantAbility") && abilities_debug.contains("remove ability"),
+            abilities_debug.contains("GrantAbility")
+                && abilities_debug.contains("RemoveAbilityForFilter")
+                && abilities_debug.contains("Flying"),
             "expected conditional lose-flying static effect, got: {abilities_debug}"
         );
         assert!(
@@ -10805,17 +10806,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
+        let err = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
             .parse_text(
                 "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures has \"At the beginning of combat on your turn, create a token that's a copy of this creature, except it has haste and loses soulbond. Exile it at end of combat.\"",
             )
-            .expect("soulbond shared copy clause with loses soulbond should parse");
+            .expect_err("loses soulbond copy modifier should fail until it has real semantics");
 
-        let abilities_debug = format!("{:#?}", def.abilities);
         assert!(
-            abilities_debug.contains("CreateTokenCopyEffect")
-                && abilities_debug.to_ascii_lowercase().contains("soulbond"),
-            "expected parsed copy effect to preserve lose-soulbond intent, got: {abilities_debug}"
+            format!("{err:?}").contains("KeywordMarker"),
+            "expected loses-soulbond marker to fail loudly, got: {err:?}"
         );
     }
 

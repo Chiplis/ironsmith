@@ -1545,9 +1545,8 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if let Some(amount) = parse_ward_pay_life_amount_lexed(tokens) {
-        return Some(StaticAbility::keyword_marker(format!(
-            "Ward—Pay {} life",
-            amount
+        return Some(StaticAbility::ward(TotalCost::from_cost(
+            crate::costs::Cost::life(amount),
         )));
     }
 

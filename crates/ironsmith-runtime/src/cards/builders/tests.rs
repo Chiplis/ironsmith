@@ -3575,15 +3575,14 @@ fn compiled_lines_render_zurgo_restriction_before_dash() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_hideaway_marker_line() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
         .card_types(vec![CardType::Land])
         .parse_text("Hideaway 4")
-        .expect("hideaway marker line should parse");
+        .expect_err("hideaway marker line should fail until it has real semantics");
 
-    let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("Hideaway 4"),
-        "expected hideaway marker in render output, got {rendered}"
+        format!("{err:?}").contains("KeywordMarker") && format!("{err:?}").contains("Hideaway 4"),
+        "expected hideaway marker to fail loudly, got {err:?}"
     );
 }
 
@@ -12877,15 +12876,13 @@ fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_banding_keyword_line() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
+    let result = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text("Banding")
-        .expect("banding keyword line should parse as marker");
+        .parse_text_allow_unsupported("Banding");
 
-    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        compiled.contains("banding"),
-        "expected banding marker in compiled output, got {compiled}"
+        result.is_err(),
+        "banding should fail loudly instead of compiling as a keyword marker"
     );
 }
 
@@ -15045,21 +15042,11 @@ fn render_powerstone_token_name() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_token_with_banding_keyword_modifier() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
-        .parse_text("Create a 1/1 white Knight creature token with banding.")
-        .expect("token with banding modifier should parse");
-
-    let effects = def.spell_effect.as_ref().expect("spell effects");
-    let debug = format!("{effects:?}");
+    let result = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
+        .parse_text_allow_unsupported("Create a 1/1 white Knight creature token with banding.");
     assert!(
-        debug.contains("KeywordMarker") && debug.to_ascii_lowercase().contains("banding"),
-        "expected created token to keep banding keyword marker text, got {debug}"
-    );
-
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
-    assert!(
-        rendered.contains("token with banding") || rendered.contains("token with \"banding\""),
-        "expected compiled text to include banding token modifier, got {rendered}"
+        result.is_err(),
+        "token with unsupported banding marker should fail loudly"
     );
 }
 
@@ -15141,8 +15128,8 @@ fn parse_named_vehicle_token_with_flying_and_crew() {
         "expected created token to keep flying, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("crew 3"),
-        "expected created token crew marker, got {abilities_debug}"
+        abilities_debug.contains("CrewCostEffect") && abilities_debug.contains("Crew 3"),
+        "expected created token to keep typed crew ability, got {abilities_debug}"
     );
 }
 
@@ -15986,18 +15973,12 @@ fn parse_mana_ability_activate_only_if_control_subtype() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
+    let result = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text("First strike; banding")
-        .expect("semicolon keyword line should parse");
-    let rendered = oracle_like_lines(&def).join("\n");
+        .parse_text_allow_unsupported("First strike; banding");
     assert!(
-        rendered.contains("First strike"),
-        "expected first strike keyword rendering, got {rendered}"
-    );
-    assert!(
-        rendered.to_ascii_lowercase().contains("banding"),
-        "expected banding keyword rendering, got {rendered}"
+        result.is_err(),
+        "semicolon keyword line should fail loudly when any keyword lowers to a marker"
     );
 }
 
@@ -26426,17 +26407,15 @@ fn parse_convert_with_followup_sentence_preserves_convert_action() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_craft_keyword_line_as_marker() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Craft Variant")
+    let result = CardDefinitionBuilder::new(CardId::new(), "Craft Variant")
         .card_types(vec![CardType::Artifact])
-        .parse_text(
+        .parse_text_allow_unsupported(
             "Craft with artifact {3}{W}{W} ({3}{W}{W}, Exile this artifact, Exile another artifact you control or an artifact card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
-        )
-        .expect("craft keyword line should parse as marker");
+        );
 
-    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("craft with artifact {3}{w}{w}"),
-        "expected craft keyword text to survive compilation, got {rendered}"
+        result.is_err(),
+        "craft should fail loudly instead of compiling as a keyword marker"
     );
 }
 
@@ -26693,8 +26672,10 @@ fn jared_carthalion_true_heir_compiles_monarch_and_damage_replacement_text() {
     assert!(
         lowered.contains("target opponent becomes the monarch")
             && lowered.contains("you can't become the monarch this turn")
-            && lowered.contains("prevent damage to self put counters instead")
-            && lowered.contains("as long as you're the monarch")
+            && lowered
+                .contains("if damage would be dealt to jared carthalion while you're the monarch")
+            && lowered.contains("prevent that damage")
+            && lowered.contains("put that many +1/+1 counters on it")
             && !lowered.contains("unsupported effect"),
         "expected Jared to render monarch and prevention text cleanly, got {rendered}"
     );

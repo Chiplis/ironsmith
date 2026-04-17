@@ -7,6 +7,121 @@ use crate::front_end::{
 use crate::model::{ParsedRestrictions, RestrictionBucket};
 use std::hash::Hash;
 
+fn fallback_static_ability_id_name(
+    id: crate::static_abilities::StaticAbilityId,
+) -> Option<&'static str> {
+    use crate::static_abilities::StaticAbilityId;
+
+    match id {
+        StaticAbilityId::KeywordMarker => Some("KeywordMarker"),
+        StaticAbilityId::KeywordFallbackText => Some("KeywordFallbackText"),
+        StaticAbilityId::RuleFallbackText => Some("RuleFallbackText"),
+        StaticAbilityId::UnsupportedParserLine => Some("UnsupportedParserLine"),
+        _ => None,
+    }
+}
+
+fn fallback_static_ability_issue(
+    ability: &crate::static_abilities::StaticAbility,
+    context: &str,
+) -> Option<String> {
+    if let Some(id) = ability.id {
+        if let Some(id_name) = fallback_static_ability_id_name(id) {
+            return Some(format!(
+                "{context} compiled to unsupported static ability fallback {id_name}: {}",
+                ability.display()
+            ));
+        }
+    } else {
+        return Some(format!(
+            "{context} compiled to an unsupported static ability without a semantic id: {}",
+            ability.display()
+        ));
+    }
+
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::StaticAbilityPayload;
+    use ironsmith_core::Grantable;
+
+    match &ability.payload {
+        StaticAbilityPayload::AttachedAbilityGrant(grant) => {
+            fallback_ability_issue(&grant.ability, "attached granted ability")
+        }
+        StaticAbilityPayload::Conditional { ability, .. } => {
+            fallback_static_ability_issue(ability, "conditional static ability")
+        }
+        StaticAbilityPayload::GrantAbility(grant) => {
+            fallback_ability_issue(&grant.ability, "granted ability")
+        }
+        StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+            fallback_ability_issue(&grant.ability, "granted object ability")
+        }
+        StaticAbilityPayload::LevelAbility(level) => level
+            .abilities
+            .iter()
+            .find_map(|ability| fallback_static_ability_issue(ability, "level static ability")),
+        StaticAbilityPayload::EquipmentGrant(abilities) => abilities.iter().find_map(|ability| {
+            fallback_static_ability_issue(ability, "equipment granted static ability")
+        }),
+        StaticAbilityPayload::SoulbondSharedAbility(ability) => {
+            fallback_static_ability_issue(ability, "soulbond shared static ability")
+        }
+        StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                fallback_static_ability_issue(static_ability, "soulbond shared object ability")
+            }
+            _ => None,
+        },
+        StaticAbilityPayload::Grants(spec) => match &spec.grantable {
+            Grantable::Ability(static_ability) => {
+                fallback_static_ability_issue(static_ability, "static grant spec ability")
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn fallback_ability_issue(ability: &crate::ability::Ability, context: &str) -> Option<String> {
+    match &ability.kind {
+        crate::ability::AbilityKind::Static(static_ability) => {
+            fallback_static_ability_issue(static_ability, context)
+        }
+        _ => None,
+    }
+}
+
+fn reject_compiled_parser_fallbacks(
+    definition: &crate::cards::CardDefinition,
+) -> Result<(), CardTextError> {
+    for ability in &definition.abilities {
+        if let Some(issue) = fallback_ability_issue(ability, "card ability") {
+            return Err(CardTextError::UnsupportedLine(issue));
+        }
+    }
+
+    let debug = format!("{definition:#?}");
+    for marker in [
+        "KeywordMarker",
+        "KeywordFallbackText",
+        "RuleFallbackText",
+        "UnsupportedParserLine",
+        "KeywordAction::Marker",
+        "KeywordAction::MarkerText",
+        "RewriteLineCst::Unsupported",
+        "RewriteSemanticItem::Unsupported",
+        "RewriteUnsupportedLine",
+    ] {
+        if debug.contains(marker) {
+            return Err(CardTextError::UnsupportedLine(format!(
+                "compiled card still contains unsupported parser fallback marker {marker}"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 /// Prepared compiler source document with line-oriented views for future parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompilerSourceDocument {
@@ -207,6 +322,7 @@ impl CompilerFacade {
     ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
         let compiled =
             crate::runtime_backend::compile_card_text(builder, text, policy.allow_unsupported)?;
+        reject_compiled_parser_fallbacks(&compiled.definition)?;
         Ok(CompiledCardText {
             definition: compiled.definition,
             annotations: compiled.annotations,
@@ -378,6 +494,62 @@ mod tests {
         assert_eq!(key.context, "builder:Divination");
         assert_eq!(key.text, "Draw two cards.");
         assert!(key.allow_unsupported);
+    }
+
+    #[test]
+    fn compile_definition_rejects_keyword_marker_fallback_even_when_allowed() {
+        let facade = CompilerFacade::new();
+        let builder =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Banding Variant")
+                .card_types(vec![crate::types::CardType::Creature]);
+
+        let err = facade
+            .compile_definition(
+                builder,
+                "Banding",
+                CompilePolicy {
+                    allow_unsupported: true,
+                },
+            )
+            .expect_err("keyword marker fallback should fail loudly");
+
+        assert!(
+            matches!(
+                err,
+                CardTextError::UnsupportedLine(ref message)
+                    if message.contains("KeywordMarker") && message.contains("banding")
+            ),
+            "expected KeywordMarker parse error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn compile_definition_rejects_unsupported_line_fallback_even_when_allowed() {
+        let facade = CompilerFacade::new();
+        let builder = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Unsupported Variant",
+        );
+
+        let err = facade
+            .compile_definition(
+                builder,
+                "This line should not parse and must not compile as a placeholder.",
+                CompilePolicy {
+                    allow_unsupported: true,
+                },
+            )
+            .expect_err("unsupported parser fallback should fail loudly");
+
+        assert!(
+            matches!(
+                err,
+                CardTextError::UnsupportedLine(ref message)
+                    if message.contains("UnsupportedParserLine")
+                        || message.contains("without a semantic id")
+            ),
+            "expected unsupported fallback parse error, got {err:?}"
+        );
     }
 
     #[test]

@@ -2901,9 +2901,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             builder = builder.flying();
         }
         if let Some(crew_amount) = parse_crew_amount(&words) {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
-                format!("crew {crew_amount}"),
-            )));
+            builder = builder.crew(crew_amount, ActivationTiming::AnyTime, Vec::new());
         }
         return Some(builder.build());
     }

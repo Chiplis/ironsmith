@@ -261,6 +261,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     SoulbondSharedAbility(Box<StaticAbility<T, E, C, Cond>>),
     SoulbondSharedObjectAbility(Box<AbilityModel<T, E, C, Cond>>),
+    RemoveAbilityForFilter {
+        filter: ObjectFilter,
+        ability: Box<StaticAbility<T, E, C, Cond>>,
+    },
     RemoveAllAbilities(ObjectFilter),
     RemoveAllAbilitiesExceptMana(ObjectFilter),
     SetBasePowerToughness {
@@ -304,6 +308,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
+    ChooseNamedOptionAsEnters {
+        options: Vec<String>,
+        display: String,
+    },
     EnterAsCopyAsEnters {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: String,
@@ -333,6 +341,20 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    PreventDamageToSelfRemoveCounter {
+        counter_type: CounterType,
+        amount: u32,
+    },
+    PreventDamageToSelfPutCountersInstead {
+        counter_type: CounterType,
+        display: String,
+    },
+    PreventConstrainedDamageToSelfPutCountersInstead {
+        counter_type: CounterType,
+        display: String,
+        source_filter: Option<ObjectFilter>,
+        combat_only: Option<bool>,
+    },
     CantAttackYouUnlessControllerPaysPerAttacker(u32),
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     Grants(Box<GrantSpecModel<T, E, C, Cond>>),
@@ -827,6 +849,17 @@ where
                     map_cost,
                 )?))
             }
+            StaticAbilityPayload::RemoveAbilityForFilter { filter, ability } => {
+                StaticAbilityPayload::RemoveAbilityForFilter {
+                    filter,
+                    ability: Box::new(map_static_ability(
+                        *ability,
+                        map_trigger,
+                        map_effect,
+                        map_cost,
+                    )?),
+                }
+            }
             StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbilityPayload::RemoveAllAbilities(filter)
             }
@@ -888,6 +921,9 @@ where
             }
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
+            }
+            StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display } => {
+                StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display }
             }
             StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
@@ -955,6 +991,31 @@ where
             StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbilityPayload::Bloodthirst(amount)
             }
+            StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                counter_type,
+                amount,
+            } => StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                counter_type,
+                amount,
+            },
+            StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+            } => StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+            },
+            StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                combat_only,
+            } => StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                combat_only,
+            },
             StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(amount) => {
                 StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(amount)
             }
@@ -1797,12 +1858,22 @@ impl<
         }
     }
     pub fn prevent_constrained_damage_to_self_put_counters_instead(
-        _counter_type: CounterType,
-        _display: impl Into<String>,
-        _source_filter: Option<ObjectFilter>,
-        _combat_only: Option<bool>,
+        counter_type: CounterType,
+        display: impl Into<String>,
+        source_filter: Option<ObjectFilter>,
+        combat_only: Option<bool>,
     ) -> Self {
-        Self::new("prevent constrained damage to self put counters instead")
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PreventConstrainedDamageToSelfPutCountersInstead),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                combat_only,
+            },
+        }
     }
     pub fn untap_during_each_other_players_untap_step(
         filter: ObjectFilter,
@@ -1859,7 +1930,7 @@ impl<
         Self::new(GrantObjectAbilityForFilter::new(filter, ability, display))
     }
     pub fn boast_twice_each_turn() -> Self {
-        Self::new("boast twice each turn")
+        Self::identified(StaticAbilityId::BoastTwiceEachTurn, "boast twice each turn")
     }
     pub fn first_equip_cost_alternative(display: impl Into<String>) -> Self {
         let display = display.into();
@@ -1870,10 +1941,16 @@ impl<
         }
     }
     pub fn vote_additional_time_while_voting() -> Self {
-        Self::new("vote additional time while voting")
+        Self::identified(
+            StaticAbilityId::VoteAdditionalTimeWhileVoting,
+            "vote additional time while voting",
+        )
     }
     pub fn vote_additional_vote_while_voting() -> Self {
-        Self::new("vote additional vote while voting")
+        Self::identified(
+            StaticAbilityId::VoteAdditionalVoteWhileVoting,
+            "vote additional vote while voting",
+        )
     }
     pub fn exert_attack(
         only_if_not_exerted_this_turn: bool,
@@ -2062,14 +2139,29 @@ impl<
             payload: StaticAbilityPayload::ControlAttachedPermanent(display),
         }
     }
-    pub fn prevent_damage_to_self_remove_counter(_counter_type: CounterType, _amount: u32) -> Self {
-        Self::new("prevent damage to self remove counter")
+    pub fn prevent_damage_to_self_remove_counter(counter_type: CounterType, amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventDamageToSelfRemoveCounter),
+            label: "prevent damage to self remove counter".to_string(),
+            payload: StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                counter_type,
+                amount,
+            },
+        }
     }
     pub fn prevent_damage_to_self_put_counters_instead(
-        _counter_type: CounterType,
-        _display: impl Into<String>,
+        counter_type: CounterType,
+        display: impl Into<String>,
     ) -> Self {
-        Self::new("prevent damage to self put counters instead")
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PreventDamageToSelfPutCountersInstead),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+            },
+        }
     }
     pub fn add_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
@@ -2170,11 +2262,13 @@ impl<
             payload: StaticAbilityPayload::ChooseCreatureTypeAsEnters(display),
         }
     }
-    pub fn choose_named_option_as_enters(
-        _options: Vec<String>,
-        _display: impl Into<String>,
-    ) -> Self {
-        Self::new("choose named option as enters")
+    pub fn choose_named_option_as_enters(options: Vec<String>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseNamedOptionAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display },
+        }
     }
     pub fn duplicate_matching_triggered_abilities(
         source_filter: Option<ObjectFilter>,
@@ -2407,8 +2501,15 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn remove_ability(_filter: ObjectFilter, _ability: StaticAbility<T, E, C, Cond>) -> Self {
-        Self::new("remove ability")
+    pub fn remove_ability(filter: ObjectFilter, ability: StaticAbility<T, E, C, Cond>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RemoveAbilityForFilter),
+            label: format!("remove {}", ability.display()),
+            payload: StaticAbilityPayload::RemoveAbilityForFilter {
+                filter,
+                ability: Box::new(ability),
+            },
+        }
     }
     pub fn look_at_top_card_of_library() -> Self {
         Self {

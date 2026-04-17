@@ -74,6 +74,13 @@ impl StaticAbility {
                 Self::may_assign_damage_as_unblocked()
             }
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
+            Some(StaticAbilityId::BoastTwiceEachTurn) => Self::boast_twice_each_turn(),
+            Some(StaticAbilityId::VoteAdditionalTimeWhileVoting) => {
+                Self::vote_additional_time_while_voting()
+            }
+            Some(StaticAbilityId::VoteAdditionalVoteWhileVoting) => {
+                Self::vote_additional_vote_while_voting()
+            }
             Some(StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn) => {
                 Self::cant_attack_unless_controller_cast_creature_spell_this_turn()
             }

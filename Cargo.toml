@@ -8,5 +8,12 @@ members = [
     "crates/ironsmith-cli",
     "crates/ironsmith-tools",
 ]
-default-members = ["crates/ironsmith-runtime"]
+default-members = [
+    "crates/ironsmith-core",
+    "crates/ironsmith-runtime",
+    "crates/ironsmith-compiler",
+    "crates/ironsmith-registry",
+    "crates/ironsmith-wasm",
+    "crates/ironsmith-cli",
+]
 resolver = "2"

@@ -5340,7 +5340,7 @@ fn rewrite_keyword_static_marker_line_normalizes_doctors_companion_apostrophe() 
 }
 
 #[test]
-fn rewrite_grammar_protection_and_ward_marker_probes_match_static_shapes() {
+fn rewrite_grammar_protection_and_ward_probes_match_static_shapes() {
     let protection_tokens = lex_line("Protection from odd mana values.", 0)
         .expect("rewrite lexer should classify protection marker line");
 
@@ -5366,9 +5366,10 @@ fn rewrite_grammar_protection_and_ward_marker_probes_match_static_shapes() {
     );
 
     let ward = super::keyword_static::parse_static_text_marker_line(&ward_tokens)
-        .expect("ward marker line should parse");
+        .expect("ward pay-life line should parse");
     let debug = format!("{ward:?}");
-    assert!(debug.contains("Ward—Pay 3 life"), "{debug}");
+    assert_eq!(ward.id(), StaticAbilityId::Ward);
+    assert!(debug.contains("Life(Fixed(3))"), "{debug}");
 }
 
 #[test]

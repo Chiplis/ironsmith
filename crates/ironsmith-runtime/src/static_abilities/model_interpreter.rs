@@ -945,6 +945,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
                 StaticAbility::soulbond_shared_object_ability(Self::ability_from_model(ability))
             }
+            ironsmith_core::StaticAbilityPayload::RemoveAbilityForFilter { filter, ability } => {
+                StaticAbility::remove_ability(
+                    filter.clone(),
+                    StaticAbility::from_model((**ability).clone()),
+                )
+            }
             ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbility::remove_all_abilities(filter.clone())
             }
@@ -992,6 +998,10 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbility::choose_creature_type_as_enters(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+            } => StaticAbility::choose_named_option_as_enters(options.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 StaticAbility::with_enter_as_copy_as_enters(
                     super::EnterAsCopyAsEntersSpec {
@@ -1059,6 +1069,28 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbility::bloodthirst(*amount)
             }
+            ironsmith_core::StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+                counter_type,
+                amount,
+            } => StaticAbility::prevent_damage_to_self_remove_counter(*counter_type, *amount),
+            ironsmith_core::StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+            } => StaticAbility::prevent_damage_to_self_put_counters_instead(
+                *counter_type,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
+                counter_type,
+                display,
+                source_filter,
+                combat_only,
+            } => StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
+                *counter_type,
+                display.clone(),
+                source_filter.clone(),
+                *combat_only,
+            ),
             ironsmith_core::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(
                 amount,
             ) => StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(*amount),

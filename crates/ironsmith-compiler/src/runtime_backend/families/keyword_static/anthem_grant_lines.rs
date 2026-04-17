@@ -3724,7 +3724,9 @@ fn parse_continuing_anthem_granted_segment(
     {
         return Ok(Some(vec![grant_for_anthem_subject(
             clause,
-            StaticAbility::keyword_marker(format!("Ward—Pay {amount} life")),
+            StaticAbility::ward(crate::cost::TotalCost::from_cost(crate::costs::Cost::life(
+                amount,
+            ))),
         )]));
     }
 
@@ -3737,7 +3739,9 @@ fn parse_continuing_anthem_granted_segment(
     {
         return Ok(Some(vec![grant_for_anthem_subject(
             clause,
-            StaticAbility::keyword_marker(format!("Ward—Pay {amount} life")),
+            StaticAbility::ward(crate::cost::TotalCost::from_cost(crate::costs::Cost::life(
+                amount,
+            ))),
         )]));
     }
     if let Some(marker) = parse_static_text_marker_line(&ability_tokens_with_period) {
