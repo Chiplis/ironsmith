@@ -112,12 +112,27 @@ impl Cost {
         Self::new(CostEffect::new(effect))
     }
 
+    /// Create a cost from an erased effect after validating cost execution support.
+    pub fn try_effect(effect: crate::effect::Effect) -> Result<Self, String> {
+        CostEffect::try_new(effect).map(Self::new)
+    }
+
+    /// Convert a sequence of erased effects into a component-wise total cost.
+    pub fn try_effects(
+        effects: impl IntoIterator<Item = crate::effect::Effect>,
+    ) -> Result<crate::cost::TotalCost, String> {
+        effects
+            .into_iter()
+            .map(Self::try_from_runtime_effect)
+            .collect::<Result<Vec<_>, _>>()
+            .map(crate::cost::TotalCost::from_costs)
+    }
+
     /// Create a cost from an effect value after validating that the runtime effect
     /// explicitly opted into cost execution.
     pub(crate) fn validated_effect(effect: crate::effect::Effect) -> Self {
         Self::new(
-            CostEffect::from_validated_effect(effect)
-                .expect("attempted to use a non-cost effect as a cost"),
+            CostEffect::try_new(effect).expect("attempted to use a non-cost effect as a cost"),
         )
     }
 
@@ -138,7 +153,7 @@ impl Cost {
         if effect.0.is_untap_source_cost() {
             return Ok(Self::untap());
         }
-        CostEffect::from_validated_effect(effect).map(Self::new)
+        Self::try_effect(effect)
     }
 
     /// Interpret a shared core cost model into the runtime cost payer wrapper.
@@ -440,6 +455,34 @@ impl Cost {
     }
 }
 
+pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effect> {
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        return Some(crate::effect::Effect::new(
+            crate::effects::PayManaEffect::new(
+                mana_cost.clone(),
+                crate::target::ChooseSpec::SourceController,
+            ),
+        ));
+    }
+    if let Some(effect) = cost.effect_ref() {
+        return Some(effect.clone());
+    }
+    None
+}
+
+pub(crate) fn total_cost_to_payment_effects(
+    total_cost: &crate::cost::TotalCost,
+) -> Vec<crate::effect::Effect> {
+    total_cost
+        .costs()
+        .iter()
+        .map(|cost| {
+            cost_to_payment_effect(cost)
+                .unwrap_or_else(|| panic!("unsupported cost component: {}", cost.display()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,6 +501,67 @@ mod tests {
         assert!(!cost.requires_tap());
         assert!(!cost.is_mana_cost());
         assert_eq!(cost.display(), "Pay 2 life");
+    }
+
+    #[test]
+    fn try_effect_accepts_cost_executable_effects() {
+        let cost = Cost::try_effect(crate::effect::Effect::lose_life(2))
+            .expect("lose-life effect should be usable as a cost");
+        assert_eq!(cost.life_amount(), Some(2));
+
+        let cost = Cost::try_effect(crate::effect::Effect::tap(
+            crate::target::ChooseSpec::Source,
+        ))
+        .expect("tap effect should be usable as a cost");
+        assert!(cost.effect_ref().is_some());
+
+        let cost = Cost::try_effect(crate::effect::Effect::sacrifice(
+            crate::filter::ObjectFilter::creature().you_control(),
+            1,
+        ))
+        .expect("sacrifice effect should be usable as a cost");
+        assert!(matches!(
+            cost.processing_mode(),
+            CostProcessingMode::SacrificeTarget { .. }
+        ));
+    }
+
+    #[test]
+    fn try_effect_rejects_non_cost_effects() {
+        let err = Cost::try_effect(crate::effect::Effect::draw(1))
+            .expect_err("draw effect should not be usable as a cost");
+        assert!(err.contains("effect is not marked as cost-executable"));
+
+        let err = Cost::try_effect(crate::effect::Effect::destroy(
+            crate::target::ChooseSpec::Source,
+        ))
+        .expect_err("destroy effect should not be usable as a cost");
+        assert!(err.contains("effect is not marked as cost-executable"));
+    }
+
+    #[test]
+    fn try_effects_preserves_component_order_and_rejects_any_bad_effect() {
+        let total = Cost::try_effects(vec![
+            crate::effect::Effect::lose_life(2),
+            crate::effect::Effect::sacrifice(
+                crate::filter::ObjectFilter::creature().you_control(),
+                1,
+            ),
+        ])
+        .expect("all effects are cost-executable");
+        assert_eq!(total.costs().len(), 2);
+        assert_eq!(total.costs()[0].life_amount(), Some(2));
+        assert!(matches!(
+            total.costs()[1].processing_mode(),
+            CostProcessingMode::SacrificeTarget { .. }
+        ));
+
+        let err = Cost::try_effects(vec![
+            crate::effect::Effect::lose_life(2),
+            crate::effect::Effect::draw(1),
+        ])
+        .expect_err("one non-cost effect should reject the whole total cost");
+        assert!(err.contains("effect is not marked as cost-executable"));
     }
 
     #[test]

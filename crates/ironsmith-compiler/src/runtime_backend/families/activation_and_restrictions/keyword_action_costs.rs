@@ -134,43 +134,78 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
     text
 }
 
-fn payment_effects_to_total_cost(effects: Vec<Effect>) -> TotalCost {
-    TotalCost::from_costs(
-        effects
-            .into_iter()
-            .map(crate::costs::Cost::effect)
-            .collect(),
-    )
-}
-
-fn parse_cumulative_upkeep_payment_effects(tokens: &[OwnedLexToken]) -> Option<Vec<Effect>> {
+fn parse_payment_clause_as_effects(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<Effect>>, CardTextError> {
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     if let Some(or_idx) = trimmed.iter().position(|token| token.is_word("or")) {
-        let left = parse_cumulative_upkeep_payment_effects(&trimmed[..or_idx])?;
-        let right = parse_cumulative_upkeep_payment_effects(&trimmed[or_idx + 1..])?;
-        return Some(vec![Effect::unless_action(left, right, PlayerFilter::You)]);
+        let left = parse_payment_clause_as_effects(&trimmed[..or_idx])?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported payment cost before 'or' (clause: '{}')",
+                words(&trimmed[..or_idx]).join(" ")
+            ))
+        })?;
+        let right = parse_payment_clause_as_effects(&trimmed[or_idx + 1..])?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported payment cost after 'or' (clause: '{}')",
+                words(&trimmed[or_idx + 1..]).join(" ")
+            ))
+        })?;
+        return Ok(Some(vec![Effect::unless_action(
+            left,
+            right,
+            PlayerFilter::You,
+        )]));
     }
 
     if let Ok(total_cost) = parse_activation_cost(&trimmed) {
         let effects = crate::costs::total_cost_to_payment_effects(&total_cost);
         if !effects.is_empty() {
-            return Some(effects);
+            return Ok(Some(effects));
         }
     }
 
-    let ast = parse_effect_sentences_lexed(&trimmed).ok()?;
+    let ast = match parse_effect_sentences_lexed(&trimmed) {
+        Ok(ast) => ast,
+        Err(_) => return Ok(None),
+    };
     let mut ctx = crate::runtime_backend::EffectLoweringContext::new();
     let (effects, choices) =
-        crate::runtime_backend::compile_support::compile_effects(&ast, &mut ctx).ok()?;
+        match crate::runtime_backend::compile_support::compile_effects(&ast, &mut ctx) {
+            Ok(compiled) => compiled,
+            Err(_) => return Ok(None),
+        };
     if choices.is_empty() && !effects.is_empty() {
-        Some(effects)
+        Ok(Some(effects))
     } else {
-        None
+        Ok(None)
     }
+}
+
+pub(crate) fn parse_payment_clause_as_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TotalCost>, CardTextError> {
+    let trimmed = trim_edge_punctuation(&trim_commas(tokens));
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Ok(total_cost) = parse_activation_cost(&trimmed)
+        && !total_cost.is_free()
+    {
+        return Ok(Some(total_cost));
+    }
+
+    let Some(effects) = parse_payment_clause_as_effects(&trimmed)? else {
+        return Ok(None);
+    };
+    crate::costs::payment_effects_to_total_cost(effects)
+        .map(Some)
+        .map_err(CardTextError::ParseError)
 }
 
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
@@ -480,14 +515,14 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         let cost_tokens = trim_commas(&phrase_tokens[2..reminder_start]).to_vec();
         let text = cumulative_upkeep_text(&words);
 
-        if let Some(payment_effects) = parse_cumulative_upkeep_payment_effects(&cost_tokens) {
-            return Some(KeywordAction::CumulativeUpkeep {
-                total_cost: payment_effects_to_total_cost(payment_effects),
-                text,
-            });
+        match parse_payment_clause_as_total_cost(&cost_tokens) {
+            Ok(Some(total_cost)) => {
+                return Some(KeywordAction::CumulativeUpkeep { total_cost, text });
+            }
+            Ok(None) | Err(_) => {
+                return None;
+            }
         }
-
-        return Some(KeywordAction::MarkerText(text));
     }
 
     if let Some(action) = parse_numeric_keyword_action(&words, "bushido", KeywordAction::Bushido) {

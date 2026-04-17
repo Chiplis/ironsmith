@@ -158,7 +158,7 @@ pub(super) fn runtime_effects_to_costs(
     effects
         .into_iter()
         .map(|effect| {
-            crate::costs::Cost::try_from_runtime_effect(effect).map_err(CardTextError::ParseError)
+            crate::costs::payment_effect_to_cost(effect).map_err(CardTextError::ParseError)
         })
         .collect()
 }

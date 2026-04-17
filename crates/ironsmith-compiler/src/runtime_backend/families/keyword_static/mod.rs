@@ -1,7 +1,7 @@
 use super::activation_and_restrictions::parse_cycling_line;
 use super::activation_and_restrictions::{
     normalize_cant_words, parse_ability_phrase, parse_activated_line, parse_activation_cost,
-    parse_choose_land_type_phrase_words,
+    parse_choose_land_type_phrase_words, parse_payment_clause_as_total_cost,
 };
 use super::effect_sentences::parse_granted_abilities_for_gain_clause;
 use super::grammar::abilities::{
@@ -1308,9 +1308,7 @@ pub(crate) fn parse_ward_static_ability_line(
         return Ok(Some(StaticAbility::ward(cost)));
     }
 
-    if let Ok(cost) = parse_activation_cost(&cost_tokens)
-        && !cost.is_free()
-    {
+    if let Some(cost) = parse_payment_clause_as_total_cost(&cost_tokens)? {
         return Ok(Some(StaticAbility::ward(cost)));
     }
 

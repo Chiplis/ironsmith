@@ -14,21 +14,13 @@ use crate::ability::AbilityKind;
 use crate::cost::TotalCost;
 use crate::costs::CostContext;
 use crate::decision::DecisionMaker;
-use crate::decisions::specs::ChooseObjectsSpec;
 use crate::decisions::{WardSpec, make_decision};
-use crate::events::cause::EventCause;
-use crate::events::permanents::SacrificeEvent;
-use crate::events::processing::execute_discard;
-use crate::events::processing::{EventOutcome, process_zone_change};
-use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::snapshot::ObjectSnapshot;
 use crate::special_actions::pay_cost_component_with_choice;
 use crate::static_abilities::StaticAbility;
-use crate::triggers::TriggerEvent;
 
-use super::types::{PendingWardCost, WardCost, WardPaymentResult};
+use super::types::{PendingWardCost, WardPaymentResult};
 
 /// Check if a target has ward and return the pending ward cost if so.
 ///
@@ -71,32 +63,12 @@ pub fn get_ward_cost(
             return Some(PendingWardCost {
                 target: target_id,
                 ward_controller: target.controller,
-                cost: convert_ward_cost(cost),
+                cost: cost.clone(),
             });
         }
     }
 
     None
-}
-
-/// Convert a TotalCost (from the ability system) to a WardCost.
-fn convert_ward_cost(cost: &TotalCost) -> WardCost {
-    if cost.costs().len() == 1 {
-        let component = &cost.costs()[0];
-        if let Some(life) = component.life_amount() {
-            return WardCost::Life(life);
-        }
-        if let Some((count, card_type)) = component.discard_details()
-            && card_type.is_none()
-        {
-            return WardCost::Discard(count);
-        }
-        if let Some(filter) = component.sacrifice_filter() {
-            return WardCost::Sacrifice(filter.clone());
-        }
-    }
-
-    WardCost::Mana(cost.clone())
 }
 
 /// Collect all ward costs for a set of targets.
@@ -154,29 +126,16 @@ pub fn handle_ward_payment(
 }
 
 /// Format a ward cost for display.
-fn format_ward_cost_description(cost: &WardCost) -> String {
-    match cost {
-        WardCost::Mana(total_cost) => {
-            let display = total_cost.display();
-            let mana_only = total_cost
-                .costs()
-                .iter()
-                .all(|component| component.mana_cost_ref().is_some());
-            if mana_only {
-                format!("Pay {display}")
-            } else {
-                display
-            }
-        }
-        WardCost::Life(amount) => format!("Pay {} life", amount),
-        WardCost::Discard(count) => {
-            if *count == 1 {
-                "Discard a card".to_string()
-            } else {
-                format!("Discard {} cards", count)
-            }
-        }
-        WardCost::Sacrifice(filter) => format!("Sacrifice {}", filter.description()),
+fn format_ward_cost_description(cost: &TotalCost) -> String {
+    let display = cost.display();
+    let mana_only = cost
+        .costs()
+        .iter()
+        .all(|component| component.mana_cost_ref().is_some());
+    if mana_only {
+        format!("Pay {display}")
+    } else {
+        display
     }
 }
 
@@ -187,199 +146,153 @@ fn pay_ward_cost(
     game: &mut GameState,
     payer: PlayerId,
     source: ObjectId,
-    cost: &WardCost,
+    cost: &TotalCost,
     decision_maker: &mut impl DecisionMaker,
 ) -> bool {
+    if crate::cost::can_pay_cost_with_reason(
+        game,
+        source,
+        payer,
+        cost,
+        crate::costs::PaymentReason::Effect,
+    )
+    .is_err()
+    {
+        return false;
+    }
+
     let ward_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source,
             controller: payer,
         },
     );
-    match cost {
-        WardCost::Mana(total_cost) => {
-            if crate::cost::can_pay_cost_with_reason(
-                game,
-                source,
+    let mut cost_ctx = CostContext::new(source, payer, decision_maker)
+        .with_reason(crate::costs::PaymentReason::Effect)
+        .with_provenance(ward_provenance);
+    for component in cost.costs() {
+        if let Some(mana_cost) = component.mana_cost_ref() {
+            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
                 payer,
-                total_cost,
+                Some(source),
+                mana_cost,
                 crate::costs::PaymentReason::Effect,
-            )
-            .is_err()
-            {
-                return false;
-            }
-
-            let mut cost_ctx = CostContext::new(source, payer, decision_maker)
-                .with_reason(crate::costs::PaymentReason::Effect)
-                .with_provenance(ward_provenance);
-            for component in total_cost.costs() {
-                if let Some(mana_cost) = component.mana_cost_ref() {
-                    let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                        payer,
-                        Some(source),
-                        mana_cost,
-                        crate::costs::PaymentReason::Effect,
-                    );
-                    if !game.try_pay_mana_cost_with_reason(
-                        payer,
-                        Some(source),
-                        &adjusted_cost,
-                        0,
-                        crate::costs::PaymentReason::Effect,
-                    ) {
-                        return false;
-                    }
-                    continue;
-                }
-                if pay_cost_component_with_choice(game, component, &mut cost_ctx).is_err() {
-                    return false;
-                }
-            }
-            true
-        }
-        WardCost::Life(amount) => game.pay_life(payer, *amount),
-        WardCost::Discard(count) => {
-            let Some(player) = game.player(payer) else {
-                return false;
-            };
-            if player.hand.len() < *count as usize {
-                return false;
-            }
-
-            let hand_cards = player.hand.clone();
-            let spec = ChooseObjectsSpec::new(
-                source,
-                format!(
-                    "Choose {} card{} to discard for ward",
-                    count,
-                    if *count == 1 { "" } else { "s" }
-                ),
-                hand_cards.clone(),
-                *count as usize,
-                Some(*count as usize),
             );
-            let chosen: Vec<_> = make_decision(game, decision_maker, payer, Some(source), spec);
-            let to_discard = normalize_selection(chosen, &hand_cards, *count as usize);
-
-            if to_discard.len() != *count as usize {
-                return false;
-            }
-
-            let cause = EventCause::from_cost(source, payer);
-            for card_id in to_discard {
-                let outcome = execute_discard(
-                    game,
-                    card_id,
-                    payer,
-                    cause.clone(),
-                    false,
-                    ward_provenance,
-                    decision_maker,
-                );
-                if outcome.prevented {
-                    return false;
-                }
-            }
-            true
-        }
-        WardCost::Sacrifice(filter) => {
-            let filter_ctx = game.filter_context_for(payer, Some(source));
-            let candidates: Vec<ObjectId> = game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                .filter(|(id, obj)| {
-                    obj.controller == payer
-                        && filter.matches(obj, &filter_ctx, game)
-                        && game.can_be_sacrificed(*id)
-                })
-                .map(|(id, _)| id)
-                .collect();
-
-            if candidates.is_empty() {
-                return false;
-            }
-
-            let spec = ChooseObjectsSpec::new(
-                source,
-                "Choose a permanent to sacrifice for ward",
-                candidates.clone(),
-                1,
-                Some(1),
-            );
-            let chosen: Vec<_> = make_decision(game, decision_maker, payer, Some(source), spec);
-            let Some(target_id) = normalize_selection(chosen, &candidates, 1).first().copied()
-            else {
-                return false;
-            };
-
-            match process_zone_change(
-                game,
-                target_id,
-                crate::zone::Zone::Battlefield,
-                crate::zone::Zone::Graveyard,
-                crate::events::cause::EventCause::from_cost(source, payer),
-                decision_maker,
+            if !game.try_pay_mana_cost_with_reason(
+                payer,
+                Some(source),
+                &adjusted_cost,
+                0,
+                crate::costs::PaymentReason::Effect,
             ) {
-                EventOutcome::Prevented | EventOutcome::NotApplicable => false,
-                EventOutcome::Proceed(final_zone) => {
-                    let snapshot = game
-                        .object(target_id)
-                        .map(|obj| ObjectSnapshot::from_object(obj, game));
-                    let sacrificing_player = snapshot
-                        .as_ref()
-                        .map(|snap| snap.controller)
-                        .or(Some(payer));
-                    game.move_object_by_effect(target_id, final_zone);
-                    if final_zone == crate::zone::Zone::Graveyard {
-                        let event_provenance = game.alloc_child_event_provenance(
-                            ward_provenance,
-                            crate::events::EventKind::Sacrifice,
-                        );
-                        game.queue_trigger_event(
-                            ward_provenance,
-                            TriggerEvent::new_with_provenance(
-                                SacrificeEvent::new(target_id, Some(source))
-                                    .with_snapshot(snapshot, sacrificing_player),
-                                event_provenance,
-                            ),
-                        );
-                    }
-                    true
-                }
-                EventOutcome::Replaced => true,
+                return false;
             }
+            continue;
+        }
+        if pay_cost_component_with_choice(game, component, &mut cost_ctx).is_err() {
+            return false;
         }
     }
+    true
 }
 
-fn normalize_selection(
-    chosen: Vec<ObjectId>,
-    candidates: &[ObjectId],
-    required: usize,
-) -> Vec<ObjectId> {
-    let mut selected = Vec::with_capacity(required);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::cost::TotalCost;
+    use crate::decision::SelectFirstDecisionMaker;
+    use crate::ids::CardId;
+    use crate::static_abilities::StaticAbility;
+    use crate::target::ObjectFilter;
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
-    for id in chosen {
-        if selected.len() == required {
-            break;
-        }
-        if candidates.contains(&id) && !selected.contains(&id) {
-            selected.push(id);
-        }
+    fn create_test_game() -> GameState {
+        GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
     }
 
-    if selected.len() < required {
-        for &id in candidates {
-            if selected.len() == required {
-                break;
-            }
-            if !selected.contains(&id) {
-                selected.push(id);
-            }
-        }
+    fn permanent(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+        card_type: CardType,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
     }
 
-    selected
+    fn add_ward(game: &mut GameState, object_id: ObjectId, cost: TotalCost) {
+        let ability = Ability::static_ability(StaticAbility::ward(cost));
+        game.object_mut(object_id)
+            .expect("ward permanent exists")
+            .abilities
+            .push(ability);
+    }
+
+    #[test]
+    fn ward_effect_backed_sacrifice_cost_is_paid_generically() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let target = permanent(&mut game, alice, "Ward Bear", CardType::Creature);
+        let source = permanent(&mut game, bob, "Targeting Source", CardType::Artifact);
+        let sacrifice = permanent(&mut game, bob, "Payment Bear", CardType::Creature);
+
+        add_ward(
+            &mut game,
+            target,
+            TotalCost::from_cost(crate::costs::Cost::sacrifice(
+                ObjectFilter::creature().you_control(),
+            )),
+        );
+
+        let ward = get_ward_cost(&game, target, bob).expect("ward cost");
+        let mut dm = SelectFirstDecisionMaker;
+        assert_eq!(
+            handle_ward_payment(&mut game, &ward, bob, source, &mut dm),
+            WardPaymentResult::Paid
+        );
+        assert!(
+            game.object(sacrifice).is_none()
+                || game
+                    .object(sacrifice)
+                    .is_some_and(|object| object.zone != Zone::Battlefield),
+            "original payment creature object should leave the battlefield"
+        );
+        assert_eq!(
+            game.player(bob).expect("bob exists").graveyard.len(),
+            1,
+            "payment should put a card/object into Bob's graveyard"
+        );
+    }
+
+    #[test]
+    fn ward_mixed_cost_fails_before_partial_payment_when_component_unpayable() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let target = permanent(&mut game, alice, "Ward Bear", CardType::Creature);
+        let source = permanent(&mut game, bob, "Targeting Source", CardType::Artifact);
+
+        add_ward(
+            &mut game,
+            target,
+            TotalCost::from_costs(vec![
+                crate::costs::Cost::life(2),
+                crate::costs::Cost::sacrifice(ObjectFilter::creature().you_control()),
+            ]),
+        );
+
+        let ward = get_ward_cost(&game, target, bob).expect("ward cost");
+        let mut dm = SelectFirstDecisionMaker;
+        assert_eq!(
+            handle_ward_payment(&mut game, &ward, bob, source, &mut dm),
+            WardPaymentResult::NotPaid
+        );
+        assert_eq!(game.player(bob).map(|player| player.life), Some(20));
+    }
 }

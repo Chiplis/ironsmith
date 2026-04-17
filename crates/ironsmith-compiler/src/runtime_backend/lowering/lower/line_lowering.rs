@@ -938,7 +938,7 @@ fn lower_additional_cost_choice_chunk(
     state.latest_additional_cost_exports = exports;
     let mut costs = builder.additional_cost.costs().to_vec();
     costs.push(
-        crate::costs::Cost::try_from_runtime_effect(crate::effect::Effect::choose_one(modes))
+        crate::costs::payment_effect_to_cost(crate::effect::Effect::choose_one(modes))
             .map_err(CardTextError::ParseError)?,
     );
     builder.additional_cost = crate::cost::TotalCost::from_costs(costs);

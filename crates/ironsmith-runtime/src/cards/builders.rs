@@ -269,30 +269,6 @@ fn finalize_nonpermanent_delayed_triggered_abilities(
     definition
 }
 
-fn cost_to_payment_effect(cost: &crate::costs::Cost) -> Option<Effect> {
-    if let Some(mana_cost) = cost.mana_cost_ref() {
-        return Some(Effect::new(crate::effects::PayManaEffect::new(
-            mana_cost.clone(),
-            ChooseSpec::SourceController,
-        )));
-    }
-    if let Some(effect) = cost.effect_ref() {
-        return Some(effect.clone());
-    }
-    None
-}
-
-fn total_cost_to_payment_effects(total_cost: &TotalCost) -> Vec<Effect> {
-    total_cost
-        .costs()
-        .iter()
-        .map(|cost| {
-            cost_to_payment_effect(cost)
-                .unwrap_or_else(|| panic!("unsupported echo cost component: {}", cost.display()))
-        })
-        .collect()
-}
-
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
 fn replace_whole_word_case_insensitive(text: &str, from: &str, to: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -2584,7 +2560,7 @@ impl CardDefinitionBuilder {
     /// - At the beginning of each upkeep, remove one Echo counter from this permanent.
     /// - If a counter was removed this way, pay the echo cost or sacrifice this permanent.
     pub fn echo(self, total_cost: TotalCost, text: String) -> Self {
-        let payment_effects = total_cost_to_payment_effects(&total_cost);
+        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
         self.with_ability(
             Ability::static_ability(StaticAbility::enters_with_counters(CounterType::Echo, 1))
@@ -9556,25 +9532,22 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_nonstandard_cumulative_upkeep_line_stays_keyworded() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Varchild's War-Riders Probe")
+    fn parse_non_cost_cumulative_upkeep_line_fails_loudly() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Varchild's War-Riders Probe")
             .card_types(vec![CardType::Creature])
             .parse_text(
                 "Cumulative upkeep—Have an opponent create a 1/1 red Survivor creature token. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nTrample; rampage 1",
             )
-            .expect("nonstandard cumulative upkeep should still parse as a keyword line");
+            .expect_err("non-cost cumulative upkeep payment should fail loudly");
 
         assert!(
-            def.spell_effect.is_none(),
-            "cumulative upkeep keyword line should not fall through as spell text: {:#?}",
-            def.spell_effect
-        );
-        let compiled = compiled_lines(&def).join(" ");
-        assert!(
-            compiled.to_ascii_lowercase().contains(
-                "cumulative upkeep—have an opponent create a 1/1 red survivor creature token"
-            ),
-            "expected preserved cumulative upkeep text in compiled output, got {compiled}"
+            format!("{err:?}")
+                .to_ascii_lowercase()
+                .contains("cumulative")
+                || format!("{err:?}")
+                    .to_ascii_lowercase()
+                    .contains("cost-executable"),
+            "expected loud cumulative upkeep cost error, got {err:?}"
         );
     }
 

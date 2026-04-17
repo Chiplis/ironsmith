@@ -43,7 +43,7 @@ pub(crate) fn parse_cycling_line_lexed(
     let mut merged_costs = base_cost.costs().to_vec();
     merged_costs.push(crate::costs::Cost::discard_source());
     merged_costs.push(
-        crate::costs::Cost::try_from_runtime_effect(Effect::emit_keyword_action(
+        crate::costs::payment_effect_to_cost(Effect::emit_keyword_action(
             crate::events::KeywordActionKind::Cycle,
             1,
         ))

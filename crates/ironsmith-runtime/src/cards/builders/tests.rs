@@ -18258,6 +18258,86 @@ fn parse_ward_mana_and_life_line_as_static_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_ward_sacrifice_permanent_line_as_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Sacrifice Variant")
+        .parse_text("Ward—Sacrifice a permanent.")
+        .expect("ward sacrifice line should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("ward") && rendered_lower.contains("sacrifice"),
+        "expected ward sacrifice wording in compiled output, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Ward(TotalCost") && debug.contains("SacrificeEffect"),
+        "expected real ward sacrifice static ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_ward_tap_creature_line_as_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Tap Variant")
+        .parse_text("Ward—Tap an untapped creature you control.")
+        .expect("ward tap line should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Ward(TotalCost")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("TapEffect"),
+        "expected real ward tap cost effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_ward_exile_graveyard_card_line_as_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Graveyard Exile Variant")
+        .parse_text("Ward—Exile a card from your graveyard.")
+        .expect("ward exile line should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Ward(TotalCost") && debug.contains("ExileEffect"),
+        "expected real ward exile static ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_ward_mana_and_sacrifice_line_as_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Mixed Sacrifice Variant")
+        .parse_text("Ward—{2}, Sacrifice a creature.")
+        .expect("ward mixed sacrifice line should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Ward(TotalCost")
+            && debug.contains("Mana")
+            && debug.contains("SacrificeEffect"),
+        "expected real ward mixed mana and sacrifice cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_ward_draw_card_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Draw Bad Variant")
+        .parse_text("Ward—Draw a card.")
+        .expect_err("non-payment ward clause should fail");
+
+    let lower = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        lower.contains("ward"),
+        "expected ward parse error, got {err:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn cultist_of_the_absolute_stays_static_and_grants_commander_abilities() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cultist of the Absolute")
         .card_types(vec![CardType::Enchantment])

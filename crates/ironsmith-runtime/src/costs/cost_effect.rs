@@ -38,6 +38,10 @@ impl CostEffect {
         }
     }
 
+    pub fn try_new(effect: Effect) -> Result<Self, String> {
+        Self::from_validated_effect(effect)
+    }
+
     pub fn from_validated_effect(effect: Effect) -> Result<Self, String> {
         if effect.0.as_cost_executable().is_some() {
             Ok(Self { effect })

@@ -12,6 +12,7 @@ use winnow::token::any;
 use super::activation_and_restrictions::keyword_activated_lines::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
+use super::activation_and_restrictions::parse_payment_clause_as_total_cost;
 use super::clause_support::{
     parse_ability_line_lexed, parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed,
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
@@ -630,6 +631,46 @@ fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
             "unsupported predicate".to_string(),
         ));
     }
+    None
+}
+
+fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> {
+    for (line_index, raw_line) in text.lines().enumerate() {
+        let Ok(tokens) = lex_line(raw_line, line_index) else {
+            continue;
+        };
+
+        for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
+            if segment.len() < 2
+                || !segment[0].is_word("cumulative")
+                || !segment[1].is_word("upkeep")
+            {
+                continue;
+            }
+
+            let reminder_start =
+                find_token_index(segment, |token| token.is_period()).unwrap_or(segment.len());
+            let cost_tokens = trim_lexed_commas(&segment[2..reminder_start]);
+            let rendered_cost = render_token_slice(&cost_tokens);
+
+            match parse_payment_clause_as_total_cost(&cost_tokens) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    return Some(CardTextError::ParseError(format!(
+                        "unsupported cumulative upkeep payment cost (clause: '{}')",
+                        rendered_cost.trim()
+                    )));
+                }
+                Err(err) => {
+                    return Some(CardTextError::ParseError(format!(
+                        "unsupported cumulative upkeep payment cost (clause: '{}'): {err}",
+                        rendered_cost.trim()
+                    )));
+                }
+            }
+        }
+    }
+
     None
 }
 
@@ -2231,6 +2272,9 @@ pub(crate) fn parse_text_to_semantic_document(
             allow_unsupported,
             text.lines().count()
         );
+    }
+    if let Some(err) = preflight_invalid_payment_keyword_lines(text.as_str()) {
+        return Err(err);
     }
     if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
         return Err(err);

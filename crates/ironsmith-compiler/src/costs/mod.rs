@@ -2,6 +2,119 @@ pub type Cost = ironsmith_core::Cost<crate::effect::Effect>;
 
 use ironsmith_core::CostComponent as _;
 
+fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
+    use crate::effects;
+
+    if effect.downcast_ref::<effects::PayManaEffect>().is_some()
+        || effect.downcast_ref::<effects::TapEffect>().is_some()
+        || effect.downcast_ref::<effects::UntapEffect>().is_some()
+        || effect.downcast_ref::<effects::LoseLifeEffect>().is_some()
+        || effect.downcast_ref::<effects::PayEnergyEffect>().is_some()
+        || effect.downcast_ref::<effects::DiscardEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::DiscardHandEffect>()
+            .is_some()
+        || effect.downcast_ref::<effects::MillEffect>().is_some()
+        || effect.downcast_ref::<effects::SacrificeEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::SacrificePlayerEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::SacrificeTargetEffect>()
+            .is_some()
+        || effect.downcast_ref::<effects::ExileEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::ExileTopOfLibraryEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::ReturnToHandEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::RemoveCountersEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::RemoveAnyCountersAmongEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::RemoveAnyCountersFromSourceEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::PutCountersEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::ChooseObjectsEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::ChoosePlayerEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::ChooseCreatureTypeEffect>()
+            .is_some()
+        || effect.downcast_ref::<effects::BeholdEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::RevealTaggedEffect>()
+            .is_some()
+        || effect.downcast_ref::<effects::CrewCostEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::ConspireCostEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<effects::NinjutsuCostEffect>()
+            .is_some()
+        || effect.downcast_ref::<effects::ExertCostEffect>().is_some()
+        || effect
+            .downcast_ref::<effects::EmitKeywordActionEffect>()
+            .is_some()
+    {
+        return true;
+    }
+
+    if let Some(tagged) = effect.downcast_ref::<effects::TaggedEffect>() {
+        return is_payment_effect(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<effects::WithIdEffect>() {
+        return is_payment_effect(&with_id.effect);
+    }
+    if let Some(may) = effect.downcast_ref::<effects::MayEffect<crate::effect::Effect>>() {
+        return may.effects.iter().all(is_payment_effect);
+    }
+    if let Some(unless) =
+        effect.downcast_ref::<effects::UnlessActionEffect<crate::effect::Effect>>()
+    {
+        return unless.effects.iter().all(is_payment_effect)
+            && unless.alternative.iter().all(is_payment_effect);
+    }
+    if let Some(choice) = effect.downcast_ref::<effects::ChooseModeEffect>() {
+        return choice
+            .modes
+            .iter()
+            .all(|mode| mode.effects.iter().all(is_payment_effect));
+    }
+
+    false
+}
+
+pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {
+    if is_payment_effect(&effect) {
+        Ok(Cost::effect(effect))
+    } else {
+        Err(format!(
+            "effect is not marked as cost-executable: {}",
+            effect.payload_type_name()
+        ))
+    }
+}
+
+pub(crate) fn payment_effects_to_total_cost(
+    effects: impl IntoIterator<Item = crate::effect::Effect>,
+) -> Result<crate::cost::TotalCost, String> {
+    effects
+        .into_iter()
+        .map(payment_effect_to_cost)
+        .collect::<Result<Vec<_>, _>>()
+        .map(crate::cost::TotalCost::from_costs)
+}
+
 pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effect> {
     match cost {
         Cost::Mana(mana_cost) => Some(crate::effect::Effect::new(

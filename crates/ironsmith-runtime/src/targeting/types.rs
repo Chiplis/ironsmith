@@ -83,18 +83,8 @@ pub struct PendingWardCost {
     pub cost: WardCost,
 }
 
-/// The type of cost imposed by ward.
-#[derive(Debug, Clone, PartialEq)]
-pub enum WardCost {
-    /// Pay a mana cost (the most common ward type).
-    Mana(TotalCost),
-    /// Pay life (e.g., Ward—Pay 3 life).
-    Life(u32),
-    /// Discard cards (e.g., Ward—Discard a card).
-    Discard(u32),
-    /// Sacrifice a permanent matching a filter (e.g., Ward—Sacrifice a creature).
-    Sacrifice(crate::target::ObjectFilter),
-}
+/// The total cost imposed by ward.
+pub type WardCost = TotalCost;
 
 /// The result of attempting to pay ward costs.
 #[derive(Debug, Clone, PartialEq)]
