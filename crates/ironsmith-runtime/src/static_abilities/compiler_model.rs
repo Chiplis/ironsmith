@@ -67,12 +67,24 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBeBlockedByLowerPowerThanSource) => {
                 Self::cant_be_blocked_by_lower_power_than_source()
             }
+            Some(StaticAbilityId::CanAttackAsThoughNoDefender) => {
+                Self::can_attack_as_though_no_defender()
+            }
             Some(StaticAbilityId::MayAssignDamageAsUnblocked) => {
                 Self::may_assign_damage_as_unblocked()
             }
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
+            Some(StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn) => {
+                Self::cant_attack_unless_controller_cast_creature_spell_this_turn()
+            }
+            Some(StaticAbilityId::CantAttackUnlessControllerCastNonCreatureSpellThisTurn) => {
+                Self::cant_attack_unless_controller_cast_noncreature_spell_this_turn()
+            }
             Some(StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness) => {
                 Self::creatures_you_control_assign_combat_damage_using_toughness()
+            }
+            Some(StaticAbilityId::CreaturesAssignCombatDamageUsingToughness) => {
+                Self::creatures_assign_combat_damage_using_toughness()
             }
             Some(StaticAbilityId::BlackManaMayBePaidWithLife) => {
                 Self::krrik_black_mana_may_be_paid_with_life()
@@ -89,6 +101,28 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
             }
+            Some(StaticAbilityId::RedirectDamageToSource) => {
+                Self::redirect_damage_from_you_and_other_permanents_to_source()
+            }
+            Some(StaticAbilityId::DamageNotRemovedDuringCleanup) => {
+                Self::damage_not_removed_during_cleanup()
+            }
+            Some(StaticAbilityId::PlayersCantGainLife) => Self::players_cant_gain_life(),
+            Some(StaticAbilityId::PlayersCantSearch) => Self::players_cant_search(),
+            Some(StaticAbilityId::DamageCantBePrevented) => Self::damage_cant_be_prevented(),
+            Some(StaticAbilityId::YouCantLoseGame) => Self::you_cant_lose_game(),
+            Some(StaticAbilityId::OpponentsCantWinGame) => Self::opponents_cant_win_game(),
+            Some(StaticAbilityId::YourLifeTotalCantChange) => Self::your_life_total_cant_change(),
+            Some(StaticAbilityId::OpponentsCantCastSpells) => Self::opponents_cant_cast_spells(),
+            Some(StaticAbilityId::OpponentsCantDrawExtraCards) => {
+                Self::opponents_cant_draw_extra_cards()
+            }
+            Some(StaticAbilityId::CantHaveCountersPlaced) => Self::cant_have_counters_placed(),
+            Some(StaticAbilityId::PermanentsCantBeSacrificed) => {
+                Self::permanents_you_control_cant_be_sacrificed()
+            }
+            Some(StaticAbilityId::StartingLifeBonus) => Self::starting_life_bonus(0),
+            Some(StaticAbilityId::BuybackCostReduction) => Self::buyback_cost_reduction(0),
             Some(StaticAbilityId::ShuffleIntoLibraryFromGraveyard) => {
                 Self::shuffle_into_library_from_graveyard()
             }
@@ -114,6 +148,15 @@ impl StaticAbility {
                 Self::draw_replacement_exile_top_face_down()
             }
             Some(StaticAbilityId::LookAtTopCardOfLibrary) => Self::look_at_top_card_of_library(),
+            Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries) => {
+                Self::all_players_look_at_top_cards_of_libraries()
+            }
+            Some(StaticAbilityId::AllPlayersLookAtYourTopLibraryCard) => {
+                Self::all_players_look_at_your_top_library_card()
+            }
+            Some(StaticAbilityId::OpponentsPlayWithHandsRevealed) => {
+                Self::opponents_play_with_hands_revealed()
+            }
             Some(StaticAbilityId::EntersTapped) => Self::enters_tapped_ability(),
             Some(StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands) => {
                 Self::enters_tapped_unless_control_two_or_more_other_lands()

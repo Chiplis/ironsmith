@@ -153,6 +153,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     None,
     Anthem(Anthem),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
+    AttachedChosenLandwalkGrant(AttachedChosenLandwalkGrant),
     Conditional {
         ability: Box<StaticAbility<T, E, C, Cond>>,
         condition: Condition,
@@ -166,7 +167,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     CostIncreaseManaCost(CostIncreaseManaCost),
     ThisSpellCostReduction(ThisSpellCostReduction<Cond>),
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
+    ThisSpellCastRestriction {
+        kind: ThisSpellCastRestrictionKind,
+        display: String,
+    },
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
+    HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
     RuleRestriction {
         restriction: Restriction,
@@ -180,6 +186,69 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Morph(TotalCost<C>),
     Megamorph(TotalCost<C>),
     CanBlockAdditionalCreatureEachCombat(usize),
+    CantBeBlockedByMoreThan(usize),
+    CantBeBlockedByPowerOrLess(i32),
+    CantBeBlockedByPowerOrGreater(i32),
+    CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(Vec<CardType>),
+    CantAttackUnlessCondition {
+        condition: CantAttackUnlessConditionSpec,
+        display: String,
+    },
+    MayChooseNotToUntapDuringUntapStep(String),
+    UntapDuringEachOtherPlayersUntapStep {
+        filter: ObjectFilter,
+        display: String,
+    },
+    FirstEquipCostAlternative(String),
+    ControlAttachedPermanent(String),
+    SetColors {
+        filter: ObjectFilter,
+        colors: ColorSet,
+    },
+    AddColors {
+        filter: ObjectFilter,
+        colors: ColorSet,
+    },
+    SetName {
+        filter: ObjectFilter,
+        name: String,
+    },
+    AddSupertypes {
+        filter: ObjectFilter,
+        supertypes: Vec<Supertype>,
+    },
+    MaxCreaturesCanAttackEachCombat(usize),
+    MaxCreaturesCanBlockEachCombat(usize),
+    ChooseBasicLandTypeAsEnters(String),
+    ChooseLandTypeAsEnters(String),
+    EnchantedLandIsChosenType(String),
+    AddChosenCreatureType {
+        filter: ObjectFilter,
+        display: String,
+    },
+    SetChosenColor {
+        filter: ObjectFilter,
+        display: String,
+    },
+    ReduceMaximumHandSize {
+        player: PlayerFilter,
+        by: u32,
+    },
+    MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+        player: PlayerFilter,
+        min_card_types: u32,
+    },
+    DuplicateMatchingTriggeredAbilities {
+        source_filter: Option<ObjectFilter>,
+        event_matcher: Option<T>,
+        count: u32,
+        display: String,
+    },
+    SuppressMatchingTriggeredAbilities {
+        source_filter: Option<ObjectFilter>,
+        event_matcher: Option<T>,
+        display: String,
+    },
     ExertAttack {
         only_if_not_exerted_this_turn: bool,
         linked_trigger: Option<TriggeredAbility<T, E>>,
@@ -520,6 +589,9 @@ where
                     condition: grant.condition,
                 }))
             }
+            StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
+                StaticAbilityPayload::AttachedChosenLandwalkGrant(grant)
+            }
             StaticAbilityPayload::Conditional { ability, condition } => {
                 StaticAbilityPayload::Conditional {
                     ability: Box::new(map_static_ability(
@@ -576,6 +648,9 @@ where
             StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction) => {
                 StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction)
             }
+            StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
+                StaticAbilityPayload::ThisSpellCastRestriction { kind, display }
+            }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
                 let mut abilities = Vec::with_capacity(level.abilities.len());
@@ -594,6 +669,7 @@ where
                     abilities,
                 }))
             }
+            StaticAbilityPayload::HexproofFrom(filter) => StaticAbilityPayload::HexproofFrom(filter),
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
             StaticAbilityPayload::RuleRestriction {
                 restriction,
@@ -617,6 +693,98 @@ where
             StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count)
             }
+            StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
+                StaticAbilityPayload::CantBeBlockedByMoreThan(count)
+            }
+            StaticAbilityPayload::CantBeBlockedByPowerOrLess(power) => {
+                StaticAbilityPayload::CantBeBlockedByPowerOrLess(power)
+            }
+            StaticAbilityPayload::CantBeBlockedByPowerOrGreater(power) => {
+                StaticAbilityPayload::CantBeBlockedByPowerOrGreater(power)
+            }
+            StaticAbilityPayload::CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(
+                card_types,
+            ) => StaticAbilityPayload::CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(
+                card_types,
+            ),
+            StaticAbilityPayload::CantAttackUnlessCondition { condition, display } => {
+                StaticAbilityPayload::CantAttackUnlessCondition { condition, display }
+            }
+            StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
+                StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject)
+            }
+            StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display } => {
+                StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display }
+            }
+            StaticAbilityPayload::FirstEquipCostAlternative(display) => {
+                StaticAbilityPayload::FirstEquipCostAlternative(display)
+            }
+            StaticAbilityPayload::ControlAttachedPermanent(display) => {
+                StaticAbilityPayload::ControlAttachedPermanent(display)
+            }
+            StaticAbilityPayload::SetColors { filter, colors } => {
+                StaticAbilityPayload::SetColors { filter, colors }
+            }
+            StaticAbilityPayload::AddColors { filter, colors } => {
+                StaticAbilityPayload::AddColors { filter, colors }
+            }
+            StaticAbilityPayload::SetName { filter, name } => {
+                StaticAbilityPayload::SetName { filter, name }
+            }
+            StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
+                StaticAbilityPayload::AddSupertypes { filter, supertypes }
+            }
+            StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
+                StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum)
+            }
+            StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
+                StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum)
+            }
+            StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
+                StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display)
+            }
+            StaticAbilityPayload::ChooseLandTypeAsEnters(display) => {
+                StaticAbilityPayload::ChooseLandTypeAsEnters(display)
+            }
+            StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
+                StaticAbilityPayload::EnchantedLandIsChosenType(display)
+            }
+            StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
+                StaticAbilityPayload::AddChosenCreatureType { filter, display }
+            }
+            StaticAbilityPayload::SetChosenColor { filter, display } => {
+                StaticAbilityPayload::SetChosenColor { filter, display }
+            }
+            StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
+                StaticAbilityPayload::ReduceMaximumHandSize { player, by }
+            }
+            StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+                player,
+                min_card_types,
+            } => StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+                player,
+                min_card_types,
+            },
+            StaticAbilityPayload::DuplicateMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                count,
+                display,
+            } => StaticAbilityPayload::DuplicateMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher: event_matcher.map(|matcher| map_trigger(matcher)).transpose()?,
+                count,
+                display,
+            },
+            StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                display,
+            } => StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher: event_matcher.map(|matcher| map_trigger(matcher)).transpose()?,
+                display,
+            },
             StaticAbilityPayload::ExertAttack {
                 only_if_not_exerted_this_turn,
                 linked_trigger,
@@ -882,6 +1050,13 @@ impl<
                 payload: StaticAbilityPayload::AttachedAbilityGrant(Box::new(payload.clone())),
             };
         }
+        if let Some(payload) = label_any.downcast_ref::<AttachedChosenLandwalkGrant>() {
+            return Self {
+                id: Some(StaticAbilityId::AttachedChosenLandwalkGrant),
+                label: payload.display.clone(),
+                payload: StaticAbilityPayload::AttachedChosenLandwalkGrant(payload.clone()),
+            };
+        }
         if let Some(payload) = label_any.downcast_ref::<GrantAbility<T, E, C, Cond>>() {
             return Self {
                 id: Some(StaticAbilityId::GrantAbility),
@@ -980,13 +1155,14 @@ impl<
     }
 
     pub fn this_spell_cast_restriction(
-        _kind: ThisSpellCastRestrictionKind,
+        kind: ThisSpellCastRestrictionKind,
         text: impl Into<String>,
     ) -> Self {
+        let display = text.into();
         Self {
             id: Some(StaticAbilityId::ThisSpellCastRestriction),
-            label: text.into(),
-            payload: StaticAbilityPayload::None,
+            label: display.clone(),
+            payload: StaticAbilityPayload::ThisSpellCastRestriction { kind, display },
         }
     }
 
@@ -1153,11 +1329,18 @@ impl<
     }
 
     pub fn can_attack_as_though_no_defender() -> Self {
-        Self::new("can attack as though no defender")
+        Self::identified(
+            StaticAbilityId::CanAttackAsThoughNoDefender,
+            "can attack as though no defender",
+        )
     }
 
-    pub fn set_colors(_filter: impl std::fmt::Debug, _colors: ColorSet) -> Self {
-        Self::new("set colors")
+    pub fn set_colors(filter: ObjectFilter, colors: ColorSet) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetColors),
+            label: "set colors".to_string(),
+            payload: StaticAbilityPayload::SetColors { filter, colors },
+        }
     }
 
     pub fn add_card_types(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {
@@ -1357,8 +1540,12 @@ impl<
         })
     }
 
-    pub fn hexproof_from(_filter: ObjectFilter) -> Self {
-        Self::new("hexproof from")
+    pub fn hexproof_from(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::HexproofFrom),
+            label: "hexproof from".into(),
+            payload: StaticAbilityPayload::HexproofFrom(filter),
+        }
     }
 
     pub fn id(&self) -> StaticAbilityId {
@@ -1376,11 +1563,20 @@ impl<
 
     pub fn with_condition(self, condition: Condition) -> Self {
         match self.payload {
-            StaticAbilityPayload::Conditional { ability, .. } => StaticAbility {
-                id: ability.id,
-                label: ability.label.clone(),
-                payload: StaticAbilityPayload::Conditional { ability, condition },
-            },
+            StaticAbilityPayload::Conditional {
+                ability,
+                condition: existing,
+            } => {
+                let combined = Condition::And(Box::new(existing), Box::new(condition));
+                StaticAbility {
+                    id: ability.id,
+                    label: ability.label.clone(),
+                    payload: StaticAbilityPayload::Conditional {
+                        ability,
+                        condition: combined,
+                    },
+                }
+            }
             payload => {
                 let ability = StaticAbility {
                     id: self.id,
@@ -1423,8 +1619,12 @@ impl<
         }
     }
 
-    pub fn cant_be_blocked_by_more_than(_count: impl std::fmt::Debug) -> Self {
-        Self::new("cant be blocked by more than")
+    pub fn cant_be_blocked_by_more_than(count: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantBeBlockedByMoreThan),
+            label: format!("can't be blocked by more than {count} creature"),
+            payload: StaticAbilityPayload::CantBeBlockedByMoreThan(count),
+        }
     }
     pub fn enters_tapped_ability() -> Self {
         Self::identified(StaticAbilityId::EntersTapped, "enters tapped")
@@ -1498,10 +1698,15 @@ impl<
         }
     }
     pub fn cant_attack_unless_condition(
-        _spec: CantAttackUnlessConditionSpec,
-        _display: impl Into<String>,
+        condition: CantAttackUnlessConditionSpec,
+        display: impl Into<String>,
     ) -> Self {
-        Self::new("cant attack unless condition")
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::CantAttackUnlessCondition),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CantAttackUnlessCondition { condition, display },
+        }
     }
     pub fn cant_attack_its_owner() -> Self {
         Self {
@@ -1600,10 +1805,15 @@ impl<
         Self::new("prevent constrained damage to self put counters instead")
     }
     pub fn untap_during_each_other_players_untap_step(
-        _filter: ObjectFilter,
-        _display: impl Into<String>,
+        filter: ObjectFilter,
+        display: impl Into<String>,
     ) -> Self {
-        Self::new("untap during each other players untap step")
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::UntapDuringEachOtherPlayersUntapStep),
+            label: display.clone(),
+            payload: StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep { filter, display },
+        }
     }
     pub fn pregame_action(kind: PregameActionKind, display: impl Into<String>) -> Self {
         let text = display.into();
@@ -1613,8 +1823,12 @@ impl<
             payload: StaticAbilityPayload::PregameAction { kind, text },
         }
     }
-    pub fn reduce_maximum_hand_size(_player: PlayerFilter, _by: u32) -> Self {
-        Self::new("reduce maximum hand size")
+    pub fn reduce_maximum_hand_size(player: PlayerFilter, by: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ReduceMaximumHandSize),
+            label: "reduce maximum hand size".into(),
+            payload: StaticAbilityPayload::ReduceMaximumHandSize { player, by },
+        }
     }
     pub fn equipment_grant(abilities: Vec<StaticAbility<T, E, C, Cond>>) -> Self {
         Self {
@@ -1647,8 +1861,13 @@ impl<
     pub fn boast_twice_each_turn() -> Self {
         Self::new("boast twice each turn")
     }
-    pub fn first_equip_cost_alternative(_display: impl Into<String>) -> Self {
-        Self::new("first equip cost alternative")
+    pub fn first_equip_cost_alternative(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::FirstEquipCostAlternative),
+            label: display.clone(),
+            payload: StaticAbilityPayload::FirstEquipCostAlternative(display),
+        }
     }
     pub fn vote_additional_time_while_voting() -> Self {
         Self::new("vote additional time while voting")
@@ -1690,44 +1909,79 @@ impl<
                 StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
         }
     }
-    pub fn cant_be_blocked_by_power_or_less(_power: i32) -> Self {
-        Self::new("cant be blocked by power or less")
+    pub fn cant_be_blocked_by_power_or_less(power: i32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantBeBlockedByPowerOrLess),
+            label: format!("can't be blocked by creatures with power {power} or less"),
+            payload: StaticAbilityPayload::CantBeBlockedByPowerOrLess(power),
+        }
     }
-    pub fn cant_be_blocked_by_power_or_greater(_power: i32) -> Self {
-        Self::new("cant be blocked by power or greater")
+    pub fn cant_be_blocked_by_power_or_greater(power: i32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantBeBlockedByPowerOrGreater),
+            label: format!("can't be blocked by creatures with power {power} or greater"),
+            payload: StaticAbilityPayload::CantBeBlockedByPowerOrGreater(power),
+        }
     }
     pub fn cant_attack_unless_controller_cast_creature_spell_this_turn() -> Self {
-        Self::new("cant attack unless controller cast creature spell")
+        Self::identified(
+            StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn,
+            "cant attack unless controller cast creature spell",
+        )
     }
     pub fn cant_attack_unless_controller_cast_noncreature_spell_this_turn() -> Self {
-        Self::new("cant attack unless controller cast noncreature spell")
+        Self::identified(
+            StaticAbilityId::CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
+            "cant attack unless controller cast noncreature spell",
+        )
     }
     pub fn players_cant_gain_life() -> Self {
-        Self::new("players cant gain life")
+        Self::identified(
+            StaticAbilityId::PlayersCantGainLife,
+            "players cant gain life",
+        )
     }
     pub fn players_cant_search() -> Self {
-        Self::new("players cant search")
+        Self::identified(StaticAbilityId::PlayersCantSearch, "players cant search")
     }
     pub fn damage_cant_be_prevented() -> Self {
-        Self::new("damage cant be prevented")
+        Self::identified(
+            StaticAbilityId::DamageCantBePrevented,
+            "damage cant be prevented",
+        )
     }
     pub fn you_cant_lose_game() -> Self {
-        Self::new("you cant lose game")
+        Self::identified(StaticAbilityId::YouCantLoseGame, "you cant lose game")
     }
     pub fn opponents_cant_win_game() -> Self {
-        Self::new("opponents cant win game")
+        Self::identified(
+            StaticAbilityId::OpponentsCantWinGame,
+            "opponents cant win game",
+        )
     }
     pub fn your_life_total_cant_change() -> Self {
-        Self::new("your life total cant change")
+        Self::identified(
+            StaticAbilityId::YourLifeTotalCantChange,
+            "your life total cant change",
+        )
     }
     pub fn opponents_cant_cast_spells() -> Self {
-        Self::new("opponents cant cast spells")
+        Self::identified(
+            StaticAbilityId::OpponentsCantCastSpells,
+            "opponents cant cast spells",
+        )
     }
     pub fn opponents_cant_draw_extra_cards() -> Self {
-        Self::new("opponents cant draw extra cards")
+        Self::identified(
+            StaticAbilityId::OpponentsCantDrawExtraCards,
+            "opponents cant draw extra cards",
+        )
     }
     pub fn cant_have_counters_placed() -> Self {
-        Self::new("cant have counters placed")
+        Self::identified(
+            StaticAbilityId::CantHaveCountersPlaced,
+            "cant have counters placed",
+        )
     }
     pub fn cant_be_countered_ability() -> Self {
         Self::identified(
@@ -1736,20 +1990,34 @@ impl<
         )
     }
     pub fn permanents_you_control_cant_be_sacrificed() -> Self {
-        Self::new("permanents you control cant be sacrificed")
+        Self::identified(
+            StaticAbilityId::PermanentsCantBeSacrificed,
+            "permanents you control cant be sacrificed",
+        )
     }
     pub fn cant_be_blocked_as_long_as_defending_player_controls_card_type(
-        _card_type: CardType,
+        card_type: CardType,
     ) -> Self {
-        Self::new("cant be blocked as long as defending controls card type")
+        Self::cant_be_blocked_as_long_as_defending_player_controls_card_types(vec![card_type])
     }
     pub fn cant_be_blocked_as_long_as_defending_player_controls_card_types(
-        _card_types: Vec<CardType>,
+        card_types: Vec<CardType>,
     ) -> Self {
-        Self::new("cant be blocked as long as defending controls card types")
+        Self {
+            id: Some(StaticAbilityId::RuleRestriction),
+            label: "cant be blocked as long as defending controls card types".into(),
+            payload: StaticAbilityPayload::CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(
+                card_types,
+            ),
+        }
     }
-    pub fn set_name(_filter: impl std::fmt::Debug, _name: impl Into<String>) -> Self {
-        Self::new("set name")
+    pub fn set_name(filter: ObjectFilter, name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self {
+            id: Some(StaticAbilityId::SetName),
+            label: format!("set name {name}"),
+            payload: StaticAbilityPayload::SetName { filter, name },
+        }
     }
     pub fn soulbond_shared_power_toughness(power: i32, toughness: i32) -> Self {
         let signed = |value: i32| {
@@ -1779,11 +2047,20 @@ impl<
             payload: StaticAbilityPayload::SoulbondSharedAbility(Box::new(ability)),
         }
     }
-    pub fn add_colors(_filter: impl std::fmt::Debug, _colors: ColorSet) -> Self {
-        Self::new("add colors")
+    pub fn add_colors(filter: ObjectFilter, colors: ColorSet) -> Self {
+        Self {
+            id: Some(StaticAbilityId::AddColors),
+            label: "add colors".to_string(),
+            payload: StaticAbilityPayload::AddColors { filter, colors },
+        }
     }
-    pub fn control_attached_permanent(_display: impl Into<String>) -> Self {
-        Self::new("control attached permanent")
+    pub fn control_attached_permanent(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ControlAttachedPermanent),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ControlAttachedPermanent(display),
+        }
     }
     pub fn prevent_damage_to_self_remove_counter(_counter_type: CounterType, _amount: u32) -> Self {
         Self::new("prevent damage to self remove counter")
@@ -1794,8 +2071,12 @@ impl<
     ) -> Self {
         Self::new("prevent damage to self put counters instead")
     }
-    pub fn add_supertypes(_filter: impl std::fmt::Debug, _types: Vec<Supertype>) -> Self {
-        Self::new("add supertypes")
+    pub fn add_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::AddSupertypes),
+            label: "add supertypes".to_string(),
+            payload: StaticAbilityPayload::AddSupertypes { filter, supertypes },
+        }
     }
     pub fn reveal_first_card_you_draw_each_turn(optional: bool, your_turns_only: bool) -> Self {
         Self {
@@ -1836,30 +2117,50 @@ impl<
         }
     }
     pub fn damage_not_removed_during_cleanup() -> Self {
-        Self::new("damage not removed during cleanup")
+        Self::identified(
+            StaticAbilityId::DamageNotRemovedDuringCleanup,
+            "damage not removed during cleanup",
+        )
     }
-    pub fn choose_basic_land_type_as_enters(_display: impl Into<String>) -> Self {
-        Self::new("choose basic land type as enters")
+    pub fn choose_basic_land_type_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseBasicLandTypeAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display),
+        }
     }
-    pub fn choose_land_type_as_enters(_display: impl Into<String>) -> Self {
-        Self::new("choose land type as enters")
+    pub fn choose_land_type_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseLandTypeAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseLandTypeAsEnters(display),
+        }
     }
-    pub fn enchanted_land_is_chosen_type(_display: impl Into<String>) -> Self {
+    pub fn enchanted_land_is_chosen_type(display: impl Into<String>) -> Self {
+        let display = display.into();
         Self {
             id: Some(StaticAbilityId::EnchantedLandIsChosenType),
-            label: "enchanted land is chosen type".into(),
-            payload: StaticAbilityPayload::None,
+            label: display.clone(),
+            payload: StaticAbilityPayload::EnchantedLandIsChosenType(display),
         }
     }
-    pub fn add_chosen_creature_type(_filter: ObjectFilter, _display: impl Into<String>) -> Self {
+    pub fn add_chosen_creature_type(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
         Self {
             id: Some(StaticAbilityId::AddChosenCreatureType),
-            label: "add chosen creature type".into(),
-            payload: StaticAbilityPayload::None,
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddChosenCreatureType { filter, display },
         }
     }
-    pub fn set_chosen_color(_filter: ObjectFilter, _display: impl Into<String>) -> Self {
-        Self::new("set chosen color")
+    pub fn set_chosen_color(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SetChosenColor),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SetChosenColor { filter, display },
+        }
     }
     pub fn choose_creature_type_as_enters(display: impl Into<String>) -> Self {
         let display = display.into();
@@ -1876,22 +2177,37 @@ impl<
         Self::new("choose named option as enters")
     }
     pub fn duplicate_matching_triggered_abilities(
-        _source_filter: Option<ObjectFilter>,
-        _event_matcher: Option<T>,
-        _count: u32,
-        _display: impl Into<String>,
+        source_filter: Option<ObjectFilter>,
+        event_matcher: Option<T>,
+        count: u32,
+        display: impl Into<String>,
     ) -> Self {
-        Self::new("duplicate matching triggered abilities")
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DuplicateMatchingTriggeredAbilities),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DuplicateMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                count,
+                display,
+            },
+        }
     }
     pub fn suppress_matching_triggered_abilities(
-        _source_filter: Option<ObjectFilter>,
-        _event_matcher: Option<T>,
-        _display: impl Into<String>,
+        source_filter: Option<ObjectFilter>,
+        event_matcher: Option<T>,
+        display: impl Into<String>,
     ) -> Self {
+        let display = display.into();
         Self {
             id: Some(StaticAbilityId::SuppressMatchingTriggeredAbilities),
-            label: "suppress matching triggered abilities".into(),
-            payload: StaticAbilityPayload::None,
+            label: display.clone(),
+            payload: StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                display,
+            },
         }
     }
     pub fn double_damage_from_sources_you_control_of_chosen_type(
@@ -1931,13 +2247,24 @@ impl<
         }
     }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {
-        Self::new("redirect damage from you and other permanents to source")
+        Self::identified(
+            StaticAbilityId::RedirectDamageToSource,
+            "redirect damage from you and other permanents to source",
+        )
     }
-    pub fn max_attackers_each_combat(_n: impl std::fmt::Debug) -> Self {
-        Self::new("max attackers each combat")
+    pub fn max_attackers_each_combat(n: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::MaxCreaturesCanAttackEachCombat),
+            label: format!("no more than {n} creatures can attack each combat"),
+            payload: StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(n),
+        }
     }
-    pub fn max_blockers_each_combat(_n: impl std::fmt::Debug) -> Self {
-        Self::new("max blockers each combat")
+    pub fn max_blockers_each_combat(n: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::MaxCreaturesCanBlockEachCombat),
+            label: format!("no more than {n} creatures can block each combat"),
+            payload: StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(n),
+        }
     }
     pub fn shuffle_into_library_from_graveyard() -> Self {
         Self {
@@ -1961,7 +2288,10 @@ impl<
         }
     }
     pub fn creatures_assign_combat_damage_using_toughness() -> Self {
-        Self::new("creatures assign combat damage using toughness")
+        Self::identified(
+            StaticAbilityId::CreaturesAssignCombatDamageUsingToughness,
+            "creatures assign combat damage using toughness",
+        )
     }
     pub fn creatures_you_control_assign_combat_damage_using_toughness() -> Self {
         Self {
@@ -1978,10 +2308,13 @@ impl<
         }
     }
     pub fn starting_life_bonus(_amount: i32) -> Self {
-        Self::new("starting life bonus")
+        Self::identified(StaticAbilityId::StartingLifeBonus, "starting life bonus")
     }
     pub fn buyback_cost_reduction(_amount: impl Into<Value>) -> Self {
-        Self::new("buyback cost reduction")
+        Self::identified(
+            StaticAbilityId::BuybackCostReduction,
+            "buyback cost reduction",
+        )
     }
     pub fn cost_increase_per_target_beyond_first(cost: u32) -> Self {
         Self {
@@ -2045,8 +2378,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn may_choose_not_to_untap_during_untap_step(_subject: impl std::fmt::Debug) -> Self {
-        Self::new("may choose not to untap during untap step")
+    pub fn may_choose_not_to_untap_during_untap_step(subject: impl Into<String>) -> Self {
+        let subject = subject.into();
+        Self {
+            id: Some(StaticAbilityId::MayChooseNotToUntapDuringUntapStep),
+            label: format!("You may choose not to untap {subject} during your untap step"),
+            payload: StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject),
+        }
     }
     pub fn flying_only_restriction() -> Self {
         Self {
@@ -2079,6 +2417,27 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn all_players_look_at_top_cards_of_libraries() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries),
+            label: "Players play with the top card of their libraries revealed.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn all_players_look_at_your_top_library_card() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AllPlayersLookAtYourTopLibraryCard),
+            label: "Play with the top card of your library revealed.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn opponents_play_with_hands_revealed() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentsPlayWithHandsRevealed),
+            label: "Your opponents play with their hands revealed.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn additional_land_plays(count: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::RuleRestriction),
@@ -2101,10 +2460,17 @@ impl<
         }
     }
     pub fn max_hand_size_seven_minus_your_graveyard_card_types(
-        _player: PlayerFilter,
-        _min_card_types: u32,
+        player: PlayerFilter,
+        min_card_types: u32,
     ) -> Self {
-        Self::new("max hand size seven minus your graveyard card types")
+        Self {
+            id: Some(StaticAbilityId::MaximumHandSizeSevenMinusYourGraveyardCardTypes),
+            label: "max hand size seven minus your graveyard card types".into(),
+            payload: StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+                player,
+                min_card_types,
+            },
+        }
     }
     pub fn library_of_leng_discard_replacement() -> Self {
         Self {

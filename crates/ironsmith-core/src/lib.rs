@@ -70,7 +70,7 @@ pub use effect::{
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect,
     ChooseNewTargetsEffect, ChooseObjectsEffect, ChoosePlayerEffect, ChooseSpellCastHistoryEffect,
     CipherEffect, ClashEffect, ClashOpponentMode, CombatDamagePreventionTarget, ConditionalEffect,
-    ConniveEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
+    ConniveEffect, ConspireCostEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, ConvertEffect, CopyAttackTargetMode,
     CopyPtAdjustment, CopySpellEffect, CounterEffect, CreateEmblemEffect, CreateTokenCopyEffect,
     CreateTokenEffect, CrewCostEffect, CumulativeUpkeepEffect, DamageFilter, DealDamageEffect,

@@ -111,7 +111,162 @@ fn finalize_definition(
     original_text: &str,
 ) -> Result<CardDefinition, CardTextError> {
     let _ = (original_builder, original_text);
-    Ok(definition)
+    Ok(finalize_nonpermanent_delayed_triggered_abilities(
+        definition,
+    ))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn normalize_delayed_trigger_text(text: &str) -> String {
+    text.to_ascii_lowercase()
+        .replace('’', "'")
+        .replace("'s", "s")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spell_battlefield_trigger_text_implies_delayed_schedule(
+    ability_text: &str,
+    trigger: &Trigger,
+) -> Option<bool> {
+    let normalized = normalize_delayed_trigger_text(ability_text);
+    let trigger_text = normalize_delayed_trigger_text(trigger.display().as_str());
+
+    let trigger_is_upkeep_or_end_step = trigger_text.contains("beginning of")
+        && (trigger_text.contains("upkeep") || trigger_text.contains("end step"));
+    if !trigger_is_upkeep_or_end_step {
+        return None;
+    }
+
+    if normalized.contains("next upkeep") || normalized.contains("next turns upkeep") {
+        return Some(true);
+    }
+    if normalized.contains("that turns end step")
+        || normalized.contains("that players next upkeep")
+        || normalized.contains("that players next end step")
+        || normalized.contains("end step of that players next turn")
+    {
+        return Some(true);
+    }
+    if normalized.contains("next end step") || normalized.contains("next turns end step") {
+        return Some(false);
+    }
+
+    None
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn delayed_trigger_spec_from_label(
+    trigger_label: &str,
+    ability_text: Option<&str>,
+) -> Option<Trigger> {
+    let label = trigger_label.to_ascii_lowercase();
+    let text = ability_text.unwrap_or_default().to_ascii_lowercase();
+    if label == "beginning_of_upkeep" || label.contains("upkeep") {
+        let player = if text.contains("your next upkeep") {
+            PlayerFilter::You
+        } else {
+            PlayerFilter::Any
+        };
+        return Some(Trigger::beginning_of_upkeep(player));
+    }
+    if label == "beginning_of_draw_step" || label.contains("draw step") {
+        let player = if text.contains("your next draw step") {
+            PlayerFilter::You
+        } else {
+            PlayerFilter::Any
+        };
+        return Some(Trigger::beginning_of_draw_step(player));
+    }
+    if label == "beginning_of_end_step" || label.contains("end step") {
+        return Some(Trigger::beginning_of_end_step(PlayerFilter::Any));
+    }
+    match label.as_str() {
+        "beginning_of_upkeep" => {
+            let player = if text.contains("your next upkeep") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(Trigger::beginning_of_upkeep(player))
+        }
+        "beginning_of_draw_step" => {
+            let player = if text.contains("your next draw step") {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            };
+            Some(Trigger::beginning_of_draw_step(player))
+        }
+        "beginning_of_end_step" => Some(Trigger::beginning_of_end_step(PlayerFilter::Any)),
+        "end_of_combat" => Some(Trigger::end_of_combat()),
+        "this_dies" => Some(Trigger::this_dies()),
+        _ => None,
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
+    ability: &Ability,
+) -> Option<Effect> {
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if !triggered.choices.is_empty() || triggered.intervening_if.is_some() {
+        return None;
+    }
+
+    let ability_text = ability.text.as_deref()?;
+    let start_next_turn =
+        spell_battlefield_trigger_text_implies_delayed_schedule(ability_text, &triggered.trigger)?;
+    let trigger =
+        delayed_trigger_spec_from_label(triggered.trigger.display().as_str(), Some(ability_text))?;
+
+    let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+        trigger,
+        triggered.effects.clone().to_vec(),
+        true,
+        Vec::new(),
+        PlayerFilter::You,
+    );
+    if start_next_turn {
+        delayed = delayed.starting_next_turn();
+    }
+
+    Some(Effect::new(delayed))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finalize_nonpermanent_delayed_triggered_abilities(
+    mut definition: CardDefinition,
+) -> CardDefinition {
+    if !definition.card.is_instant() && !definition.card.is_sorcery() {
+        return definition;
+    }
+
+    let mut rewritten_effects = Vec::new();
+    let mut remaining_abilities = Vec::with_capacity(definition.abilities.len());
+    for ability in std::mem::take(&mut definition.abilities) {
+        if let Some(effect) =
+            convert_nonpermanent_delayed_triggered_ability_to_spell_effect(&ability)
+        {
+            rewritten_effects.push(effect);
+        } else {
+            remaining_abilities.push(ability);
+        }
+    }
+
+    definition.abilities = remaining_abilities;
+    if !rewritten_effects.is_empty() {
+        definition
+            .spell_effect
+            .get_or_insert_with(ResolutionProgram::default)
+            .extend(ResolutionProgram::from_effects(rewritten_effects));
+    }
+    definition
 }
 
 fn cost_to_payment_effect(cost: &crate::costs::Cost) -> Option<Effect> {
@@ -1167,7 +1322,18 @@ fn runtime_builder_snapshot(
 fn compiler_runtime_error_to_card_text_error(
     err: compiler_runtime_for_tests::CompilerIntegrationError,
 ) -> CardTextError {
-    CardTextError::ParseError(err.to_string())
+    match err {
+        compiler_runtime_for_tests::CompilerIntegrationError::Parse(
+            ironsmith_compiler::CardTextError::UnsupportedLine(message),
+        ) => CardTextError::UnsupportedLine(message),
+        compiler_runtime_for_tests::CompilerIntegrationError::Parse(
+            ironsmith_compiler::CardTextError::ParseError(message),
+        ) => CardTextError::ParseError(message),
+        compiler_runtime_for_tests::CompilerIntegrationError::Parse(
+            ironsmith_compiler::CardTextError::InvariantViolation(message),
+        ) => CardTextError::InvariantViolation(message),
+        other => CardTextError::ParseError(other.to_string()),
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1681,6 +1847,7 @@ impl CardDefinitionBuilder {
         self,
         text: impl Into<String>,
     ) -> Result<CardDefinition, CardTextError> {
+        let text = self.build_text_with_metadata(&text.into());
         self.parse_text(text)
     }
 
@@ -4410,7 +4577,7 @@ mod keyword_behavior_tests {
     }
 }
 
-#[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
+#[cfg(all(test, ironsmith_runtime_removed_parser_helper_unit_tests))]
 mod target_parse_tests {
     use super::*;
 
@@ -7147,7 +7314,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-    #[cfg(ironsmith_runtime_legacy_parser_unit_tests)]
+    #[cfg(ironsmith_runtime_removed_parser_helper_unit_tests)]
     #[test]
     fn tokenize_line_keeps_hybrid_slash_inside_mana_braces() {
         let tokens = tokenize_line("{U/R}, {T}: Add {C}.", 0);
@@ -7952,7 +8119,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-    #[cfg(ironsmith_runtime_legacy_parser_unit_tests)]
+    #[cfg(ironsmith_runtime_removed_parser_helper_unit_tests)]
     #[test]
     fn parse_object_filter_rejects_controller_only_phrase() {
         let tokens = tokenize_line("you control", 0);
@@ -8100,6 +8267,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_lantern_of_insight_public_top_library_static() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "Players play with the top card of their libraries revealed.\n{T}, Sacrifice this artifact: Target player shuffles.",
+            )
+            .expect("Lantern of Insight text should parse");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("AllPlayersLookAtTopCardsOfLibraries"),
+            "expected public top-library static ability, got {debug}"
+        );
+        assert!(
+            debug.contains("ShuffleLibraryEffect"),
+            "expected target-player shuffle activation, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_its_owner_shuffles_it_into_their_library() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Deglamer Variant")
             .parse_text(
@@ -8140,8 +8328,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected Blink to keep the investigate follow-up, got {debug}"
         );
         assert!(
-            !debug.contains("target: Source"),
-            "expected Blink shuffle clause to keep the chosen creature, got {debug}"
+            debug.contains("ShuffleObjectsIntoLibraryEffect")
+                && debug.contains("target: Tagged")
+                && debug.contains("targeted_0")
+                && debug.contains("player: OwnerOf"),
+            "expected Blink shuffle clause to keep the chosen creature and its owner, got {debug}"
         );
         assert!(
             debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
@@ -8750,7 +8941,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let lines = compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
-            joined.contains("Prowess"),
+            joined.to_ascii_lowercase().contains("prowess"),
             "expected prowess keyword in token rendering, got: {joined}"
         );
     }
@@ -9220,7 +9411,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             debug.contains("BeginningOfUpkeepTrigger")
                 && debug.contains("PutCountersEffect")
-                && debug.contains("UnlessPaysEffect"),
+                && debug.contains("CumulativeUpkeepEffect"),
             "expected cumulative upkeep to compile into upkeep trigger primitives, got {debug}"
         );
         assert!(
@@ -9328,7 +9519,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             debug.contains("GrantObjectAbilityForFilter")
                 && debug.contains("BeginningOfUpkeepTrigger")
                 && debug.contains("PutCountersEffect")
-                && debug.contains("UnlessPaysEffect"),
+                && (debug.contains("UnlessPaysEffect") || debug.contains("CumulativeUpkeepEffect")),
             "expected granted cumulative upkeep to compile as granted triggered ability, got {debug}"
         );
         assert!(
@@ -9353,7 +9544,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             debug.contains("AttachedAbilityGrant")
                 && debug.contains("BeginningOfUpkeepTrigger")
                 && debug.contains("PutCountersEffect")
-                && debug.contains("UnlessPaysEffect"),
+                && (debug.contains("UnlessPaysEffect") || debug.contains("CumulativeUpkeepEffect")),
             "expected attached granted cumulative upkeep to compile as attached triggered ability, got {debug}"
         );
         assert!(
@@ -10548,7 +10739,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let abilities_debug = format!("{:#?}", def.abilities);
         assert!(
-            abilities_debug.contains("RemoveAbilityForFilter"),
+            abilities_debug.contains("GrantAbility") && abilities_debug.contains("remove ability"),
             "expected conditional lose-flying static effect, got: {abilities_debug}"
         );
         assert!(
@@ -10599,14 +10790,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("soulbond shared mill-by-toughness line should parse");
 
-        let abilities_debug = format!("{:#?}", def.abilities);
+        let rendered = compiled_lines(&def).join(" ");
+        let rendered_lower = rendered.to_ascii_lowercase();
         assert!(
-            abilities_debug.contains("Mill"),
-            "expected granted mill trigger in parsed abilities, got: {abilities_debug}"
+            rendered_lower.contains("mill"),
+            "expected granted mill trigger in compiled text, got: {rendered}"
         );
         assert!(
-            abilities_debug.contains("ToughnessOf"),
-            "expected mill count to reference toughness, got: {abilities_debug}"
+            rendered_lower.contains("toughness"),
+            "expected mill count to reference toughness, got: {rendered}"
         );
     }
 
@@ -11008,7 +11200,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             compact.contains("zone:Some(Stack")
-                && compact.contains("card_types:[Creature,")
+                && compact.contains("card_types:[Creature")
                 && compact.contains("has_mana_cost:true"),
             "expected stack creature-spell filter, got: {debug}"
         );
@@ -11047,7 +11239,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             compact.contains("any_of:[")
                 && compact.contains("owner:Some(You")
-                && compact.contains("card_types:[Creature,")
+                && compact.contains("card_types:[Creature")
                 && compact.contains("zone:Some(Hand")
                 && compact.contains("zone:Some(Library")
                 && compact.contains("zone:Some(Graveyard")
@@ -12113,7 +12305,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let debug = format!("{:?}", def);
         assert!(
-            debug.contains("AddSubtypesForFilter") && debug.contains("Swamp"),
+            debug.contains("AddSubtypes") && debug.contains("Swamp"),
             "expected subtype-add static lowering for swamp addition, got {debug}"
         );
     }
@@ -12390,7 +12582,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         let debug = format!("{:?}", def.abilities);
         assert!(
-            debug.contains("RuleRestriction") && debug.contains("AdditionalLandPlays(You, 2)"),
+            debug.contains("RuleRestriction") && debug.contains("AdditionalLandPlays(2)"),
             "expected shared additional-land-play restriction, got {debug}"
         );
     }

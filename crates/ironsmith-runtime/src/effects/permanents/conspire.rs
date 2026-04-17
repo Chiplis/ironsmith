@@ -20,50 +20,35 @@ use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::triggers::TriggerEvent;
+pub use ironsmith_core::ConspireCostEffect;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConspireCostEffect;
+fn source_colors(game: &GameState, source: ObjectId) -> ColorSet {
+    game.current_colors(source)
+        .or_else(|| game.object(source).map(|obj| obj.colors()))
+        .unwrap_or_default()
+}
 
-impl ConspireCostEffect {
-    pub fn new() -> Self {
-        Self
+fn conspire_candidates(game: &GameState, controller: PlayerId, source: ObjectId) -> Vec<ObjectId> {
+    let source_colors = source_colors(game, source);
+    if source_colors.is_empty() {
+        return Vec::new();
     }
 
-    fn source_colors(game: &GameState, source: ObjectId) -> ColorSet {
-        game.current_colors(source)
-            .or_else(|| game.object(source).map(|obj| obj.colors()))
-            .unwrap_or_default()
-    }
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            let Some(obj) = game.object(id) else {
+                return false;
+            };
+            if !game.current_is_creature(id) || obj.controller != controller || game.is_tapped(id) {
+                return false;
+            }
 
-    fn conspire_candidates(
-        game: &GameState,
-        controller: PlayerId,
-        source: ObjectId,
-    ) -> Vec<ObjectId> {
-        let source_colors = Self::source_colors(game, source);
-        if source_colors.is_empty() {
-            return Vec::new();
-        }
-
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|&id| {
-                let Some(obj) = game.object(id) else {
-                    return false;
-                };
-                if !game.current_is_creature(id)
-                    || obj.controller != controller
-                    || game.is_tapped(id)
-                {
-                    return false;
-                }
-
-                let creature_colors = game.current_colors(id).unwrap_or_else(|| obj.colors());
-                !source_colors.intersection(creature_colors).is_empty()
-            })
-            .collect()
-    }
+            let creature_colors = game.current_colors(id).unwrap_or_else(|| obj.colors());
+            !source_colors.intersection(creature_colors).is_empty()
+        })
+        .collect()
 }
 
 impl EffectExecutor for ConspireCostEffect {
@@ -78,7 +63,7 @@ impl EffectExecutor for ConspireCostEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller = ctx.controller;
         let source = ctx.source;
-        let candidates = Self::conspire_candidates(game, controller, source);
+        let candidates = conspire_candidates(game, controller, source);
         if candidates.len() < 2 {
             return Err(ExecutionError::Impossible(
                 "Not enough untapped creatures that share a color with this spell".to_string(),
@@ -142,7 +127,7 @@ impl CostExecutableEffect for ConspireCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if Self::conspire_candidates(game, controller, source).len() >= 2 {
+        if conspire_candidates(game, controller, source).len() >= 2 {
             Ok(())
         } else {
             Err(CostValidationError::Other(

@@ -33,7 +33,7 @@ use crate::cards::builders::{
 };
 use crate::effect::Until;
 use crate::mana::ManaCost;
-use crate::target::PlayerFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 type GainAbilityWordView<'a> = TokenWordView<'a>;
@@ -183,6 +183,29 @@ fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordA
     actions.push(action);
 }
 
+fn color_only_hexproof_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let mut filters = Vec::new();
+    for token in tokens {
+        if token.is_word("and") || token.is_word("from") {
+            continue;
+        }
+        let color = crate::color::Color::from_name(token.as_word()?)?;
+        let mut filter = ObjectFilter::default();
+        filter.colors = Some(crate::color::ColorSet::from_color(color));
+        filters.push(filter);
+    }
+
+    match filters.len() {
+        0 => None,
+        1 => filters.pop(),
+        _ => {
+            let mut filter = ObjectFilter::default();
+            filter.any_of = filters;
+            Some(filter)
+        }
+    }
+}
+
 fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -193,11 +216,12 @@ fn parse_granted_ability_component_for_gain(
     }
 
     if grammar::words_match_any_prefix(&ability_tokens, &[&["hexproof", "from"]]).is_some() {
-        let filter_tokens = ability_tokens[2..]
-            .iter()
-            .filter(|token| !token.is_word("and") && !token.is_word("from"))
-            .cloned()
-            .collect::<Vec<_>>();
+        if let Some(filter) = color_only_hexproof_filter(&ability_tokens[2..]) {
+            return Ok(Some(vec![GrantedAbilityAst::from(
+                KeywordAction::HexproofFrom(filter),
+            )]));
+        }
+        let filter_tokens = ability_tokens[2..].to_vec();
         if !filter_tokens.is_empty()
             && let Ok(filter) = parse_object_filter_lexed(&filter_tokens, false)
         {

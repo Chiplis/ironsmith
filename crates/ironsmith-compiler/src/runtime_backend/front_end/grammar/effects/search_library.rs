@@ -800,7 +800,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         ],
     ) {
         player = PlayerAst::That;
-        forced_library_owner = Some(PlayerFilter::target_player());
+        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
     } else if word_slice_starts_with_any(
         search_body_words,

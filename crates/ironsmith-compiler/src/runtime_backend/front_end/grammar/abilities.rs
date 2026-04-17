@@ -2280,6 +2280,52 @@ pub(crate) fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexTok
     )
 }
 
+pub(crate) fn is_players_play_top_card_libraries_revealed_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[&[
+            "players",
+            "play",
+            "with",
+            "the",
+            "top",
+            "card",
+            "of",
+            "their",
+            "libraries",
+            "revealed",
+        ]],
+    )
+}
+
+pub(crate) fn is_play_top_card_your_library_revealed_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[&[
+            "play", "with", "the", "top", "card", "of", "your", "library", "revealed",
+        ]],
+    )
+}
+
+pub(crate) fn is_your_opponents_play_with_hands_revealed_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[&[
+            "your",
+            "opponents",
+            "play",
+            "with",
+            "their",
+            "hands",
+            "revealed",
+        ]],
+    )
+}
+
 pub(crate) fn is_cast_this_spell_as_though_it_had_flash_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

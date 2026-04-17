@@ -3055,6 +3055,48 @@ impl StaticAbilityKind for LookAtTopCardOfLibrary {
     }
 }
 
+/// Allows every player to continuously see the top card of every library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllPlayersLookAtTopCardsOfLibraries;
+
+impl StaticAbilityKind for AllPlayersLookAtTopCardsOfLibraries {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
+    }
+
+    fn display(&self) -> String {
+        "Players play with the top card of their libraries revealed.".to_string()
+    }
+}
+
+/// Allows every player to continuously see the controller's top library card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllPlayersLookAtYourTopLibraryCard;
+
+impl StaticAbilityKind for AllPlayersLookAtYourTopLibraryCard {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
+    }
+
+    fn display(&self) -> String {
+        "Play with the top card of your library revealed.".to_string()
+    }
+}
+
+/// Makes the controller's opponents play with revealed hands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpponentsPlayWithHandsRevealed;
+
+impl StaticAbilityKind for OpponentsPlayWithHandsRevealed {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentsPlayWithHandsRevealed
+    }
+
+    fn display(&self) -> String {
+        "Your opponents play with their hands revealed.".to_string()
+    }
+}
+
 /// Typed fallback keyword text preserved from parser/builder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordFallbackText {
@@ -3379,6 +3421,45 @@ mod tests {
         assert_eq!(
             ability.display(),
             "You may look at the top card of your library any time."
+        );
+    }
+
+    #[test]
+    fn test_all_players_look_at_top_cards_of_libraries() {
+        let ability = AllPlayersLookAtTopCardsOfLibraries;
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
+        );
+        assert_eq!(
+            ability.display(),
+            "Players play with the top card of their libraries revealed."
+        );
+    }
+
+    #[test]
+    fn test_all_players_look_at_your_top_library_card() {
+        let ability = AllPlayersLookAtYourTopLibraryCard;
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
+        );
+        assert_eq!(
+            ability.display(),
+            "Play with the top card of your library revealed."
+        );
+    }
+
+    #[test]
+    fn test_opponents_play_with_hands_revealed() {
+        let ability = OpponentsPlayWithHandsRevealed;
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::OpponentsPlayWithHandsRevealed
+        );
+        assert_eq!(
+            ability.display(),
+            "Your opponents play with their hands revealed."
         );
     }
 

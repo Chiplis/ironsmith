@@ -262,7 +262,48 @@ fn runtime_optional_cost_from_core_model(
 fn convert_alternative_cast(
     method: compiler::alternative_cast::AlternativeCastingMethod,
 ) -> Result<ironsmith::alternative_cast::AlternativeCastingMethod, CompilerIntegrationError> {
-    method.try_map(runtime_effect_from_core_model, runtime_cost_from_core_model)
+    let mut method =
+        method.try_map(runtime_effect_from_core_model, runtime_cost_from_core_model)?;
+    if let ironsmith::alternative_cast::AlternativeCastingMethod::Overload { effects, .. } =
+        &mut method
+    {
+        *effects = effects
+            .drain(..)
+            .filter_map(detarget_overload_effect)
+            .collect();
+    }
+    Ok(method)
+}
+
+fn detarget_overload_effect(
+    effect: ironsmith::effect::Effect,
+) -> Option<ironsmith::effect::Effect> {
+    if effect
+        .downcast_ref::<ironsmith::effects::TargetOnlyEffect>()
+        .is_some()
+    {
+        return None;
+    }
+
+    if let Some(tagged) = effect.downcast_ref::<ironsmith::effects::TaggedEffect>() {
+        let inner = detarget_overload_effect((*tagged.effect).clone())?;
+        return Some(ironsmith::effect::Effect::new(
+            ironsmith::effects::TaggedEffect::new(tagged.tag.clone(), inner),
+        ));
+    }
+
+    if let Some(apply) = effect.downcast_ref::<ironsmith::effects::ApplyContinuousEffect>()
+        && let Some(ironsmith::target::ChooseSpec::Target(inner)) = &apply.target_spec
+        && let ironsmith::target::ChooseSpec::Object(filter) = inner.as_ref()
+    {
+        let mut detargeted = apply.clone();
+        detargeted.target = ironsmith::continuous::EffectTarget::Filter(filter.clone());
+        detargeted.target_spec = Some(ironsmith::target::ChooseSpec::Object(filter.clone()));
+        detargeted.require_creature_target = false;
+        return Some(ironsmith::effect::Effect::new(detargeted));
+    }
+
+    Some(effect)
 }
 
 fn convert_derived_alternative_cast(

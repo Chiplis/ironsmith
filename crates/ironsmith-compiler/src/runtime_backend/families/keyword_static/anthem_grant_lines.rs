@@ -2696,6 +2696,31 @@ pub(crate) fn parse_soulbond_shared_line(
             )));
         }
 
+        let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        if ability_words
+            == [
+                "whenever", "this", "creature", "attacks", "each", "opponent", "mills", "cards",
+                "equal", "to", "its", "toughness",
+            ]
+        {
+            let display = display_text_for_tokens(&ability_tokens, false);
+            let ability = parsed_triggered_ability(
+                TriggerSpec::ThisAttacks,
+                vec![EffectAst::Mill {
+                    count: Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+                    player: crate::cards::builders::PlayerAst::Opponent,
+                }],
+                vec![Zone::Battlefield],
+                Some(display.clone()),
+                None,
+                ReferenceImports::default(),
+            );
+            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
+                ability,
+                display,
+            }]));
+        }
+
         if let Some(actions) = parse_ability_line(&ability_tokens) {
             reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
             let abilities: Vec<StaticAbility> = actions

@@ -1,7 +1,11 @@
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper__";
+const SENTENCE_HELPER_TAG_PREFIX_LEGACY: &str = "__sentence_helper_";
 
 pub fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
-    let Some(rest) = tag.strip_prefix(SENTENCE_HELPER_TAG_PREFIX) else {
+    let Some(rest) = tag
+        .strip_prefix(SENTENCE_HELPER_TAG_PREFIX)
+        .or_else(|| tag.strip_prefix(SENTENCE_HELPER_TAG_PREFIX_LEGACY))
+    else {
         return false;
     };
     let Some(rest) = rest.strip_prefix(prefix) else {

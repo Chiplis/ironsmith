@@ -24,8 +24,9 @@ use super::grammar::abilities::{
     is_may_assign_damage_as_unblocked_line_lexed, is_minimum_spell_total_mana_three_line_lexed,
     is_more_than_meets_the_eye_marker_line_lexed, is_no_maximum_hand_size_line_lexed,
     is_once_each_turn_play_from_exile_marker_guard_lexed, is_permanents_enter_tapped_line_lexed,
-    is_play_lands_from_graveyard_line_lexed, is_players_cant_cycle_line_lexed,
-    is_players_cant_pay_life_or_sacrifice_line_lexed, is_players_skip_upkeep_line_lexed,
+    is_play_lands_from_graveyard_line_lexed, is_play_top_card_your_library_revealed_line_lexed,
+    is_players_cant_cycle_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
+    is_players_play_top_card_libraries_revealed_line_lexed, is_players_skip_upkeep_line_lexed,
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
@@ -37,6 +38,7 @@ use super::grammar::abilities::{
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
     is_toph_first_metalbender_line_lexed, is_you_have_shroud_line_lexed,
     is_you_may_look_top_card_any_time_line_lexed,
+    is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
     parse_doesnt_untap_during_untap_step_spec_lexed,
@@ -304,6 +306,18 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_players_play_top_card_libraries_revealed_line" => vec![
+            StaticAbilityLineHeadHint::Single("players"),
+            StaticAbilityLineHeadHint::Pair("players", "play"),
+        ],
+        "parse_play_top_card_your_library_revealed_line" => vec![
+            StaticAbilityLineHeadHint::Single("play"),
+            StaticAbilityLineHeadHint::Pair("play", "with"),
+        ],
+        "parse_your_opponents_play_with_hands_revealed_line" => vec![
+            StaticAbilityLineHeadHint::Single("your"),
+            StaticAbilityLineHeadHint::Pair("your", "opponents"),
+        ],
         "parse_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -417,6 +431,10 @@ macro_rules! multi_static_ability_ast_passthrough_rule {
 
 fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
     &[
+        StaticAbilityLineRuleDef {
+            id: stringify!(parse_soulbond_shared_line),
+            rule: StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
+        },
         single_static_ability_ast_rule!(parse_ward_static_ability_line),
         single_static_ability_ast_rule!(parse_skulk_rules_text_line),
         single_static_ability_ast_rule!(
@@ -515,10 +533,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
-        StaticAbilityLineRuleDef {
-            id: stringify!(parse_soulbond_shared_line),
-            rule: StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
-        },
         StaticAbilityLineRuleDef {
             id: stringify!(parse_granted_keyword_static_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
@@ -625,6 +639,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
+        single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
+        single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
+        single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
         single_static_ability_ast_rule!(parse_play_lands_from_graveyard_line),
         single_static_ability_ast_rule!(parse_cast_spells_from_hand_without_paying_mana_costs_line),
         single_static_ability_ast_rule!(parse_cost_reduction_line),
@@ -5428,6 +5445,37 @@ pub(crate) fn parse_you_may_look_top_card_any_time_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_you_may_look_top_card_any_time_line_lexed(tokens) {
         return Ok(Some(StaticAbility::look_at_top_card_of_library()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_players_play_top_card_libraries_revealed_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_players_play_top_card_libraries_revealed_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::all_players_look_at_top_cards_of_libraries(),
+        ));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_play_top_card_your_library_revealed_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_play_top_card_your_library_revealed_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::all_players_look_at_your_top_library_card(),
+        ));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_your_opponents_play_with_hands_revealed_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_your_opponents_play_with_hands_revealed_line_lexed(tokens) {
+        return Ok(Some(StaticAbility::opponents_play_with_hands_revealed()));
     }
     Ok(None)
 }

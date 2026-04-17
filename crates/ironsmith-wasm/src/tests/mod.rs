@@ -35,6 +35,7 @@ use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::object::CounterType;
 use ironsmith::provenance::ProvNodeId;
 use ironsmith::snapshot::ObjectSnapshot;
+use ironsmith::static_abilities::StaticAbility;
 use ironsmith::triggers::{Trigger, TriggerEvent, check_triggers};
 use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
@@ -1493,6 +1494,200 @@ fn snapshot_perspective_hand_cards_are_not_truncated() {
         me.hand_cards.len() >= 20,
         "expected all 20 hand cards to be present in snapshot"
     );
+}
+
+#[test]
+fn snapshot_public_top_library_static_shows_each_players_top_card() {
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let lantern = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(
+            Ability::static_ability(StaticAbility::all_players_look_at_top_cards_of_libraries())
+                .with_text("Players play with the top card of their libraries revealed."),
+        )
+        .build();
+    game.create_object_from_definition(&lantern, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Alice Bottom").card_types(vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Alice Top").card_types(vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Bob Bottom").card_types(vec![CardType::Creature]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Bob Top").card_types(vec![CardType::Creature]),
+        bob,
+        Zone::Library,
+    );
+
+    let snapshot = GameSnapshot::from_game(
+        &game,
+        alice,
+        None,
+        None,
+        None,
+        None,
+        Vec::new(),
+        None,
+        false,
+        None,
+        0,
+    );
+    let alice_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == alice.0)
+        .expect("alice snapshot should exist");
+    let bob_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == bob.0)
+        .expect("bob snapshot should exist");
+
+    assert!(alice_view.can_view_library_top);
+    assert_eq!(alice_view.library_top.as_deref(), Some("Alice Top"));
+    assert!(bob_view.can_view_library_top);
+    assert_eq!(bob_view.library_top.as_deref(), Some("Bob Top"));
+}
+
+#[test]
+fn snapshot_courser_static_shows_only_controllers_top_library_card() {
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let courser = CardDefinitionBuilder::new(CardId::new(), "Courser of Kruphix Variant")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .with_ability(
+            Ability::static_ability(StaticAbility::all_players_look_at_your_top_library_card())
+                .with_text("Play with the top card of your library revealed."),
+        )
+        .build();
+    game.create_object_from_definition(&courser, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Alice Top").card_types(vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Bob Hidden Top").card_types(vec![CardType::Creature]),
+        bob,
+        Zone::Library,
+    );
+
+    let snapshot = GameSnapshot::from_game(
+        &game,
+        bob,
+        None,
+        None,
+        None,
+        None,
+        Vec::new(),
+        None,
+        false,
+        None,
+        0,
+    );
+    let alice_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == alice.0)
+        .expect("alice snapshot should exist");
+    let bob_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == bob.0)
+        .expect("bob snapshot should exist");
+
+    assert!(alice_view.can_view_library_top);
+    assert_eq!(alice_view.library_top.as_deref(), Some("Alice Top"));
+    assert!(!bob_view.can_view_library_top);
+    assert_eq!(bob_view.library_top, None);
+}
+
+#[test]
+fn snapshot_telepathy_static_shows_opponents_hands_to_all_players() {
+    let mut game = GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+
+    let telepathy = CardDefinitionBuilder::new(CardId::new(), "Telepathy Variant")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(
+            Ability::static_ability(StaticAbility::opponents_play_with_hands_revealed())
+                .with_text("Your opponents play with their hands revealed."),
+        )
+        .build();
+    game.create_object_from_definition(&telepathy, alice, Zone::Battlefield);
+
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Alice Secret").card_types(vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Bob Revealed").card_types(vec![CardType::Creature]),
+        bob,
+        Zone::Hand,
+    );
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Cara Revealed").card_types(vec![CardType::Creature]),
+        cara,
+        Zone::Hand,
+    );
+
+    let snapshot = GameSnapshot::from_game(
+        &game,
+        cara,
+        None,
+        None,
+        None,
+        None,
+        Vec::new(),
+        None,
+        false,
+        None,
+        0,
+    );
+    let alice_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == alice.0)
+        .expect("alice snapshot should exist");
+    let bob_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == bob.0)
+        .expect("bob snapshot should exist");
+    let cara_view = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == cara.0)
+        .expect("cara snapshot should exist");
+
+    assert!(!alice_view.can_view_hand);
+    assert!(alice_view.hand_cards.is_empty());
+    assert!(bob_view.can_view_hand);
+    assert_eq!(bob_view.hand_cards[0].name, "Bob Revealed");
+    assert!(cara_view.can_view_hand);
+    assert_eq!(cara_view.hand_cards[0].name, "Cara Revealed");
 }
 
 #[test]

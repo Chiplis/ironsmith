@@ -102,6 +102,22 @@ where
         return (format!("each {rest}"), false);
     }
 
+    if matches!(effect.target, EffectTarget::Filter(_))
+        && let Some(ChooseSpec::Object(filter)) = &effect.target_spec
+    {
+        if filter.other {
+            return describe_each_other_filter(filter);
+        }
+
+        let description = filter.description();
+        let rest = strip_article(&description).trim();
+        if rest.is_empty() {
+            return ("each object".to_string(), false);
+        }
+
+        return (format!("each {rest}"), false);
+    }
+
     if let Some(spec) = &effect.target_spec {
         return (describe_choose_spec(spec), choose_spec_is_plural(spec));
     }

@@ -188,6 +188,9 @@ pub enum StaticAbilityId {
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
     LookAtTopCardOfLibrary,
+    AllPlayersLookAtTopCardsOfLibraries,
+    AllPlayersLookAtYourTopLibraryCard,
+    OpponentsPlayWithHandsRevealed,
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -400,6 +403,9 @@ impl StaticAbilityId {
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
             | LookAtTopCardOfLibrary
+            | AllPlayersLookAtTopCardsOfLibraries
+            | AllPlayersLookAtYourTopLibraryCard
+            | OpponentsPlayWithHandsRevealed
             | LibraryOfLengDiscardReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard

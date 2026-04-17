@@ -604,6 +604,21 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
+    if allow_land && let Some(after_lands) = strip_prefix_phrase(rest_tokens, &["lands"]) {
+        let zone_words = token_word_refs(after_lands);
+        if zone_words == ["from", "the", "top", "of", "your", "library"] {
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec: crate::grant::GrantSpec::new(
+                    crate::grant::Grantable::play_from(),
+                    ObjectFilter::land(),
+                    Zone::Library,
+                ),
+                lifetime: PermissionLifetime::Static,
+            }));
+        }
+    }
+
     if allow_land
         && let Some(after_lands_and_cast) =
             strip_prefix_phrase(rest_tokens, &["lands", "and", "cast"])

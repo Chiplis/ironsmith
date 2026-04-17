@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
-import DeckZonePile from "./DeckZonePile";
 import ManaPool from "@/components/left-rail/ManaPool";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useGame } from "@/context/GameContext";
@@ -9,7 +8,6 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
-const SLIDE_IN_ZONE_IDS = new Set(["graveyard", "exile"]);
 const ZONE_LABELS = {
   battlefield: "Battlefield",
   hand: "Hand",
@@ -68,6 +66,18 @@ function buildZoneEntries(player, zoneViews) {
   }));
 }
 
+function shouldShowZoneBody(player, entry, activity = null) {
+  if (!entry?.active) return false;
+  if (entry.zone === "library") return false;
+  if (activity) return true;
+  if (entry.zone === "battlefield") return true;
+  if (entry.zone === "hand") {
+    return Boolean(player?.can_view_hand) || (entry.cards || []).length > 0 || entry.count > 0;
+  }
+  if (entry.zone === "graveyard" || entry.zone === "exile") return true;
+  return entry.count > 0 || (entry.cards || []).length > 0;
+}
+
 function zoneCounts(player) {
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
@@ -89,7 +99,7 @@ function zoneCounts(player) {
 function isBaseVisibleZone(zone, zoneViews, count) {
   const baseViews = normalizeZoneViews(zoneViews);
   if (!baseViews.includes(zone)) return false;
-  return zone === "battlefield" || zone === "library" || count > 0;
+  return zone === "battlefield" || count > 0;
 }
 
 function formatZoneActivityClass(direction) {
@@ -133,21 +143,71 @@ function ZoneCountInline({ player }) {
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
     <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
-      {counts.map((entry) => (
-        <span key={entry.label}>
-          <span className="font-bold text-[#c1d4ea]">{entry.label}</span>{" "}
-          <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
-        </span>
+      {counts.map((entry) => {
+        const showLibraryTop = entry.label === "Deck" && libraryTopName;
+        return (
+          <span
+            key={entry.label}
+            className={showLibraryTop ? "min-w-0 max-w-[220px] truncate" : undefined}
+            title={showLibraryTop ? `Top card: ${libraryTopName}` : undefined}
+          >
+            <span className="font-bold text-[#c1d4ea]">{entry.label}</span>{" "}
+            <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
+            {showLibraryTop && (
+              <span className="text-[#f0dfba] font-semibold"> ({libraryTopName})</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function HiddenHandRows({ count }) {
+  const hiddenCount = Math.max(0, Math.floor(Number(count) || 0));
+  return (
+    <div className="zone-hidden-card-list" aria-label={`${hiddenCount} hidden cards`}>
+      {Array.from({ length: hiddenCount }).map((_, index) => (
+        <div key={index} className="zone-hidden-card-row">
+          <span>Hidden</span>
+        </div>
       ))}
-      {libraryTopName && (
-        <span
-          className="max-w-[220px] truncate rounded-none border border-[#466f96]/70 bg-[#081523]/90 px-1.5 py-0.5 text-[#dceeff]"
-          title={`Top card: ${libraryTopName}`}
-        >
-          <span className="font-bold text-[#c1d4ea]">Top</span>{" "}
-          <span className="font-semibold text-[#f0f7ff]">{libraryTopName}</span>
-        </span>
-      )}
+    </div>
+  );
+}
+
+function ZoneCardNameRows({
+  cards = [],
+  selectedObjectId = null,
+  onCardClick,
+  onCardPointerDown,
+}) {
+  if (!Array.isArray(cards) || cards.length === 0) {
+    return (
+      <div className="zone-card-name-list zone-card-name-list--empty">
+        <div className="zone-card-name-empty">Empty</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="zone-card-name-list">
+      {cards.map((card) => {
+        const objectIds = collectCardObjectIds(card).map((id) => String(id));
+        const selected = selectedObjectId != null && objectIds.includes(String(selectedObjectId));
+        return (
+          <button
+            key={card.id}
+            type="button"
+            className={cn("zone-card-name-row", selected && "is-selected")}
+            onPointerDown={(event) => onCardPointerDown?.(event, card)}
+            onClick={(event) => onCardClick?.(event, card)}
+            title={String(card?.name || "Card")}
+          >
+            <span>{card?.name || "Card"}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -263,13 +323,21 @@ function OpponentSlot({
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
-  const boardZoneEntries = activeZoneEntries.filter((entry) => !SLIDE_IN_ZONE_IDS.has(entry.zone));
-  const overlayZoneEntries = activeZoneEntries.filter((entry) => SLIDE_IN_ZONE_IDS.has(entry.zone));
+  const displayZoneEntries = activeZoneEntries.filter((entry) =>
+    shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null)
+  );
+  const supportZoneEntries = displayZoneEntries.filter((entry) => entry.zone !== "battlefield");
+  const denseSupportLayout = supportZoneEntries.length > 0;
+  const boardZoneEntries = displayZoneEntries.filter((entry) => entry.zone === "battlefield");
+  const overlayZoneEntries = [];
+  const battlefieldZoneEntry = boardZoneEntries.find((entry) => entry.zone === "battlefield");
+  const shelfZoneEntries = denseSupportLayout
+    ? supportZoneEntries
+    : [];
   const visibleZones = new Set(
     boardZoneEntries
       .filter((entry) =>
         entry.zone === "battlefield"
-        || entry.zone === "library"
         || entry.count > 0
         || Boolean(zoneActivity?.[entry.zone])
       )
@@ -509,11 +577,20 @@ function OpponentSlot({
             })}
           </div>
         ) : null}
-        <div className="battlefield-zone-strip flex gap-1 min-h-0 h-full overflow-visible">
-        {boardZoneEntries.map((entry) => {
+        <div
+          className={cn(
+            "battlefield-zone-strip min-h-0 h-full overflow-visible",
+            denseSupportLayout ? "battlefield-zone-strip--shelf" : "flex gap-1"
+          )}
+          data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
+        >
+        {(denseSupportLayout && battlefieldZoneEntry
+          ? [battlefieldZoneEntry]
+          : boardZoneEntries
+        ).map((entry) => {
           const isVisible = entry.active && visibleZones.has(entry.zone);
           const isPrimaryBattlefield = entry.zone === "battlefield";
-          const isCompactSideZone = entry.zone === "library" || entry.zone === "command";
+          const isCompactSideZone = entry.zone === "command";
           const activity = zoneActivity?.[entry.zone] || null;
           const isTransientReveal = Boolean(activity)
             && !isBaseVisibleZone(entry.zone, zoneViews, entry.count);
@@ -575,33 +652,86 @@ function OpponentSlot({
                     ) : null}
                   </div>
                 )}
-                {entry.zone === "library" ? (
-                  <DeckZonePile
-                    count={displayCount}
-                    canViewTop={player.can_view_library_top}
-                    topCardName={player.library_top}
-                  />
-                ) : (
-                  <BattlefieldRow
-                    cards={displayCards}
-                    compact={entry.zone !== "battlefield"}
-                    battlefieldSide="top"
-                    paperLayoutMode={mobileBattleScene && entry.zone === "battlefield" ? "mobile-battle-top" : "default"}
-                    paperMinSlotsPerRow={mobileBattleScene && entry.zone === "battlefield" ? 7 : null}
-                    selectedObjectId={selectedObjectId}
-                    onCardClick={handleCardClick}
-                    onCardPointerDown={handleCardPointerDown}
-                    onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}
-                    onMobileCardLongPress={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardLongPress : null}
-                    activatableMap={activatableMap}
-                    legalTargetObjectIds={legalTargetObjectIds}
-                    allowVerticalScroll={entry.zone === "hand"}
-                  />
-                )}
+                <BattlefieldRow
+                  cards={displayCards}
+                  compact={entry.zone !== "battlefield"}
+                  battlefieldSide="top"
+                  paperLayoutMode={mobileBattleScene && entry.zone === "battlefield" ? "mobile-battle-top" : "default"}
+                  paperMinSlotsPerRow={mobileBattleScene && entry.zone === "battlefield" ? 7 : null}
+                  selectedObjectId={selectedObjectId}
+                  onCardClick={handleCardClick}
+                  onCardPointerDown={handleCardPointerDown}
+                  onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}
+                  onMobileCardLongPress={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardLongPress : null}
+                  activatableMap={activatableMap}
+                  legalTargetObjectIds={legalTargetObjectIds}
+                  allowVerticalScroll={entry.zone === "hand"}
+                />
               </div>
             </div>
           );
         })}
+        {denseSupportLayout && shelfZoneEntries.length > 0 ? (
+          <div
+            className="battlefield-zone-shelf min-h-0 h-full"
+            style={{ "--zone-shelf-count": shelfZoneEntries.length }}
+          >
+            {shelfZoneEntries.map((entry) => {
+              const activity = zoneActivity?.[entry.zone] || null;
+              const isTransientReveal = Boolean(activity)
+                && !isBaseVisibleZone(entry.zone, zoneViews, entry.count);
+              const displayCards = Array.isArray(activity?.replayCards) && activity.replayCards.length > 0
+                ? activity.replayCards
+                : entry.cards;
+              const displayCount = Number.isFinite(activity?.displayCount) ? activity.displayCount : entry.count;
+              return (
+                <div
+                  key={entry.zone}
+                  data-zone-id={entry.zone}
+                  className={cn(
+                    "battlefield-zone-entry battlefield-zone-entry--shelf min-h-0",
+                    activity && formatZoneActivityClass(activity.direction)
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "grid gap-1 min-h-0 h-full",
+                      isTransientReveal && "zone-reveal-content zone-reveal-content-enter"
+                    )}
+                    style={{ gridTemplateRows: "auto minmax(0,1fr)" }}
+                  >
+                    <div className="battlefield-zone-label flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
+                      <span>{entry.label}</span>
+                      <span className="text-[#d6e6fb]">{displayCount}</span>
+                      {activity ? (
+                        <span
+                          className={cn(
+                            "zone-activity-badge ml-auto",
+                            activity.direction === "left"
+                              ? "zone-activity-badge-leave"
+                              : "zone-activity-badge-enter"
+                          )}
+                        >
+                          {activity.label}
+                        </span>
+                      ) : null}
+                    </div>
+                    {entry.zone === "hand" && displayCards.length === 0 && displayCount > 0 ? (
+                      <HiddenHandRows count={displayCount} />
+                    ) : (
+                      <ZoneCardNameRows
+                        cards={displayCards}
+                        selectedObjectId={selectedObjectId}
+                        onCardClick={handleCardClick}
+                        onCardPointerDown={handleCardPointerDown}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         </div>
       </div>
     </div>

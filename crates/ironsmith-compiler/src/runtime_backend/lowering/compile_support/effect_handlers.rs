@@ -32,6 +32,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::AttacksOneOrMore(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter.clone()),
         ),
+        TriggerSpec::Blocks(filter) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::Blocks(filter.clone()))
+        }
         TriggerSpec::Dies(filter) => Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone())),
         TriggerSpec::SpellCast {
             filter,

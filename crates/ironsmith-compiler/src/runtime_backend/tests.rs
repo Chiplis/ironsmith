@@ -6208,6 +6208,26 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             crate::static_abilities::StaticAbilityId::LookAtTopCardOfLibrary,
         ),
         (
+            "Players play with the top card of their libraries revealed.",
+            super::grammar::abilities::is_players_play_top_card_libraries_revealed_line_lexed
+                as Probe,
+            super::keyword_static::parse_players_play_top_card_libraries_revealed_line as Parser,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries,
+        ),
+        (
+            "Play with the top card of your library revealed.",
+            super::grammar::abilities::is_play_top_card_your_library_revealed_line_lexed as Probe,
+            super::keyword_static::parse_play_top_card_your_library_revealed_line as Parser,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        ),
+        (
+            "Your opponents play with their hands revealed.",
+            super::grammar::abilities::is_your_opponents_play_with_hands_revealed_line_lexed
+                as Probe,
+            super::keyword_static::parse_your_opponents_play_with_hands_revealed_line as Parser,
+            crate::static_abilities::StaticAbilityId::OpponentsPlayWithHandsRevealed,
+        ),
+        (
             "You may cast this spell as though it had flash.",
             super::grammar::abilities::is_cast_this_spell_as_though_it_had_flash_line_lexed
                 as Probe,
@@ -6235,6 +6255,66 @@ fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_static_shap
             "{text}: {parsed:?}"
         );
     }
+}
+
+#[test]
+fn parse_lantern_of_insight_public_top_library_static_and_shuffle() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Players play with the top card of their libraries revealed.\n{T}, Sacrifice this artifact: Target player shuffles.",
+        )
+        .expect("Lantern of Insight text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AllPlayersLookAtTopCardsOfLibraries"),
+        "expected public top-library static ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ShuffleLibraryEffect"),
+        "expected target-player shuffle activation, got {debug}"
+    );
+}
+
+#[test]
+fn parse_telepathy_opponents_play_with_hands_revealed() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Telepathy Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Your opponents play with their hands revealed.")
+        .expect("Telepathy text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("OpponentsPlayWithHandsRevealed"),
+        "expected opponents' revealed-hand static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_courser_of_kruphix_public_top_library_and_land_grant() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Courser of Kruphix Variant")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .parse_text(
+            "Play with the top card of your library revealed.\nYou may play lands from the top of your library.\nLandfall — Whenever a land you control enters, you gain 1 life.",
+        )
+        .expect("Courser of Kruphix text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AllPlayersLookAtYourTopLibraryCard"),
+        "expected public own-top-library static ability, got {debug}"
+    );
+    assert!(
+        debug.contains("PlayFromZone")
+            || debug.contains("lands from the top of your library")
+            || debug.contains("GrantSpec"),
+        "expected top-library land-play grant, got {debug}"
+    );
+    assert!(
+        debug.contains("GainLifeEffect"),
+        "expected landfall life trigger, got {debug}"
+    );
 }
 
 #[test]

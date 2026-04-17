@@ -4863,6 +4863,285 @@ body {
   z-index: 2;
 }
 
+.battlefield-zone-strip--shelf {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(168px, clamp(184px, 22%, 260px));
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px !important;
+  align-items: stretch;
+}
+
+.battlefield-zone-strip--shelf > .battlefield-zone-entry[data-zone-id="battlefield"] {
+  min-width: 0;
+  max-width: none !important;
+  width: auto;
+}
+
+.battlefield-zone-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+  position: relative;
+  z-index: 2;
+}
+
+.battlefield-zone-entry--shelf {
+  display: grid;
+  height: auto !important;
+  min-height: 74px;
+  flex: 1 1 112px;
+  padding: 6px;
+  border: 1px solid rgba(126, 108, 82, 0.5);
+  background:
+    linear-gradient(180deg, rgba(49, 43, 38, 0.94), rgba(12, 13, 15, 0.98));
+  overflow: hidden !important;
+}
+
+.battlefield-zone-entry--shelf[data-zone-id="library"] {
+  min-height: 58px;
+  flex: 0 0 68px;
+}
+
+.battlefield-zone-entry--shelf .battlefield-zone-label {
+  min-height: 20px;
+  line-height: 1;
+}
+
+.battlefield-zone-entry--shelf .battlefield-row {
+  min-height: 0;
+  padding: 7px;
+}
+
+.battlefield-zone-entry--shelf .battlefield-row-empty {
+  min-height: 0;
+}
+
+.battlefield-zone-entry--shelf .deck-zone-pile {
+  min-height: 0;
+}
+
+.deck-zone-pile--compact {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  box-shadow: none !important;
+}
+
+.deck-zone-mini-card {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  aspect-ratio: 63 / 88;
+  border: 1px solid rgba(142, 177, 215, 0.28);
+  background:
+    linear-gradient(180deg, rgba(18, 30, 45, 0.98), rgba(7, 12, 18, 0.98)),
+    repeating-linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 6px);
+}
+
+.deck-zone-mini-card span {
+  color: #d5e7fb;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transform: rotate(-90deg);
+}
+
+.deck-zone-mini-meta {
+  min-width: 0;
+  color: #a9c1dc;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.deck-zone-mini-top {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e5f2ff;
+}
+
+.deck-zone-mini-count {
+  min-width: 30px;
+  border: 1px solid rgba(77, 105, 135, 0.9);
+  background: rgba(10, 18, 27, 0.94);
+  padding: 4px 6px;
+  color: #e3efff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.zone-card-name-list,
+.zone-hidden-card-list {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-auto-rows: 34px;
+  gap: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 4px;
+  background:
+    linear-gradient(180deg, rgba(31, 27, 23, 0.94), rgba(13, 12, 11, 0.98));
+}
+
+.zone-card-name-list--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zone-card-name-empty {
+  color: #a9997b;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.zone-card-name-row,
+.zone-hidden-card-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(154, 128, 88, 0.44);
+  background:
+    linear-gradient(180deg, rgba(66, 54, 42, 0.98), rgba(27, 23, 19, 0.98));
+  padding: 0 8px;
+  color: #eadfc4;
+  text-align: left;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 220, 0.07),
+    inset 0 -1px 0 rgba(6, 5, 4, 0.7);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.zone-card-name-row:hover,
+.zone-card-name-row:focus-visible,
+.zone-card-name-row.is-selected {
+  border-color: rgba(225, 190, 126, 0.78);
+  background:
+    linear-gradient(180deg, rgba(88, 69, 45, 0.98), rgba(39, 29, 19, 0.98));
+  color: #fff0cc;
+  outline: none;
+}
+
+.zone-card-name-row span,
+.zone-hidden-card-row span {
+  overflow: hidden;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.zone-card-name-list::-webkit-scrollbar,
+.zone-hidden-card-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.zone-card-name-list::-webkit-scrollbar-track,
+.zone-hidden-card-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.zone-card-name-list::-webkit-scrollbar-thumb,
+.zone-hidden-card-list::-webkit-scrollbar-thumb {
+  background: rgba(189, 161, 114, 0.32);
+}
+
+.battlefield-zone-shelf::-webkit-scrollbar {
+  width: 8px;
+}
+
+.battlefield-zone-shelf::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.battlefield-zone-shelf::-webkit-scrollbar-thumb {
+  background: rgba(189, 161, 114, 0.32);
+}
+
+.battlefield-panel--opponents .battlefield-zone-strip--shelf {
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 32%);
+  gap: 6px !important;
+}
+
+.battlefield-panel--opponents .battlefield-zone-shelf {
+  gap: 4px;
+}
+
+.battlefield-panel--opponents .battlefield-zone-entry--shelf {
+  min-height: 58px;
+  flex-basis: 78px;
+  padding: 4px;
+}
+
+.battlefield-panel--opponents .battlefield-zone-entry--shelf[data-zone-id="library"] {
+  min-height: 46px;
+  flex-basis: 54px;
+}
+
+.battlefield-panel--opponents .battlefield-zone-entry--shelf .battlefield-row {
+  padding: 5px;
+}
+
+.battlefield-panel--opponents .zone-card-name-list,
+.battlefield-panel--opponents .zone-hidden-card-list {
+  grid-auto-rows: 26px;
+  gap: 3px;
+  padding: 3px;
+}
+
+.battlefield-panel--opponents .zone-card-name-row,
+.battlefield-panel--opponents .zone-hidden-card-row {
+  padding-inline: 6px;
+}
+
+.battlefield-panel--opponents .zone-card-name-row span,
+.battlefield-panel--opponents .zone-hidden-card-row span {
+  font-size: 9px;
+}
+
+.battlefield-panel--opponents .deck-zone-pile--compact {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 4px;
+}
+
+.battlefield-panel--opponents .deck-zone-mini-card {
+  width: 24px;
+}
+
+.battlefield-panel--opponents .deck-zone-mini-meta {
+  font-size: 9px;
+}
+
+.battlefield-panel--opponents .deck-zone-mini-count {
+  min-width: 26px;
+  padding: 3px 5px;
+  font-size: 12px;
+}
+
 .battlefield-row {
   min-height: 100%;
   padding: 12px 12px 14px;

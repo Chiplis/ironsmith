@@ -288,14 +288,25 @@ impl CardDefinitionBuilder {
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
             KeywordAction::Outlast(cost) => self.outlast(cost),
+            KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
+            KeywordAction::Backup(amount) => self.backup(amount),
+            KeywordAction::Dash(cost) => self.dash(cost),
+            KeywordAction::Warp(cost) => self.warp(cost),
+            KeywordAction::Plot(cost) => self.plot(cost),
+            KeywordAction::Disturb(cost) => self.disturb(cost),
+            KeywordAction::Spectacle(cost) => self.spectacle(cost),
+            KeywordAction::Foretell(cost) => self.foretell(cost),
+            KeywordAction::Unleash => self.unleash(),
             KeywordAction::Ward(amount) => self.ward_generic(amount),
             KeywordAction::Undying => self.undying(),
             KeywordAction::Persist => self.persist(),
             KeywordAction::Renown(amount) => self.renown(amount),
+            KeywordAction::Myriad => self.myriad(),
+            KeywordAction::Mobilize(amount) => self.mobilize(amount),
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Overload(cost) => self.overload(cost),
@@ -303,7 +314,21 @@ impl CardDefinitionBuilder {
             KeywordAction::CumulativeUpkeep { total_cost, text } => {
                 self.cumulative_upkeep(total_cost, text)
             }
+            KeywordAction::Casualty(amount) => self.casualty(amount),
+            KeywordAction::Conspire => self.conspire(),
+            KeywordAction::Ravenous => self.ravenous(),
+            KeywordAction::Ascend => self.ascend(),
+            KeywordAction::Daybound => self.daybound(),
+            KeywordAction::Nightbound => self.nightbound(),
+            KeywordAction::Haunt => self.haunt(),
+            KeywordAction::Provoke => self.provoke(),
             KeywordAction::Enlist => self.enlist(),
+            KeywordAction::Crew {
+                amount,
+                timing,
+                additional_restrictions,
+            } => self.crew(amount, timing, additional_restrictions),
+            KeywordAction::Undaunted => self.undaunted(),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
             KeywordAction::Assist => self.assist(),
@@ -355,6 +380,8 @@ impl CardDefinitionBuilder {
             KeywordAction::ProtectionFromSubtype(subtype) => self.protection_from_subtype(subtype),
             KeywordAction::Devoid => self.devoid(),
             KeywordAction::Annihilator(amount) => self.annihilator(amount),
+            KeywordAction::ForMirrodin => self.for_mirrodin(),
+            KeywordAction::LivingWeapon => self.living_weapon(),
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
@@ -788,13 +815,63 @@ impl CardDefinitionBuilder {
     }
 
     pub fn enlist(self) -> Self {
+        let tag = "enlisted_creature";
+        let mut filter = crate::target::ObjectFilter::creature()
+            .you_control()
+            .other();
+        filter.nonattacking = true;
+        let effects = vec![
+            crate::effect::Effect::tag_triggering_object("enlist_attacker"),
+            crate::effect::Effect::choose_objects(filter, 1, crate::target::PlayerFilter::You, tag),
+            crate::effect::Effect::tap(crate::target::ChooseSpec::Tagged(tag.into())),
+            crate::effect::Effect::pump_for_each(
+                crate::target::ChooseSpec::Tagged("enlist_attacker".into()),
+                1,
+                0,
+                crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
+                    tag.into(),
+                ))),
+                crate::effect::Until::EndOfTurn,
+            ),
+        ];
         self.with_ability(
             crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_attacks(),
-                crate::resolution::ResolutionProgram::default(),
+                vec![crate::effect::Effect::may(effects)],
             )
             .with_text("Enlist"),
         )
+    }
+
+    pub fn crew(
+        self,
+        amount: u32,
+        timing: crate::ability::ActivationTiming,
+        additional_restrictions: Vec<String>,
+    ) -> Self {
+        let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+            crate::effects::CrewCostEffect::new(amount),
+        ));
+        let animate = crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddCardTypes(vec![crate::types::CardType::Creature]),
+            crate::effect::Until::EndOfTurn,
+        ));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
+                choices: Vec::new(),
+                timing,
+                additional_restrictions,
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some(format!("Crew {amount}")),
+        })
     }
 
     pub fn riot(self) -> Self {
@@ -827,6 +904,25 @@ impl CardDefinitionBuilder {
         )
     }
 
+    pub fn unleash(self) -> Self {
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![crate::effect::Effect::may(vec![
+                    crate::effect::Effect::put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        1,
+                        crate::target::ChooseSpec::Source,
+                    ),
+                ])],
+            )
+            .with_text("Unleash"),
+        )
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::unleash(),
+        ))
+    }
+
     pub fn outlast(self, cost: ManaCost) -> Self {
         let text = format!("Outlast {}", cost.to_oracle());
         let total_cost = TotalCost::from_costs(vec![
@@ -846,6 +942,37 @@ impl CardDefinitionBuilder {
             )
             .with_text(&text),
         )
+    }
+
+    pub fn scavenge(self, cost: ManaCost) -> Self {
+        let text = format!("Scavenge {}", cost.to_oracle());
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::creature());
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        crate::effect::Value::SourcePower,
+                        target.clone(),
+                    ),
+                ]),
+                choices: vec![target],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![crate::zone::Zone::Graveyard],
+            text: Some(text),
+        })
     }
 
     pub fn unearth(self, cost: ManaCost) -> Self {
@@ -933,6 +1060,16 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn backup(self, amount: u32) -> Self {
+        let text = format!("Backup {amount}");
+        self.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::keyword_marker(text.clone()),
+            )
+            .with_text(&text),
+        )
+    }
+
     pub fn cipher(self) -> Self {
         self.with_ability(
             crate::ability::Ability::static_ability(
@@ -940,6 +1077,24 @@ impl CardDefinitionBuilder {
             )
             .with_text("Cipher"),
         )
+    }
+
+    pub fn dash(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Dash { cost });
+        self
+    }
+
+    pub fn warp(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Warp { cost });
+        self
+    }
+
+    pub fn plot(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Plot { cost });
+        self
     }
 
     pub fn suspend(self, time: u32, cost: ManaCost) -> Self {
@@ -992,12 +1147,39 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn disturb(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Disturb { cost });
+        self
+    }
+
     pub fn overload(mut self, cost: ManaCost) -> Self {
         self.alternative_casts.push(
             crate::alternative_cast::AlternativeCastingMethod::Overload {
                 cost,
                 effects: Vec::new(),
             },
+        );
+        self
+    }
+
+    pub fn foretell(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Foretell { cost });
+        self
+    }
+
+    pub fn spectacle(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts.push(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost_with_condition(
+                "Spectacle",
+                Some(cost),
+                Vec::new(),
+                crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+                    condition: crate::ConditionExpr::OpponentLostLifeThisTurn,
+                    display: "an opponent lost life this turn".to_string(),
+                },
+            ),
         );
         self
     }
@@ -1072,6 +1254,267 @@ impl CardDefinitionBuilder {
             functional_zones: vec![crate::zone::Zone::Battlefield],
             text: Some(text),
         })
+    }
+
+    pub fn casualty(self, power: u32) -> Self {
+        let text = format!("Casualty {power}");
+        let mut creature_filter = crate::target::ObjectFilter::creature().you_control();
+        creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
+
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::you_cast_this_spell(),
+                vec![crate::effect::Effect::may(vec![
+                    crate::effect::Effect::sacrifice(creature_filter, 1),
+                    crate::effect::Effect::with_id(
+                        0,
+                        crate::effect::Effect::new(crate::effects::CopySpellEffect::single(
+                            crate::target::ChooseSpec::Source,
+                        )),
+                    ),
+                    crate::effect::Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(0),
+                        crate::target::PlayerFilter::You,
+                    ),
+                ])],
+            )
+            .in_zones(vec![crate::zone::Zone::Stack])
+            .with_text(&text),
+        )
+    }
+
+    pub fn conspire(mut self) -> Self {
+        let existing_instances = self
+            .optional_costs
+            .iter()
+            .filter(|cost| cost.label == "Conspire" || cost.label.starts_with("Conspire "))
+            .count();
+        let label = if existing_instances == 0 {
+            "Conspire".to_string()
+        } else {
+            format!("Conspire {}", existing_instances + 1)
+        };
+        let cost = TotalCost::from_cost(crate::costs::Cost::effect(crate::effect::Effect::new(
+            crate::effects::ConspireCostEffect::new(),
+        )));
+        self.optional_costs
+            .push(OptionalCost::custom(label.clone(), cost));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::with_id(
+                        0,
+                        crate::effect::Effect::new(crate::effects::CopySpellEffect::single(
+                            crate::target::ChooseSpec::Source,
+                        )),
+                    ),
+                    crate::effect::Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(0),
+                        crate::target::PlayerFilter::You,
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label)),
+            }),
+            functional_zones: vec![crate::zone::Zone::Stack],
+            text: None,
+        })
+    }
+
+    pub fn ravenous(self) -> Self {
+        self.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::X,
+                ),
+            )
+            .with_text("Ravenous"),
+        )
+        .with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_enters_battlefield(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::draw(1),
+                ]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::XValueAtLeast(5)),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    pub fn ascend(self) -> Self {
+        let controls_ten = crate::ConditionExpr::PlayerControlsAtLeast {
+            player: crate::target::PlayerFilter::You,
+            filter: crate::target::ObjectFilter::permanent().you_control(),
+            count: 10,
+        };
+        let not_blessed =
+            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::PlayerHasCitysBlessing {
+                player: crate::target::PlayerFilter::You,
+            }));
+        let bless_condition =
+            crate::ConditionExpr::And(Box::new(controls_ten), Box::new(not_blessed));
+        let get_blessing =
+            crate::effect::Effect::create_emblem(crate::effect::EmblemDescription::new(
+                "City's Blessing",
+                "You have the city's blessing for the rest of the game.",
+            ));
+
+        let is_nonpermanent_spell = self
+            .card_builder
+            .card_types_ref()
+            .iter()
+            .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery));
+        if is_nonpermanent_spell {
+            let mut out = self;
+            let mut effects = out.spell_effect.take().unwrap_or_default();
+            effects.insert(
+                0,
+                crate::effect::Effect::conditional_only(bless_condition, vec![get_blessing]),
+            );
+            out.spell_effect = Some(effects);
+            return out;
+        }
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::enters_battlefield(
+                    crate::target::ObjectFilter::permanent().you_control(),
+                    None,
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
+                choices: vec![],
+                intervening_if: Some(bless_condition),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some("Ascend".to_string()),
+        })
+    }
+
+    pub fn daybound(self) -> Self {
+        self.day_nightbound("Daybound")
+    }
+
+    pub fn nightbound(self) -> Self {
+        self.day_nightbound("Nightbound")
+    }
+
+    fn day_nightbound(self, text: &str) -> Self {
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::beginning_of_upkeep(
+                    crate::target::PlayerFilter::Any,
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::conditional(
+                        crate::ConditionExpr::SourceIsFaceDown,
+                        vec![crate::effect::Effect::conditional_only(
+                            crate::ConditionExpr::SpellsWereCastLastTurnOrMore(2),
+                            vec![crate::effect::Effect::transform(
+                                crate::target::ChooseSpec::Source,
+                            )],
+                        )],
+                        vec![crate::effect::Effect::conditional_only(
+                            crate::ConditionExpr::NoSpellsWereCastLastTurn,
+                            vec![crate::effect::Effect::transform(
+                                crate::target::ChooseSpec::Source,
+                            )],
+                        )],
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some(text.to_string()),
+        })
+    }
+
+    pub fn haunt(self) -> Self {
+        let trigger = if self
+            .card_builder
+            .card_types_ref()
+            .contains(&CardType::Creature)
+        {
+            crate::triggers::Trigger::this_dies()
+        } else {
+            crate::triggers::Trigger::new(
+                crate::triggers::ZoneChangeTrigger::new()
+                    .from(crate::zone::Zone::Stack)
+                    .to(crate::zone::Zone::Graveyard)
+                    .this(),
+            )
+        };
+        let functional_zones = if self
+            .card_builder
+            .card_types_ref()
+            .contains(&CardType::Creature)
+        {
+            vec![crate::zone::Zone::Battlefield]
+        } else {
+            vec![crate::zone::Zone::Graveyard]
+        };
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::exile(crate::target::ChooseSpec::Source),
+                ]),
+                choices: vec![crate::target::ChooseSpec::target(
+                    crate::target::ChooseSpec::creature(),
+                )],
+                intervening_if: None,
+            }),
+            functional_zones,
+            text: Some("Haunt".to_string()),
+        })
+    }
+
+    pub fn provoke(self) -> Self {
+        let target_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+            crate::target::ObjectFilter::creature()
+                .controlled_by(crate::target::PlayerFilter::Defending),
+        ));
+        let untap = crate::effect::Effect::untap(target_spec.clone());
+        let must_block =
+            crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                target_spec.clone(),
+                crate::continuous::Modification::AddAbility(
+                    crate::static_abilities::StaticAbility::must_block(),
+                ),
+                crate::effect::Until::EndOfCombat,
+            ));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_attacks(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    untap, must_block,
+                ]),
+                choices: vec![target_spec],
+                intervening_if: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some("Provoke".to_string()),
+        })
+    }
+
+    pub fn undaunted(self) -> Self {
+        let reduction = crate::static_abilities::CostReduction::new(
+            crate::target::ObjectFilter::default(),
+            crate::effect::Value::CountPlayers(crate::target::PlayerFilter::Opponent),
+        );
+        self.with_ability(
+            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::new(
+                reduction,
+            ))
+            .with_text("Undaunted")
+            .in_zones(vec![crate::zone::Zone::Stack, crate::zone::Zone::Hand]),
+        )
     }
 
     pub fn extort(self) -> Self {
@@ -1189,6 +1632,90 @@ impl CardDefinitionBuilder {
                 ),
             )
             .with_text("Sunburst"),
+        )
+    }
+
+    pub fn for_mirrodin(self) -> Self {
+        let created_tag = crate::tag::TagKey::from("for_mirrodin_created");
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![
+                    crate::effect::Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
+                        .tag(created_tag.clone()),
+                    crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
+                        created_tag,
+                    )),
+                ],
+            )
+            .with_text("For Mirrodin!"),
+        )
+    }
+
+    pub fn living_weapon(self) -> Self {
+        let created_tag = crate::tag::TagKey::from("living_weapon_created");
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![
+                    crate::effect::Effect::create_tokens(Self::living_weapon_germ_token(), 1)
+                        .tag(created_tag.clone()),
+                    crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
+                        created_tag,
+                    )),
+                ],
+            )
+            .with_text("Living weapon"),
+        )
+    }
+
+    pub fn myriad(self) -> Self {
+        let opponent_other_than_defending = crate::target::PlayerFilter::excluding(
+            crate::target::PlayerFilter::Opponent,
+            crate::target::PlayerFilter::Defending,
+        );
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_attacks(),
+                vec![crate::effect::Effect::for_players(
+                    opponent_other_than_defending,
+                    vec![crate::effect::Effect::may(vec![
+                        crate::effect::Effect::new(
+                            crate::effects::CreateTokenCopyEffect::new(
+                                crate::target::ChooseSpec::Source,
+                                1,
+                                crate::target::PlayerFilter::You,
+                            )
+                            .enters_tapped(true)
+                            .attacking_player_or_planeswalker_controlled_by(
+                                crate::target::PlayerFilter::IteratedPlayer,
+                            )
+                            .exile_at_eoc(true),
+                        ),
+                    ])],
+                )],
+            )
+            .with_text("Myriad"),
+        )
+    }
+
+    pub fn mobilize(self, amount: u32) -> Self {
+        let text = format!("Mobilize {amount}");
+        let effect = crate::effects::CreateTokenEffect::new(
+            Self::mobilize_warrior_token(),
+            amount,
+            crate::target::PlayerFilter::You,
+        )
+        .tapped()
+        .attacking()
+        .sacrifice_at_next_end_step();
+
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::this_attacks(),
+                vec![crate::effect::Effect::new(effect)],
+            )
+            .with_text(&text),
         )
     }
 
@@ -1593,6 +2120,36 @@ impl CardDefinitionBuilder {
             .color_indicator(ColorSet::WHITE.union(ColorSet::BLACK))
             .power_toughness(PowerToughness::fixed(1, 1))
             .flying()
+            .build()
+    }
+
+    fn for_mirrodin_rebel_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Rebel")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Rebel])
+            .color_indicator(ColorSet::RED)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn living_weapon_germ_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
+            .color_indicator(ColorSet::BLACK)
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .build()
+    }
+
+    fn mobilize_warrior_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Warrior")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Warrior])
+            .color_indicator(ColorSet::RED)
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build()
     }
 

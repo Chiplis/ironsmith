@@ -3,10 +3,35 @@ function normalizeCount(value) {
   return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
 }
 
-export default function DeckZonePile({ count, topCardName = null, canViewTop = false }) {
+export default function DeckZonePile({
+  count,
+  topCardName = null,
+  canViewTop = false,
+  compact = false,
+}) {
   const deckCount = normalizeCount(count);
   const stackDepth = Math.min(Math.max(deckCount, 1), 4);
   const visibleTopCard = canViewTop ? String(topCardName || "Empty") : "";
+
+  if (compact) {
+    return (
+      <section className="deck-zone-pile deck-zone-pile--compact relative h-full min-h-0 overflow-hidden rounded-none border border-[#34485f] bg-[linear-gradient(180deg,rgba(12,20,31,0.98),rgba(7,12,19,0.98))]">
+        <div className="deck-zone-mini-card" aria-hidden="true">
+          <span>Deck</span>
+        </div>
+        <div className="deck-zone-mini-meta">
+          {visibleTopCard ? (
+            <span className="deck-zone-mini-top" title={`Top card: ${visibleTopCard}`}>
+              Top: {visibleTopCard}
+            </span>
+          ) : (
+            <span>{deckCount} card{deckCount === 1 ? "" : "s"}</span>
+          )}
+        </div>
+        <div className="deck-zone-mini-count">{deckCount}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="deck-zone-pile relative h-full min-h-[148px] overflow-hidden rounded-none border border-[#34485f] bg-[linear-gradient(180deg,rgba(12,20,31,0.98),rgba(7,12,19,0.98))] shadow-[inset_0_1px_0_rgba(170,208,245,0.08),0_10px_24px_rgba(0,0,0,0.22)]">

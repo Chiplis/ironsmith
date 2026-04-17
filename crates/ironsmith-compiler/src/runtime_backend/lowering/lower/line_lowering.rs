@@ -20,6 +20,83 @@ struct LineChunkLoweringInput<'a> {
     annotations: &'a mut ParseAnnotations,
 }
 
+fn conditional_self_replacement_followup(
+    effect: &crate::effect::Effect,
+) -> Option<crate::effects::ConditionalEffect> {
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return Some(conditional.clone());
+    }
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .and_then(|tagged| conditional_self_replacement_followup(&tagged.effect))
+}
+
+fn materialized_self_replacement_followup(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<crate::resolution::SelfReplacementBranch> {
+    let [segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !segment.default_effects.is_empty() || segment.self_replacements.len() != 1 {
+        return None;
+    }
+    Some(segment.self_replacements[0].clone())
+}
+
+fn retarget_replacement_effects(
+    effects: Vec<crate::effect::Effect>,
+    previous_target: &ChooseSpec,
+) -> Vec<crate::effect::Effect> {
+    effects
+        .into_iter()
+        .map(|effect| {
+            if let Some(replacement_damage) =
+                effect.downcast_ref::<crate::effects::DealDamageEffect>()
+                && replacement_damage.target == ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any)
+            {
+                crate::effect::Effect::deal_damage(
+                    replacement_damage.amount.clone(),
+                    previous_target.clone(),
+                )
+            } else {
+                super::rewrite_replacement_effect_target(&effect, previous_target).unwrap_or(effect)
+            }
+        })
+        .collect()
+}
+
+fn compile_trailing_instead_if_condition(
+    normalized_line: &str,
+    line_index: usize,
+    prepared: &super::super::effect_pipeline::PreparedEffectsForLowering,
+) -> Result<Option<crate::effect::Condition>, CardTextError> {
+    let tokens = lex_line(normalized_line, line_index).map_err(|err| {
+        CardTextError::ParseError(format!(
+            "failed to lex instead-if follow-up '{}': {err:?}",
+            normalized_line
+        ))
+    })?;
+    let Some(instead_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.is_word("instead") && tokens.get(idx + 1).is_some_and(|next| next.is_word("if")))
+            .then_some(idx)
+    }) else {
+        return Ok(None);
+    };
+    let Some(predicate) =
+        crate::runtime_backend::grammar::structure::parse_trailing_instead_if_predicate_lexed(
+            &tokens[instead_idx..],
+        )
+    else {
+        return Ok(None);
+    };
+    compile_condition_from_predicate_ast_with_env(
+        &predicate,
+        &prepared.initial_env,
+        prepared.imports.last_object_tag.as_ref(),
+    )
+    .map(Some)
+}
+
 pub(super) fn rewrite_apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
@@ -399,29 +476,159 @@ fn lower_statement_chunk(
     state.latest_spell_exports = lowered.exports;
 
     let normalized_line = info.normalized.normalized.as_str().to_ascii_lowercase();
+    let instead_semantics = super::classify_instead_followup_text(&normalized_line);
+    let trailing_instead_if_condition = if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) {
+        compile_trailing_instead_if_condition(&normalized_line, info.line_index, &prepared)?
+    } else {
+        None
+    };
     if matches!(
-        super::classify_instead_followup_text(&normalized_line),
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && compiled.len() == 2
+        && builder.spell_effect.is_none()
+        && let Some(replacement) = conditional_self_replacement_followup(&compiled[1])
+        && replacement.if_false.is_empty()
+    {
+        let previous = compiled[0].clone();
+        let mut replacement = replacement;
+        if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
+            replacement.if_true =
+                retarget_replacement_effects(replacement.if_true, &previous_target);
+        }
+        let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(vec![previous]);
+        let Some(segment) = spell_effect.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for inline self-replacement"
+                    .to_string(),
+            ));
+        };
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                replacement.condition,
+                replacement.if_true,
+            ));
+        builder.spell_effect = Some(spell_effect);
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && compiled.len() == 2
+        && let Some(ref mut existing) = builder.spell_effect
+        && !existing.is_empty()
+        && let Some(replacement) = conditional_self_replacement_followup(&compiled[1])
+        && replacement.if_false.is_empty()
+    {
+        let mut replacement = replacement;
+        if let Some(previous_target) = existing
+            .last()
+            .and_then(super::extract_previous_replacement_target)
+            .or_else(|| super::extract_previous_replacement_target(&compiled[0]))
+        {
+            replacement.if_true =
+                retarget_replacement_effects(replacement.if_true, &previous_target);
+        }
+        let Some(segment) = existing.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for repeated self-replacement"
+                    .to_string(),
+            ));
+        };
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                replacement.condition,
+                replacement.if_true,
+            ));
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && compiled.len() == 2
+        && let Some(ref mut existing) = builder.spell_effect
+        && !existing.is_empty()
+        && let Some(condition) = trailing_instead_if_condition
+    {
+        let mut replacement_effects = vec![compiled[1].clone()];
+        if let Some(previous_target) = existing
+            .last()
+            .and_then(super::extract_previous_replacement_target)
+            .or_else(|| super::extract_previous_replacement_target(&compiled[0]))
+        {
+            replacement_effects =
+                retarget_replacement_effects(replacement_effects, &previous_target);
+        }
+        let Some(segment) = existing.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for plain instead-if follow-up"
+                    .to_string(),
+            ));
+        };
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                condition,
+                replacement_effects,
+            ));
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && let Some(mut replacement) = materialized_self_replacement_followup(&compiled)
+        && let Some(ref mut existing) = builder.spell_effect
+        && !existing.is_empty()
+    {
+        if let Some(previous_target) = existing
+            .last()
+            .and_then(super::extract_previous_replacement_target)
+        {
+            replacement.replacement_effects =
+                retarget_replacement_effects(replacement.replacement_effects, &previous_target);
+        }
+        let Some(segment) = existing.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for materialized self-replacement"
+                    .to_string(),
+            ));
+        };
+        segment.self_replacements.push(replacement);
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 1
         && builder.spell_effect.is_none()
-        && compiled[0]
-            .downcast_ref::<crate::effects::ConditionalEffect>()
-            .is_some_and(|replacement| replacement.if_false.is_empty())
+        && (normalized_line.starts_with("if ")
+            || conditional_self_replacement_followup(&compiled[0])
+                .is_some_and(|replacement| replacement.if_false.is_empty()))
+    {
+        return Err(CardTextError::UnsupportedLine(
+            "unsupported self-replacement follow-up without a prior spell segment".to_string(),
+        ));
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && builder.spell_effect.is_none()
+        && materialized_self_replacement_followup(&compiled).is_some()
     {
         return Err(CardTextError::UnsupportedLine(
             "unsupported self-replacement follow-up without a prior spell segment".to_string(),
         ));
     }
     if matches!(
-        super::classify_instead_followup_text(&normalized_line),
+        instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 1
         && let Some(ref mut existing) = builder.spell_effect
         && !existing.is_empty()
-        && let Some(replacement) = compiled[0].downcast_ref::<crate::effects::ConditionalEffect>()
+        && let Some(replacement) = conditional_self_replacement_followup(&compiled[0])
         && replacement.if_false.is_empty()
     {
-        let mut replacement = replacement.clone();
+        let mut replacement = replacement;
         if let Some(previous_target) = existing
             .last()
             .and_then(super::extract_previous_replacement_target)

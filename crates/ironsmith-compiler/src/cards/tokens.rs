@@ -5,11 +5,21 @@ use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
 
 fn token(name: &str) -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .token()
+        .build()
+}
+
+fn role_token(name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
         .build()
 }
 
@@ -70,10 +80,54 @@ pub fn lander_token_definition() -> CardDefinition {
         .build()
 }
 pub fn junk_token_definition() -> CardDefinition {
+    let exile_tag = crate::tag::TagKey::from("junk_exiled_card");
+    let impulse_draw_ability = crate::ability::Ability {
+        kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
+            effects: vec![
+                Effect::new(
+                    crate::effects::ChooseObjectsEffect::new(
+                        crate::filter::ObjectFilter::default()
+                            .in_zone(Zone::Library)
+                            .owned_by(PlayerFilter::You),
+                        1,
+                        PlayerFilter::You,
+                        exile_tag.clone(),
+                    )
+                    .in_zone(Zone::Library)
+                    .top_only(),
+                ),
+                Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(
+                    exile_tag.clone(),
+                ))),
+                Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                    exile_tag,
+                    PlayerFilter::You,
+                    crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+                    true,
+                    false,
+                )),
+            ]
+            .into(),
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::SorcerySpeed,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: None,
+            activation_condition: None,
+            mana_usage_restrictions: vec![],
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(
+            "{T}, Sacrifice this token: Exile the top card of your library. You may play that card this turn. Activate only as a sorcery.".to_string(),
+        ),
+    };
+
     CardDefinitionBuilder::new(CardId::new(), "Junk")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Junk])
+        .with_ability(impulse_draw_ability)
         .build()
 }
 pub fn gold_token_definition() -> CardDefinition {
@@ -127,20 +181,20 @@ pub fn walker_token_definition() -> CardDefinition {
         .build()
 }
 pub fn wicked_role_token_definition() -> CardDefinition {
-    token("Wicked Role")
+    role_token("Wicked Role")
 }
 pub fn young_hero_role_token_definition() -> CardDefinition {
-    token("Young Hero Role")
+    role_token("Young Hero Role")
 }
 pub fn monster_role_token_definition() -> CardDefinition {
-    token("Monster Role")
+    role_token("Monster Role")
 }
 pub fn sorcerer_role_token_definition() -> CardDefinition {
-    token("Sorcerer Role")
+    role_token("Sorcerer Role")
 }
 pub fn royal_role_token_definition() -> CardDefinition {
-    token("Royal Role")
+    role_token("Royal Role")
 }
 pub fn cursed_role_token_definition() -> CardDefinition {
-    token("Cursed Role")
+    role_token("Cursed Role")
 }

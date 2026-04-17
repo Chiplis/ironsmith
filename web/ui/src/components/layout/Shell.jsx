@@ -161,9 +161,10 @@ export default function Shell() {
         if (typeof game.setSemanticThreshold === "function") {
           await game.setSemanticThreshold(semanticThreshold);
         }
-        await game.reset(parseNames(playerNames), startingLife);
+        const names = parseNames(playerNames);
+        await game.reset(names, startingLife);
         if (!initialPuzzleQueryRef.current) {
-          await addStartingBattlefieldPreset(game);
+          await addStartingBoardPreset(game, names.length);
         }
         await refresh("WASM loaded");
       } catch (err) {
@@ -239,8 +240,9 @@ export default function Shell() {
         return;
       }
       try {
-        await game.reset(parseNames(playerNames), startingLife);
-        await addStartingBattlefieldPreset(game);
+        const names = parseNames(playerNames);
+        await game.reset(names, startingLife);
+        await addStartingBoardPreset(game, names.length);
         setDeckLoadingMode(false);
         await refresh("Game reset");
       } catch (err) {
@@ -510,7 +512,7 @@ export default function Shell() {
   );
 }
 
-async function addStartingBattlefieldPreset(game) {
+async function addStartingBoardPreset(game, playerCount = 2) {
   const openingBattlefield = [
     "Omniscience",
     "Forest",
@@ -524,6 +526,8 @@ async function addStartingBattlefieldPreset(game) {
     "Ornithopter",
     "Myr Moonvessel",
   ];
+  const openingGraveyard = ["Plains", "Plains", "Plains", "Plains", "Plains"];
+  const openingExile = ["Swamp", "Swamp"];
 
   for (const playerIndex of [0, 1]) {
     for (const cardName of openingBattlefield) {
@@ -531,6 +535,23 @@ async function addStartingBattlefieldPreset(game) {
         await game.addCardToZone(playerIndex, cardName, "battlefield", true);
       } catch (err) {
         console.warn(`Skipping startup battlefield card "${cardName}":`, err);
+      }
+    }
+  }
+
+  for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+    for (const cardName of openingGraveyard) {
+      try {
+        await game.addCardToZone(playerIndex, cardName, "graveyard", true);
+      } catch (err) {
+        console.warn(`Skipping startup graveyard card "${cardName}":`, err);
+      }
+    }
+    for (const cardName of openingExile) {
+      try {
+        await game.addCardToZone(playerIndex, cardName, "exile", true);
+      } catch (err) {
+        console.warn(`Skipping startup exile card "${cardName}":`, err);
       }
     }
   }

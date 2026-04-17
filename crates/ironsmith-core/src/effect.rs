@@ -130,6 +130,7 @@ pub enum DelayedTriggerSpec {
     ThisDies,
     Attacks(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
+    Blocks(ObjectFilter),
     Dies(ObjectFilter),
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),
@@ -848,6 +849,7 @@ impl<E> ChooseModeEffect<E> {
     }
 
     pub fn with_previously_unchosen_modes_only_this_turn(mut self) -> Self {
+        self.disallow_previously_chosen_modes = true;
         self.disallow_previously_chosen_modes_this_turn = true;
         self
     }
@@ -3151,6 +3153,15 @@ impl UnearthEffect {
 pub struct NinjutsuCostEffect;
 
 impl NinjutsuCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ConspireCostEffect;
+
+impl ConspireCostEffect {
     pub fn new() -> Self {
         Self
     }

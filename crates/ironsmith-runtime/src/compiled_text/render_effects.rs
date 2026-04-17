@@ -7774,6 +7774,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(subject) = describe_for_each_tagged_this_way_subject(&for_each.filter) {
             return format!("{subject}, {}", describe_effect_list(&for_each.effects));
         }
+        if for_each.effects.len() == 1
+            && let Some(gain_control) =
+                for_each.effects[0].downcast_ref::<crate::effects::GainControlEffect>()
+            && matches!(gain_control.target, ChooseSpec::Iterated)
+        {
+            let description = for_each.filter.description();
+            let filter_text = strip_indefinite_article(&description);
+            return format!(
+                "Gain control of each {} {}",
+                filter_text,
+                describe_until(&gain_control.duration)
+            );
+        }
         let description = for_each.filter.description();
         let filter_text = strip_indefinite_article(&description);
         return format!(
@@ -9352,6 +9365,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(shuffle_library) = effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>() {
+        if matches!(
+            &shuffle_library.player,
+            PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::Any)
+        ) {
+            return "Target player shuffles".to_string();
+        }
         return format!(
             "Shuffle {} library",
             describe_possessive_player_filter(&shuffle_library.player)

@@ -382,6 +382,7 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter) => {
                 Self::attacks_one_or_more(filter)
             }
+            ironsmith_core::DelayedTriggerSpec::Blocks(filter) => Self::blocks(filter),
             ironsmith_core::DelayedTriggerSpec::Dies(filter) => Self::dies(filter),
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)

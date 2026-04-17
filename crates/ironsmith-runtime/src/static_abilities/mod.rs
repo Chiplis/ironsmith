@@ -2493,6 +2493,18 @@ impl StaticAbility {
         Self::new(LookAtTopCardOfLibrary)
     }
 
+    pub fn all_players_look_at_top_cards_of_libraries() -> Self {
+        Self::new(AllPlayersLookAtTopCardsOfLibraries)
+    }
+
+    pub fn all_players_look_at_your_top_library_card() -> Self {
+        Self::new(AllPlayersLookAtYourTopLibraryCard)
+    }
+
+    pub fn opponents_play_with_hands_revealed() -> Self {
+        Self::new(OpponentsPlayWithHandsRevealed)
+    }
+
     pub fn unsupported_parser_line(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {
         Self::new(UnsupportedParserLine::new(raw_line, reason))
     }

@@ -3,6 +3,7 @@ use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::replacement::ReplacementEffect;
+use std::fmt;
 
 pub type CompiledStaticAbility = ironsmith_core::StaticAbility<
     crate::triggers::Trigger,
@@ -25,7 +26,7 @@ type CompiledGrantSpec = ironsmith_core::GrantSpec<
     ThisSpellCostCondition,
 >;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StaticAbilityModelInterpreter {
     model: CompiledStaticAbility,
     granted_inline_ability: Option<crate::ability::Ability>,
@@ -43,7 +44,81 @@ pub struct StaticAbilityModelInterpreter {
     this_spell_cost_reduction_mana_cost: Option<super::ThisSpellCostReductionManaCost>,
 }
 
+impl fmt::Debug for StaticAbilityModelInterpreter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let payload = self.payload_debug_summary();
+        f.debug_struct("StaticAbilityModelInterpreter")
+            .field("id", &self.model.id)
+            .field("label", &self.model.label)
+            .field("payload", &payload)
+            .finish_non_exhaustive()
+    }
+}
+
 impl StaticAbilityModelInterpreter {
+    fn ability_model_debug_summary(ability: &CompiledAbilityModel) -> String {
+        match &ability.kind {
+            ironsmith_core::AbilityKind::Static(static_ability) => format!(
+                "Static({})",
+                Self::static_model_debug_summary(static_ability)
+            ),
+            ironsmith_core::AbilityKind::Triggered(triggered) => format!(
+                "TriggeredAbility {{ trigger: {:?}, effects: {:?}, choices: {:?}, intervening_if: {:?}, text: {:?} }}",
+                triggered.trigger,
+                triggered.effects,
+                triggered.choices,
+                triggered.intervening_if,
+                ability.text
+            ),
+            ironsmith_core::AbilityKind::Activated(activated) => format!(
+                "ActivatedAbility {{ mana_cost: {:?}, effects: {:?}, choices: {:?}, timing: {:?}, text: {:?} }}",
+                activated.mana_cost,
+                activated.effects,
+                activated.choices,
+                activated.timing,
+                ability.text
+            ),
+        }
+    }
+
+    fn static_model_debug_summary(ability: &CompiledStaticAbility) -> String {
+        match &ability.payload {
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(granted) => format!(
+                "SoulbondSharedObjectAbility({})",
+                Self::ability_model_debug_summary(granted)
+            ),
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedAbility(granted) => format!(
+                "SoulbondSharedAbility({})",
+                Self::static_model_debug_summary(granted)
+            ),
+            payload => format!(
+                "StaticAbility {{ id: {:?}, label: {:?}, payload: {:?} }}",
+                ability.id, ability.label, payload
+            ),
+        }
+    }
+
+    fn payload_debug_summary(&self) -> String {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => format!(
+                "SoulbondSharedObjectAbility({})",
+                Self::ability_model_debug_summary(ability)
+            ),
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedAbility(ability) => format!(
+                "SoulbondSharedAbility({})",
+                Self::static_model_debug_summary(ability)
+            ),
+            ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
+                format!(
+                    "ThisSpellCastRestriction {{ kind: {:?}, display: {:?} }}",
+                    Self::this_spell_cast_restriction_from_model(kind),
+                    display
+                )
+            }
+            payload => format!("{payload:?}"),
+        }
+    }
+
     pub fn new(model: CompiledStaticAbility) -> Self {
         let granted_inline_ability = Self::cached_granted_inline_ability(&model);
         let enter_as_copy_spec = Self::cached_enter_as_copy_spec(&model);
@@ -87,6 +162,113 @@ impl StaticAbilityModelInterpreter {
         ThisSpellCostCondition,
     > {
         &self.model.payload
+    }
+
+    fn attack_cost_condition_from_model(
+        condition: &ironsmith_core::AttackCostCondition,
+    ) -> super::AttackCostCondition {
+        match condition {
+            ironsmith_core::AttackCostCondition::SacrificePermanents { filter, count } => {
+                super::AttackCostCondition::SacrificePermanents {
+                    filter: filter.clone(),
+                    count: *count,
+                }
+            }
+            ironsmith_core::AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => {
+                super::AttackCostCondition::ReturnPermanentsToOwnersHand {
+                    filter: filter.clone(),
+                    count: *count,
+                }
+            }
+            ironsmith_core::AttackCostCondition::PayGenericPerSourceCounter {
+                counter_type,
+                amount_per_counter,
+            } => super::AttackCostCondition::PayGenericPerSourceCounter {
+                counter_type: *counter_type,
+                amount_per_counter: *amount_per_counter,
+            },
+        }
+    }
+
+    fn attacking_group_condition_from_model(
+        condition: &ironsmith_core::AttackingGroupAttackCondition,
+    ) -> super::AttackingGroupAttackCondition {
+        match condition {
+            ironsmith_core::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(count) => {
+                super::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(*count)
+            }
+            ironsmith_core::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
+                super::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks
+            }
+            ironsmith_core::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks => {
+                super::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks
+            }
+        }
+    }
+
+    fn defending_player_condition_from_model(
+        condition: &ironsmith_core::DefendingPlayerAttackCondition,
+    ) -> super::DefendingPlayerAttackCondition {
+        match condition {
+            ironsmith_core::DefendingPlayerAttackCondition::Controls(filter) => {
+                super::DefendingPlayerAttackCondition::Controls(filter.clone())
+            }
+            ironsmith_core::DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent => {
+                super::DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent
+            }
+            ironsmith_core::DefendingPlayerAttackCondition::HasCardsInGraveyardOrMore(count) => {
+                super::DefendingPlayerAttackCondition::HasCardsInGraveyardOrMore(*count)
+            }
+            ironsmith_core::DefendingPlayerAttackCondition::IsMonarch => {
+                super::DefendingPlayerAttackCondition::IsMonarch
+            }
+            ironsmith_core::DefendingPlayerAttackCondition::IsPoisoned => {
+                super::DefendingPlayerAttackCondition::IsPoisoned
+            }
+        }
+    }
+
+    fn cant_attack_unless_condition_from_model(
+        condition: &ironsmith_core::CantAttackUnlessConditionSpec,
+    ) -> super::CantAttackUnlessConditionSpec {
+        match condition {
+            ironsmith_core::CantAttackUnlessConditionSpec::AttackCost(cost) => {
+                super::CantAttackUnlessConditionSpec::AttackCost(
+                    Self::attack_cost_condition_from_model(cost),
+                )
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::AttackingGroupCondition(condition) => {
+                super::CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                    Self::attacking_group_condition_from_model(condition),
+                )
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
+                filter,
+                count,
+            } => super::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
+                filter: filter.clone(),
+                count: *count,
+            },
+            ironsmith_core::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(filter) => {
+                super::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(
+                    filter.clone(),
+                )
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(count) => {
+                super::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(*count)
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::DefendingPlayerCondition(condition) => {
+                super::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    Self::defending_player_condition_from_model(condition),
+                )
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn => {
+                super::CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn
+            }
+            ironsmith_core::CantAttackUnlessConditionSpec::SourceCondition(condition) => {
+                super::CantAttackUnlessConditionSpec::SourceCondition(condition.clone())
+            }
+        }
     }
 
     fn is_simple_keyword_id(id: StaticAbilityId) -> bool {
@@ -432,10 +614,94 @@ impl StaticAbilityModelInterpreter {
                     reduction.condition.clone(),
                 ))
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { .. } => None,
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
                 Self::cached_this_spell_cost_reduction_mana_cost(ability)
             }
             _ => None,
+        }
+    }
+
+    fn this_spell_cast_restriction_from_model(
+        kind: &ironsmith_core::ThisSpellCastRestrictionKind,
+    ) -> super::ThisSpellCastRestrictionKind {
+        match kind.label.as_str() {
+            "during declare attackers step" => {
+                super::ThisSpellCastRestrictionKind::during_declare_attackers_step()
+            }
+            "during declare attackers step if you were attacked" => {
+                super::ThisSpellCastRestrictionKind::during_declare_attackers_step_if_you_were_attacked_this_step()
+            }
+            "during combat" => super::ThisSpellCastRestrictionKind::during_combat(),
+            "during combat before blockers" => {
+                super::ThisSpellCastRestrictionKind::during_combat_before_blockers_are_declared()
+            }
+            "during combat after blockers" => {
+                super::ThisSpellCastRestrictionKind::during_combat_after_blockers_are_declared()
+            }
+            "during combat on your turn before blockers" => {
+                super::ThisSpellCastRestrictionKind::during_combat_on_your_turn_before_blockers_are_declared()
+            }
+            "during combat on opponents turn" => {
+                super::ThisSpellCastRestrictionKind::during_combat_on_opponents_turn()
+            }
+            "before attackers are declared" => {
+                super::ThisSpellCastRestrictionKind::before_attackers_are_declared()
+            }
+            "before combat damage step" => {
+                super::ThisSpellCastRestrictionKind::before_combat_damage_step()
+            }
+            "during opponents upkeep" => {
+                super::ThisSpellCastRestrictionKind::during_opponents_upkeep()
+            }
+            "during opponents turn after upkeep" => {
+                super::ThisSpellCastRestrictionKind::during_opponents_turn_after_upkeep()
+            }
+            "during your end step" => super::ThisSpellCastRestrictionKind::during_your_end_step(),
+            "if you cast another spell this turn" => {
+                super::ThisSpellCastRestrictionKind::if_you_cast_another_spell_this_turn()
+            }
+            "if you cast another green spell this turn" => {
+                super::ThisSpellCastRestrictionKind::if_you_cast_another_green_spell_this_turn()
+            }
+            "if opponent cast creature spell this turn" => {
+                super::ThisSpellCastRestrictionKind::if_opponent_cast_creature_spell_this_turn()
+            }
+            "if creature is attacking you" => {
+                super::ThisSpellCastRestrictionKind::if_creature_is_attacking_you()
+            }
+            "after combat" => super::ThisSpellCastRestrictionKind::after_combat(),
+            "if no permanents named Tidal Influence" => {
+                super::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield(
+                    "Tidal Influence",
+                )
+            }
+            "if you control snow land" => {
+                super::ThisSpellCastRestrictionKind::if_you_control_snow_land()
+            }
+            "if you control fewer creatures than each opponent" => {
+                super::ThisSpellCastRestrictionKind::if_you_control_fewer_creatures_than_each_opponent()
+            }
+            label => {
+                if let Some(rest) = label.strip_prefix("if you control ")
+                    && let Some((count, subtype_name)) = rest.split_once("+ ")
+                    && let Ok(count) = count.parse::<u32>()
+                    && let Some(subtype) = crate::types::Subtype::all_creature_types()
+                        .iter()
+                        .copied()
+                        .find(|subtype| subtype.display_name() == subtype_name)
+                {
+                    return super::ThisSpellCastRestrictionKind::if_you_control_subtype_or_more(
+                        subtype, count,
+                    );
+                }
+                super::ThisSpellCastRestrictionKind::condition(
+                    super::ThisSpellCastCondition::YouControlAtLeast {
+                        filter: crate::target::ObjectFilter::default(),
+                        count: u32::MAX,
+                    },
+                )
+            }
         }
     }
 
@@ -469,6 +735,9 @@ impl StaticAbilityModelInterpreter {
                     converted = converted.with_condition(condition.clone());
                 }
                 StaticAbility::new(converted)
+            }
+            ironsmith_core::StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
+                StaticAbility::attached_chosen_landwalk_grant(grant.display.clone(), grant.snow)
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
@@ -522,6 +791,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Protection(from) => {
                 StaticAbility::protection(from.clone())
             }
+            ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => {
+                StaticAbility::hexproof_from(filter.clone())
+            }
             ironsmith_core::StaticAbilityPayload::RuleRestriction {
                 restriction,
                 display,
@@ -537,6 +809,112 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedByMoreThan(count) => {
+                StaticAbility::cant_be_blocked_by_more_than(*count)
+            }
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedByPowerOrLess(power) => {
+                StaticAbility::cant_be_blocked_by_power_or_less(*power)
+            }
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedByPowerOrGreater(power) => {
+                StaticAbility::cant_be_blocked_by_power_or_greater(*power)
+            }
+            ironsmith_core::StaticAbilityPayload::CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(card_types) => {
+                if card_types.len() == 1 {
+                    StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_type(
+                        card_types[0],
+                    )
+                } else {
+                    StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_types(
+                        card_types.clone(),
+                    )
+                }
+            }
+            ironsmith_core::StaticAbilityPayload::CantAttackUnlessCondition {
+                condition,
+                display,
+            } => StaticAbility::cant_attack_unless_condition(
+                Self::cant_attack_unless_condition_from_model(condition),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
+                StaticAbility::may_choose_not_to_untap_during_untap_step(subject.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::UntapDuringEachOtherPlayersUntapStep {
+                filter,
+                display,
+            } => StaticAbility::untap_during_each_other_players_untap_step(
+                filter.clone(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::FirstEquipCostAlternative(display) => {
+                StaticAbility::first_equip_cost_alternative(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::ControlAttachedPermanent(display) => {
+                StaticAbility::control_attached_permanent(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } => {
+                StaticAbility::set_colors(filter.clone(), *colors)
+            }
+            ironsmith_core::StaticAbilityPayload::AddColors { filter, colors } => {
+                StaticAbility::add_colors(filter.clone(), *colors)
+            }
+            ironsmith_core::StaticAbilityPayload::SetName { filter, name } => {
+                StaticAbility::set_name(filter.clone(), name.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
+                StaticAbility::add_supertypes(filter.clone(), supertypes.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
+                StaticAbility::max_attackers_each_combat(*maximum)
+            }
+            ironsmith_core::StaticAbilityPayload::MaxCreaturesCanBlockEachCombat(maximum) => {
+                StaticAbility::max_blockers_each_combat(*maximum)
+            }
+            ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display) => {
+                StaticAbility::choose_basic_land_type_as_enters(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::ChooseLandTypeAsEnters(display) => {
+                StaticAbility::choose_land_type_as_enters(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
+                StaticAbility::enchanted_land_is_chosen_type(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
+                StaticAbility::add_chosen_creature_type(filter.clone(), display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
+                StaticAbility::set_chosen_color(filter.clone(), display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
+                StaticAbility::reduce_maximum_hand_size(player.clone(), *by)
+            }
+            ironsmith_core::StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
+                player,
+                min_card_types,
+            } => StaticAbility::max_hand_size_seven_minus_your_graveyard_card_types(
+                player.clone(),
+                *min_card_types,
+            ),
+            ironsmith_core::StaticAbilityPayload::DuplicateMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                count,
+                display,
+            } => StaticAbility::duplicate_matching_triggered_abilities(
+                source_filter.clone(),
+                event_matcher.clone(),
+                *count as usize,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher,
+                display,
+            } => StaticAbility::suppress_matching_triggered_abilities(
+                source_filter.clone(),
+                event_matcher.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ExertAttack {
                 only_if_not_exerted_this_turn,
                 linked_trigger,
@@ -598,6 +976,12 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::CostIncreasePerTargetBeyondFirst(amount) => {
                 StaticAbility::cost_increase_per_target_beyond_first(*amount)
+            }
+            ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { kind, display } => {
+                StaticAbility::this_spell_cast_restriction(
+                    Self::this_spell_cast_restriction_from_model(kind),
+                    display.clone(),
+                )
             }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
@@ -732,6 +1116,9 @@ impl StaticAbility {
 
 impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn id(&self) -> StaticAbilityId {
+        if let Some(ability) = self.leaf_static_ability() {
+            return ability.id();
+        }
         self.model.id.unwrap_or(StaticAbilityId::RuleFallbackText)
     }
 
@@ -985,6 +1372,22 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         .then_some(super::ChoosePlayerAsEntersSpec)
     }
 
+    fn basic_land_type_choice_as_enters(&self) -> Option<super::ChooseBasicLandTypeAsEntersSpec> {
+        matches!(
+            self.payload(),
+            ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypeAsEnters(_)
+        )
+        .then_some(super::ChooseBasicLandTypeAsEntersSpec)
+    }
+
+    fn land_type_choice_as_enters(&self) -> Option<super::ChooseLandTypeAsEntersSpec> {
+        matches!(
+            self.payload(),
+            ironsmith_core::StaticAbilityPayload::ChooseLandTypeAsEnters(_)
+        )
+        .then_some(super::ChooseLandTypeAsEntersSpec)
+    }
+
     fn creature_type_choice_as_enters(&self) -> Option<super::ChooseCreatureTypeAsEntersSpec> {
         matches!(
             self.payload(),
@@ -1096,6 +1499,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn grant_spec(&self) -> Option<crate::grant::GrantSpec> {
         self.grant_spec.clone()
+    }
+
+    fn conditional_spell_keyword_spec(&self) -> Option<super::ConditionalSpellKeywordSpec> {
+        self.leaf_static_ability()?.conditional_spell_keyword_spec()
+    }
+
+    fn trigger_duplication_spec(&self) -> Option<super::TriggerDuplicationSpec> {
+        self.leaf_static_ability()?.trigger_duplication_spec()
+    }
+
+    fn trigger_suppression_spec(&self) -> Option<super::TriggerSuppressionSpec> {
+        self.leaf_static_ability()?.trigger_suppression_spec()
+    }
+
+    fn this_spell_cast_restriction_kind(&self) -> Option<super::ThisSpellCastRestrictionKind> {
+        self.leaf_static_ability()?
+            .this_spell_cast_restriction_kind()
     }
 
     fn generic_attack_tax_per_attacker_against_you(

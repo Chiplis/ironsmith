@@ -309,6 +309,10 @@ impl Effect {
         Self::new(ChooseModeEffect::new(modes, Value::Fixed(0), max, false))
     }
 
+    pub fn choose_up_to_with_min(max: Value, min: Value, modes: Vec<EffectMode>) -> Self {
+        Self::new(ChooseModeEffect::new(modes, min, max, false))
+    }
+
     pub fn choose_exactly(count: Value, modes: Vec<EffectMode>) -> Self {
         Self::new(ChooseModeEffect::new(modes, count.clone(), count, false))
     }

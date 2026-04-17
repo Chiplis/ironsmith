@@ -318,11 +318,54 @@ fn pseudo_hand_glow_kind_for_zone_card(
         .then_some("extra")
 }
 
+fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|_| game.object_has_static_ability_id(*id, ability_id))
+    })
+}
+
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
             object.controller == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
+        })
+    })
+}
+
+fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|object| {
+            object.controller == player
+                && game.object_has_static_ability_id(
+                    *id,
+                    StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+                )
+        })
+    })
+}
+
+fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerId) -> bool {
+    if perspective == player && can_view_own_library_top(game, player) {
+        return true;
+    }
+
+    if library_top_revealed_by_static_ability(game, player) {
+        return true;
+    }
+
+    battlefield_has_static_ability(game, StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries)
+}
+
+fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
+    game.object_store.battlefield.iter().any(|id| {
+        game.object(*id).is_some_and(|object| {
+            object.controller != player
+                && game.object_has_static_ability_id(
+                    *id,
+                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
+                )
         })
     })
 }
@@ -590,9 +633,10 @@ impl GameSnapshot {
                 });
                 let visible_hand_ids = visible_hand_view
                     .map(|view| view.cards.iter().copied().collect::<HashSet<_>>());
-                let can_view_hand = is_perspective_player || visible_hand_view.is_some();
-                let can_view_library_top =
-                    is_perspective_player && can_view_own_library_top(game, p.id);
+                let hand_revealed_by_static = hand_revealed_by_static_ability(game, p.id);
+                let can_view_hand =
+                    is_perspective_player || visible_hand_view.is_some() || hand_revealed_by_static;
+                let can_view_library_top = can_view_library_top(game, perspective, p.id);
                 PlayerSnapshot {
                     can_view_hand,
                     can_view_library_top,
@@ -602,6 +646,7 @@ impl GameSnapshot {
                             .rev()
                             .filter(|id| {
                                 is_perspective_player
+                                    || hand_revealed_by_static
                                     || visible_hand_ids
                                         .as_ref()
                                         .is_some_and(|visible_ids| visible_ids.contains(id))

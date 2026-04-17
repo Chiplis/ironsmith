@@ -212,7 +212,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
         ))
     } else {
         #[cfg(not(feature = "serialization"))]
-        let choose_up_to = crate::effect::Effect::choose_up_to(max.clone(), compiled_modes);
+        let choose_up_to =
+            crate::effect::Effect::choose_up_to_with_min(max.clone(), min.clone(), compiled_modes);
         #[cfg(feature = "serialization")]
         let choose_up_to =
             crate::effect::Effect::choose_up_to(max.clone(), min.clone(), compiled_modes);
