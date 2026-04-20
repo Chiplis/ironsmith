@@ -465,12 +465,6 @@ fn compact_debug_safe_generic_sentence_patterns(line: &str) -> Option<String> {
     if let Some(compact) = compact_debug_safe_gift_card_etb_line(&compact) {
         return Some(compact);
     }
-    if let Some((trigger, rest)) = split_once_ascii_ci(&compact, ", ")
-        && trigger.to_ascii_lowercase().starts_with("whenever ")
-        && let Some(effect) = rest.strip_suffix(" This ability triggers only once each turn.")
-    {
-        return Some(format!("{trigger} for the first time each turn, {effect}"));
-    }
     if let Some(compact) = compact_debug_safe_return_cost_scaffold(&compact) {
         return Some(compact);
     }

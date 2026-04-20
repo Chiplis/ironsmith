@@ -2543,6 +2543,10 @@ fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         rendered.contains("copy it, except the copy isn't legendary"),
         "expected legendary exception to survive rendering, got {rendered}"
     );
+    assert!(
+        rendered.contains("this ability triggers only once each turn"),
+        "expected explicit once-per-turn surface to survive rendering, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -23249,7 +23253,8 @@ fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Whenever an opponent draws a card for the first time each turn")
+        rendered.contains("Whenever an opponent draws a card")
+            && rendered.contains("This ability triggers only once each turn")
             && rendered.contains("Create a tapped Treasure token"),
         "expected render to keep explicit once-each-turn suffix, got {rendered}"
     );
