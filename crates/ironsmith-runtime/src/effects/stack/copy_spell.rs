@@ -108,6 +108,11 @@ impl EffectExecutor for CopySpellEffect {
                 .object(target_id)
                 .ok_or(ExecutionError::ObjectNotFound(target_id))?;
             let mut copy_obj = Object::token_copy_of(target, copy_id, copier);
+            if !self.removed_supertypes.is_empty() {
+                copy_obj
+                    .supertypes
+                    .retain(|supertype| !self.removed_supertypes.contains(supertype));
+            }
             copy_obj.zone = Zone::Stack;
             // token_copy_of already sets kind to Token
 

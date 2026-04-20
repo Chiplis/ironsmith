@@ -14062,27 +14062,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Monstrosity {}", describe_value(&monstrosity.n));
     }
     if let Some(copy_spell) = effect.downcast_ref::<crate::effects::CopySpellEffect>() {
-        if matches!(copy_spell.target, ChooseSpec::Source)
-            && matches!(
+        if matches!(copy_spell.target, ChooseSpec::Source) {
+            if matches!(
                 copy_spell.count,
                 Value::SpellsCastBeforeThisTurn(PlayerFilter::You)
-            )
-        {
-            return "Copy this spell for each spell cast before it this turn".to_string();
-        }
-        if matches!(copy_spell.target, ChooseSpec::Source)
-            && matches!(copy_spell.count, Value::Fixed(1))
-        {
-            return "Copy this spell".to_string();
-        }
-        if matches!(copy_spell.target, ChooseSpec::Source)
-            && let Value::Count(filter) = &copy_spell.count
-        {
-            let mut each_filter = filter.description();
-            if each_filter.ends_with('s') {
-                each_filter = each_filter.trim_end_matches('s').to_string();
+            ) {
+                return "Copy this spell for each spell cast before it this turn".to_string();
             }
-            return format!("Copy this spell for each {each_filter}");
+            if matches!(copy_spell.count, Value::Fixed(1)) {
+                if copy_spell
+                    .removed_supertypes
+                    .contains(&crate::types::Supertype::Legendary)
+                {
+                    return "Copy it, except the copy isn't legendary".to_string();
+                }
+                return "Copy this spell".to_string();
+            }
+            if let Value::Count(filter) = &copy_spell.count {
+                let mut each_filter = filter.description();
+                if each_filter.ends_with('s') {
+                    each_filter = each_filter.trim_end_matches('s').to_string();
+                }
+                return format!("Copy this spell for each {each_filter}");
+            }
         }
         let mut target_text = describe_choose_spec(&copy_spell.target);
         target_text = target_text.replace(
@@ -14093,7 +14095,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             target_text = target_text.replacen("instant or sorcery", "instant or sorcery spell", 1);
         }
         if matches!(copy_spell.count, Value::Fixed(1)) {
-            return format!("Copy {target_text}");
+            let mut text = format!("Copy {target_text}");
+            if copy_spell
+                .removed_supertypes
+                .contains(&crate::types::Supertype::Legendary)
+            {
+                text.push_str(", except the copy isn't legendary");
+            }
+            return text;
         }
         return format!(
             "Copy {} {} time(s)",

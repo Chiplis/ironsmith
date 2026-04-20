@@ -2525,6 +2525,7 @@ pub struct CopySpellEffect {
     pub target: ChooseSpec,
     pub count: Value,
     pub copier: PlayerFilter,
+    pub removed_supertypes: Vec<Supertype>,
 }
 
 impl CopySpellEffect {
@@ -2533,6 +2534,7 @@ impl CopySpellEffect {
             target,
             count: count.into(),
             copier: PlayerFilter::You,
+            removed_supertypes: Vec::new(),
         }
     }
 
@@ -2545,11 +2547,26 @@ impl CopySpellEffect {
             target,
             count: count.into(),
             copier,
+            removed_supertypes: Vec::new(),
         }
     }
 
     pub fn single(target: ChooseSpec) -> Self {
         Self::new(target, 1)
+    }
+
+    pub fn removed_supertype(mut self, supertype: Supertype) -> Self {
+        if !self.removed_supertypes.contains(&supertype) {
+            self.removed_supertypes.push(supertype);
+        }
+        self
+    }
+
+    pub fn with_removed_supertypes(mut self, supertypes: Vec<Supertype>) -> Self {
+        for supertype in supertypes {
+            self = self.removed_supertype(supertype);
+        }
+        self
     }
 }
 

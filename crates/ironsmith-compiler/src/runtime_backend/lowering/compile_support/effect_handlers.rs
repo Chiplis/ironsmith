@@ -927,6 +927,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
             count,
             player,
             may_choose_new_targets,
+            removed_supertypes,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -943,7 +944,8 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     spec.clone(),
                     count.clone(),
                     player_filter.clone(),
-                )),
+                )
+                .with_removed_supertypes(removed_supertypes.clone())),
             );
             let retarget_effect = if *may_choose_new_targets {
                 Some(Effect::may_choose_new_targets_player(

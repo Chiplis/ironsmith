@@ -10476,6 +10476,131 @@ fn test_flashback_exiles_after_resolution() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn the_sixth_doctor_copies_historic_spells_without_legendary_and_only_once_each_turn() {
+    use crate::PriorityResponse;
+    use crate::decision::LegalAction;
+    use crate::game_loop::PriorityLoopState;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let alice = PlayerId::from_index(0);
+
+    let doctor = CardDefinitionBuilder::new(CardId::from_raw(81_610), "The Sixth Doctor")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .subtypes(vec![crate::types::Subtype::Doctor])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Time Lord's Prerogative — Whenever you cast a historic spell, copy it, except the copy isn't legendary. This ability triggers only once each turn.",
+        )
+        .expect("The Sixth Doctor should parse");
+    game.create_object_from_definition(&doctor, alice, Zone::Battlefield);
+
+    let first_relic = CardBuilder::new(CardId::from_raw(81_611), "Legendary Relic")
+        .card_types(vec![CardType::Artifact])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .build();
+    let second_relic = CardBuilder::new(CardId::from_raw(81_612), "Second Relic")
+        .card_types(vec![CardType::Artifact])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .build();
+    let first_id = game.create_object_from_card(&first_relic, alice, Zone::Hand);
+    let second_id = game.create_object_from_card(&second_relic, alice, Zone::Hand);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let cast_first = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: first_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_first)
+        .expect("first historic spell should cast");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("The Sixth Doctor trigger should stack");
+    assert_eq!(game.stack.len(), 2, "trigger should sit above the original spell");
+
+    resolve_stack_entry(&mut game).expect("The Sixth Doctor trigger should resolve");
+    assert_eq!(game.stack.len(), 2, "the copy should be added on top of the original spell");
+    let copy_id = game.stack.last().expect("copy should be on stack").object_id;
+    let copy_obj = game.object(copy_id).expect("copy object should exist");
+    assert!(
+        !copy_obj
+            .supertypes
+            .contains(&crate::types::Supertype::Legendary),
+        "the copied spell should lose legendary"
+    );
+    assert!(
+        game.object(first_id)
+            .expect("original spell should still exist")
+            .supertypes
+            .contains(&crate::types::Supertype::Legendary),
+        "the original spell should remain legendary"
+    );
+
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("copy and original should resolve");
+    }
+    let battlefield_relics: Vec<_> = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.name == "Legendary Relic")
+        })
+        .collect();
+    assert_eq!(
+        battlefield_relics.len(),
+        2,
+        "the original spell and its copy should both have resolved"
+    );
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Legendary Relic"
+                    && obj.supertypes.contains(&crate::types::Supertype::Legendary)
+            })
+        }),
+        "the original legendary permanent should be on the battlefield"
+    );
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Legendary Relic"
+                    && !obj.supertypes.contains(&crate::types::Supertype::Legendary)
+            })
+        }),
+        "the copied permanent should be nonlegendary on the battlefield"
+    );
+
+    let cast_second = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: second_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_second)
+        .expect("second historic spell should cast");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second cast should not create another trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "The Sixth Doctor should only trigger once each turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_creeping_renaissance_returns_chosen_permanent_type_from_graveyard() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{basic_forest, grizzly_bears};

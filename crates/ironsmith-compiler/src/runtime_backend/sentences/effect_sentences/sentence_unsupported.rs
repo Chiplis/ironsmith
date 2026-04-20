@@ -221,16 +221,8 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 30] = [
         predicate: inner::sentence_has_face_down_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
-        id: "copy-spell-legendary-exception",
-        priority: 370,
-        heads: &["copy"],
-        shape_mask: 0,
-        message: "unsupported copy-spell legendary-exception clause",
-        predicate: inner::sentence_has_copy_spell_legendary_exception_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
         id: "return-each-creature-that-isnt-list",
-        priority: 380,
+        priority: 370,
         heads: &["return"],
         shape_mask: 0,
         message: "unsupported return-each-creature-that-isnt-list clause",
@@ -238,7 +230,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 30] = [
     },
     LexUnsupportedRuleDef {
         id: "negated-untap",
-        priority: 390,
+        priority: 380,
         heads: &["this", "that", "target", "it", "creatures", "players"],
         shape_mask: 0,
         message: "unsupported negated untap clause",
