@@ -355,6 +355,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    if filtered.len() == 2
+        && let Some(compact) =
+            describe_split_piles_then_choose_attack_or_block_restriction(filtered[0], filtered[1])
+    {
+        return compact;
+    }
 
     let visible_effects = filtered
         .iter()
@@ -6129,6 +6135,36 @@ pub(super) fn describe_for_players_split_piles_then_choose_restriction(
     let each_player = strip_leading_article(&player_filter_text);
     Some(format!(
         "For each {each_player}, separate all creatures that player controls into two piles and that player chooses one. {sentence_text}"
+    ))
+}
+
+pub(super) fn describe_split_piles_then_choose_attack_or_block_restriction(
+    choose_effect: &Effect,
+    cant_effect: &Effect,
+) -> Option<String> {
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let (filter, verb) = match &cant.restriction {
+        crate::effect::Restriction::Attack(filter) => (filter, "attack"),
+        crate::effect::Restriction::Block(filter) => (filter, "block"),
+        _ => return None,
+    };
+
+    if choose.tag.as_str() != "divvy_chosen"
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.is_search
+        || !choose.count.is_any_number()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || !is_iterated_player_creature_battlefield_filter(&choose.filter)
+        || cant.duration != crate::effect::Until::EndOfTurn
+        || !is_iterated_player_creature_battlefield_filter(filter)
+        || !filter_excludes_chosen_tag(filter, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Separate all creatures that player controls into two piles. Only creatures in the pile of their choice can {verb} this turn"
     ))
 }
 

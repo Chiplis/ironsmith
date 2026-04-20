@@ -31116,20 +31116,19 @@ fn fight_or_flight_compiled_text_uses_pile_choice_language() {
 
     let abilities_debug = format!("{:?}", def.abilities);
     assert!(
-        abilities_debug.contains("ForPlayersEffect")
+        abilities_debug.contains("BeginningOfCombatTrigger")
             && abilities_debug.contains("ChooseObjectsEffect")
             && abilities_debug.contains("CantEffect"),
-        "expected pile-splitting structure to remain intact, got {abilities_debug}"
+        "expected Fight or Flight to keep a beginning-of-combat pile-splitting restriction, got {abilities_debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("for each opponent")
+        rendered.contains("at the beginning of combat on each opponent's turn")
             && rendered.contains("separate all creatures that player controls into two piles")
-            && rendered.contains("that player chooses one")
-            && rendered.contains("only creatures in the chosen piles can attack this turn"),
+            && rendered.contains("only creatures in the pile of their choice can attack this turn"),
         "expected Fight or Flight text to render as a pile-choice attack restriction, got {rendered}"
     );
     assert!(
@@ -31177,7 +31176,8 @@ fn fight_or_flight_keeps_only_the_chosen_pile_legal_to_attack() {
     }
 
     let def = fight_or_flight_probe_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -31209,9 +31209,9 @@ fn fight_or_flight_keeps_only_the_chosen_pile_legal_to_attack() {
         AbilityKind::Triggered(triggered) => triggered,
         other => panic!("expected Fight or Flight to compile to a triggered ability, got {other:?}"),
     };
-    let mut ctx =
-        crate::effects::ExecutionContext::new(fight_or_flight_id, alice, &mut dm)
-            .with_defending_player(bob);
+    let mut ctx = crate::effects::ExecutionContext::new(fight_or_flight_id, alice, &mut dm)
+        .with_defending_player(bob);
+    ctx.iteration.iterated_player = Some(bob);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,

@@ -337,6 +337,49 @@ mod tests {
     }
 
     #[test]
+    fn cant_effect_applies_fight_or_flight_attack_restrictions_with_iterated_player() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let chosen_card = CardBuilder::new(CardId::from_raw(3), "Chosen Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let chosen_id = game.create_object_from_card(&chosen_card, bob, Zone::Battlefield);
+        let other_card = CardBuilder::new(CardId::from_raw(4), "Other Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let other_id = game.create_object_from_card(&other_card, bob, Zone::Battlefield);
+
+        let chosen_snapshot = ObjectSnapshot::from_object(
+            game.object(chosen_id).expect("chosen creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.iteration.iterated_player = Some(bob);
+        ctx.tag_object("divvy_chosen", chosen_snapshot);
+
+        CantEffect::until_end_of_turn(Restriction::attack(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::IteratedPlayer)
+                .not_tagged("divvy_chosen"),
+        ))
+        .execute(&mut game, &mut ctx)
+        .expect("execute attack cant effect");
+
+        assert!(
+            game.can_attack(chosen_id),
+            "the Fight or Flight chosen pile should remain able to attack"
+        );
+        assert!(
+            !game.can_attack(other_id),
+            "creatures outside the Fight or Flight chosen pile should be unable to attack"
+        );
+    }
+
+    #[test]
     fn cant_effect_normalizes_tagged_be_blocked_filter_when_runtime_tag_aliases_drift() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
