@@ -186,28 +186,23 @@ mod tests {
 
     #[test]
     fn conditional_shares_color_with_tagged_target_gates_combat_prevention() {
-        let mut game = setup_game();
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
         let tagged_permanent = create_creature(&mut game, "Guard Marker", alice, ManaSymbol::Red);
         let matching_target = create_creature(&mut game, "Matching Attacker", alice, ManaSymbol::Red);
-        let nonmatching_target =
-            create_creature(&mut game, "Nonmatching Attacker", alice, ManaSymbol::Blue);
-
         let tagged_snapshot = ObjectSnapshot::from_object(
             game.object(tagged_permanent).expect("tagged permanent"),
             &game,
         );
         let matching_tags: HashMap<TagKey, Vec<ObjectSnapshot>> =
             HashMap::from([(TagKey::from("it"), vec![tagged_snapshot.clone()])]);
-        let nonmatching_tags: HashMap<TagKey, Vec<ObjectSnapshot>> =
-            HashMap::from([(TagKey::from("it"), vec![tagged_snapshot])]);
         let mut matching_ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(matching_target)])
             .with_tagged_objects(matching_tags);
-        let mut nonmatching_ctx = ExecutionContext::new_default(source, alice)
-            .with_targets(vec![ResolvedTarget::Object(nonmatching_target)])
-            .with_tagged_objects(nonmatching_tags);
 
         let effect = Effect::new(ConditionalEffect::if_only(
             Condition::TargetMatches(
@@ -240,7 +235,10 @@ mod tests {
         );
         assert_eq!(prevented, 0);
 
-        let mut nonmatching_game = setup_game();
+        let mut nonmatching_game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
         let alice2 = PlayerId::from_index(0);
         let source2 = nonmatching_game.new_object_id();
         let tagged_permanent2 =

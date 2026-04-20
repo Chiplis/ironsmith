@@ -528,10 +528,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if !target_text.contains("target creature") {
             return None;
         }
+        let chosen = describe_choose_selection(choose);
+        let chosen_noun = if chosen.contains("permanent") {
+            "permanent"
+        } else {
+            choose_reference_noun(choose)
+        };
         Some(format!(
             "Choose {}. Prevent all combat damage {target_text} would deal this turn if it shares a color with that {}",
-            describe_choose_selection(choose),
-            choose_reference_noun(choose)
+            chosen,
+            chosen_noun
         ))
     }
 
