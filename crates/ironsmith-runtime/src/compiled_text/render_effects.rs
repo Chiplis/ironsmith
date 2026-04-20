@@ -6118,7 +6118,7 @@ pub(super) fn describe_for_players_split_piles_then_choose_block(
         || !is_iterated_player_creature_battlefield_filter(&choose.filter)
         || cant.duration != crate::effect::Until::EndOfTurn
         || !is_iterated_player_creature_battlefield_filter(block_filter)
-        || !filter_has_not_tagged_constraint(block_filter, choose.tag.as_str())
+        || !filter_excludes_chosen_tag(block_filter, choose.tag.as_str())
     {
         return None;
     }

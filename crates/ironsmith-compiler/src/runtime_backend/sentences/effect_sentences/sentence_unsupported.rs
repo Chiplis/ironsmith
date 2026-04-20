@@ -3,7 +3,7 @@ use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsup
 use super::dispatch_inner as inner;
 use crate::cards::builders::CardTextError;
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 30] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 29] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
