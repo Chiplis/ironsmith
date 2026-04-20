@@ -4360,7 +4360,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
-            && let Some(compact) = describe_choose_then_cant_block(choose, cant)
+            && let Some(compact) = describe_choose_then_cant_pile_restriction(choose, cant)
         {
             parts.push(compact);
             idx += 2;
@@ -6097,7 +6097,7 @@ pub(super) fn describe_for_players_split_piles_then_choose_sacrifice_pair(
     describe_split_pile_choice_effect(split, &choice_for_players.effects[0])
 }
 
-pub(super) fn describe_for_players_split_piles_then_choose_block(
+pub(super) fn describe_for_players_split_piles_then_choose_restriction(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
     if for_players.effects.len() != 2 {
@@ -6106,8 +6106,10 @@ pub(super) fn describe_for_players_split_piles_then_choose_block(
 
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let cant = for_players.effects[1].downcast_ref::<crate::effects::CantEffect>()?;
-    let crate::effect::Restriction::Block(block_filter) = &cant.restriction else {
-        return None;
+    let (filter, sentence_text) = match &cant.restriction {
+        crate::effect::Restriction::Attack(filter) => (filter, "Only creatures in the chosen piles can attack this turn."),
+        crate::effect::Restriction::Block(filter) => (filter, "Only creatures in the chosen piles can block this turn."),
+        _ => return None,
     };
 
     if choose.tag.as_str() != "divvy_chosen"
@@ -6117,8 +6119,8 @@ pub(super) fn describe_for_players_split_piles_then_choose_block(
         || choose_primary_zone(choose) != Some(Zone::Battlefield)
         || !is_iterated_player_creature_battlefield_filter(&choose.filter)
         || cant.duration != crate::effect::Until::EndOfTurn
-        || !is_iterated_player_creature_battlefield_filter(block_filter)
-        || !filter_excludes_chosen_tag(block_filter, choose.tag.as_str())
+        || !is_iterated_player_creature_battlefield_filter(filter)
+        || !filter_excludes_chosen_tag(filter, choose.tag.as_str())
     {
         return None;
     }
@@ -6126,7 +6128,7 @@ pub(super) fn describe_for_players_split_piles_then_choose_block(
     let player_filter_text = describe_player_filter(&for_players.filter);
     let each_player = strip_leading_article(&player_filter_text);
     Some(format!(
-        "For each {each_player}, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn."
+        "For each {each_player}, separate all creatures that player controls into two piles and that player chooses one. {sentence_text}"
     ))
 }
 
@@ -6391,12 +6393,14 @@ pub(super) fn describe_choose_then_for_each_copy(
     ))
 }
 
-pub(super) fn describe_choose_then_cant_block(
+pub(super) fn describe_choose_then_cant_pile_restriction(
     choose: &crate::effects::ChooseObjectsEffect,
     cant: &crate::effects::CantEffect,
 ) -> Option<String> {
-    let crate::effect::Restriction::Block(filter) = &cant.restriction else {
-        return None;
+    let (filter, restriction_text) = match &cant.restriction {
+        crate::effect::Restriction::Attack(filter) => (filter, "can't attack this turn"),
+        crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),
+        _ => return None,
     };
     if cant.duration != crate::effect::Until::EndOfTurn {
         return None;
@@ -6404,10 +6408,15 @@ pub(super) fn describe_choose_then_cant_block(
     if choose_primary_zone(choose) != Some(Zone::Battlefield) || choose.is_search {
         return None;
     }
-    if !filter.tagged_constraints.iter().any(|constraint| {
-        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            && constraint.tag.as_str() == choose.tag.as_str()
-    }) {
+    let references_choose_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == choose.tag.as_str()
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            )
+    });
+    if !references_choose_tag {
         return None;
     }
 
@@ -6420,31 +6429,31 @@ pub(super) fn describe_choose_then_cant_block(
             .unwrap_or_else(|| n.to_string())
     };
     let sentence = if choose.count.is_up_to_dynamic_x() {
-        format!("Up to X target {plural} can't block this turn")
+        format!("Up to X target {plural} {restriction_text}")
     } else if choose.count.is_dynamic_x() {
-        format!("X target {plural} can't block this turn")
+        format!("X target {plural} {restriction_text}")
     } else {
         match (choose.count.min, choose.count.max) {
             (0, Some(max)) => {
                 if max == 1 {
-                    format!("Up to one target {base} can't block this turn")
+                    format!("Up to one target {base} {restriction_text}")
                 } else {
                     format!(
-                        "Up to {} target {plural} can't block this turn",
-                        count_text(max)
+                        "Up to {} target {plural} {restriction_text}",
+                        count_text(max),
                     )
                 }
             }
             (min, Some(max)) if min == max => {
                 if min == 1 {
-                    format!("Target {base} can't block this turn")
+                    format!("Target {base} {restriction_text}")
                 } else {
-                    format!("{} target {plural} can't block this turn", count_text(min))
+                    format!("{} target {plural} {restriction_text}", count_text(min))
                 }
             }
-            (0, None) => format!("Any number of target {plural} can't block this turn"),
-            (min, None) => format!("At least {min} target {plural} can't block this turn"),
-            (min, Some(max)) => format!("{min} to {max} target {plural} can't block this turn"),
+            (0, None) => format!("Any number of target {plural} {restriction_text}"),
+            (min, None) => format!("At least {min} target {plural} {restriction_text}"),
+            (min, Some(max)) => format!("{min} to {max} target {plural} {restriction_text}"),
         }
     };
     Some(sentence)
@@ -11038,7 +11047,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_players_split_piles_then_choose_sacrifice(for_players) {
             return compact;
         }
-        if let Some(compact) = describe_for_players_split_piles_then_choose_block(for_players) {
+        if let Some(compact) = describe_for_players_split_piles_then_choose_restriction(for_players)
+        {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {

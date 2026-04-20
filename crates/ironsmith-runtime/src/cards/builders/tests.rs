@@ -31069,6 +31069,144 @@ fn stand_or_fall_probe_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn fight_or_flight_probe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(5), "Fight or Flight Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn.",
+        )
+        .expect("Fight or Flight should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fight_or_flight_compiled_text_uses_pile_choice_language() {
+    let def = fight_or_flight_probe_definition();
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("CantEffect"),
+        "expected pile-splitting structure to remain intact, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each opponent")
+            && rendered.contains("separate all creatures that player controls into two piles")
+            && rendered.contains("that player chooses one")
+            && rendered.contains("only creatures in the chosen piles can attack this turn"),
+        "expected Fight or Flight text to render as a pile-choice attack restriction, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose any number a creature")
+            && !rendered.contains("tags it as 'divvy_chosen'"),
+        "expected the compiled text to avoid the generic choose/tag fallback, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fight_or_flight_keeps_only_the_chosen_pile_legal_to_attack() {
+    use crate::decision::{DecisionMaker, LegalAction};
+    use crate::rules::combat::can_attack;
+
+    struct ChooseNamedPileDecisionMaker {
+        chosen_name: &'static str,
+    }
+
+    impl DecisionMaker for ChooseNamedPileDecisionMaker {
+        fn decide_priority(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::PriorityContext,
+        ) -> LegalAction {
+            LegalAction::PassPriority
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.legal
+                        && game
+                            .current_name(candidate.id)
+                            .is_some_and(|name| name == self.chosen_name)
+                })
+                .map(|candidate| vec![candidate.id])
+                .expect("expected to find the named chosen pile")
+        }
+    }
+
+    let def = fight_or_flight_probe_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let fight_or_flight_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let chosen_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(6), "Chosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let other_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(7), "Other Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(chosen_id);
+    game.remove_summoning_sickness(other_id);
+
+    let mut dm = ChooseNamedPileDecisionMaker {
+        chosen_name: "Chosen Bear",
+    };
+
+    let triggered = match &def.abilities[0].kind {
+        AbilityKind::Triggered(triggered) => triggered,
+        other => panic!("expected Fight or Flight to compile to a triggered ability, got {other:?}"),
+    };
+    let mut ctx =
+        crate::effects::ExecutionContext::new(fight_or_flight_id, alice, &mut dm)
+            .with_defending_player(bob);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        fight_or_flight_id,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Fight or Flight's combat trigger should resolve");
+
+    assert!(
+        can_attack(game.object(chosen_id).expect("chosen creature exists"), &game),
+        "creatures in the chosen pile should remain able to attack"
+    );
+    assert!(
+        !can_attack(game.object(other_id).expect("other creature exists"), &game),
+        "creatures outside the chosen pile should be unable to attack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn stand_or_fall_compiled_text_uses_pile_choice_language() {
     let def = stand_or_fall_probe_definition();
