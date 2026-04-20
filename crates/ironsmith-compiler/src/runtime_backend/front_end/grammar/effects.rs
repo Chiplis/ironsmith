@@ -5,8 +5,8 @@ use winnow::token::take_till;
 
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
-    TextSpan,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
+    TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::PlayerFilter;
@@ -644,21 +644,23 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES).is_some() {
         let source_tokens = &core_tokens[5..];
-        let source = parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-        return Ok(Some(EffectAst::PreventAllCombatDamageFromSource {
-            duration: crate::effect::Until::EndOfTurn,
+        let (source, has_color_condition) =
+            parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
+        return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
-        }));
+            has_color_condition,
+        )));
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_TO_AND_BY_PREFIXES).is_some()
     {
         let source_tokens = &core_tokens[8..];
-        let source = parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-        return Ok(Some(EffectAst::PreventAllCombatDamageFromSource {
-            duration: crate::effect::Until::EndOfTurn,
+        let (source, has_color_condition) =
+            parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
+        return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
-        }));
+            has_color_condition,
+        )));
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_TO_PREFIXES).is_some() {
@@ -669,11 +671,14 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         && core_words.get(would_idx + 1) == Some(&"deal")
     {
         let source_tokens = &core_tokens[..would_idx];
-        let source = parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-        return Ok(Some(EffectAst::PreventAllCombatDamageFromSource {
-            duration: crate::effect::Until::EndOfTurn,
+        let (source, has_color_condition) =
+            parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
+        let has_color_condition = has_color_condition
+            || prevent_damage_shares_color_clause_lexed(&core_tokens[would_idx + 2..]);
+        return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
-        }));
+            has_color_condition,
+        )));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -685,7 +690,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
 pub(crate) fn parse_prevent_damage_source_target_lexed(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
-) -> Result<TargetAst, CardTextError> {
+) -> Result<(TargetAst, bool), CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing prevent-all source target (clause: '{}')",
@@ -693,6 +698,7 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
         )));
     }
 
+    let (tokens, has_color_condition) = strip_prevent_damage_shares_color_clause_lexed(tokens);
     let source_words: Vec<&str> = token_word_refs(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -710,12 +716,73 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
 
     let source = parse_target_phrase(tokens)?;
     match source {
-        TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _) => Ok(source),
+        TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _) => {
+            Ok((source, has_color_condition))
+        }
         _ => Err(CardTextError::ParseError(format!(
             "unsupported prevent-all source target '{}'",
             token_word_refs(tokens).join(" ")
         ))),
     }
+}
+
+fn prevent_damage_effect_with_optional_condition(
+    source: TargetAst,
+    has_color_condition: bool,
+) -> EffectAst {
+    let condition_filter = match &source {
+        TargetAst::Object(filter, _, _) => Some(filter.clone()),
+        _ => None,
+    };
+    let prevent = EffectAst::PreventAllCombatDamageFromSource {
+        duration: crate::effect::Until::EndOfTurn,
+        source,
+    };
+    if has_color_condition {
+        let predicate = condition_filter.map_or_else(
+            || {
+                PredicateAst::ItMatches(
+                    ObjectFilter::default().shares_color_with_tagged(TagKey::from(IT_TAG)),
+                )
+            },
+            |filter| {
+                PredicateAst::ItMatches(filter.shares_color_with_tagged(TagKey::from(IT_TAG)))
+            },
+        );
+        EffectAst::Conditional {
+            predicate,
+            if_true: vec![prevent],
+            if_false: Vec::new(),
+        }
+    } else {
+        prevent
+    }
+}
+
+fn prevent_damage_shares_color_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words: Vec<&str> = token_word_refs(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    matches!(
+        words.as_slice(),
+        ["if", "it", "shares", "color", "with", "that", "permanent"]
+            | ["if", "it", "shares", "color", "with", "that", "object"]
+            | ["if", "it", "shares", "color", "with", "that", "creature"]
+            | ["if", "it", "shares", "color", "with", "it"]
+    )
+}
+
+fn strip_prevent_damage_shares_color_clause_lexed(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], bool) {
+    let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if")) else {
+        return (tokens, false);
+    };
+    if prevent_damage_shares_color_clause_lexed(&tokens[if_idx..]) {
+        return (&tokens[..if_idx], true);
+    }
+    (tokens, false)
 }
 
 pub(crate) fn parse_prevent_damage_target_scope_lexed(

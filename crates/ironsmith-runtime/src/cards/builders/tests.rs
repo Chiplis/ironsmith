@@ -8034,6 +8034,33 @@ fn test_prevent_all_combat_damage_from_target_rendering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_guard_dogs_keeps_color_sharing_prevention_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Guard Dogs Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{2}{W}, {T}: Choose a permanent you control. Prevent all combat damage target creature would deal this turn if it shares a color with that permanent.")
+        .expect("parse Guard Dogs");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("TargetMatches")
+            && ability_debug.contains("PreventAllCombatDamageFromEffect"),
+        "expected conditional prevention lowering, got {ability_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" | ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("shares a color with that object")
+            && rendered.contains("prevent all combat damage")
+            && rendered.contains("target creature"),
+        "expected guard dogs color-sharing clause in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_static_prevent_all_combat_damage_to_this_creature_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Everdawn Champion Variant")
         .card_types(vec![CardType::Creature])

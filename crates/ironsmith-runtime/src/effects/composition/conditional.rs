@@ -127,8 +127,39 @@ fn evaluate_condition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Condition;
+    use crate::effects::ResolvedTarget;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
+    use crate::target::ObjectFilter;
+    use crate::types::CardType;
+    use crate::zone::Zone;
     use crate::test_prelude::*;
+    use std::collections::HashMap;
+
+    fn make_creature_card(card_id: u32, name: &str, symbol: ManaSymbol) -> crate::card::Card {
+        CardBuilder::new(CardId::from_raw(card_id), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![symbol]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+        symbol: ManaSymbol,
+    ) -> crate::ids::ObjectId {
+        let id = game.new_object_id();
+        let card = make_creature_card(id.0 as u32, name, symbol);
+        let obj = crate::object::Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
 
     #[test]
     fn conditional_forwards_inner_target_spec_from_if_true() {
@@ -151,5 +182,94 @@ mod tests {
 
         assert!(effect.get_target_spec().is_some());
         assert_eq!(effect.target_description(), "spell to counter");
+    }
+
+    #[test]
+    fn conditional_shares_color_with_tagged_target_gates_combat_prevention() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let tagged_permanent = create_creature(&mut game, "Guard Marker", alice, ManaSymbol::Red);
+        let matching_target = create_creature(&mut game, "Matching Attacker", alice, ManaSymbol::Red);
+        let nonmatching_target =
+            create_creature(&mut game, "Nonmatching Attacker", alice, ManaSymbol::Blue);
+
+        let tagged_snapshot = ObjectSnapshot::from_object(
+            game.object(tagged_permanent).expect("tagged permanent"),
+            &game,
+        );
+        let matching_tags: HashMap<TagKey, Vec<ObjectSnapshot>> =
+            HashMap::from([(TagKey::from("it"), vec![tagged_snapshot.clone()])]);
+        let nonmatching_tags: HashMap<TagKey, Vec<ObjectSnapshot>> =
+            HashMap::from([(TagKey::from("it"), vec![tagged_snapshot])]);
+        let mut matching_ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(matching_target)])
+            .with_tagged_objects(matching_tags);
+        let mut nonmatching_ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(nonmatching_target)])
+            .with_tagged_objects(nonmatching_tags);
+
+        let effect = Effect::new(ConditionalEffect::if_only(
+            Condition::TargetMatches(
+                ObjectFilter::creature().shares_color_with_tagged(TagKey::from("it")),
+            ),
+            vec![Effect::prevent_all_combat_damage_from(
+                ChooseSpec::target_creature(),
+                crate::effect::Until::EndOfTurn,
+            )],
+        ));
+
+        execute_effect(&mut game, &effect, &mut matching_ctx)
+            .expect("matching target should resolve");
+        assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
+
+        let matching_source_colors = game.object(matching_target).expect("matching target").colors();
+        let matching_source_types = game
+            .object(matching_target)
+            .expect("matching target")
+            .card_types
+            .clone();
+        let prevented = game.effect_store.prevention_effects.apply_prevention_to_player(
+            alice,
+            3,
+            true,
+            matching_target,
+            &matching_source_colors,
+            &matching_source_types,
+            true,
+        );
+        assert_eq!(prevented, 0);
+
+        let mut nonmatching_game = setup_game();
+        let alice2 = PlayerId::from_index(0);
+        let source2 = nonmatching_game.new_object_id();
+        let tagged_permanent2 =
+            create_creature(&mut nonmatching_game, "Guard Marker", alice2, ManaSymbol::Red);
+        let _matching_target2 =
+            create_creature(&mut nonmatching_game, "Matching Attacker", alice2, ManaSymbol::Red);
+        let nonmatching_target2 =
+            create_creature(&mut nonmatching_game, "Nonmatching Attacker", alice2, ManaSymbol::Blue);
+        let tagged_snapshot2 = ObjectSnapshot::from_object(
+            nonmatching_game
+                .object(tagged_permanent2)
+                .expect("tagged permanent"),
+            &nonmatching_game,
+        );
+        let nonmatching_tags2: HashMap<TagKey, Vec<ObjectSnapshot>> =
+            HashMap::from([(TagKey::from("it"), vec![tagged_snapshot2])]);
+        let mut nonmatching_ctx = ExecutionContext::new_default(source2, alice2)
+            .with_targets(vec![ResolvedTarget::Object(nonmatching_target2)])
+            .with_tagged_objects(nonmatching_tags2);
+
+        execute_effect(&mut nonmatching_game, &effect, &mut nonmatching_ctx)
+            .expect("nonmatching target should resolve");
+        assert!(
+            nonmatching_game
+                .effect_store
+                .prevention_effects
+                .shields()
+                .is_empty(),
+            "expected no shield for nonmatching target"
+        );
     }
 }

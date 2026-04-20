@@ -8078,7 +8078,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } else if stripped == "creature" {
                 "it's a creature".to_string()
             } else {
-                format!("the target matches {desc}")
+                format!("the target is {}", ensure_indefinite_article(&desc))
             }
         }
         Condition::TargetIsSoulbondPaired => {
