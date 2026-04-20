@@ -10539,8 +10539,13 @@ fn the_sixth_doctor_copies_historic_spells_without_legendary_and_only_once_each_
             .contains(&crate::types::Supertype::Legendary),
         "the copied spell should lose legendary"
     );
+    let original_id = game
+        .stack
+        .first()
+        .expect("original spell should still be on stack")
+        .object_id;
     assert!(
-        game.object(first_id)
+        game.object(original_id)
             .expect("original spell should still exist")
             .supertypes
             .contains(&crate::types::Supertype::Legendary),

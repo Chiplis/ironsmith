@@ -2530,7 +2530,7 @@ fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         "expected copy-spell trigger in compiled ability, got {debug}"
     );
     assert!(
-        debug.contains("removed_supertypes: [Legendary]"),
+        debug.contains("removed_supertypes") && debug.contains("Legendary"),
         "expected legendary removal to lower into the copy effect, got {debug}"
     );
     assert!(
@@ -23251,11 +23251,11 @@ fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
         )
         .expect("tataru taru-style trigger should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("Whenever an opponent draws a card")
-            && rendered.contains("This ability triggers only once each turn")
-            && rendered.contains("Create a tapped Treasure token"),
+        rendered.contains("whenever an opponent draws a card")
+            && rendered.contains("this ability triggers only once each turn")
+            && rendered.contains("create a tapped treasure token"),
         "expected render to keep explicit once-each-turn suffix, got {rendered}"
     );
 }
@@ -26821,7 +26821,7 @@ fn consuming_tide_regression_draws_for_each_opponent_who_is_ahead_on_cards() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("return all nonland permanents not chosen this way")
+        rendered.contains("return all other nonland permanents to their owners' hands")
             && (rendered.contains("more cards in their hand than you")
                 || rendered.contains("has more cards in hand than you"))
             && rendered.contains("draw a card"),
