@@ -1,6 +1,5 @@
 //! Effects that apply rule restrictions ("can't" effects).
 
-use crate::filter::ObjectFilterExt as _;
 use std::collections::HashSet;
 
 use crate::effect::{EffectOutcome, Restriction, Until};

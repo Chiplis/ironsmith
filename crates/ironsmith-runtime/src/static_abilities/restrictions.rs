@@ -373,7 +373,7 @@ impl StaticAbilityKind for Unleash {
         Restriction::block(
             ObjectFilter::specific(source).with_counter_type(CounterType::PlusOnePlusOne),
         )
-        .apply(game, &mut tracker, controller, Some(source));
+        .apply(game, &mut tracker, controller, Some(source), None);
         game.effect_store.cant_effects.merge(tracker);
     }
 }
@@ -533,7 +533,7 @@ impl StaticAbilityKind for RuleRestriction {
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         self.restriction
-            .apply(game, &mut tracker, controller, Some(source));
+            .apply(game, &mut tracker, controller, Some(source), None);
         game.effect_store.cant_effects.merge(tracker);
     }
 }
