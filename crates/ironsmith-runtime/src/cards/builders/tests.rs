@@ -31161,7 +31161,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
 
             vec![crate::decisions::spec::AttackerDeclaration {
                 creature: attacker.creature,
-                target,
+                target: AttackTarget::Player(target),
             }]
         }
 
@@ -31210,7 +31210,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
 
     let stand_or_fall_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let attacker_id = game.create_object_from_definition(
-        &CardBuilder::new(CardId::from_raw(2), "Attacking Bear")
+        &CardDefinitionBuilder::new(CardId::from_raw(2), "Attacking Bear")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build(),
@@ -31220,7 +31220,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
     game.remove_summoning_sickness(attacker_id);
 
     game.create_object_from_definition(
-        &CardBuilder::new(CardId::from_raw(3), "Chosen Bear")
+        &CardDefinitionBuilder::new(CardId::from_raw(3), "Chosen Bear")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build(),
@@ -31228,7 +31228,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
         Zone::Battlefield,
     );
     game.create_object_from_definition(
-        &CardBuilder::new(CardId::from_raw(4), "Other Bear")
+        &CardDefinitionBuilder::new(CardId::from_raw(4), "Other Bear")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build(),
