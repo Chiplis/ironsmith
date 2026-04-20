@@ -2539,7 +2539,9 @@ fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         "expected once-per-turn limiter to survive lowering, got {debug}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("copy it, except the copy isn't legendary"),
         "expected legendary exception to survive rendering, got {rendered}"
@@ -10378,9 +10380,8 @@ fn parse_target_opponent_chooses_creature_then_destroy_that_creature() {
         "expected follow-up destroy effect for chosen creature, got {debug}"
     );
 
-    let score_path = crate::compiled_text::compile_effect_list(
-        &effects.segments[0].default_effects,
-    );
+    let score_path =
+        crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
     assert_eq!(
         score_path,
         "Target opponent chooses a creature they control. Destroy that creature"
@@ -23373,7 +23374,9 @@ fn render_tataru_taru_draw_trigger_keeps_explicit_once_each_turn_suffix() {
         )
         .expect("tataru taru-style trigger should parse");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("whenever an opponent draws a card")
             && rendered.contains("this ability triggers only once each turn")
@@ -31302,7 +31305,9 @@ fn fight_or_flight_keeps_only_the_chosen_pile_legal_to_attack() {
 
     let triggered = match &def.abilities[0].kind {
         AbilityKind::Triggered(triggered) => triggered,
-        other => panic!("expected Fight or Flight to compile to a triggered ability, got {other:?}"),
+        other => {
+            panic!("expected Fight or Flight to compile to a triggered ability, got {other:?}")
+        }
     };
     let mut ctx = crate::effects::ExecutionContext::new(fight_or_flight_id, alice, &mut dm)
         .with_defending_player(bob);
@@ -31319,7 +31324,10 @@ fn fight_or_flight_keeps_only_the_chosen_pile_legal_to_attack() {
     .expect("Fight or Flight's combat trigger should resolve");
 
     assert!(
-        can_attack(game.object(chosen_id).expect("chosen creature exists"), &game),
+        can_attack(
+            game.object(chosen_id).expect("chosen creature exists"),
+            &game
+        ),
         "creatures in the chosen pile should remain able to attack"
     );
     assert!(
@@ -31428,7 +31436,11 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
             game: &crate::game_state::GameState,
             ctx: &crate::decisions::context::BlockersContext,
         ) -> Vec<crate::decisions::spec::BlockerDeclaration> {
-            assert_eq!(ctx.blocker_options.len(), 1, "expected one attacker to block");
+            assert_eq!(
+                ctx.blocker_options.len(),
+                1,
+                "expected one attacker to block"
+            );
             let option = &ctx.blocker_options[0];
             let legal_blockers = option
                 .valid_blockers
@@ -31462,7 +31474,8 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
     }
 
     let def = stand_or_fall_probe_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -31503,9 +31516,8 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
         AbilityKind::Triggered(triggered) => triggered,
         other => panic!("expected Stand or Fall to compile to a triggered ability, got {other:?}"),
     };
-    let mut ctx =
-        crate::effects::ExecutionContext::new(stand_or_fall_id, alice, &mut dm)
-            .with_defending_player(bob);
+    let mut ctx = crate::effects::ExecutionContext::new(stand_or_fall_id, alice, &mut dm)
+        .with_defending_player(bob);
     crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,

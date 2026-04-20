@@ -26,7 +26,13 @@ impl StaticAbilityKind for PlayersCantGainLife {
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
-        Restriction::gain_life(PlayerFilter::Any).apply(game, &mut tracker, _controller, None, None);
+        Restriction::gain_life(PlayerFilter::Any).apply(
+            game,
+            &mut tracker,
+            _controller,
+            None,
+            None,
+        );
         game.effect_store.cant_effects.merge(tracker);
     }
 }
@@ -112,7 +118,13 @@ impl StaticAbilityKind for OpponentsCantWinGame {
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
-        Restriction::win_game(PlayerFilter::Opponent).apply(game, &mut tracker, controller, None, None);
+        Restriction::win_game(PlayerFilter::Opponent).apply(
+            game,
+            &mut tracker,
+            controller,
+            None,
+            None,
+        );
         game.effect_store.cant_effects.merge(tracker);
     }
 }
@@ -227,7 +239,13 @@ impl StaticAbilityKind for SplitSecond {
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
-        Restriction::cast_spells(PlayerFilter::Any).apply(game, &mut tracker, controller, None, None);
+        Restriction::cast_spells(PlayerFilter::Any).apply(
+            game,
+            &mut tracker,
+            controller,
+            None,
+            None,
+        );
         Restriction::activate_non_mana_abilities(PlayerFilter::Any).apply(
             game,
             &mut tracker,

@@ -536,8 +536,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         };
         Some(format!(
             "Choose {}. Prevent all combat damage {target_text} would deal this turn if it shares a color with that {}",
-            chosen,
-            chosen_noun
+            chosen, chosen_noun
         ))
     }
 
@@ -6225,8 +6224,14 @@ pub(super) fn describe_for_players_split_piles_then_choose_restriction(
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let cant = for_players.effects[1].downcast_ref::<crate::effects::CantEffect>()?;
     let (filter, sentence_text) = match &cant.restriction {
-        crate::effect::Restriction::Attack(filter) => (filter, "Only creatures in the chosen piles can attack this turn."),
-        crate::effect::Restriction::Block(filter) => (filter, "Only creatures in the chosen piles can block this turn."),
+        crate::effect::Restriction::Attack(filter) => (
+            filter,
+            "Only creatures in the chosen piles can attack this turn.",
+        ),
+        crate::effect::Restriction::Block(filter) => (
+            filter,
+            "Only creatures in the chosen piles can block this turn.",
+        ),
         _ => return None,
     };
 

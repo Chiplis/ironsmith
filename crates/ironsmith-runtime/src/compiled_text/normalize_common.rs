@@ -6845,6 +6845,37 @@ pub(super) fn describe_doesnt_untap_apply_continuous_effect(
     Some(text)
 }
 
+fn choose_spec_land_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    match spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
+            .card_types
+            .contains(&CardType::Land)
+            .then_some(filter),
+        _ => None,
+    }
+}
+
+fn plural_non_target_land_animation_target(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if !matches!(effect.target, crate::continuous::EffectTarget::Filter(_)) {
+        return None;
+    }
+    let Some(ChooseSpec::Object(filter)) = &effect.target_spec else {
+        return None;
+    };
+    if !filter.card_types.contains(&CardType::Land) {
+        return None;
+    }
+
+    let description = filter.description();
+    let rest = strip_leading_article(&description).trim();
+    if rest.is_empty() {
+        return None;
+    }
+    Some(format!("all {}", pluralize_noun_phrase(rest)))
+}
+
 pub(super) fn describe_apply_continuous_animation_effect(
     effect: &crate::effects::ApplyContinuousEffect,
     target: &str,
@@ -6886,6 +6917,18 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
 
+    let preserves_land_types = effect
+        .target_spec
+        .as_ref()
+        .and_then(choose_spec_land_filter)
+        .is_some();
+    let (target_text, plural_target) =
+        if let Some(target_text) = plural_non_target_land_animation_target(effect) {
+            (target_text, true)
+        } else {
+            (target.to_string(), plural_target)
+        };
+
     let mut descriptor = Vec::new();
     if let Some(colors) = colors {
         descriptor.push(describe_token_color_words(colors, false));
@@ -6922,15 +6965,18 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
         let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
         if plural_target {
-            format!("{target} become {pt} {noun_phrase}")
+            format!("{target_text} become {pt} {noun_phrase}")
         } else {
-            format!("{target} becomes a {pt} {noun_phrase}")
+            format!("{target_text} becomes a {pt} {noun_phrase}")
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {
-            format!("{target} become {noun_phrase}")
+            format!("{target_text} become {noun_phrase}")
         } else {
-            format!("{target} becomes {}", with_indefinite_article(&noun_phrase))
+            format!(
+                "{target_text} becomes {}",
+                with_indefinite_article(&noun_phrase)
+            )
         }
     } else {
         return None;
@@ -6946,6 +6992,13 @@ pub(super) fn describe_apply_continuous_animation_effect(
     if let Some(tail) = describe_apply_continuous_tail(effect) {
         text.push(' ');
         text.push_str(&tail);
+    }
+    if preserves_land_types {
+        if plural_target {
+            text.push_str(". They're still lands");
+        } else {
+            text.push_str(". It's still a land");
+        }
     }
     Some(text)
 }

@@ -10527,11 +10527,23 @@ fn the_sixth_doctor_copies_historic_spells_without_legendary_and_only_once_each_
         .expect("first historic spell should cast");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("The Sixth Doctor trigger should stack");
-    assert_eq!(game.stack.len(), 2, "trigger should sit above the original spell");
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "trigger should sit above the original spell"
+    );
 
     resolve_stack_entry(&mut game).expect("The Sixth Doctor trigger should resolve");
-    assert_eq!(game.stack.len(), 2, "the copy should be added on top of the original spell");
-    let copy_id = game.stack.last().expect("copy should be on stack").object_id;
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "the copy should be added on top of the original spell"
+    );
+    let copy_id = game
+        .stack
+        .last()
+        .expect("copy should be on stack")
+        .object_id;
     let copy_obj = game.object(copy_id).expect("copy object should exist");
     assert!(
         !copy_obj

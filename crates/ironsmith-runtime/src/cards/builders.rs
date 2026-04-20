@@ -12365,6 +12365,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && debug.contains("EndOfTurn"),
             "expected animated-creature continuous effect lowering, got {debug}"
         );
+
+        let effects = def.spell_effect.as_ref().expect("expected spell effects");
+        let score_path =
+            crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
+        assert_eq!(
+            score_path,
+            "all lands you control become 1/1 creatures until end of turn. They're still lands"
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

@@ -135,9 +135,9 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
     use crate::target::ObjectFilter;
+    use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
-    use crate::test_prelude::*;
     use std::collections::HashMap;
 
     fn make_creature_card(card_id: u32, name: &str, symbol: ManaSymbol) -> crate::card::Card {
@@ -186,14 +186,13 @@ mod tests {
 
     #[test]
     fn conditional_shares_color_with_tagged_target_gates_combat_prevention() {
-        let mut game = crate::game_state::GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string()],
-            20,
-        );
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
         let tagged_permanent = create_creature(&mut game, "Guard Marker", alice, ManaSymbol::Red);
-        let matching_target = create_creature(&mut game, "Matching Attacker", alice, ManaSymbol::Red);
+        let matching_target =
+            create_creature(&mut game, "Matching Attacker", alice, ManaSymbol::Red);
         let tagged_snapshot = ObjectSnapshot::from_object(
             game.object(tagged_permanent).expect("tagged permanent"),
             &game,
@@ -218,35 +217,51 @@ mod tests {
             .expect("matching target should resolve");
         assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
 
-        let matching_source_colors = game.object(matching_target).expect("matching target").colors();
+        let matching_source_colors = game
+            .object(matching_target)
+            .expect("matching target")
+            .colors();
         let matching_source_types = game
             .object(matching_target)
             .expect("matching target")
             .card_types
             .clone();
-        let prevented = game.effect_store.prevention_effects.apply_prevention_to_player(
-            alice,
-            3,
-            true,
-            matching_target,
-            &matching_source_colors,
-            &matching_source_types,
-            true,
-        );
+        let prevented = game
+            .effect_store
+            .prevention_effects
+            .apply_prevention_to_player(
+                alice,
+                3,
+                true,
+                matching_target,
+                &matching_source_colors,
+                &matching_source_types,
+                true,
+            );
         assert_eq!(prevented, 0);
 
-        let mut nonmatching_game = crate::game_state::GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string()],
-            20,
-        );
+        let mut nonmatching_game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice2 = PlayerId::from_index(0);
         let source2 = nonmatching_game.new_object_id();
-        let tagged_permanent2 =
-            create_creature(&mut nonmatching_game, "Guard Marker", alice2, ManaSymbol::Red);
-        let _matching_target2 =
-            create_creature(&mut nonmatching_game, "Matching Attacker", alice2, ManaSymbol::Red);
-        let nonmatching_target2 =
-            create_creature(&mut nonmatching_game, "Nonmatching Attacker", alice2, ManaSymbol::Blue);
+        let tagged_permanent2 = create_creature(
+            &mut nonmatching_game,
+            "Guard Marker",
+            alice2,
+            ManaSymbol::Red,
+        );
+        let _matching_target2 = create_creature(
+            &mut nonmatching_game,
+            "Matching Attacker",
+            alice2,
+            ManaSymbol::Red,
+        );
+        let nonmatching_target2 = create_creature(
+            &mut nonmatching_game,
+            "Nonmatching Attacker",
+            alice2,
+            ManaSymbol::Blue,
+        );
         let tagged_snapshot2 = ObjectSnapshot::from_object(
             nonmatching_game
                 .object(tagged_permanent2)

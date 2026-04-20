@@ -99,12 +99,12 @@ fn normalize_restriction_for_resolution(
         Restriction::BeBlocked(filter) => {
             Restriction::be_blocked(collapse_tagged_filter_to_specific_objects(filter, ctx))
         }
-        Restriction::Attack(filter) => {
-            Restriction::attack(collapse_filter_to_current_matching_objects(filter, ctx, game))
-        }
-        Restriction::Block(filter) => {
-            Restriction::block(collapse_filter_to_current_matching_objects(filter, ctx, game))
-        }
+        Restriction::Attack(filter) => Restriction::attack(
+            collapse_filter_to_current_matching_objects(filter, ctx, game),
+        ),
+        Restriction::Block(filter) => Restriction::block(
+            collapse_filter_to_current_matching_objects(filter, ctx, game),
+        ),
         _ => restriction.clone(),
     }
 }

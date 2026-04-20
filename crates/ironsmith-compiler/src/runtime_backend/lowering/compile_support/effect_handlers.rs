@@ -940,12 +940,14 @@ pub(super) fn try_compile_stack_and_condition_effect(
             ctx.last_effect_id = Some(id);
             let copy_effect = Effect::with_id(
                 id.0,
-                Effect::new(crate::effects::CopySpellEffect::new_for_player(
-                    spec.clone(),
-                    count.clone(),
-                    player_filter.clone(),
-                )
-                .with_removed_supertypes(removed_supertypes.clone())),
+                Effect::new(
+                    crate::effects::CopySpellEffect::new_for_player(
+                        spec.clone(),
+                        count.clone(),
+                        player_filter.clone(),
+                    )
+                    .with_removed_supertypes(removed_supertypes.clone()),
+                ),
             );
             let retarget_effect = if *may_choose_new_targets {
                 Some(Effect::may_choose_new_targets_player(
