@@ -6,8 +6,12 @@ pub(super) const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
     &["each", "player"],
     &["each", "players"],
 ];
-pub(super) const EACH_OPPONENT_PREFIXES: &[&[&str]] =
-    &[&["each", "opponent"], &["each", "opponents"]];
+pub(super) const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[
+    &["for", "each", "opponent"],
+    &["for", "each", "opponents"],
+    &["each", "opponent"],
+    &["each", "opponents"],
+];
 pub(super) const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
 pub(super) const CHOOSE_ALL_OR_PUT_ALL_PREFIXES: &[&[&str]] =
     &[&["choose", "all"], &["put", "all"]];

@@ -112,7 +112,11 @@ pub(super) fn run_statement_probe_line_family(
             &ctx.line.tokens
         ),
         Some(crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep)
-    ) || looks_like_statement_line_lexed(ctx.line))
+    ) || looks_like_statement_line_lexed(ctx.line)
+        || should_prefer_statement_before_static_for_nonpermanent_spell(
+            ctx.preprocessed,
+            &ctx.line.tokens,
+        ))
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
         return Ok(Some(LineDispatchResult::single(

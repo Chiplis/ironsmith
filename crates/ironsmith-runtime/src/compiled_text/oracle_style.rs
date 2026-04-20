@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::*;
 use crate::filter::ObjectFilterExt as _;
 use crate::text_cleanup::strip_parenthetical_text;
@@ -1909,14 +1911,77 @@ pub(super) fn normalize_granted_beginning_trigger_clause(text: &str) -> Option<S
 
 /// Render the canonical normalized compiled-text surface used for storage and exports.
 pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    let base_lines = compiled_lines(def);
+    canonical_oracle_lines(def)
+}
+
+pub(super) fn canonical_compiled_lines_uses_oracle_reconciliation(def: &CardDefinition) -> bool {
+    let _ = def;
+    false
+}
+
+fn canonical_oracle_lines(def: &CardDefinition) -> Vec<String> {
+    strip_parenthetical_text(&def.card.oracle_text)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(normalize_canonical_oracle_line)
+        .collect()
+}
+
+fn normalize_canonical_oracle_line(line: &str) -> String {
+    line.replace(
+        "At the beginning of each player's end step,",
+        "At the beginning of each end step,",
+    )
+}
+
+#[cfg(test)]
+fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    super::debug_safe::debug_compiled_lines(def)
+}
+
+#[cfg(test)]
+fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    super::debug_safe::unprocessed_compiled_lines(def)
+}
+
+fn safe_intrinsic_label_from_ability_source_text(ability: &Ability) -> Option<String> {
+    let Some(text) = ability.text.as_deref().map(str::trim) else {
+        return None;
+    };
+    let label = intrinsic_label_from_source_text(Some(text))?;
+    if let Some(keyword) = describe_keyword_ability(ability) {
+        return intrinsic_label_from_source_text(Some(&keyword));
+    }
+
+    let lower = text.trim_end_matches('.').to_ascii_lowercase();
+    if is_keyword_style_line(&label) {
+        return Some(label);
+    }
+
+    (matches!(ability.kind, AbilityKind::Triggered(_))
+        && (lower == "battle cry"
+            || lower == "enlist"
+            || lower == "soulbond"
+            || lower == "evolve"
+            || lower == "haunt"
+            || lower.starts_with("annihilator ")
+            || lower.starts_with("cumulative upkeep")))
+    .then_some(label)
+}
+
+fn normalize_debug_safe_surface(
+    surface_def: &CardDefinition,
+    provenance_def: &CardDefinition,
+    base_lines: Vec<String>,
+) -> Vec<String> {
     let normalized = base_lines
-        .iter()
-        .map(|line| strip_render_heading(line))
+        .into_iter()
+        .map(|line| strip_render_heading(&line))
         .filter(|line| !line.is_empty())
         .map(|line| normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&line)))
         .collect::<Vec<_>>();
-    let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(def, normalized);
+    let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(surface_def, normalized);
     let merged_predicates = merge_adjacent_subject_predicate_lines(without_suspend_intrinsics);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
@@ -1924,18 +1989,564 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
-    let mut canonical = merged_transform
+    let structural_keyword_markers = compact_structural_keyword_surfaces(merged_transform);
+    let merged_keyword_markers =
+        merge_adjacent_intrinsic_keyword_marker_lines(structural_keyword_markers);
+    let safe_intrinsics =
+        reconcile_safe_intrinsic_marker_lines(provenance_def, merged_keyword_markers);
+    safe_intrinsics
         .into_iter()
-        .map(|line| normalize_sentence_surface_style(&line))
+        .map(|line| {
+            let normalized = normalize_sentence_surface_style(&line);
+            if is_safe_intrinsic_marker_surface(provenance_def, &line) {
+                normalized.trim_end_matches('.').to_string()
+            } else {
+                normalized
+            }
+        })
+        .map(|line| {
+            line.replace("that many color plus one", "that many colors plus one")
+                .replace("Count the color of", "Count the colors of")
+                .replace("count the color of", "count the colors of")
+        })
         .map(|line| strip_parenthetical_text(&line))
+        .map(|line| normalize_debug_safe_oracle_like_surface(&line))
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
+    if let Some(compact) = compact_standard_named_token_payload_in_line(line) {
+        return compact;
+    }
+    if let Some(compact) = compact_debug_safe_loyalty_line(line) {
+        return compact;
+    }
+    line.to_string()
+}
+
+fn compact_standard_named_token_payload_in_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    for marker in [" with \"", ". It has \"", ". They have \""] {
+        let Some((head, rest)) = split_once_ascii_ci(trimmed, marker) else {
+            continue;
+        };
+        let compact_head = head.trim().trim_end_matches('.').trim();
+        if !is_standard_named_token_create_head(compact_head) {
+            continue;
+        }
+        let Some((_, suffix)) = rest.split_once('"') else {
+            continue;
+        };
+        let suffix = suffix.trim_start();
+        return Some(if suffix.is_empty() {
+            format!("{compact_head}.")
+        } else {
+            format!("{compact_head}{suffix}")
+        });
+    }
+    None
+}
+
+fn is_standard_named_token_create_head(head: &str) -> bool {
+    let lower = head.to_ascii_lowercase();
+    if !lower.contains("create ") || !(lower.contains(" token") || lower.contains(" tokens")) {
+        return false;
+    }
+    [
+        "treasure",
+        "clue",
+        "food",
+        "blood",
+        "gold",
+        "powerstone",
+        "junk",
+    ]
+    .iter()
+    .any(|name| {
+        lower.contains(&format!(" {name} token"))
+            || lower.contains(&format!(" {name} tokens"))
+            || lower.contains(&format!(" tapped {name} token"))
+            || lower.contains(&format!(" tapped {name} tokens"))
+    })
+}
+
+fn compact_debug_safe_loyalty_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if let Some(rest) = strip_loyalty_counter_cost(trimmed, "Put ", " on this planeswalker: ") {
+        return Some(format!(
+            "+{}: {}",
+            rest.0,
+            normalize_loyalty_effect_surface(rest.1)
+        ));
+    }
+    if let Some(rest) = strip_loyalty_counter_cost(trimmed, "Remove ", " from this planeswalker: ")
+    {
+        return Some(format!(
+            "−{}: {}",
+            rest.0,
+            normalize_loyalty_effect_surface(rest.1)
+        ));
+    }
+    None
+}
+
+fn strip_loyalty_counter_cost<'a>(
+    line: &'a str,
+    verb: &str,
+    suffix: &str,
+) -> Option<(u32, &'a str)> {
+    let rest = line.strip_prefix(verb)?;
+    let (amount_text, after_amount) = rest.split_once(" loyalty counter")?;
+    let after_counter = after_amount
+        .strip_prefix('s')
+        .unwrap_or(after_amount)
+        .strip_prefix(suffix)?;
+    let amount = parse_structural_keyword_amount(amount_text)?;
+    Some((amount, after_counter.trim()))
+}
+
+fn normalize_loyalty_effect_surface(effect: &str) -> String {
+    let trimmed = effect.trim();
+    let without_period = trimmed.trim_end_matches('.');
+    let normalized =
+        if without_period.eq_ignore_ascii_case("for each player, that player discards a card") {
+            "Each player discards a card".to_string()
+        } else {
+            capitalize_first(without_period)
+        };
+    format!("{normalized}.")
+}
+
+fn compact_structural_keyword_surfaces(lines: Vec<String>) -> Vec<String> {
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let line = lines[idx].trim();
+        if let Some(next) = lines.get(idx + 1)
+            && let Some(label) = structural_graft_label(line, next)
+        {
+            compacted.push(label);
+            idx += 2;
+            continue;
+        }
+        if let Some(label) = structural_keyword_label_from_line(line) {
+            compacted.push(label);
+        } else {
+            compacted.push(lines[idx].clone());
+        }
+        idx += 1;
+    }
+
+    compacted
+}
+
+fn structural_keyword_label_from_line(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    if lower
+        == "whenever you cast a spell, you may pay {w/b}. if you do, each opponent loses 1 life and you gain x life."
+        || lower
+            == "whenever you cast a spell, you may pay {w/b}. if you do, each opponent loses 1 life and you gain that much life."
+    {
+        return Some("Extort".to_string());
+    }
+    if lower == "whenever a creature you control enters, evolve." {
+        return Some("Evolve".to_string());
+    }
+    if lower
+        == "whenever this creature deals combat damage to a player: exile the top one card of the damaged player's library."
+        || lower
+            == "whenever this creature deals combat damage to a player: exile the top card of the damaged player's library."
+    {
+        return Some("Ingest".to_string());
+    }
+    if let Some(amount) = structural_rampage_amount(&lower) {
+        return Some(format!("Rampage {amount}"));
+    }
+    if let Some(cost) = compact.strip_suffix(
+        ", Discard this card: Search your library for a card with mana value equal to a dynamic value, put it into your hand, then shuffle. Activate only as a sorcery.",
+    ) && cost.starts_with('{')
+    {
+        return Some(format!("Transmute {cost}"));
+    }
+    structural_fabricate_label(&compact)
+}
+
+fn structural_rampage_amount(lower: &str) -> Option<u32> {
+    let rest = lower
+        .strip_prefix("whenever this creature becomes blocked, this creature gets +x/+x until end of turn, where x is ")
+        .or_else(|| {
+            lower.strip_prefix(
+                "whenever this creature becomes blocked, it gets +x/+x until end of turn, where x is ",
+            )
+        })?;
+    let amount_text = rest.strip_suffix(" times the number of blockers beyond the first.")?;
+    parse_structural_keyword_amount(amount_text)
+}
+
+fn structural_fabricate_label(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    if !lower.starts_with("when this creature enters, choose one")
+        || !lower.contains("+1/+1 counter")
+        || !lower.contains("servo artifact creature token")
+    {
+        return None;
+    }
+
+    let amount = if let Some(rest) = lower.split("put ").nth(1) {
+        let amount_token = rest.split_whitespace().next()?;
+        parse_structural_keyword_amount(amount_token)?
+    } else {
+        return None;
+    };
+    if amount == 1 {
+        if lower.contains("put a +1/+1 counter on this creature")
+            && lower.contains("create a 1/1 colorless servo artifact creature token")
+        {
+            return Some("Fabricate 1".to_string());
+        }
+        return None;
+    }
+
+    let amount_word = small_number_word(amount)
+        .map(str::to_string)
+        .unwrap_or_else(|| amount.to_string());
+    let put = format!("put {amount_word} +1/+1 counters on this creature");
+    let create = format!("create {amount_word} 1/1 colorless servo artifact creature tokens");
+    (lower.contains(&put) && lower.contains(&create)).then(|| format!("Fabricate {amount}"))
+}
+
+fn structural_graft_label(first: &str, second: &str) -> Option<String> {
+    let first = compact_whitespace(first).to_ascii_lowercase();
+    let second = compact_whitespace(second).to_ascii_lowercase();
+    if !first.starts_with("this creature enters with ")
+        || !first.contains("+1/+1 counter")
+        || !first.ends_with(" on it.")
+        || !second.starts_with("whenever another creature enters")
+        || !second.contains("graft_entered_creature")
+        || !second.contains("move a +1/+1 counter from this creature")
+    {
+        return None;
+    }
+
+    let amount_text = first
+        .strip_prefix("this creature enters with ")?
+        .split(" +1/+1 counter")
+        .next()?;
+    let amount = parse_structural_keyword_amount(amount_text)?;
+    Some(format!("Graft {amount}"))
+}
+
+fn parse_structural_keyword_amount(text: &str) -> Option<u32> {
+    match text.trim().trim_end_matches('.') {
+        "a" | "an" | "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        "eleven" => Some(11),
+        "twelve" => Some(12),
+        "thirteen" => Some(13),
+        "fourteen" => Some(14),
+        "fifteen" => Some(15),
+        "sixteen" => Some(16),
+        "seventeen" => Some(17),
+        "eighteen" => Some(18),
+        "nineteen" => Some(19),
+        "twenty" => Some(20),
+        raw => raw.parse::<u32>().ok(),
+    }
+}
+
+fn compact_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn merge_adjacent_intrinsic_keyword_marker_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let first = lines[idx].trim();
+        if !is_intrinsic_keyword_marker_line(first) {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let mut end = idx + 1;
+        while end < lines.len() && is_intrinsic_keyword_marker_line(lines[end].trim()) {
+            end += 1;
+        }
+
+        if end == idx + 1 {
+            merged.push(lines[idx].clone());
+        } else {
+            let mut keywords = Vec::new();
+            for keyword in lines[idx..end]
+                .iter()
+                .map(|line| normalize_intrinsic_keyword_marker_for_bundle(line))
+            {
+                if !keywords
+                    .iter()
+                    .any(|existing: &String| existing.eq_ignore_ascii_case(&keyword))
+                {
+                    keywords.push(keyword);
+                }
+            }
+            merged.push(keywords.join(", "));
+        }
+        idx = end;
+    }
+
+    merged
+}
+
+fn is_intrinsic_keyword_marker_line(line: &str) -> bool {
+    let marker = line.trim().trim_end_matches('.');
+    !marker.is_empty()
+        && !marker.contains(':')
+        && !marker.contains('\n')
+        && is_keyword_phrase(marker)
+}
+
+fn normalize_intrinsic_keyword_marker_for_bundle(line: &str) -> String {
+    line.trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+        .to_string()
+}
+
+fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let mut replacements = Vec::new();
+    let subject = subject_for_card(&def.card);
+    let rewrite_it_deals = def.card.card_types.contains(&CardType::Creature)
+        || def.card.card_types.contains(&CardType::Artifact)
+        || def.card.card_types.contains(&CardType::Land)
+        || def.card.card_types.contains(&CardType::Planeswalker)
+        || def.card.card_types.contains(&CardType::Battle);
+
+    for (idx, ability) in def.abilities.iter().enumerate() {
+        let Some(label) = safe_intrinsic_label_from_ability_source_text(ability) else {
+            continue;
+        };
+        let mut structured_ability = ability.clone();
+        structured_ability.text = None;
+        for rendered_line in
+            describe_ability(idx + 1, &structured_ability, subject, rewrite_it_deals)
+        {
+            push_safe_intrinsic_marker_replacement(&mut replacements, &rendered_line, &label);
+        }
+    }
+
+    for cost in &def.optional_costs {
+        let label = describe_optional_cost_line(cost);
+        push_safe_intrinsic_marker_replacement(
+            &mut replacements,
+            &describe_optional_cost_line(cost),
+            &label,
+        );
+    }
+
+    for (idx, method) in def.alternative_casts.iter().enumerate() {
+        let Some(label) = alternative_cast_intrinsic_marker_line(method) else {
+            continue;
+        };
+        push_safe_intrinsic_marker_replacement(
+            &mut replacements,
+            &describe_alternative_cast_line(method, idx),
+            &label,
+        );
+    }
+
+    lines
+        .into_iter()
+        .map(|line| {
+            let line_key =
+                intrinsic_match_key_for_def(def, &canonicalize_intrinsic_render_line(&line));
+            for (rendered, marker) in &replacements {
+                if line_key == intrinsic_match_key_for_def(def, rendered) {
+                    return marker.clone();
+                }
+            }
+            line
+        })
+        .collect()
+}
+
+fn is_safe_intrinsic_marker_surface(def: &CardDefinition, line: &str) -> bool {
+    let marker = line.trim().trim_end_matches('.');
+    if is_intrinsic_keyword_marker_line(marker) {
+        return true;
+    }
+
+    def.abilities.iter().any(|ability| {
+        safe_intrinsic_label_from_ability_source_text(ability)
+            .is_some_and(|label| label.eq_ignore_ascii_case(marker))
+    }) || def
+        .optional_costs
+        .iter()
+        .map(describe_optional_cost_line)
+        .any(|label| label.trim_end_matches('.').eq_ignore_ascii_case(marker))
+        || def
+            .alternative_casts
+            .iter()
+            .filter_map(alternative_cast_intrinsic_marker_line)
+            .any(|label| label.trim_end_matches('.').eq_ignore_ascii_case(marker))
+}
+
+fn push_safe_intrinsic_marker_replacement(
+    replacements: &mut Vec<(String, String)>,
+    rendered_line: &str,
+    marker_line: &str,
+) {
+    let rendered = canonicalize_intrinsic_render_line(rendered_line);
+    let marker = canonicalize_intrinsic_render_line(marker_line);
+    if rendered.is_empty()
+        || marker.is_empty()
+        || rendered.eq_ignore_ascii_case(&marker)
+        || intrinsic_match_key(&rendered) == intrinsic_match_key(&marker)
+    {
+        return;
+    }
+    replacements.push((rendered, marker));
+}
+
+fn alternative_cast_intrinsic_marker_line(method: &AlternativeCastingMethod) -> Option<String> {
+    if let AlternativeCastingMethod::Suspend { cost, time } = method {
+        return Some(format!("Suspend {time}—{}", cost.to_oracle()));
+    }
+
+    let name = method.name().trim();
+    if name.is_empty() || name.eq_ignore_ascii_case("Parsed alternative cost") {
+        return None;
+    }
+    let label = intrinsic_label_from_source_text(Some(name))?;
+    Some(match method.mana_cost() {
+        Some(cost) => format!("{label} {}", cost.to_oracle()),
+        None => label,
+    })
+}
+
+struct CanonicalCompiledLines {
+    lines: Vec<String>,
+    used_oracle_reconciliation: bool,
+}
+
+fn canonical_compiled_lines_with_oracle_reconciliation_tracking(
+    def: &CardDefinition,
+) -> CanonicalCompiledLines {
+    let rendered = raw_compiled_lines_with_mode(def, CompiledTextMode::Canonical);
+    let canonical = normalize_debug_safe_surface(def, def, rendered);
+    let mut used_oracle_reconciliation = false;
+    let mut canonical =
+        normalize_canonical_oracle_surface(def, canonical, &mut used_oracle_reconciliation);
+    canonical.dedup();
+    CanonicalCompiledLines {
+        lines: canonical,
+        used_oracle_reconciliation,
+    }
+}
+
+fn normalize_canonical_oracle_surface(
+    def: &CardDefinition,
+    lines: Vec<String>,
+    used_oracle_reconciliation: &mut bool,
+) -> Vec<String> {
+    let canonical =
+        apply_tracked_oracle_reconciliation(lines, used_oracle_reconciliation, |lines| {
+            reconcile_intrinsic_lines_with_oracle(def, lines)
+        });
+    let canonical =
+        apply_tracked_oracle_reconciliation(canonical, used_oracle_reconciliation, |lines| {
+            reconcile_named_token_shorthand_with_oracle(def, lines)
+        });
+    let canonical =
+        apply_tracked_oracle_reconciliation(canonical, used_oracle_reconciliation, |lines| {
+            reconcile_transform_return_wording_with_oracle(def, lines)
+        });
+    let canonical =
+        apply_tracked_oracle_reconciliation(canonical, used_oracle_reconciliation, |lines| {
+            reconcile_suspend_marker_with_oracle(def, lines)
+        });
+    let canonical =
+        apply_tracked_oracle_reconciliation(canonical, used_oracle_reconciliation, |lines| {
+            reconcile_modal_bullets_with_oracle(def, lines)
+        });
+    apply_tracked_oracle_reconciliation(canonical, used_oracle_reconciliation, |lines| {
+        reconcile_surface_equivalent_lines_with_oracle(def, lines)
+    })
+}
+
+fn reconcile_modal_bullets_with_oracle(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    if !def.card.oracle_text.contains('•')
+        || !lines
+            .iter()
+            .any(|line| line.to_ascii_lowercase().contains("choose one"))
+    {
+        return lines;
+    }
+    def.card
+        .oracle_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(normalize_sentence_surface_style)
+        .collect()
+}
+
+fn reconcile_suspend_marker_with_oracle(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let suspend_lines = def
+        .card
+        .oracle_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.to_ascii_lowercase().starts_with("suspend "))
+        .filter_map(|line| line.split('(').next().map(str::trim))
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
-    canonical = reconcile_intrinsic_lines_with_oracle(def, canonical);
-    canonical = reconcile_named_token_shorthand_with_oracle(def, canonical);
-    canonical = reconcile_transform_return_wording_with_oracle(def, canonical);
-    canonical = reconcile_surface_equivalent_lines_with_oracle(def, canonical);
-    canonical.dedup();
-    canonical
+    if suspend_lines.is_empty() {
+        return lines;
+    }
+
+    lines
+        .into_iter()
+        .map(|line| {
+            let lower = line.trim().to_ascii_lowercase();
+            suspend_lines
+                .iter()
+                .find(|oracle| {
+                    let oracle_lower = oracle.to_ascii_lowercase();
+                    oracle_lower.contains('—')
+                        && oracle_lower
+                            .split('—')
+                            .nth(1)
+                            .is_some_and(|cost| lower == format!("suspend {}", cost.trim()))
+                })
+                .map(|oracle| (*oracle).to_string())
+                .unwrap_or(line)
+        })
+        .collect()
+}
+
+fn apply_tracked_oracle_reconciliation(
+    lines: Vec<String>,
+    used_oracle_reconciliation: &mut bool,
+    reconcile: impl FnOnce(Vec<String>) -> Vec<String>,
+) -> Vec<String> {
+    let before = lines.clone();
+    let after = reconcile(lines);
+    if after != before {
+        *used_oracle_reconciliation = true;
+    }
+    after
 }
 
 fn reconcile_transform_return_wording_with_oracle(
@@ -2372,7 +2983,21 @@ fn find_matching_oracle_intrinsic_line(oracle_lines: &[&str], label: &str) -> Op
 }
 
 fn intrinsic_match_key(text: &str) -> String {
-    normalize_intrinsic_token_surface_for_match(&strip_parenthetical_text(text))
+    let mut normalized =
+        normalize_intrinsic_token_surface_for_match(&strip_parenthetical_text(text));
+    for prefix in [
+        "This artifact enters with ",
+        "This creature enters with ",
+        "This enchantment enters with ",
+        "This land enters with ",
+        "This permanent enters with ",
+    ] {
+        if let Some(rest) = normalized.strip_prefix(prefix) {
+            normalized = format!("Enters the battlefield with {rest}");
+            break;
+        }
+    }
+    normalized
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -2406,6 +3031,7 @@ fn intrinsic_match_key_for_def(def: &CardDefinition, text: &str) -> String {
             normalized = normalized.replace(&name, &subject);
         }
     }
+    normalized = normalized.replace("this source", &subject);
     normalized
 }
 
@@ -2485,7 +3111,10 @@ fn oracle_surface_match_key(text: &str) -> String {
         .replace("that creature's controller", "that object's controller")
         .replace("that land's controller", "that object's controller")
         .replace("that permanent's controller", "that object's controller")
-        .replace("that card's controller", "that object's controller");
+        .replace("that card's controller", "that object's controller")
+        .replace("target player's ", "their ")
+        .replace(": Add ", ", add ")
+        .replace(": add ", ", add ");
     normalized
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -2525,7 +3154,7 @@ fn drop_suspend_keyword_intrinsic_lines(def: &CardDefinition, lines: Vec<String>
 
 /// Backward-compatible alias for the canonical normalized compiled-text surface.
 pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
-    canonical_compiled_lines(def)
+    canonical_compiled_lines_with_oracle_reconciliation_tracking(def).lines
 }
 
 #[cfg(test)]
@@ -6440,6 +7069,285 @@ mod tests {
     }
 
     #[test]
+    fn debug_compiled_lines_collapses_structured_crew_keyword_marker() {
+        let crew_cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+            crate::effects::CrewCostEffect::new(6),
+        ));
+        let animate = crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddCardTypes(vec![crate::types::CardType::Creature]),
+            crate::effect::Until::EndOfTurn,
+        ));
+        let crew = crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crew_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
+                choices: Vec::new(),
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some("Crew 6".to_string()),
+        };
+        let def = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Consulate Dreadnought",
+        )
+        .card_types(vec![crate::types::CardType::Artifact])
+        .with_ability(crew)
+        .build();
+
+        assert_eq!(super::debug_compiled_lines(&def), vec!["Crew 6"]);
+    }
+
+    #[test]
+    fn debug_compiled_lines_are_independent_of_card_oracle_text() {
+        let def = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Debug Oracle Probe",
+        )
+        .card_types(vec![crate::types::CardType::Instant])
+        .oracle_text(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.\nDraw a card.",
+        )
+        .with_spell_effect(vec![crate::effect::Effect::draw(1)])
+        .build();
+        let mut changed = def.clone();
+        changed.card.oracle_text =
+            "Completely unrelated fake oracle text that should not affect debug output."
+                .to_string();
+
+        assert_eq!(
+            super::debug_compiled_lines(&def),
+            super::debug_compiled_lines(&changed)
+        );
+    }
+
+    #[test]
+    fn debug_compiled_lines_do_not_emit_non_keyword_ability_source_text() {
+        let crew_cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+            crate::effects::CrewCostEffect::new(6),
+        ));
+        let animate = crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddCardTypes(vec![crate::types::CardType::Creature]),
+            crate::effect::Until::EndOfTurn,
+        ));
+        let crew = crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crew_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
+                choices: Vec::new(),
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+            text: Some("This unsafe source text should never appear.".to_string()),
+        };
+        let def =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Unsafe Probe")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .with_ability(crew)
+                .build();
+
+        let rendered = super::debug_compiled_lines(&def).join("\n");
+        assert!(
+            !rendered.contains("unsafe source text"),
+            "debug text must render from structure, not arbitrary ability source text: {rendered}"
+        );
+    }
+
+    #[test]
+    fn debug_safe_surface_compacts_structural_keyword_sequences() {
+        let def =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Keyword Probe")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+
+        let raw = vec![
+            "This creature enters with a +1/+1 counter on it for each color of mana spent to cast it."
+                .to_string(),
+            "Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain X life."
+                .to_string(),
+            "When this creature enters, choose one —\n• Put three +1/+1 counters on this creature.\n• Create three 1/1 colorless Servo artifact creature tokens."
+                .to_string(),
+            "This creature enters with two +1/+1 counters on it.".to_string(),
+            "Whenever another creature enters, tag the triggering object as 'graft_entered_creature'. You may Move a +1/+1 counter from this creature to the tagged object 'graft_entered_creature'."
+                .to_string(),
+            "Whenever a creature you control enters, evolve.".to_string(),
+            "Whenever this creature deals combat damage to a player: Exile the top one card of the damaged player's library."
+                .to_string(),
+            "Whenever this creature becomes blocked, this creature gets +X/+X until end of turn, where X is 4 times the number of blockers beyond the first."
+                .to_string(),
+            "{1}{U}{U}, Discard this card: Search your library for a card with mana value equal to a dynamic value, put it into your hand, then shuffle. Activate only as a sorcery."
+                .to_string(),
+        ];
+
+        assert_eq!(
+            super::normalize_debug_safe_surface(&def, &def, raw),
+            vec![
+                "This creature enters with a +1/+1 counter on it for each color of mana spent to cast it.",
+                "Extort, fabricate 3, graft 2, evolve, ingest, rampage 4, transmute {1}{u}{u}",
+            ]
+        );
+    }
+
+    #[test]
+    fn debug_safe_surface_applies_generic_oracle_like_compactions() {
+        let def =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Surface Probe")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let raw = vec![
+            "Create a Junk token with \"{T}, Sacrifice this token: Exile the top card of your library. You may play that card this turn. Activate only as a sorcery\""
+                .to_string(),
+            "When this creature dies, put that card onto the battlefield under your control. Transform it."
+                .to_string(),
+        ];
+
+        assert_eq!(
+            super::normalize_debug_safe_surface(&def, &def, raw),
+            vec![
+                "Create a Junk token.",
+                "When this creature dies, put that card onto the battlefield under your control. Transform it.",
+            ]
+        );
+    }
+
+    #[test]
+    fn debug_safe_surface_compacts_loyalty_counter_costs() {
+        let def =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Loyalty Probe")
+                .card_types(vec![crate::types::CardType::Planeswalker])
+                .build();
+        let raw = vec![
+            "Put a loyalty counter on this planeswalker: For each player, that player discards a card."
+                .to_string(),
+            "Put four loyalty counters on this planeswalker: target player exiles a card from their hand."
+                .to_string(),
+            "Remove two loyalty counters from this planeswalker: target player sacrifices a creature of their choice."
+                .to_string(),
+            "Remove fourteen loyalty counters from this planeswalker: Exile target permanent."
+                .to_string(),
+        ];
+
+        assert_eq!(
+            super::normalize_debug_safe_surface(&def, &def, raw),
+            vec![
+                "+1: Each player discards a card.",
+                "+4: Target player exiles a card from their hand.",
+                "−2: Target player sacrifices a creature of their choice.",
+                "−14: Exile target permanent.",
+            ]
+        );
+    }
+
+    #[test]
+    fn debug_compiled_lines_restore_typed_sunburst_keyword_marker() {
+        let creature =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Sunburst Probe")
+                .card_types(vec![
+                    crate::types::CardType::Artifact,
+                    crate::types::CardType::Creature,
+                ])
+                .sunburst()
+                .build();
+        let artifact =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goblet Probe")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .sunburst()
+                .build();
+
+        assert_eq!(super::debug_compiled_lines(&creature), vec!["Sunburst"]);
+        assert_eq!(super::debug_compiled_lines(&artifact), vec!["Sunburst"]);
+    }
+
+    #[test]
+    fn debug_compiled_lines_bundles_adjacent_intrinsic_keyword_markers() {
+        let def =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zetalpa Probe")
+                .flying()
+                .double_strike()
+                .vigilance()
+                .trample()
+                .indestructible()
+                .build();
+
+        assert_eq!(
+            super::debug_compiled_lines(&def),
+            vec!["Flying, double strike, vigilance, trample, indestructible"]
+        );
+    }
+
+    #[test]
+    fn debug_compiled_lines_collapses_intrinsic_casting_keyword_markers() {
+        let spectacle_cost = crate::mana::ManaCost::from_symbols(vec![
+            crate::mana::ManaSymbol::Generic(2),
+            crate::mana::ManaSymbol::Red,
+        ]);
+        let spectacle =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Spikewheel Probe")
+                .card_types(vec![crate::types::CardType::Creature])
+                .spectacle(spectacle_cost)
+                .build();
+
+        assert_eq!(
+            super::debug_compiled_lines(&spectacle),
+            vec!["Spectacle {2}{R}"]
+        );
+
+        let casualty =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Casualty Probe")
+                .card_types(vec![crate::types::CardType::Instant])
+                .casualty(1)
+                .build();
+
+        assert_eq!(super::debug_compiled_lines(&casualty), vec!["Casualty 1"]);
+    }
+
+    #[test]
+    fn safe_compiled_lines_do_not_apply_oracle_sensitive_transform_reconciliation() {
+        let def = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Harvest Hand Probe",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .oracle_text(
+            "When this creature dies, return it to the battlefield transformed under your control.",
+        )
+        .build();
+        let raw = vec![
+            "When this creature dies, put that card onto the battlefield under your control. Transform it."
+                .to_string(),
+        ];
+
+        let safe = super::normalize_debug_safe_surface(&def, &def, raw);
+        assert_eq!(
+            safe,
+            vec![
+                "When this creature dies, put that card onto the battlefield under your control. Transform it."
+            ],
+            "debug/safe text should not use oracle-sensitive transform wording"
+        );
+
+        assert_eq!(
+            super::reconcile_transform_return_wording_with_oracle(&def, safe),
+            vec![
+                "When this creature dies, return it to the battlefield transformed under your control."
+            ],
+            "canonical text may still apply the oracle-sensitive reconciliation"
+        );
+    }
+
+    #[test]
     fn normalize_embedded_create_with_token_reminder_handles_iterated_player_control() {
         let normalized = super::normalize_embedded_create_with_token_reminder(
             "When this creature dies, for each player, Create a Lander artifact token with \"{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle\" under that player's control.",
@@ -6529,6 +7437,21 @@ mod tests {
             .expect("Durkwood Baloth should parse");
 
         assert_eq!(super::canonical_compiled_lines(&def), vec!["Suspend 5—{G}"]);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn debug_compiled_lines_render_suspend_from_structured_time_and_cost() {
+        let mut def = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Durkwood Baloth")
+            .parse_text(
+                "Mana cost: {4}{G}{G}\nType: Creature — Beast\nPower/Toughness: 5/5\nSuspend 5—{G} (Rather than cast this card from your hand, you may pay {G} and exile it with five time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)",
+            )
+            .expect("Durkwood Baloth should parse");
+        let rendered = super::debug_compiled_lines(&def);
+        def.card.oracle_text = "This unrelated oracle line must not drive debug text.".to_string();
+
+        assert_eq!(rendered, vec!["Suspend 5—{G}"]);
+        assert_eq!(super::debug_compiled_lines(&def), rendered);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

@@ -748,7 +748,11 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         "unless-pays",
         830,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("unless")],
+        &[
+            LexRuleHeadHint::Single("unless"),
+            LexRuleHeadHint::Single("for"),
+            LexRuleHeadHint::Single("each")
+        ],
         parse_sentence_unless_pays
     ),
 ];

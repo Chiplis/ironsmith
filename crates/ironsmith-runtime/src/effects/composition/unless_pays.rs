@@ -1,17 +1,19 @@
 //! "Unless pays" effect implementation.
 
+use crate::costs::Cost;
 use crate::decision::FallbackStrategy;
 use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::special_actions::{
+    can_pay_total_cost_with_reason_in_context, pay_total_cost_with_choice_in_context,
+};
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 
 /// Effect that executes inner effects unless a player pays a mana cost.
 ///
@@ -34,16 +36,8 @@ pub struct UnlessPaysEffect {
     pub effects: Vec<Effect>,
     /// Which player is asked to pay.
     pub player: PlayerFilter,
-    /// The mana cost required to prevent the effects.
-    pub mana: Vec<ManaSymbol>,
-    /// Optional life payment required in addition to mana.
-    pub life: Option<Value>,
-    /// Optional dynamic additional generic mana payment.
-    pub additional_generic: Option<Value>,
-    /// Optional bound value for an X mana symbol in the payment cost.
-    pub x_value: Option<Value>,
-    /// Optional multiplier for the mana symbol sequence.
-    pub mana_multiplier: Option<Value>,
+    /// Total cost required to prevent the effects.
+    pub cost: crate::cost::TotalCost,
 }
 
 impl UnlessPaysEffect {
@@ -52,6 +46,19 @@ impl UnlessPaysEffect {
         Self::new_with_life_and_additional_and_multiplier_and_x(
             effects, player, mana, None, None, None, None,
         )
+    }
+
+    /// Create a new "unless pays" effect with a composable total cost.
+    pub fn new_total_cost(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        Self {
+            effects,
+            player,
+            cost,
+        }
     }
 
     /// Create a new "unless pays" effect with optional life payment.
@@ -117,16 +124,47 @@ impl UnlessPaysEffect {
         mana_multiplier: Option<Value>,
         x_value: Option<Value>,
     ) -> Self {
-        Self {
+        Self::new_total_cost(
             effects,
             player,
-            mana,
-            life,
-            additional_generic,
-            x_value,
-            mana_multiplier,
+            legacy_unless_payment_cost(mana, life, additional_generic, mana_multiplier, x_value),
+        )
+    }
+}
+
+fn legacy_unless_payment_cost(
+    mana: Vec<ManaSymbol>,
+    life: Option<Value>,
+    additional_generic: Option<Value>,
+    mana_multiplier: Option<Value>,
+    x_value: Option<Value>,
+) -> crate::cost::TotalCost {
+    let mut components = Vec::new();
+    let mana_cost = ManaCost::from_symbols(mana);
+    if !mana_cost.is_empty()
+        || additional_generic.is_some()
+        || mana_multiplier.is_some()
+        || x_value.is_some()
+    {
+        if additional_generic.is_some() || mana_multiplier.is_some() || x_value.is_some() {
+            components.push(Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+                mana_cost,
+                x_value,
+                additional_generic,
+                mana_multiplier,
+                ironsmith_core::DynamicManaDisplayHint::Default,
+            )));
+        } else {
+            components.push(Cost::mana(mana_cost));
         }
     }
+    if let Some(life) = life {
+        let effect = Effect::lose_life_player(life, PlayerFilter::You);
+        components.push(Cost::try_effect(effect).unwrap_or_else(|detail| {
+            panic!("legacy unless-pays life cost is not cost-executable: {detail}")
+        }));
+    }
+    crate::cost::TotalCost::from_costs(components)
 }
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
@@ -167,81 +205,18 @@ impl EffectExecutor for UnlessPaysEffect {
         } else {
             vec![resolve_player_filter(game, &self.player, ctx)?]
         };
-        let life_to_pay = self
-            .life
-            .as_ref()
-            .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
-            .transpose()?
-            .unwrap_or(0);
-        let additional_generic = self
-            .additional_generic
-            .as_ref()
-            .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
-            .transpose()?
-            .unwrap_or(0);
-        let x_value = self
-            .x_value
-            .as_ref()
-            .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
-            .transpose()?
-            .unwrap_or(0);
-        let mana_multiplier = self
-            .mana_multiplier
-            .as_ref()
-            .map(|value| resolve_value(game, value, ctx).map(|n| n.max(0) as u32))
-            .transpose()?
-            .unwrap_or(1);
-
-        let mut mana_symbols = Vec::new();
-        for _ in 0..mana_multiplier {
-            mana_symbols.extend(self.mana.iter().copied());
-        }
-        if additional_generic > 0 {
-            let capped = additional_generic.min(u8::MAX as u32) as u8;
-            mana_symbols.push(ManaSymbol::Generic(capped));
-        }
-
-        let mana_display = if mana_symbols.is_empty() {
-            None
-        } else {
-            Some(ManaCost::from_symbols(mana_symbols.clone()).to_oracle())
-        };
-        let payment_display = match (mana_display, life_to_pay) {
-            (None, 0) => "no cost".to_string(),
-            (None, life) => format!("{life} life"),
-            (Some(mana), 0) => mana,
-            (Some(mana), life) => format!("{mana} and {life} life"),
-        };
-
         for paying_player in paying_players {
-            // Check if this player can afford to pay mana/life.
-            let can_afford_mana = {
-                let cost = ManaCost::from_symbols(mana_symbols.clone());
-                let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                    paying_player,
-                    Some(ctx.source),
-                    &cost,
-                    crate::costs::PaymentReason::Effect,
-                );
-                game.can_pay_mana_cost_with_reason(
-                    paying_player,
-                    Some(ctx.source),
-                    &adjusted_cost,
-                    x_value,
-                    crate::costs::PaymentReason::Effect,
-                )
-            };
-            let can_afford_life = if life_to_pay == 0 {
-                true
-            } else if !game.can_lose_life(paying_player)
-                || !game.can_change_life_total(paying_player)
-            {
-                false
-            } else {
-                game.player(paying_player)
-                    .is_some_and(|player| player.life >= life_to_pay as i32)
-            };
-            let can_afford = can_afford_mana && can_afford_life;
+            let can_afford = can_pay_total_cost_with_reason_in_context(
+                game,
+                paying_player,
+                ctx.source,
+                &self.cost,
+                crate::costs::PaymentReason::Effect,
+                ctx,
+            )
+            .is_ok();
+
+            let payment_prompt = format!("{} to prevent effect?", self.cost.display());
 
             // Ask this player if they want to pay.
             let wants_to_pay = if can_afford {
@@ -250,7 +225,7 @@ impl EffectExecutor for UnlessPaysEffect {
                     &mut ctx.decision_maker,
                     paying_player,
                     ctx.source,
-                    format!("Pay {} to prevent effect?", payment_display),
+                    payment_prompt,
                     FallbackStrategy::Accept,
                 )
             } else {
@@ -258,32 +233,17 @@ impl EffectExecutor for UnlessPaysEffect {
             };
 
             if wants_to_pay {
-                // Pay the mana/life cost; if paid successfully, prevent effects.
-                let cost = ManaCost::from_symbols(mana_symbols.clone());
-                let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+                if pay_total_cost_with_choice_in_context(
+                    game,
                     paying_player,
-                    Some(ctx.source),
-                    &cost,
+                    ctx.source,
+                    &self.cost,
                     crate::costs::PaymentReason::Effect,
-                );
-                if game.try_pay_mana_cost_with_reason(
-                    paying_player,
-                    Some(ctx.source),
-                    &adjusted_cost,
-                    x_value,
-                    crate::costs::PaymentReason::Effect,
-                ) {
-                    let mut outcome = EffectOutcome::declined();
-                    if life_to_pay > 0 {
-                        if let Some(player) = game.player_mut(paying_player) {
-                            player.lose_life(life_to_pay);
-                        }
-                        outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                            LifeLossEvent::from_effect(paying_player, life_to_pay),
-                            ctx.provenance,
-                        ));
-                    }
-                    return Ok(outcome);
+                    ctx,
+                )
+                .is_ok()
+                {
+                    return Ok(EffectOutcome::declined());
                 }
             }
         }
@@ -314,6 +274,8 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::CardBuilder;
+    use crate::cost::TotalCost;
+    use crate::costs::Cost;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::Effect;
     use crate::effects::ExecutionContext;
@@ -374,5 +336,130 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
         assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn unless_pays_total_cost_life_payment_prevents_inner_effect() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            TotalCost::from_costs(vec![Cost::life(2)]),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays total cost effect should execute");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn unless_pays_total_cost_executes_inner_effect_when_unaffordable() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            TotalCost::from_costs(vec![Cost::life(30)]),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays total cost effect should execute");
+
+        assert_ne!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 15);
+    }
+
+    #[test]
+    fn unless_pays_one_of_pays_selected_branch_only() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::life(2)),
+                TotalCost::from_cost(Cost::life(4)),
+            ]),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays one-of cost should execute");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn unless_pays_one_of_pays_only_affordable_branch() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::life(30)),
+                TotalCost::from_cost(Cost::life(2)),
+            ]),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays one-of cost should execute");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 18);
+    }
+
+    #[test]
+    fn unless_pays_dynamic_x_mana_resolves_in_effect_context() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 3);
+        let source = game.new_object_id();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new_total_cost(
+            vec![Effect::lose_life(5)],
+            PlayerFilter::You,
+            TotalCost::from_cost(Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+                ManaCost::from_symbols(vec![ManaSymbol::X]),
+                Some(Value::Fixed(3)),
+                None,
+                None,
+                ironsmith_core::DynamicManaDisplayHint::Default,
+            ))),
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays dynamic mana should execute");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert_eq!(game.player(alice).expect("alice exists").life, 20);
+        assert_eq!(
+            game.player(alice).expect("alice exists").mana_pool.total(),
+            0
+        );
     }
 }

@@ -3393,6 +3393,21 @@ fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::DistinctPowers(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(controller, source);
+
+            let mut seen: HashSet<i32> = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    if let Some(power) = ctx.game.calculated_power(obj.id).or_else(|| obj.power()) {
+                        seen.insert(power);
+                    }
+                }
+            });
+            seen.len() as i32
+        }
         Value::CreaturesDiedThisTurn => ctx
             .game
             .turn_store

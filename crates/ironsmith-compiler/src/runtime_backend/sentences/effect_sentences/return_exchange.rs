@@ -471,7 +471,16 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let target = if matches!(
         target_words.as_slice(),
-        ["it"] | ["them"] | ["that", "card"] | ["those", "cards"]
+        ["it"]
+            | ["them"]
+            | ["that", "card"]
+            | ["that", "creature"]
+            | ["that", "object"]
+            | ["that", "permanent"]
+            | ["those", "cards"]
+            | ["those", "creatures"]
+            | ["those", "objects"]
+            | ["those", "permanents"]
     ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
     } else {

@@ -531,6 +531,36 @@ pub(crate) fn parse_draw_equal_to_value(
     Ok(None)
 }
 
+fn counter_unless_payment_total_cost(
+    mana: Vec<ManaSymbol>,
+    life: Option<Value>,
+    additional_generic: Option<Value>,
+    x_value: Option<Value>,
+    display_hint: ironsmith_core::DynamicManaDisplayHint,
+) -> crate::cost::TotalCost {
+    let mut components = Vec::new();
+    let mana_cost = crate::mana::ManaCost::from_symbols(mana);
+    if !mana_cost.is_empty() || additional_generic.is_some() || x_value.is_some() {
+        if mana_cost.has_x() || additional_generic.is_some() || x_value.is_some() {
+            components.push(crate::costs::Cost::dynamic_mana(
+                ironsmith_core::DynamicManaCost::new(
+                    mana_cost,
+                    x_value,
+                    additional_generic,
+                    None,
+                    display_hint,
+                ),
+            ));
+        } else {
+            components.push(crate::costs::Cost::mana(mana_cost));
+        }
+    }
+    if let Some(life) = life {
+        components.push(crate::costs::Cost::life(life));
+    }
+    crate::cost::TotalCost::from_costs(components)
+}
+
 pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let target = parse_counter_target_phrase(spec.leading_tokens)?;
@@ -541,10 +571,30 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         });
     }
 
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let target_spell_second_this_turn = clause_words.as_slice()
+        == [
+            "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
+        ]
+        || clause_words.as_slice()
+            == [
+                "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
+                "turn",
+            ];
+    if target_spell_second_this_turn {
+        return Ok(EffectAst::Conditional {
+            predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
+            if_true: vec![EffectAst::Counter {
+                target: TargetAst::Spell(span_from_tokens(&tokens[1..3])),
+            }],
+            if_false: Vec::new(),
+        });
+    }
+
     if super::super::grammar::primitives::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
             "missing conditional counter target or predicate (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause_words.join(" ")
         )));
     }
 
@@ -562,6 +612,56 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
+
+        let mut payment_clause_tokens = unless_tokens[pays_idx..].to_vec();
+        if let Some(first) = payment_clause_tokens.first_mut()
+            && first.is_word("pays")
+        {
+            first.replace_word("pay");
+        }
+        let payment_clause_words = crate::runtime_backend::token_word_refs(&payment_clause_tokens);
+        let has_x_mana_payment = payment_clause_tokens.iter().any(|token| {
+            mana_pips_from_token(token)
+                .is_some_and(|pips| pips.iter().any(|symbol| matches!(symbol, ManaSymbol::X)))
+        });
+        let has_dynamic_payment_tail = payment_clause_words.iter().any(|word| {
+            matches!(
+                *word,
+                "and" | "or" | "where" | "plus" | "additional" | "equal" | "equals"
+            )
+        }) || crate::runtime_backend::token_primitives::contains_window(
+            &payment_clause_words,
+            &["for", "each"],
+        ) || has_x_mana_payment;
+        match crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
+            Ok(Some(cost)) => {
+                let should_keep_legacy_dynamic_path = has_dynamic_payment_tail
+                    && cost.as_one_of().is_none()
+                    && cost.dynamic_mana_cost().is_none();
+                if !should_keep_legacy_dynamic_path {
+                    return Ok(EffectAst::CounterUnlessPays {
+                        target,
+                        cost,
+                    });
+                }
+            }
+            Ok(None) => {
+                if !has_dynamic_payment_tail {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported counter-unless payment cost (clause: '{}')",
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    )));
+                }
+            }
+            Err(err) => {
+                if !has_dynamic_payment_tail {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported counter-unless payment cost (clause: '{}'): {err}",
+                        crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    )));
+                }
+            }
+        }
 
         // Parse the contiguous mana payment immediately following "pays".
         // Stop at the first non-mana word so trailing dynamic qualifiers
@@ -596,6 +696,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         let mut life = None;
         let mut additional_generic = None;
         let mut x_value = None;
+        let mut dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::Default;
         if mana.is_empty() {
             let payment_tokens = trim_commas(&unless_tokens[pays_idx + 1..]);
             let payment_words = crate::runtime_backend::token_word_refs(&payment_tokens);
@@ -605,6 +706,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     .or_else(|| parse_equal_to_number_of_filter_value(&payment_tokens))
             {
                 additional_generic = Some(value);
+                dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::ManaEqualTo;
                 trailing_start = None;
             } else {
                 return Err(CardTextError::ParseError(format!(
@@ -720,12 +822,47 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             )));
         }
 
+        if x_value.is_none()
+            && mana.as_slice() == [ManaSymbol::X]
+            && let Some(where_idx) = unless_tokens.iter().position(|token| token.is_word("where"))
+        {
+            let where_tokens = trim_commas(&unless_tokens[where_idx..]);
+            let where_words = crate::runtime_backend::token_word_refs(&where_tokens);
+            x_value = parse_where_x_value_clause(&where_tokens).or_else(|| {
+                if where_words
+                    .iter()
+                    .any(|word| matches!(*word, "graveyard" | "graveyards"))
+                    && (crate::runtime_backend::token_primitives::contains_window(
+                        &where_words,
+                        &["same", "name", "as", "the", "spell"],
+                    ) || crate::runtime_backend::token_primitives::contains_window(
+                        &where_words,
+                        &["same", "name", "as", "that", "spell"],
+                    ))
+                {
+                    Some(Value::Count(
+                        ObjectFilter::default()
+                            .in_zone(Zone::Graveyard)
+                            .match_tagged(
+                                TagKey::from("triggering"),
+                                crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                            ),
+                    ))
+                } else {
+                    None
+                }
+            });
+        }
+
         return Ok(EffectAst::CounterUnlessPays {
             target,
-            mana,
-            life,
-            additional_generic,
-            x_value,
+            cost: counter_unless_payment_total_cost(
+                mana,
+                life,
+                additional_generic,
+                x_value,
+                dynamic_display_hint,
+            ),
         });
     }
 

@@ -356,6 +356,33 @@ pub(super) fn try_compile_board_state_effect(
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "phased_out");
             (vec![effect], choices)
         }
+        EffectAst::PhaseOutAll { filter } => {
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            prelude.push(Effect::new(crate::effects::PhaseOutEffect::with_spec(
+                ChooseSpec::all(resolved_filter),
+            )));
+            (prelude, choices)
+        }
+        EffectAst::PhaseIn { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let base_effect = if spec.is_target() {
+                Effect::phase_in(spec.clone())
+            } else {
+                Effect::new(crate::effects::PhaseInEffect::with_spec(spec.clone()))
+            };
+            let effect = tag_object_target_effect(base_effect, &spec, ctx, "phased_in");
+            (vec![effect], choices)
+        }
+        EffectAst::PhaseInAll { filter } => {
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            prelude.push(Effect::new(crate::effects::PhaseInEffect::with_spec(
+                ChooseSpec::all(resolved_filter),
+            )));
+            (prelude, choices)
+        }
         EffectAst::RemoveFromCombat { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -572,29 +599,10 @@ pub(super) fn try_compile_player_resource_and_choice_effect(
         EffectAst::Counter { target } => {
             compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)?
         }
-        EffectAst::CounterUnlessPays {
-            target,
-            mana,
-            life,
-            additional_generic,
-            x_value,
-        } => {
-            let additional_generic = additional_generic
-                .as_ref()
-                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
-                .transpose()?;
-            let x_value = x_value
-                .as_ref()
-                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
-                .transpose()?;
+        EffectAst::CounterUnlessPays { target, cost } => {
+            let cost = cost.clone();
             compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
-                Effect::counter_unless_pays_with_life_and_additional_and_x(
-                    spec,
-                    mana.clone(),
-                    life.clone(),
-                    additional_generic.clone(),
-                    x_value.clone(),
-                )
+                Effect::counter_unless_pays_total_cost(spec, cost.clone())
             })?
         }
         EffectAst::LoseLife { amount, player } => {

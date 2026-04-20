@@ -751,6 +751,10 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     let mut id_gen = ctx.id_gen_context();
     let (compiled, choices, frame_out) =
         compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
+    let choices = choices
+        .into_iter()
+        .filter(|choice| !format!("{choice:?}").contains("IteratedPlayer"))
+        .collect();
     ctx.apply_id_gen_context(id_gen);
     let produced_last_tag = if tagged_object.is_none() {
         frame_out.last_object_tag.clone()

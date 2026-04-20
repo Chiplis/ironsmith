@@ -1618,6 +1618,19 @@ impl Effect {
         Self::counter_unless_pays_with_life(target, mana, None)
     }
 
+    /// Create a "counter unless pays [total cost]" effect.
+    pub fn counter_unless_pays_total_cost(
+        target: ChooseSpec,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        let player = match target.base() {
+            ChooseSpec::SpecificObject(id) => PlayerFilter::ControllerOf(ObjectRef::Specific(*id)),
+            ChooseSpec::Tagged(tag) => PlayerFilter::ControllerOf(ObjectRef::Tagged(tag.clone())),
+            _ => PlayerFilter::ControllerOf(ObjectRef::Target),
+        };
+        Self::unless_pays_total_cost(vec![Self::counter(target)], player, cost)
+    }
+
     /// Create a "counter unless pays [mana] and [life]" effect.
     pub fn counter_unless_pays_with_life(
         target: ChooseSpec,
@@ -2112,6 +2125,12 @@ impl Effect {
         Self::new(PhaseOutEffect::target(target))
     }
 
+    /// Create a "phase in target permanent" effect.
+    pub fn phase_in(target: ChooseSpec) -> Self {
+        use crate::effects::PhaseInEffect;
+        Self::new(PhaseInEffect::target(target))
+    }
+
     /// Create a "tap all permanents matching filter" effect.
     pub fn tap_all(filter: ObjectFilter) -> Self {
         use crate::effects::TapEffect;
@@ -2485,6 +2504,17 @@ impl Effect {
     /// ```
     pub fn unless_pays(effects: Vec<Effect>, player: PlayerFilter, mana: Vec<ManaSymbol>) -> Self {
         Self::unless_pays_with_life(effects, player, mana, None)
+    }
+
+    /// "X unless you/they pay [cost]" with a composable total cost.
+    pub fn unless_pays_total_cost(
+        effects: Vec<Effect>,
+        player: PlayerFilter,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        Self::new(crate::effects::UnlessPaysEffect::new_total_cost(
+            effects, player, cost,
+        ))
     }
 
     /// Cumulative upkeep payment: execute `payment` once per age counter, or

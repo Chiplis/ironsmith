@@ -1183,7 +1183,7 @@ pub(crate) fn parse_cant_clause(
         &normalized,
         &["even", "number", "of", "counters", "on", "it"],
     ) {
-        return Ok(Some(StaticAbility::keyword_marker(
+        return Ok(Some(StaticAbility::rule_fallback_text(
             format_negated_restriction_display(tokens),
         )));
     }
@@ -1245,7 +1245,7 @@ pub(crate) fn parse_cant_clause(
         && slice_contains(&normalized, &"double")
         && normalized.last().is_some_and(|word| *word == "instead")
     {
-        return Ok(Some(StaticAbility::keyword_marker(
+        return Ok(Some(StaticAbility::rule_fallback_text(
             crate::runtime_backend::token_word_refs(tokens).join(" "),
         )));
     }

@@ -502,6 +502,39 @@ fn pre_rule_exile_this_way_followup(
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
+fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        ["destroy", "those", "creatures"] | ["then", "destroy", "those", "creatures"]
+    )
+}
+
+fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
+    effects.iter().rev().find_map(|effect| match effect {
+        EffectAst::RemoveAbilitiesAll { filter, .. } => Some(filter.clone()),
+        _ => None,
+    })
+}
+
+fn pre_rule_destroy_those_creatures_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if !is_destroy_those_creatures_sentence(sentence_tokens) {
+        return Ok(None);
+    }
+    let Some(filter) = last_remove_abilities_all_filter(state.effects) else {
+        return Ok(None);
+    };
+    state.effects.push(EffectAst::DestroyAll { filter });
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
 fn post_rule_token_copy_and_extra_turn(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -612,6 +645,12 @@ const PRE_PARSE_FOLLOWUP_RULES: &[SentenceFollowupRuleDef] = &[
         priority: 55,
         heads: &["if"],
         run: pre_rule_exile_this_way_followup,
+    },
+    SentenceFollowupRuleDef {
+        id: "destroy-those-creatures",
+        priority: 58,
+        heads: &["destroy", "then"],
+        run: pre_rule_destroy_those_creatures_followup,
     },
     SentenceFollowupRuleDef {
         id: "otherwise",

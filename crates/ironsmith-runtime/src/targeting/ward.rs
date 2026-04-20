@@ -12,12 +12,11 @@
 
 use crate::ability::AbilityKind;
 use crate::cost::TotalCost;
-use crate::costs::CostContext;
 use crate::decision::DecisionMaker;
 use crate::decisions::{WardSpec, make_decision};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::special_actions::pay_cost_component_with_choice;
+use crate::special_actions::pay_total_cost_with_choice;
 use crate::static_abilities::StaticAbility;
 
 use super::types::{PendingWardCost, WardPaymentResult};
@@ -149,51 +148,15 @@ fn pay_ward_cost(
     cost: &TotalCost,
     decision_maker: &mut impl DecisionMaker,
 ) -> bool {
-    if crate::cost::can_pay_cost_with_reason(
+    pay_total_cost_with_choice(
         game,
-        source,
         payer,
+        source,
         cost,
         crate::costs::PaymentReason::Effect,
+        decision_maker,
     )
-    .is_err()
-    {
-        return false;
-    }
-
-    let ward_provenance = game.provenance_graph_mut().alloc_root(
-        crate::provenance::ProvenanceNodeKind::EffectExecution {
-            source,
-            controller: payer,
-        },
-    );
-    let mut cost_ctx = CostContext::new(source, payer, decision_maker)
-        .with_reason(crate::costs::PaymentReason::Effect)
-        .with_provenance(ward_provenance);
-    for component in cost.costs() {
-        if let Some(mana_cost) = component.mana_cost_ref() {
-            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-                payer,
-                Some(source),
-                mana_cost,
-                crate::costs::PaymentReason::Effect,
-            );
-            if !game.try_pay_mana_cost_with_reason(
-                payer,
-                Some(source),
-                &adjusted_cost,
-                0,
-                crate::costs::PaymentReason::Effect,
-            ) {
-                return false;
-            }
-            continue;
-        }
-        if pay_cost_component_with_choice(game, component, &mut cost_ctx).is_err() {
-            return false;
-        }
-    }
-    true
+    .is_ok()
 }
 
 #[cfg(test)]

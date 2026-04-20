@@ -8,6 +8,37 @@ use crate::target::ChooseSpec;
 
 use super::{NormalizedLine, assert_effect_ast_variant_coverage, for_each_nested_effects};
 
+fn total_cost_values_any(
+    cost: &crate::cost::TotalCost,
+    predicate: impl Fn(&Value) -> bool + Copy,
+) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => components
+            .iter()
+            .any(|component| cost_component_values_any(component, predicate)),
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches
+            .iter()
+            .any(|branch| total_cost_values_any(branch, predicate)),
+    }
+}
+
+fn cost_component_values_any(
+    component: &crate::costs::Cost,
+    predicate: impl Fn(&Value) -> bool + Copy,
+) -> bool {
+    match component {
+        crate::costs::Cost::DynamicMana(dynamic) => {
+            dynamic.x_value.as_ref().is_some_and(predicate)
+                || dynamic.additional_generic.as_ref().is_some_and(predicate)
+                || dynamic.multiplier.as_ref().is_some_and(predicate)
+        }
+        crate::costs::Cost::Energy(value)
+        | crate::costs::Cost::Mill(value)
+        | crate::costs::Cost::Life(value) => predicate(value),
+        _ => false,
+    }
+}
+
 pub(crate) fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
@@ -41,6 +72,7 @@ macro_rules! direct_target_effect_variants {
             | EffectAst::Tap { target: $target }
             | EffectAst::Untap { target: $target }
             | EffectAst::PhaseOut { target: $target }
+            | EffectAst::PhaseIn { target: $target }
             | EffectAst::RemoveFromCombat { target: $target }
             | EffectAst::TapOrUntap { target: $target }
             | EffectAst::Destroy { target: $target }
@@ -393,7 +425,11 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
-        | Value::GreatestManaValue(filter) => filter
+        | Value::GreatestManaValue(filter)
+        | Value::BasicLandTypesAmong(filter)
+        | Value::ColorsAmong(filter)
+        | Value::DistinctNames(filter)
+        | Value::DistinctPowers(filter) => filter
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
@@ -546,20 +582,8 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         EffectAst::RemoveCountersAll { amount, .. } => {
             value_references_event_derived_amount(amount)
         }
-        EffectAst::CounterUnlessPays {
-            life,
-            additional_generic,
-            x_value,
-            ..
-        } => {
-            life.as_ref()
-                .is_some_and(value_references_event_derived_amount)
-                || additional_generic
-                    .as_ref()
-                    .is_some_and(value_references_event_derived_amount)
-                || x_value
-                    .as_ref()
-                    .is_some_and(value_references_event_derived_amount)
+        EffectAst::CounterUnlessPays { cost, .. } => {
+            total_cost_values_any(cost, value_references_event_derived_amount)
         }
         EffectAst::Discard { count, .. } => value_references_event_derived_amount(count),
         EffectAst::Pump {
@@ -738,20 +762,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::PutCountersAll { count, filter, .. } => {
             value_references_tag(count, IT_TAG) || filter_references_tag(filter, IT_TAG)
         }
-        EffectAst::CounterUnlessPays {
-            life,
-            additional_generic,
-            x_value,
-            ..
-        } => {
-            life.as_ref()
-                .is_some_and(|value| value_references_tag(value, IT_TAG))
-                || additional_generic
-                    .as_ref()
-                    .is_some_and(|value| value_references_tag(value, IT_TAG))
-                || x_value
-                    .as_ref()
-                    .is_some_and(|value| value_references_tag(value, IT_TAG))
+        EffectAst::CounterUnlessPays { cost, .. } => {
+            total_cost_values_any(cost, |value| value_references_tag(value, IT_TAG))
         }
         EffectAst::Conditional {
             predicate,

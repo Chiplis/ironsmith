@@ -393,6 +393,18 @@ pub(crate) fn parse_effect_sentence_lexed(
     {
         return Ok(effects);
     }
+    if let Some(effects) =
+        super::consult_family::parse_consult_reveal_until_put_all_revealed_into_hand_sentence(
+            tokens,
+        )?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        super::consult_family::parse_each_player_exile_top_then_cast_any_number_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
         return Ok(effects);
     }

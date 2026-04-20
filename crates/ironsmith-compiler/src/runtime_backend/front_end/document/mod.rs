@@ -361,6 +361,12 @@ fn token_words_have_suffix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool 
     words.len() >= expected.len() && words.slice_eq(words.len() - expected.len(), expected)
 }
 
+fn token_words_have_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    TokenWordView::new(tokens)
+        .find_phrase_start(expected)
+        .is_some()
+}
+
 pub(crate) fn split_compound_buff_and_unblockable_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -454,6 +460,41 @@ fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
 fn should_skip_keyword_action_static_probe(tokens: &[OwnedLexToken]) -> bool {
     token_words_have_suffix(tokens, &["cant", "be", "blocked"])
         && !token_words_have_any_prefix(tokens, &[&["this"], &["it"]])
+}
+
+fn should_prefer_statement_before_static_for_nonpermanent_spell(
+    preprocessed: &PreprocessedDocument,
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let builder_has_nonpermanent_spell_type = preprocessed
+        .builder
+        .card_builder
+        .card_types_ref()
+        .iter()
+        .any(|card_type| {
+            matches!(
+                card_type,
+                crate::types::CardType::Instant | crate::types::CardType::Sorcery
+            )
+        });
+    let metadata_has_nonpermanent_spell_type = preprocessed.items.iter().any(|item| {
+        matches!(
+            item,
+            PreprocessedItem::Metadata(metadata)
+                if matches!(
+                    metadata.value,
+                    crate::cards::builders::MetadataLine::TypeLine(ref raw)
+                        if raw
+                            .split(|ch: char| !ch.is_alphabetic())
+                            .any(|part| matches!(part, "Instant" | "Sorcery"))
+                )
+        )
+    });
+    let is_nonpermanent_spell =
+        builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type;
+    is_nonpermanent_spell
+        && (token_words_have_any_prefix(tokens, &[&["each"], &["all"]])
+            || token_words_have_sequence(tokens, &["until", "end", "of", "turn"]))
 }
 
 fn looks_like_activation_cost_prefix(raw: &str) -> bool {
@@ -641,29 +682,57 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
         };
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
-            if segment.len() < 2
-                || !segment[0].is_word("cumulative")
-                || !segment[1].is_word("upkeep")
+            let (keyword, cost_start) = if segment.len() >= 2
+                && segment[0].is_word("cumulative")
+                && segment[1].is_word("upkeep")
             {
+                ("cumulative upkeep", 2)
+            } else if segment.first().is_some_and(|token| token.is_word("echo")) {
+                ("echo", 1)
+            } else {
+                continue;
+            };
+
+            let reminder_start = find_token_index(segment, |token| {
+                token.is_period() || token.kind == TokenKind::LParen
+            })
+            .or_else(|| {
+                if keyword == "echo" {
+                    segment
+                        .iter()
+                        .enumerate()
+                        .skip(1)
+                        .find_map(|(idx, token)| token.is_word("at").then_some(idx))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(segment.len());
+            let mut cost_tokens = trim_lexed_commas(&segment[cost_start..reminder_start]);
+            while cost_tokens
+                .first()
+                .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+            {
+                cost_tokens = &cost_tokens[1..];
+            }
+
+            if cost_tokens.is_empty() {
                 continue;
             }
 
-            let reminder_start =
-                find_token_index(segment, |token| token.is_period()).unwrap_or(segment.len());
-            let cost_tokens = trim_lexed_commas(&segment[2..reminder_start]);
-            let rendered_cost = render_token_slice(&cost_tokens);
+            let rendered_cost = render_token_slice(cost_tokens);
 
-            match parse_payment_clause_as_total_cost(&cost_tokens) {
+            match parse_payment_clause_as_total_cost(cost_tokens) {
                 Ok(Some(_)) => {}
                 Ok(None) => {
                     return Some(CardTextError::ParseError(format!(
-                        "unsupported cumulative upkeep payment cost (clause: '{}')",
+                        "unsupported {keyword} payment cost (clause: '{}')",
                         rendered_cost.trim()
                     )));
                 }
                 Err(err) => {
                     return Some(CardTextError::ParseError(format!(
-                        "unsupported cumulative upkeep payment cost (clause: '{}'): {err}",
+                        "unsupported {keyword} payment cost (clause: '{}'): {err}",
                         rendered_cost.trim()
                     )));
                 }
@@ -2081,6 +2150,15 @@ fn try_parse_labeled_line_dispatch(
     if is_named_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Keyword(keyword_line),
+            idx + 1,
+        )));
+    }
+
+    if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
+        && let Some(statement_line) = parse_statement_line_cst(&body_line)?
+    {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
             idx + 1,
         )));
     }

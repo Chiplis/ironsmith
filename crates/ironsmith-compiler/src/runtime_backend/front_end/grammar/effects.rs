@@ -1039,6 +1039,8 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     } else {
         (filter_tokens.clone(), None)
     };
+    let (filter_tokens, distinct_names) =
+        strip_search_library_different_names_clause_lexed(&filter_tokens);
     let same_name_split = parse_search_library_same_name_reference_lexed(
         &filter_tokens,
         filter_tokens.clone(),
@@ -1058,6 +1060,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         None
     };
     let mut filter = parse_search_library_object_filter_lexed(&filter_tokens, &words_all)?;
+    filter.distinct_names = distinct_names;
     if let Some(same_name_tag) = same_name_reference
         .as_ref()
         .map(|reference| match reference {

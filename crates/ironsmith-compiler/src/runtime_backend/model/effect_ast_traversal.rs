@@ -129,6 +129,9 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Untap { .. } => {}
         EffectAst::TapOrUntapAll { .. } => {}
         EffectAst::PhaseOut { .. } => {}
+        EffectAst::PhaseOutAll { .. } => {}
+        EffectAst::PhaseIn { .. } => {}
+        EffectAst::PhaseInAll { .. } => {}
         EffectAst::RemoveFromCombat { .. } => {}
         EffectAst::TapOrUntap { .. } => {}
         EffectAst::UntapAll { .. } => {}

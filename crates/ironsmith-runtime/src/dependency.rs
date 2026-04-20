@@ -1183,6 +1183,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::BasicLandTypesAmong(_)
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
+        | Value::DistinctPowers(_)
         | Value::CreaturesDiedThisTurn
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::CountPlayers(_)

@@ -1,6 +1,7 @@
 use crate::ConditionExpr;
 use crate::ability::Ability;
 use crate::color::ColorSet;
+use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, EffectId, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::{AuraAttachmentFilter, CounterType};
@@ -524,15 +525,12 @@ pub(crate) enum EffectAst {
     },
     CounterUnlessPays {
         target: TargetAst,
-        mana: Vec<ManaSymbol>,
-        life: Option<Value>,
-        additional_generic: Option<Value>,
-        x_value: Option<Value>,
+        cost: TotalCost,
     },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
-        mana: Vec<ManaSymbol>,
+        cost: TotalCost,
     },
     UnlessAction {
         effects: Vec<EffectAst>,
@@ -586,6 +584,15 @@ pub(crate) enum EffectAst {
     },
     PhaseOut {
         target: TargetAst,
+    },
+    PhaseOutAll {
+        filter: ObjectFilter,
+    },
+    PhaseIn {
+        target: TargetAst,
+    },
+    PhaseInAll {
+        filter: ObjectFilter,
     },
     RemoveFromCombat {
         target: TargetAst,

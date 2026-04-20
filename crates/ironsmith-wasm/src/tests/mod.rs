@@ -439,6 +439,34 @@ fn object_details_include_compiled_spell_effects_for_spells_with_static_abilitie
 }
 
 #[test]
+fn object_details_debug_compiled_text_keeps_spell_effects_when_oracle_fallback_would_apply() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let definition = compile_to_runtime_definition(
+        "Rout",
+        "Type: Instant\nYou may cast this spell as though it had flash if you pay {2} more to cast it.\nDestroy all creatures. They can't be regenerated.",
+        false,
+    )
+    .expect("Rout test definition should parse");
+    let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let compiled_text = details.compiled_text.join("\n");
+
+    assert!(
+        compiled_text.contains("Destroy all creatures"),
+        "expected debug compiled text to include Rout's spell effect, got {:?}",
+        details.compiled_text
+    );
+    assert!(
+        compiled_text.contains("They can't be regenerated"),
+        "expected debug compiled text to include Rout's no-regeneration effect, got {:?}",
+        details.compiled_text
+    );
+}
+
+#[test]
 fn object_details_include_convoke_for_builtin_cards() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);

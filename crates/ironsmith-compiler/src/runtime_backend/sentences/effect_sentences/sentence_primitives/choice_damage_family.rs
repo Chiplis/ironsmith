@@ -305,6 +305,31 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         return Ok(None);
     }
 
+    let repeated_target_words = target_tokens
+        .iter()
+        .filter(|token| token.is_word("target"))
+        .count()
+        > 1;
+    let has_followup_tail = target_tokens.iter().any(|token| {
+        token.is_word("then")
+            || token.is_word("if")
+            || token.is_word("unless")
+            || token.is_word("where")
+            || token.is_word("when")
+            || token.is_word("whenever")
+    });
+    if !repeated_target_words
+        && !has_followup_tail
+        && let Ok(target) = parse_target_phrase(&target_tokens)
+        && let Some((filter, _)) = object_target_with_count(&target)
+        && (filter.type_or_subtype_union
+            || filter.card_types.len() > 1
+            || filter.subtypes.len() > 1
+            || filter.any_of.len() > 1)
+    {
+        return Ok(Some(vec![EffectAst::Destroy { target }]));
+    }
+
     let segments = split_destroy_target_segments(&target_tokens);
     if segments.len() < 2 {
         return Ok(None);
@@ -847,6 +872,43 @@ pub(crate) fn parse_sentence_unless_pays(
         && grammar::contains_word(&tokens[..unless_idx], "counter")
     {
         return Ok(None);
+    }
+
+    let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if grammar::words_match_any_prefix(&tokens[..unless_idx], EACH_OPPONENT_PREFIXES).is_some()
+        && let Some(unless_word_idx) = sentence_words.iter().position(|word| *word == "unless")
+        && sentence_words.get(unless_word_idx + 1..unless_word_idx + 8)
+            == Some(["its", "controller", "has", "you", "draw", "a", "card"].as_slice())
+        && let Some(then_return_word_idx) =
+            find_window_by(&sentence_words[..unless_word_idx], 2, |window| {
+                window == ["then", "return"]
+            })
+        && sentence_words.get(3) == Some(&"choose")
+    {
+        let Some(target_start_idx) = token_index_for_word_index(tokens, 4) else {
+            return Ok(None);
+        };
+        let Some(target_end_idx) = token_index_for_word_index(tokens, then_return_word_idx) else {
+            return Ok(None);
+        };
+        let target_tokens = trim_commas(&tokens[target_start_idx..target_end_idx]);
+        let target = parse_target_phrase(&target_tokens)?;
+        return Ok(Some(vec![EffectAst::ForEachOpponent {
+            effects: vec![
+                EffectAst::TargetOnly { target },
+                EffectAst::UnlessAction {
+                    effects: vec![EffectAst::ReturnToHand {
+                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        random: false,
+                    }],
+                    alternative: vec![EffectAst::Draw {
+                        count: Value::Fixed(1),
+                        player: PlayerAst::You,
+                    }],
+                    player: PlayerAst::ItsController,
+                },
+            ],
+        }]));
     }
 
     let each_prefix =

@@ -163,7 +163,7 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
-    StaticAbility::keyword_marker(keyword_static_clause_text(tokens))
+    StaticAbility::keyword_fallback_text(keyword_static_clause_text(tokens))
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

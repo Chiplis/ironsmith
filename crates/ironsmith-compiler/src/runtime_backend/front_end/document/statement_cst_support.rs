@@ -34,6 +34,8 @@ pub(super) fn parse_statement_line_cst(
                     | structure::StatementLineFamily::ExilePlayCostsMore
             )
         )
+        || (token_words_have_any_prefix(&line.tokens, &[&["each"], &["all"]])
+            && token_words_have_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
     if !force_statement
         && parse_static_ability_ast_line_lexed(&line.tokens)

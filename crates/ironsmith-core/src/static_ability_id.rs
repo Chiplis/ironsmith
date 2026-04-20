@@ -478,6 +478,7 @@ impl StaticAbilityId {
                 | Cascade
                 | Unleash
                 | KeywordText
+                | KeywordMarker
                 | KeywordFallbackText
         )
     }

@@ -889,7 +889,8 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::ColorsAmong(filter)
-        | Value::DistinctNames(filter) => {
+        | Value::DistinctNames(filter)
+        | Value::DistinctPowers(filter) => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
         }
         Value::CreaturesDiedThisTurnControlledBy(filter) => {
@@ -3212,9 +3213,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             return None;
         }
         if has_word("banding") {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
-                "banding",
-            )));
+            builder = builder.with_ability(Ability::static_ability(
+                StaticAbility::keyword_fallback_text("banding"),
+            ));
         }
         if has_word("hexproof") {
             builder = builder.hexproof();
@@ -3326,9 +3327,11 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             builder = builder.with_ability(ability);
         }
         if has_words(&["bands", "other", "creatures", "named", "wolves"]) {
-            builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
-                "bands with other creatures named Wolves of the Hunt",
-            )));
+            builder = builder.with_ability(Ability::static_ability(
+                StaticAbility::keyword_fallback_text(
+                    "bands with other creatures named Wolves of the Hunt",
+                ),
+            ));
         }
         if has_words(&["r", "this", "creature", "gets", "+1/+0"])
             && !has_words(&["when", "token", "dies", "create"])
@@ -4074,10 +4077,7 @@ mod parse_compile_tests {
                     end: 5,
                 }),
             ),
-            mana: vec![],
-            life: None,
-            additional_generic: None,
-            x_value: None,
+            cost: TotalCost::free(),
         };
 
         collect_tag_spans_from_effect(&effect, &mut annotations, &ctx);

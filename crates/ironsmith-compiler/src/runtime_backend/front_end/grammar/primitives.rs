@@ -817,8 +817,49 @@ pub(crate) fn split_lexed_once_on_comma<'a>(
     split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
+fn primitive_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
+    words.len() >= suffix.len() && &words[words.len() - suffix.len()..] == suffix
+}
+
+fn should_keep_and_for_power_toughness_axis<'a>(
+    current: &'a [LexToken],
+    remaining: &'a [LexToken],
+) -> bool {
+    let current_words = TokenWordView::new(current).word_refs();
+    let remaining_words = TokenWordView::new(remaining).word_refs();
+    (primitive_words_end_with(&current_words, &["power"])
+        || primitive_words_end_with(&current_words, &["total", "power"])
+        || primitive_words_end_with(&current_words, &["base", "power"]))
+        && remaining_words.first().copied() == Some("toughness")
+}
+
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
-    split_lexed_slices_on_separator(tokens, || phrase(&["and"]))
+    let raw = split_lexed_slices_on_separator(tokens, || phrase(&["and"]));
+    let mut merged = Vec::new();
+    let mut idx = 0usize;
+    while idx < raw.len() {
+        if idx + 1 < raw.len() && should_keep_and_for_power_toughness_axis(raw[idx], raw[idx + 1]) {
+            let start = raw[idx]
+                .as_ptr()
+                .addr()
+                .saturating_sub(tokens.as_ptr().addr())
+                / std::mem::size_of::<LexToken>();
+            let end = raw[idx + 1]
+                .as_ptr()
+                .addr()
+                .saturating_sub(tokens.as_ptr().addr())
+                / std::mem::size_of::<LexToken>()
+                + raw[idx + 1].len();
+            if start < end && end <= tokens.len() {
+                merged.push(&tokens[start..end]);
+                idx += 2;
+                continue;
+            }
+        }
+        merged.push(raw[idx]);
+        idx += 1;
+    }
+    merged
 }
 
 pub(crate) fn split_lexed_slices_on_comma<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {

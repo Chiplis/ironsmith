@@ -13,7 +13,6 @@ fn fallback_static_ability_id_name(
     use crate::static_abilities::StaticAbilityId;
 
     match id {
-        StaticAbilityId::KeywordMarker => Some("KeywordMarker"),
         StaticAbilityId::KeywordFallbackText => Some("KeywordFallbackText"),
         StaticAbilityId::RuleFallbackText => Some("RuleFallbackText"),
         StaticAbilityId::UnsupportedParserLine => Some("UnsupportedParserLine"),
@@ -101,8 +100,16 @@ fn reject_compiled_parser_fallbacks(
     }
 
     let debug = format!("{definition:#?}");
+    if debug.contains("RemoveAbility")
+        && debug.contains("KeywordMarker")
+        && debug.to_ascii_lowercase().contains("soulbond")
+    {
+        return Err(CardTextError::UnsupportedLine(
+            "compiled card removes soulbond through a keyword marker without real semantics"
+                .to_string(),
+        ));
+    }
     for marker in [
-        "KeywordMarker",
         "KeywordFallbackText",
         "RuleFallbackText",
         "UnsupportedParserLine",
@@ -497,7 +504,32 @@ mod tests {
     }
 
     #[test]
-    fn compile_definition_rejects_keyword_marker_fallback_even_when_allowed() {
+    fn compile_definition_preserves_semantic_keyword_markers_even_when_allowed() {
+        let facade = CompilerFacade::new();
+        let builder =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Rampage Variant")
+                .card_types(vec![crate::types::CardType::Creature]);
+
+        let compiled = facade
+            .compile_definition(
+                builder,
+                "Rampage 2",
+                CompilePolicy {
+                    allow_unsupported: true,
+                },
+            )
+            .expect("keyword markers are semantic labels and should survive strict compilation");
+
+        assert!(
+            format!("{:#?}", compiled.definition).contains("KeywordMarker")
+                && format!("{:#?}", compiled.definition).contains("rampage 2"),
+            "expected retained KeywordMarker in {:#?}",
+            compiled.definition
+        );
+    }
+
+    #[test]
+    fn compile_definition_rejects_keyword_fallback_text_even_when_allowed() {
         let facade = CompilerFacade::new();
         let builder =
             crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Banding Variant")
@@ -511,15 +543,47 @@ mod tests {
                     allow_unsupported: true,
                 },
             )
-            .expect_err("keyword marker fallback should fail loudly");
+            .expect_err("unsupported keyword markers should fail loudly");
 
         assert!(
             matches!(
                 err,
                 CardTextError::UnsupportedLine(ref message)
-                    if message.contains("KeywordMarker") && message.contains("banding")
+                    if message.contains("KeywordFallbackText") && message.contains("banding")
             ),
-            "expected KeywordMarker parse error, got {err:?}"
+            "expected KeywordFallbackText parse error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn compile_definition_rejects_unidentified_static_fallback_even_when_allowed() {
+        let facade = CompilerFacade::new();
+        let builder =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Fallback Variant")
+                .with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::unsupported_parser_line(
+                        "banding",
+                        "test fallback",
+                    ),
+                ));
+
+        let err = facade
+            .compile_definition(
+                builder,
+                "",
+                CompilePolicy {
+                    allow_unsupported: true,
+                },
+            )
+            .expect_err("unidentified fallback text should fail loudly");
+
+        assert!(
+            matches!(
+                err,
+                CardTextError::UnsupportedLine(ref message)
+                    if message.contains("without a semantic id") && message.contains("banding")
+            ),
+            "expected unidentified fallback parse error, got {err:?}"
         );
     }
 

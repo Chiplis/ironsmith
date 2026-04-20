@@ -32,6 +32,7 @@
 //! ```
 
 mod cost_effect;
+mod dynamic_mana;
 mod mana;
 mod payer_trait;
 mod processing_mode;
@@ -45,6 +46,7 @@ pub use processing_mode::CostProcessingMode;
 
 // Re-export all cost implementations
 pub use cost_effect::CostEffect;
+pub use dynamic_mana::DynamicManaPaymentCost;
 pub use mana::ManaPaymentCost;
 
 use crate::color::ColorSet;
@@ -105,6 +107,12 @@ impl Cost {
     /// Create a mana cost.
     pub fn mana(cost: ManaCost) -> Self {
         Self::new(ManaPaymentCost::new(cost))
+    }
+
+    /// Create a dynamic mana cost. These are resolved by total-cost payment
+    /// helpers with an execution context before ordinary mana payment.
+    pub fn dynamic_mana(cost: ironsmith_core::DynamicManaCost) -> Self {
+        Self::new(DynamicManaPaymentCost::new(cost))
     }
 
     /// Create a cost backed by an effect executor.
@@ -169,6 +177,7 @@ impl Cost {
 
         Ok(match model {
             ironsmith_core::Cost::Mana(mana) => Self::mana(mana),
+            ironsmith_core::Cost::DynamicMana(dynamic_mana) => Self::dynamic_mana(dynamic_mana),
             ironsmith_core::Cost::Tap => Self::tap(),
             ironsmith_core::Cost::Untap => Self::untap(),
             ironsmith_core::Cost::DiscardSource => Self::discard_source(),
@@ -432,6 +441,11 @@ impl Cost {
     /// Get the mana cost if this is a mana payment cost.
     pub fn mana_cost_ref(&self) -> Option<&crate::mana::ManaCost> {
         self.0.mana_cost()
+    }
+
+    pub fn dynamic_mana_cost_ref(&self) -> Option<&ironsmith_core::DynamicManaCost> {
+        self.downcast_ref::<DynamicManaPaymentCost>()
+            .map(|cost| &cost.cost)
     }
 
     /// Get the backing effect for effect-backed costs.

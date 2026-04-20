@@ -1251,6 +1251,14 @@ impl<
         Self::identified(StaticAbilityId::KeywordMarker, text)
     }
 
+    pub fn keyword_fallback_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::KeywordFallbackText, text)
+    }
+
+    pub fn rule_fallback_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::RuleFallbackText, text)
+    }
+
     fn known_keyword_marker(text: &str) -> Option<Self> {
         let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
         if normalized.ends_with(" can't be blocked") || normalized.ends_with(" cant be blocked") {

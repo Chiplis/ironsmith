@@ -123,6 +123,7 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
                 crate::target::ChooseSpec::SourceController,
             ),
         )),
+        Cost::DynamicMana(_) => None,
         Cost::Tap => Some(crate::effect::Effect::tap(
             crate::target::ChooseSpec::Source,
         )),
@@ -215,12 +216,30 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
 pub(crate) fn total_cost_to_payment_effects(
     total_cost: &crate::cost::TotalCost,
 ) -> Vec<crate::effect::Effect> {
-    total_cost
-        .costs()
-        .iter()
-        .map(|cost| {
-            cost_to_payment_effect(cost)
-                .unwrap_or_else(|| panic!("unsupported cost component: {}", cost.display()))
-        })
-        .collect()
+    match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs
+            .iter()
+            .map(|cost| {
+                cost_to_payment_effect(cost)
+                    .unwrap_or_else(|| panic!("unsupported cost component: {}", cost.display()))
+            })
+            .collect(),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut branch_effects = branches
+                .iter()
+                .map(total_cost_to_payment_effects)
+                .collect::<Vec<_>>();
+            if branch_effects.len() == 2 {
+                let right = branch_effects.pop().expect("right branch exists");
+                let left = branch_effects.pop().expect("left branch exists");
+                vec![crate::effect::Effect::unless_action(
+                    left,
+                    right,
+                    crate::target::PlayerFilter::You,
+                )]
+            } else {
+                panic!("unsupported alternative total cost branch count")
+            }
+        }
+    }
 }

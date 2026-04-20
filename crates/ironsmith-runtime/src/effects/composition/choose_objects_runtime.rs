@@ -79,7 +79,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::GreatestManaValue(filter)
         | crate::effect::Value::BasicLandTypesAmong(filter)
         | crate::effect::Value::ColorsAmong(filter)
-        | crate::effect::Value::DistinctNames(filter) => {
+        | crate::effect::Value::DistinctNames(filter)
+        | crate::effect::Value::DistinctPowers(filter) => {
             object_filter_mentions_iterated_player(filter)
         }
         crate::effect::Value::CreaturesDiedThisTurnControlledBy(player)
@@ -565,6 +566,47 @@ fn normalize_chosen_objects(
     chosen
 }
 
+fn normalize_chosen_distinct_names(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let mut names = std::collections::HashSet::new();
+    let mut normalized = Vec::new();
+    for id in chosen {
+        if normalized.len() >= max {
+            break;
+        }
+        let Some(object) = game.object(id) else {
+            continue;
+        };
+        let name = object.name.to_ascii_lowercase();
+        if names.insert(name) {
+            normalized.push(id);
+        }
+    }
+
+    if fill_to_min && normalized.len() < min {
+        for id in candidates {
+            if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            let Some(object) = game.object(*id) else {
+                continue;
+            };
+            let name = object.name.to_ascii_lowercase();
+            if names.insert(name) {
+                normalized.push(*id);
+            }
+        }
+    }
+
+    normalized
+}
+
 fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<ObjectId> {
     candidates
         .iter()
@@ -860,6 +902,11 @@ pub(crate) fn run_choose_objects(
     );
     let chosen =
         enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
+    let chosen = if effect.filter.distinct_names {
+        normalize_chosen_distinct_names(game, chosen, &candidates, min, max, !allow_hidden_partial)
+    } else {
+        chosen
+    };
     if search_zones.iter().any(Zone::is_hidden) {
         ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
     }

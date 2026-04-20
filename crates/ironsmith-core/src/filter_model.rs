@@ -341,6 +341,7 @@ pub struct ObjectFilter {
     pub power_greater_than_base_power: bool,
     pub toughness: Option<Comparison>,
     pub toughness_reference: PtReference,
+    pub total_power_toughness: Option<Comparison>,
     pub mana_value: Option<Comparison>,
     pub mana_value_parity: Option<ParityRequirement>,
     pub mana_value_eq_counters_on_source: Option<CounterType>,
@@ -353,6 +354,7 @@ pub struct ObjectFilter {
     pub total_counters_parity: Option<ParityRequirement>,
     pub name: Option<String>,
     pub excluded_name: Option<String>,
+    pub distinct_names: bool,
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
@@ -373,6 +375,7 @@ impl ObjectFilter {
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
             || self.toughness.is_some()
+            || self.total_power_toughness.is_some()
             || self
                 .any_of
                 .iter()
@@ -774,6 +777,11 @@ impl ObjectFilter {
     pub fn with_toughness(mut self, cmp: Comparison) -> Self {
         self.toughness = Some(cmp);
         self.toughness_reference = PtReference::Effective;
+        self
+    }
+
+    pub fn with_total_power_toughness(mut self, cmp: Comparison) -> Self {
+        self.total_power_toughness = Some(cmp);
         self
     }
 
@@ -1608,6 +1616,9 @@ impl ObjectFilter {
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
+        if self.distinct_names {
+            parts.push("with different names".to_string());
+        }
 
         if let Some(ref name) = self.name {
             return format!("a {} named {}", parts.join(" "), name);
@@ -1658,6 +1669,12 @@ impl ObjectFilter {
                 };
                 parts.push(format!("with {label} {}", describe_comparison(toughness)));
             }
+        }
+        if let Some(ref total_power_toughness) = self.total_power_toughness {
+            parts.push(format!(
+                "with total power and toughness {}",
+                describe_comparison(total_power_toughness)
+            ));
         }
         if let Some(ref mana_value) = self.mana_value {
             parts.push(format!(

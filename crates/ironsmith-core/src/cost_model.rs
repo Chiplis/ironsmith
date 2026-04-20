@@ -1,9 +1,104 @@
 use crate::types::CardType;
 use crate::{ColorSet, CounterType, ManaCost, ObjectFilter, Value};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicManaDisplayHint {
+    Default,
+    ManaEqualTo,
+}
+
+impl Default for DynamicManaDisplayHint {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DynamicManaCost {
+    pub base: ManaCost,
+    pub x_value: Option<Value>,
+    pub additional_generic: Option<Value>,
+    pub multiplier: Option<Value>,
+    pub display_hint: DynamicManaDisplayHint,
+}
+
+impl DynamicManaCost {
+    pub fn new(
+        base: ManaCost,
+        x_value: Option<Value>,
+        additional_generic: Option<Value>,
+        multiplier: Option<Value>,
+        display_hint: DynamicManaDisplayHint,
+    ) -> Self {
+        Self {
+            base,
+            x_value,
+            additional_generic,
+            multiplier,
+            display_hint,
+        }
+    }
+
+    pub fn from_x(base: ManaCost, x_value: Value) -> Self {
+        Self::new(
+            base,
+            Some(x_value),
+            None,
+            None,
+            DynamicManaDisplayHint::Default,
+        )
+    }
+
+    pub fn generic_equal_to(value: Value) -> Self {
+        Self::new(
+            ManaCost::new(),
+            None,
+            Some(value),
+            None,
+            DynamicManaDisplayHint::ManaEqualTo,
+        )
+    }
+
+    pub fn resolved_static_base(&self) -> Option<ManaCost> {
+        if self.x_value.is_none() && self.additional_generic.is_none() && self.multiplier.is_none()
+        {
+            return Some(self.base.clone());
+        }
+        None
+    }
+
+    pub fn display(&self) -> String {
+        match self.display_hint {
+            DynamicManaDisplayHint::ManaEqualTo => {
+                if let Some(value) = self.additional_generic.as_ref() {
+                    return format!("mana equal to {value:?}");
+                }
+            }
+            DynamicManaDisplayHint::Default => {}
+        }
+
+        let mut text = if self.base.is_empty() {
+            "{0}".to_string()
+        } else {
+            self.base.to_oracle()
+        };
+        if let Some(value) = self.x_value.as_ref() {
+            text.push_str(&format!(", where X is {value:?}"));
+        }
+        if let Some(value) = self.additional_generic.as_ref() {
+            text.push_str(&format!(" plus an additional {{{value:?}}}"));
+        }
+        if let Some(value) = self.multiplier.as_ref() {
+            text.push_str(&format!(" for each {value:?}"));
+        }
+        text
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Cost<E> {
     Mana(ManaCost),
+    DynamicMana(DynamicManaCost),
     Tap,
     Untap,
     DiscardSource,
@@ -56,6 +151,10 @@ impl<E> Cost<E> {
 
     pub fn mana(mana_cost: ManaCost) -> Self {
         Self::Mana(mana_cost)
+    }
+
+    pub fn dynamic_mana(dynamic_mana: DynamicManaCost) -> Self {
+        Self::DynamicMana(dynamic_mana)
     }
 
     pub fn discard_source() -> Self {
@@ -154,6 +253,7 @@ impl<E> Cost<E> {
     ) -> Result<Cost<E2>, Error> {
         Ok(match self {
             Self::Mana(mana) => Cost::Mana(mana),
+            Self::DynamicMana(dynamic_mana) => Cost::DynamicMana(dynamic_mana),
             Self::Tap => Cost::Tap,
             Self::Untap => Cost::Untap,
             Self::DiscardSource => Cost::DiscardSource,
@@ -210,6 +310,7 @@ where
     fn display(&self) -> String {
         match self {
             Self::Mana(cost) => cost.to_oracle(),
+            Self::DynamicMana(cost) => cost.display(),
             Self::Tap => "{T}".to_string(),
             Self::Untap => "{Q}".to_string(),
             Self::DiscardSource => "discard this card".to_string(),
@@ -240,12 +341,19 @@ where
     }
 
     fn is_mana_cost(&self) -> bool {
-        matches!(self, Self::Mana(_))
+        matches!(self, Self::Mana(_) | Self::DynamicMana(_))
     }
 
     fn mana_cost_ref(&self) -> Option<&ManaCost> {
         match self {
             Self::Mana(cost) => Some(cost),
+            _ => None,
+        }
+    }
+
+    fn dynamic_mana_cost_ref(&self) -> Option<&DynamicManaCost> {
+        match self {
+            Self::DynamicMana(cost) => Some(cost),
             _ => None,
         }
     }
@@ -288,6 +396,10 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
     fn mana_cost_ref(&self) -> Option<&ManaCost> {
         None
     }
+
+    fn dynamic_mana_cost_ref(&self) -> Option<&DynamicManaCost> {
+        None
+    }
 }
 
 pub trait CoreCostComponent: CostComponent {
@@ -295,46 +407,100 @@ pub trait CoreCostComponent: CostComponent {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TotalCostKind<C> {
+    All(Vec<C>),
+    OneOf(Vec<TotalCost<C>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TotalCost<C> {
-    costs: Vec<C>,
+    kind: TotalCostKind<C>,
 }
 
 impl<C> TotalCost<C> {
     pub fn free() -> Self {
-        Self { costs: vec![] }
+        Self::from_costs(vec![])
     }
 
     pub fn from_cost(cost: C) -> Self {
-        Self { costs: vec![cost] }
+        Self::from_costs(vec![cost])
     }
 
     pub fn from_costs(costs: Vec<C>) -> Self {
-        Self { costs }
+        Self {
+            kind: TotalCostKind::All(costs),
+        }
+    }
+
+    pub fn one_of(branches: Vec<TotalCost<C>>) -> Self {
+        Self {
+            kind: TotalCostKind::OneOf(branches),
+        }
+    }
+
+    pub fn kind(&self) -> &TotalCostKind<C> {
+        &self.kind
+    }
+
+    pub fn as_all(&self) -> Option<&[C]> {
+        match &self.kind {
+            TotalCostKind::All(costs) => Some(costs),
+            TotalCostKind::OneOf(_) => None,
+        }
+    }
+
+    pub fn as_one_of(&self) -> Option<&[TotalCost<C>]> {
+        match &self.kind {
+            TotalCostKind::All(_) => None,
+            TotalCostKind::OneOf(branches) => Some(branches),
+        }
     }
 
     pub fn costs(&self) -> &[C] {
-        &self.costs
+        self.as_all()
+            .expect("TotalCost::costs called for an alternative cost")
     }
 
     pub fn try_map<C2, Error>(
         self,
         mut map_cost: impl FnMut(C) -> Result<C2, Error>,
     ) -> Result<TotalCost<C2>, Error> {
-        let mut costs = Vec::with_capacity(self.costs.len());
-        for cost in self.costs {
-            costs.push(map_cost(cost)?);
+        self.try_map_with(&mut map_cost)
+    }
+
+    fn try_map_with<C2, Error>(
+        self,
+        map_cost: &mut impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<TotalCost<C2>, Error> {
+        match self.kind {
+            TotalCostKind::All(all) => {
+                let mut costs = Vec::with_capacity(all.len());
+                for cost in all {
+                    costs.push(map_cost(cost)?);
+                }
+                Ok(TotalCost::from_costs(costs))
+            }
+            TotalCostKind::OneOf(branches) => {
+                let mut mapped = Vec::with_capacity(branches.len());
+                for branch in branches {
+                    mapped.push(branch.try_map_with(map_cost)?);
+                }
+                Ok(TotalCost::one_of(mapped))
+            }
         }
-        Ok(TotalCost::from_costs(costs))
     }
 
     pub fn is_free(&self) -> bool {
-        self.costs.is_empty()
+        match &self.kind {
+            TotalCostKind::All(costs) => costs.is_empty(),
+            TotalCostKind::OneOf(branches) => branches.iter().any(Self::is_free),
+        }
     }
 }
 
 impl<C> Default for TotalCost<C> {
     fn default() -> Self {
-        Self { costs: Vec::new() }
+        Self::free()
     }
 }
 
@@ -344,31 +510,55 @@ impl<C: CostComponent> TotalCost<C> {
     }
 
     pub fn non_mana_costs(&self) -> impl Iterator<Item = &C> {
-        self.costs.iter().filter(|cost| !cost.is_mana_cost())
+        self.costs().iter().filter(|cost| !cost.is_mana_cost())
     }
 
     pub fn has_non_mana_costs(&self) -> bool {
-        self.non_mana_costs().next().is_some()
+        match &self.kind {
+            TotalCostKind::All(costs) => costs.iter().any(|cost| !cost.is_mana_cost()),
+            TotalCostKind::OneOf(branches) => branches.iter().any(Self::has_non_mana_costs),
+        }
     }
 
     pub fn display(&self) -> String {
-        if self.costs.is_empty() {
-            return "Free".to_string();
+        match &self.kind {
+            TotalCostKind::All(costs) => {
+                if costs.is_empty() {
+                    return "Free".to_string();
+                }
+                let parts: Vec<String> = costs
+                    .iter()
+                    .map(|c| c.display())
+                    .filter(|part| !part.trim().is_empty())
+                    .collect();
+                if parts.is_empty() {
+                    return "Free".to_string();
+                }
+                parts.join(", ")
+            }
+            TotalCostKind::OneOf(branches) => {
+                let parts: Vec<String> = branches.iter().map(Self::display).collect();
+                if parts.is_empty() {
+                    "Free".to_string()
+                } else {
+                    parts.join(" or ")
+                }
+            }
         }
-        let parts: Vec<String> = self
-            .costs
-            .iter()
-            .map(|c| c.display())
-            .filter(|part| !part.trim().is_empty())
-            .collect();
-        if parts.is_empty() {
-            return "Free".to_string();
-        }
-        parts.join(", ")
     }
 
     pub fn mana_cost(&self) -> Option<&ManaCost> {
-        self.costs.iter().find_map(|c| c.mana_cost_ref())
+        match &self.kind {
+            TotalCostKind::All(costs) => costs.iter().find_map(|c| c.mana_cost_ref()),
+            TotalCostKind::OneOf(_) => None,
+        }
+    }
+
+    pub fn dynamic_mana_cost(&self) -> Option<&DynamicManaCost> {
+        match &self.kind {
+            TotalCostKind::All(costs) => costs.iter().find_map(|c| c.dynamic_mana_cost_ref()),
+            TotalCostKind::OneOf(_) => None,
+        }
     }
 }
 
@@ -381,6 +571,71 @@ impl<C: CostComponent> From<ManaCost> for TotalCost<C> {
 impl<C> From<C> for TotalCost<C> {
     fn from(cost: C) -> Self {
         Self::from_cost(cost)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ManaSymbol;
+
+    #[test]
+    fn total_cost_all_display_and_free() {
+        let cost: TotalCost<Cost<()>> = TotalCost::from_costs(vec![
+            Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])),
+            Cost::life(Value::Fixed(3)),
+        ]);
+
+        assert!(!cost.is_free());
+        assert_eq!(cost.display(), "{2}, pay Fixed(3) life");
+        assert!(cost.has_non_mana_costs());
+        assert_eq!(
+            cost.mana_cost().map(ManaCost::to_oracle),
+            Some("{2}".into())
+        );
+    }
+
+    #[test]
+    fn total_cost_one_of_display_and_introspection() {
+        let cost: TotalCost<Cost<()>> = TotalCost::one_of(vec![
+            TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Black])),
+            TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)])),
+        ]);
+
+        assert!(!cost.is_free());
+        assert!(cost.as_all().is_none());
+        assert_eq!(cost.as_one_of().map(<[_]>::len), Some(2));
+        assert_eq!(cost.display(), "{B} or {3}");
+        assert!(cost.mana_cost().is_none());
+    }
+
+    #[test]
+    fn total_cost_try_map_recurses_through_alternatives() {
+        let cost: TotalCost<Cost<&'static str>> = TotalCost::one_of(vec![
+            TotalCost::from_cost(Cost::effect("a")),
+            TotalCost::from_cost(Cost::effect("b")),
+        ]);
+
+        let mapped = cost
+            .try_map(|component| component.try_map_effect(|effect| Ok::<_, ()>(effect.len())))
+            .unwrap();
+
+        assert_eq!(
+            mapped,
+            TotalCost::one_of(vec![
+                TotalCost::from_cost(Cost::effect(1usize)),
+                TotalCost::from_cost(Cost::effect(1usize)),
+            ])
+        );
+    }
+
+    #[test]
+    fn dynamic_mana_is_a_cost_component() {
+        let dynamic =
+            DynamicManaCost::from_x(ManaCost::from_symbols(vec![ManaSymbol::X]), Value::Fixed(4));
+        let cost: Cost<()> = Cost::dynamic_mana(dynamic.clone());
+        assert!(cost.is_mana_cost());
+        assert_eq!(cost.dynamic_mana_cost_ref(), Some(&dynamic));
     }
 }
 

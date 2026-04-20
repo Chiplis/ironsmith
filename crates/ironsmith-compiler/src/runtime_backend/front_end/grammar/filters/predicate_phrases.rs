@@ -114,6 +114,68 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if filtered.len() == 6
+        && filtered[0] == "you"
+        && filtered[1] == "have"
+        && filtered[3] == "or"
+        && filtered[4] == "less"
+        && filtered[5] == "life"
+        && let Some(amount) = filtered[2]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(filtered[2]).map(|n| n as i32))
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::LifeTotal(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: Value::Fixed(amount),
+        });
+    }
+    if filtered.len() == 7
+        && filtered[0] == "your"
+        && filtered[1] == "life"
+        && filtered[2] == "total"
+        && filtered[3] == "is"
+        && filtered[5] == "or"
+        && filtered[6] == "less"
+        && let Some(amount) = filtered[4]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(filtered[4]).map(|n| n as i32))
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::LifeTotal(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: Value::Fixed(amount),
+        });
+    }
+
+    if let Some(has_idx) = find_index(&filtered, |word| *word == "has" || *word == "have")
+        && has_idx > 0
+        && has_idx + 1 < filtered.len()
+        && (slice_contains(&filtered[..has_idx], &"graveyard")
+            || slice_contains(&filtered[..has_idx], &"hand")
+            || slice_contains(&filtered[..has_idx], &"exile")
+            || slice_contains(&filtered[..has_idx], &"library"))
+        && let Some((constraint, consumed)) =
+            parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
+        && has_idx + 1 + consumed == filtered.len()
+    {
+        let subject_tokens = filtered[..has_idx]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let mut filter = parse_object_filter(&subject_tokens, false)?;
+        apply_filter_keyword_constraint(&mut filter, constraint, false);
+        if filter.owner.is_none() {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        return Ok(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter,
+        });
+    }
+
     if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
         && gets_idx > 0
         && filtered[gets_idx + 1..] == ["more", "votes"]
@@ -1341,6 +1403,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     ..Default::default()
                 }));
             }
+        }
+
+        if filtered.len() >= 5
+            && filtered[1] == "total"
+            && filtered[2] == "power"
+            && filtered[3] == "and"
+            && filtered[4] == "toughness"
+            && let Some((cmp, _consumed)) =
+                parse_filter_comparison_tokens("power", &filtered[5..], &filtered)?
+        {
+            return Ok(PredicateAst::ItMatches(ObjectFilter {
+                total_power_toughness: Some(cmp),
+                ..Default::default()
+            }));
         }
 
         if filtered.len() >= 3 && (filtered[1] == "power" || filtered[1] == "toughness") {

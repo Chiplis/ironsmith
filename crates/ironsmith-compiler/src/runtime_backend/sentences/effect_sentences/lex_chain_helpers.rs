@@ -373,6 +373,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "shuffles" | "shuffle" => Verb::Shuffle,
             "reorders" | "reorder" => Verb::Reorder,
             "pays" | "pay" => Verb::Pay,
+            "takes" | "take" => Verb::Take,
             "detains" | "detain" => Verb::Detain,
             "goads" | "goad" => Verb::Goad,
             _ => continue,
@@ -607,6 +608,31 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
     ) || word_slice_ends_with(tail, &["if", "able"])
 }
 
+fn is_phase_clause_words_lexed(words: &[&str]) -> bool {
+    (word_slice_ends_with(words, &["phase", "out"])
+        || word_slice_ends_with(words, &["phases", "out"])
+        || word_slice_ends_with(words, &["phase", "in"])
+        || word_slice_ends_with(words, &["phases", "in"]))
+        && words.len() >= 3
+}
+
+fn is_choose_target_prelude_clause_words_lexed(words: &[&str]) -> bool {
+    matches!(words.first().copied(), Some("choose" | "chooses"))
+        && word_slice_contains(words, "target")
+}
+
+fn should_keep_and_for_power_toughness_axis_lexed(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
+    (word_slice_ends_with(&current_words, &["power"])
+        || word_slice_ends_with(&current_words, &["total", "power"])
+        || word_slice_ends_with(&current_words, &["base", "power"]))
+        && remaining_words.first().copied() == Some("toughness")
+}
+
 pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut start = 0usize;
@@ -629,6 +655,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_put_rest_clause_lexed(current, remaining)
             || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
             || should_keep_and_for_exchange_zones_lexed(current, remaining)
+            || should_keep_and_for_power_toughness_axis_lexed(current, remaining)
         {
             continue;
         }
@@ -704,6 +731,8 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
         || is_attack_or_block_this_turn_if_able_clause_words_lexed(&token_words)
         || is_attack_this_turn_if_able_clause_words_lexed(&token_words)
         || is_must_block_if_able_clause_words_lexed(&token_words)
+        || is_phase_clause_words_lexed(&token_words)
+        || is_choose_target_prelude_clause_words_lexed(&token_words)
 }
 
 pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {

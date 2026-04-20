@@ -1086,7 +1086,7 @@ impl WasmGame {
                 .map(|value| value.toughness.to_string()),
             loyalty: definition.card.loyalty,
             defense: definition.card.defense,
-            compiled_text: ironsmith::compiled_text::compiled_lines(definition),
+            compiled_text: ironsmith::compiled_text::debug_compiled_lines(definition),
             compiled_abilities: Self::compiled_ability_lines(definition),
             raw_compilation: format!("{:#?}", definition),
         }
@@ -1294,7 +1294,7 @@ impl WasmGame {
             });
         let compiled_text = compiled_definition
             .as_ref()
-            .map(ironsmith::compiled_text::compiled_lines)
+            .map(ironsmith::compiled_text::debug_compiled_lines)
             .unwrap_or_default();
         let compiled_abilities = compiled_definition
             .as_ref()

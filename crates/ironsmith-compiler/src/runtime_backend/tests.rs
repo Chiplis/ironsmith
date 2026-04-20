@@ -4547,6 +4547,25 @@ fn rewrite_search_library_count_prefix_parser_tracks_search_modes() {
         crate::effect::SearchSelectionMode::AllMatching
     );
     assert_eq!(parsed.count_used, 1);
+
+    let exact_three = lex_line("search your library for three cards", 0)
+        .expect("rewrite lexer should classify exact-count search text");
+    let count_tokens =
+        super::grammar::effects::split_search_library_sentence_head_lexed(&exact_three)
+            .expect("search head splitter should match exact-count search")
+            .search_tokens[4..6]
+            .to_vec();
+    let parsed = super::grammar::effects::parse_search_library_count_prefix_lexed(&count_tokens);
+
+    assert_eq!(
+        parsed.count,
+        crate::cards::builders::ChoiceCount::exactly(3)
+    );
+    assert_eq!(
+        parsed.search_mode,
+        crate::effect::SearchSelectionMode::Exact
+    );
+    assert_eq!(parsed.count_used, 1);
 }
 
 #[test]
@@ -4678,6 +4697,20 @@ fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_sha
     assert!(
         !parsed.any_of.is_empty(),
         "disjunction search filter should retain any_of branches"
+    );
+
+    let different_names = lex_line("cards with different names", 0)
+        .expect("rewrite lexer should classify different-names search filter text");
+    let different_names_words = crate::runtime_backend::token_word_refs(&different_names);
+    let parsed = super::grammar::effects::parse_search_library_object_filter_lexed(
+        &different_names,
+        &different_names_words,
+    )
+    .expect("search-library object-filter helper should parse bare different-names filters");
+
+    assert!(
+        parsed.distinct_names,
+        "different-names search filter should be represented structurally"
     );
 }
 
@@ -7415,6 +7448,22 @@ fn rewrite_lexed_effect_sequence_parses_divvy_choose_one_of_them_bundle() {
     assert!(debug.contains("divvy_source"), "{debug}");
     assert!(debug.contains("divvy_chosen"), "{debug}");
     assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("ShuffleLibrary"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_gifts_ungiven_divvy_bundle() {
+    let text = "Search your library for up to four cards with different names and reveal them. Target opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest into your hand. Then shuffle.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Gifts Ungiven text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("distinct_names: true"), "{debug}");
+    assert!(debug.contains("divvy_source"), "{debug}");
+    assert!(debug.contains("divvy_chosen"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
     assert!(debug.contains("zone: Hand"), "{debug}");
     assert!(debug.contains("ShuffleLibrary"), "{debug}");
 }

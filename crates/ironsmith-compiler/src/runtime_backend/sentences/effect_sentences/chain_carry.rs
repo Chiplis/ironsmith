@@ -1181,6 +1181,10 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
         PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
             | PredicateAst::ItMatches(_)
             | PredicateAst::PlayerControlsMoreThanYou { .. }
+            | PredicateAst::PlayerControls { .. }
+            | PredicateAst::PlayerControlsAtLeast { .. }
+            | PredicateAst::PlayerControlsExactly { .. }
+            | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { .. }
             | PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerHasMoreLifeThanYou { .. }
@@ -2415,6 +2419,7 @@ pub(crate) enum Verb {
     Shuffle,
     Reorder,
     Pay,
+    Take,
     Detain,
     Goad,
 }

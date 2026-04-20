@@ -3017,7 +3017,7 @@ impl StaticAbilityKind for KeywordText {
 // Placeholder / Marker Abilities
 // =============================================================================
 
-/// Non-semantic keyword-like marker preserved by parser/builder.
+/// Semantic keyword label for a keyword whose runtime semantics are implemented elsewhere.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordMarker {
     pub marker: String,
@@ -3403,6 +3403,13 @@ mod tests {
     #[test]
     fn test_keyword_marker() {
         let ability = KeywordMarker::new("test marker");
+        assert_eq!(ability.id(), StaticAbilityId::KeywordMarker);
+        assert_eq!(ability.display(), "test marker");
+    }
+
+    #[test]
+    fn static_ability_keyword_marker_uses_semantic_marker() {
+        let ability = StaticAbility::keyword_marker("test marker");
         assert_eq!(ability.id(), StaticAbilityId::KeywordMarker);
         assert_eq!(ability.display(), "test marker");
     }

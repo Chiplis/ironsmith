@@ -550,9 +550,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 } else if matches!(
                     id,
-                    StaticAbilityId::KeywordMarker
-                        | StaticAbilityId::KeywordFallbackText
-                        | StaticAbilityId::RuleFallbackText
+                    StaticAbilityId::KeywordFallbackText | StaticAbilityId::RuleFallbackText
                 ) {
                     let display = static_ability.display();
                     let mechanic = canonical_mechanic_name(&display);

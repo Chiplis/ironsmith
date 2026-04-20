@@ -581,6 +581,34 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
     };
     let inner_words = token_words(&inner_tokens);
+    if inner_words.first().copied() == Some("choose")
+        && let Some(then_return_idx) = find_word_sequence_index(&inner_words, &["then", "return"])
+        && let Some(unless_idx) = find_word_sequence_index(&inner_words, &["unless"])
+        && unless_idx > then_return_idx
+        && inner_words.get(unless_idx + 1..unless_idx + 7)
+            == Some(["its", "controller", "has", "you", "draw", "a"].as_slice())
+        && inner_words.get(unless_idx + 7) == Some(&"card")
+    {
+        let target_token_end = token_index_for_word_index(&inner_tokens, then_return_idx)
+            .unwrap_or(inner_tokens.len());
+        let target_tokens = trim_commas(&inner_tokens[1..target_token_end]);
+        let target = parse_target_phrase(&target_tokens)?;
+        let return_target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+        return Ok(Some(wrap_for_each(vec![
+            EffectAst::TargetOnly { target },
+            EffectAst::UnlessAction {
+                effects: vec![EffectAst::ReturnToHand {
+                    target: return_target,
+                    random: false,
+                }],
+                alternative: vec![EffectAst::Draw {
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                }],
+                player: PlayerAst::ItsController,
+            },
+        ])));
+    }
     if let Some(after_who) = grammar::words_match_prefix(
         &inner_tokens,
         &["who", "has", "less", "life", "than", "you"],

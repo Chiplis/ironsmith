@@ -5033,6 +5033,17 @@ fn merge_simple_mana_add_compiled_lines(lines: &[String]) -> Vec<String> {
     merged
 }
 
+fn is_simple_mana_add_clause(line: &str) -> bool {
+    let lower = line.trim().to_ascii_lowercase();
+    lower.starts_with("add ")
+        || lower.starts_with("{t}: add ")
+        || lower.starts_with("{t}, tap: add ")
+        || (lower.starts_with("mana ability ")
+            && lower
+                .split_once(':')
+                .is_some_and(|(_, rest)| rest.trim_start().starts_with("{t}: add ")))
+}
+
 fn merge_blockability_compiled_lines(lines: &[String]) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
@@ -5256,6 +5267,12 @@ pub fn compare_semantics_scored(
                 .iter()
                 .any(|oracle| oracle == tokens))
     });
+    let oracle_mentions_mana_add = oracle_clauses
+        .iter()
+        .any(|clause| clause.to_ascii_lowercase().contains("add "));
+    if !oracle_mentions_mana_add {
+        compiled_pairs.retain(|(clause, _)| !is_simple_mana_add_clause(clause));
+    }
 
     let compiled_clauses = compiled_pairs
         .iter()
@@ -5286,6 +5303,10 @@ pub fn compare_semantics_scored(
         oracle_tokens
     };
     if oracle_tokens.is_empty() {
+        return (1.0, 1.0, 1.0, 0, false);
+    }
+
+    if oracle_clauses == compiled_clauses {
         return (1.0, 1.0, 1.0, 0, false);
     }
 
@@ -5458,6 +5479,39 @@ mod tests {
             dims: 384,
             mismatch_threshold: 0.99,
         })
+    }
+
+    #[test]
+    fn exact_normalized_clause_match_beats_special_mismatch_penalties() {
+        let oracle =
+            "{1}{W}: Target nonattacking, nonblocking creature gets +0/+2 until end of turn.";
+        let compiled = vec![oracle.to_string()];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored(
+                "Unlikely Alliance",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(!mismatch);
+    }
+
+    #[test]
+    fn intrinsic_land_mana_ability_does_not_penalize_type_line_oracle() {
+        let oracle = "This land enters tapped.";
+        let compiled = vec![
+            "{T}: Add {G} or {W}.".to_string(),
+            "This land enters tapped.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored("Arctic Treeline", oracle, &compiled, strict_embedding());
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(!mismatch);
     }
 
     #[test]

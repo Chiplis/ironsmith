@@ -8,6 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const RAYON_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 #[derive(Debug)]
 struct Args {
     cards_path: Option<String>,
@@ -127,17 +129,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter_elapsed = filter_start.elapsed();
 
     let processed = filtered_cards.len();
+    let rayon_pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(RAYON_WORKER_STACK_SIZE)
+        .build()?;
     let compile_start = Instant::now();
-    let compiled_snapshots = filtered_cards
-        .par_iter()
-        .map(|payload| {
-            if args.strict_only {
-                compile_strict_snapshot_from_payload(payload)
-            } else {
-                compile_snapshot_from_payload(payload)
-            }
-        })
-        .collect::<Vec<_>>();
+    let (compiled_snapshots, rayon_threads) = rayon_pool.install(|| {
+        let snapshots = filtered_cards
+            .par_iter()
+            .map(|payload| {
+                if args.strict_only {
+                    compile_strict_snapshot_from_payload(payload)
+                } else {
+                    compile_snapshot_from_payload(payload)
+                }
+            })
+            .collect::<Vec<_>>();
+        (snapshots, rayon::current_num_threads())
+    });
     let compile_elapsed = compile_start.elapsed();
 
     let insert_start = Instant::now();
@@ -168,7 +176,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "strict with allow-unsupported fallback"
         }
     );
-    println!("- Rayon threads: {}", rayon::current_num_threads());
+    println!("- Rayon threads: {rayon_threads}");
+    println!("- Rayon worker stack: {RAYON_WORKER_STACK_SIZE} bytes");
     println!("- New compilation rows inserted: {inserted}");
     println!(
         "- Strict-compiled semantic score avg before: {} across {} cards",

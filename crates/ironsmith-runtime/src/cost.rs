@@ -47,6 +47,10 @@ impl ironsmith_core::CostComponent for Cost {
     fn mana_cost_ref(&self) -> Option<&ManaCost> {
         self.mana_cost_ref()
     }
+
+    fn dynamic_mana_cost_ref(&self) -> Option<&ironsmith_core::DynamicManaCost> {
+        self.dynamic_mana_cost_ref()
+    }
 }
 
 impl ironsmith_core::CoreCostComponent for Cost {
@@ -186,22 +190,63 @@ pub fn can_pay_cost_with_reason(
 
     let ctx = CostCheckContext::new(source_id, player).with_reason(reason);
 
-    for cost_component in cost.costs() {
-        let adjusted_component = if let Some(mana_cost) = cost_component.mana_cost_ref() {
-            crate::costs::Cost::mana(game.adjust_mana_cost_for_payment_reason(
-                player,
-                Some(source_id),
-                mana_cost,
-                reason,
-            ))
-        } else {
-            cost_component.clone()
-        };
-        game.validate_cost_for_payment_reason(player, source_id, &adjusted_component, reason)?;
-        can_pay_with_check_context(&*adjusted_component.0, game, &ctx)?;
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            for cost_component in costs {
+                let adjusted_component =
+                    adjusted_component_for_check(game, player, source_id, cost_component, reason)?;
+                game.validate_cost_for_payment_reason(
+                    player,
+                    source_id,
+                    &adjusted_component,
+                    reason,
+                )?;
+                can_pay_with_check_context(&*adjusted_component.0, game, &ctx)?;
+            }
+            Ok(())
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            if branches.iter().any(|branch| {
+                can_pay_cost_with_reason(game, source_id, player, branch, reason).is_ok()
+            }) {
+                Ok(())
+            } else {
+                Err(CostPaymentError::Other(
+                    "no payable alternative cost branch".to_string(),
+                ))
+            }
+        }
     }
+}
 
-    Ok(())
+pub(crate) fn adjusted_component_for_check(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    cost_component: &crate::costs::Cost,
+    reason: crate::costs::PaymentReason,
+) -> Result<crate::costs::Cost, CostPaymentError> {
+    if let Some(mana_cost) = cost_component.mana_cost_ref() {
+        return Ok(crate::costs::Cost::mana(
+            game.adjust_mana_cost_for_payment_reason(player, Some(source_id), mana_cost, reason),
+        ));
+    }
+    if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
+        if let Some(static_base) = dynamic_mana.resolved_static_base() {
+            return Ok(crate::costs::Cost::mana(
+                game.adjust_mana_cost_for_payment_reason(
+                    player,
+                    Some(source_id),
+                    &static_base,
+                    reason,
+                ),
+            ));
+        }
+        return Err(CostPaymentError::Other(
+            "dynamic mana cost requires an execution context".to_string(),
+        ));
+    }
+    Ok(cost_component.clone())
 }
 
 #[cfg(test)]

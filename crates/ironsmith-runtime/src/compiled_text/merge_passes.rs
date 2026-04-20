@@ -23,7 +23,18 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     if lower.starts_with("ward ") {
         return true;
     }
-    if lower == "sunburst" || lower.starts_with("fading ") || lower.starts_with("vanishing ") {
+    if lower == "sunburst"
+        || lower.starts_with("bushido ")
+        || lower.starts_with("fading ")
+        || lower.starts_with("fabricate ")
+        || lower.starts_with("graft ")
+        || lower.starts_with("modular ")
+        || lower.starts_with("rampage ")
+        || lower.starts_with("scavenge ")
+        || lower.starts_with("transmute ")
+        || lower.starts_with("toxic ")
+        || lower.starts_with("vanishing ")
+    {
         return true;
     }
     matches!(
@@ -53,6 +64,22 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
             | "wither"
             | "infect"
             | "changeling"
+            | "battle cry"
+            | "daybound"
+            | "dethrone"
+            | "enlist"
+            | "extort"
+            | "evolve"
+            | "ingest"
+            | "melee"
+            | "myriad"
+            | "nightbound"
+            | "prowess"
+            | "provoke"
+            | "riot"
+            | "training"
+            | "persist"
+            | "undying"
             | "partner"
             | "assist"
     )
@@ -1002,6 +1029,10 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "enchant ",
         "equip ",
         "crew ",
+        "casualty ",
+        "echo ",
+        "echo—",
+        "echo-",
         "ward ",
         "kicker ",
         "flashback ",

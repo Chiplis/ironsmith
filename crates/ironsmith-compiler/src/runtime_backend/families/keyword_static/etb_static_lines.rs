@@ -855,6 +855,11 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // where X is the number of different powers among <objects>
+    if let Some(value) = parse_where_x_is_number_of_different_powers_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
@@ -1386,6 +1391,38 @@ pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
     let filter_tokens = &tokens[object_start_token_idx..];
     let filter = parse_object_filter(filter_tokens, false).ok()?;
     Some(Value::DistinctNames(filter))
+}
+
+pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !etb_word_slice_starts_with(&clause_words, &["where", "x", "is"]) {
+        return None;
+    }
+
+    let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
+    if clause_words.get(number_idx + 1).copied() != Some("of") {
+        return None;
+    }
+    if clause_words.get(number_idx + 2).copied() != Some("different") {
+        return None;
+    }
+    if !matches!(
+        clause_words.get(number_idx + 3).copied(),
+        Some("power" | "powers")
+    ) {
+        return None;
+    }
+    if clause_words.get(number_idx + 4).copied() != Some("among") {
+        return None;
+    }
+
+    let object_start_word_idx = number_idx + 5;
+    let object_start_token_idx = token_index_for_word_index(tokens, object_start_word_idx)?;
+    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    Some(Value::DistinctPowers(filter))
 }
 
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {

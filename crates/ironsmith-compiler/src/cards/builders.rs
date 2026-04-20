@@ -200,7 +200,10 @@ impl CardDefinitionBuilder {
 
     pub fn with_ability(mut self, ability: crate::ability::Ability) -> Self {
         if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
-            && static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+            && matches!(
+                static_ability.id(),
+                crate::static_abilities::StaticAbilityId::KeywordMarker
+            )
         {
             let text = static_ability.display();
             if text.eq_ignore_ascii_case("fuse") {
@@ -382,6 +385,40 @@ impl CardDefinitionBuilder {
             KeywordAction::Annihilator(amount) => self.annihilator(amount),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
+            KeywordAction::Marker(name) if name.eq_ignore_ascii_case("fuse") => self.has_fuse(),
+            KeywordAction::Marker(name)
+                if parse_standalone_bolster_marker(name).is_some()
+                    && self.card_builder.card_types_ref().iter().any(|card_type| {
+                        matches!(card_type, CardType::Instant | CardType::Sorcery)
+                    }) =>
+            {
+                self.with_ability(
+                    crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::keyword_marker(format!(
+                            "Bolster {}",
+                            parse_standalone_bolster_marker(name).unwrap()
+                        )),
+                    )
+                    .with_text(name),
+                )
+            }
+            KeywordAction::MarkerText(text) if text.eq_ignore_ascii_case("fuse") => self.has_fuse(),
+            KeywordAction::MarkerText(text)
+                if parse_standalone_bolster_marker(&text).is_some()
+                    && self.card_builder.card_types_ref().iter().any(|card_type| {
+                        matches!(card_type, CardType::Instant | CardType::Sorcery)
+                    }) =>
+            {
+                let amount = parse_standalone_bolster_marker(&text).unwrap();
+                self.with_ability(
+                    crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::keyword_marker(format!(
+                            "Bolster {amount}"
+                        )),
+                    )
+                    .with_text(&text),
+                )
+            }
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
@@ -1889,6 +1926,12 @@ impl CardDefinitionBuilder {
     pub fn rampage(self, amount: u32) -> Self {
         let text = format!("Rampage {amount}");
         self.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::keyword_marker(format!("rampage {amount}")),
+            )
+            .with_text(&text),
+        )
+        .with_ability(
             crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_becomes_blocked(),
                 vec![crate::effect::Effect::pump(
@@ -2171,6 +2214,9 @@ impl CardDefinitionBuilder {
 pub const IT_TAG: &str = crate::host::IT_TAG;
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
-    let rest = text.trim().strip_prefix("Bolster ")?;
-    rest.trim().parse().ok()
+    let mut parts = text.split_whitespace();
+    matches!(parts.next(), Some(keyword) if keyword.eq_ignore_ascii_case("bolster"))
+        .then(|| parts.next().and_then(|amount| amount.parse::<u32>().ok()))
+        .flatten()
+        .filter(|_| parts.next().is_none())
 }

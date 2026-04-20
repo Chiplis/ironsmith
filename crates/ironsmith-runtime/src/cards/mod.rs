@@ -979,6 +979,20 @@ mod tests {
         assert_eq!(definition.name(), "Sicarian Infiltrator");
     }
 
+    #[cfg(feature = "generated-registry")]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn try_compile_card_accepts_chromium_rampage_marker() {
+        let definition = CardRegistry::try_compile_card("Chromium")
+            .expect("Chromium's rampage marker should be backed by runtime semantics");
+
+        assert!(
+            generated_definition_is_supported(&definition),
+            "{:?}\n{definition:#?}",
+            generated_definition_support_issues(&definition)
+        );
+    }
+
     #[test]
     fn reject_unsupported_generated_definition_returns_error() {
         let card = CardBuilder::new(CardId::new(), "Rejected Fallback")
@@ -1010,6 +1024,38 @@ mod tests {
         definition.abilities.push(custom);
 
         assert!(!generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_rampage_marker_with_runtime_semantics() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Rampage Probe")
+            .card_types(vec![CardType::Creature])
+            .rampage(2)
+            .build();
+
+        assert!(
+            generated_definition_is_supported(&definition),
+            "{:?}\n{definition:#?}",
+            generated_definition_support_issues(&definition)
+        );
+    }
+
+    #[test]
+    fn generated_definition_support_rejects_keyword_fallback_text() {
+        let card = CardBuilder::new(CardId::new(), "Unsupported Rampage Probe")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let mut definition = CardDefinition::new(card);
+        definition.abilities.push(Ability::static_ability(
+            StaticAbility::keyword_fallback_text("rampage 2"),
+        ));
+
+        let message = generated_definition_unsupported_mechanics_message(&definition)
+            .expect("keyword fallback text should still be reported");
+        assert!(
+            message.contains("unsupported keyword marker: rampage 2"),
+            "expected unsupported keyword marker message, got {message}"
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

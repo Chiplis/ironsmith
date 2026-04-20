@@ -1524,15 +1524,90 @@ pub(crate) fn parse_keyword_mechanic_clause(
         || word_slice_ends_with(&clause_words, &["phases", "out"]))
         && clause_tokens.len() >= 2
     {
-        let target_tokens = trim_commas(&clause_tokens[..clause_tokens.len() - 2]);
+        let mut target_tokens = trim_commas(&clause_tokens[..clause_tokens.len() - 2]);
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("simultaneously"))
+        {
+            target_tokens = trim_commas(&target_tokens[1..]);
+        }
         if target_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing target in phase-out clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("all"))
+        {
+            let filter_tokens = trim_commas(&target_tokens[1..]);
+            if filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing filter in all phase-out clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            return Ok(Some(EffectAst::PhaseOutAll { filter }));
+        }
         let target = parse_target_phrase(&target_tokens)?;
         return Ok(Some(EffectAst::PhaseOut { target }));
+    }
+
+    if (word_slice_ends_with(&clause_words, &["phase", "in"])
+        || word_slice_ends_with(&clause_words, &["phases", "in"]))
+        && clause_tokens.len() >= 2
+    {
+        let mut target_tokens = trim_commas(&clause_tokens[..clause_tokens.len() - 2]);
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("simultaneously"))
+        {
+            target_tokens = trim_commas(&target_tokens[1..]);
+        }
+        if target_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing target in phase-in clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("all"))
+            && target_tokens
+                .get(1)
+                .is_some_and(|token| token.is_word("phased-out") || token.is_word("phased"))
+        {
+            let filter_tokens = trim_commas(&target_tokens[2..]);
+            if filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing filter in all phase-in clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            return Ok(Some(EffectAst::PhaseInAll { filter }));
+        }
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("all"))
+        {
+            let filter_tokens = trim_commas(&target_tokens[1..]);
+            if filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing filter in all phase-in clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            return Ok(Some(EffectAst::PhaseInAll { filter }));
+        }
+        let target = parse_target_phrase(&target_tokens)?;
+        return Ok(Some(EffectAst::PhaseIn { target }));
     }
 
     if grammar::words_match_any_prefix(clause_tokens, OPEN_ATTRACTION_PREFIXES).is_some() {

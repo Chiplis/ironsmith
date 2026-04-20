@@ -717,6 +717,25 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
                 "as long as there are {count} or more card types among cards in {graveyard_owner} graveyard"
             )
         }
+        crate::ConditionExpr::PlayerCardsInHandOrFewer { player, count } => {
+            let subject = match player {
+                crate::target::PlayerFilter::You => "you",
+                crate::target::PlayerFilter::Opponent => "an opponent",
+                crate::target::PlayerFilter::Any => "a player",
+                _ => "that player",
+            };
+            let verb = if *player == crate::target::PlayerFilter::You {
+                "have"
+            } else {
+                "has"
+            };
+            let count_text = match count {
+                0 => "no".to_string(),
+                1 => "one".to_string(),
+                _ => count.to_string(),
+            };
+            format!("as long as {subject} {verb} {count_text} or fewer cards in hand")
+        }
         crate::ConditionExpr::CountComparison {
             count,
             comparison,

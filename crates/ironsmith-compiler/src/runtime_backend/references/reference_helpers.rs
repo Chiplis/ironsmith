@@ -560,6 +560,8 @@ pub(crate) fn resolve_value_it_tag(
             Ok(Value::BasicLandTypesAmong(resolve_it_tag(filter, refs)?))
         }
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
+        Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
+        Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
         Value::PowerOf(spec) => Ok(Value::PowerOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

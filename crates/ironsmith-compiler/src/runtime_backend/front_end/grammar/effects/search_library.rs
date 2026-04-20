@@ -361,6 +361,34 @@ pub(crate) fn strip_search_library_leading_count_tokens(
     tokens
 }
 
+pub(crate) fn strip_search_library_different_names_clause_lexed(
+    tokens: &[OwnedLexToken],
+) -> (Vec<OwnedLexToken>, bool) {
+    let patterns: [&[&str]; 2] = [
+        &["with", "different", "names"],
+        &["that", "have", "different", "names"],
+    ];
+
+    for pattern in patterns {
+        let mut cursor = 0usize;
+        while cursor + pattern.len() <= tokens.len() {
+            if tokens[cursor..cursor + pattern.len()]
+                .iter()
+                .zip(pattern.iter())
+                .all(|(token, expected)| token.is_word(expected))
+            {
+                let mut stripped = Vec::with_capacity(tokens.len() - pattern.len());
+                stripped.extend_from_slice(&tokens[..cursor]);
+                stripped.extend_from_slice(&tokens[cursor + pattern.len()..]);
+                return (trim_commas(&stripped), true);
+            }
+            cursor += 1;
+        }
+    }
+
+    (trim_commas(tokens), false)
+}
+
 fn strip_search_library_color_count_phrase_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, crate::filter::Comparison)> {
@@ -863,7 +891,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
 pub(crate) fn parse_search_library_count_prefix_lexed(
     count_tokens: &[OwnedLexToken],
 ) -> SearchLibraryCountPrefix {
-    let mut count = ChoiceCount::up_to(1);
+    let mut count = ChoiceCount::exactly(1);
     let mut search_mode = SearchSelectionMode::Exact;
     let mut count_used = 0usize;
 
@@ -913,7 +941,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         count = ChoiceCount::dynamic_x();
         count_used = 1;
     } else if let Some((value, used)) = parse_number(count_tokens) {
-        count = ChoiceCount::up_to(value as usize);
+        count = ChoiceCount::exactly(value as usize);
         count_used = used;
     }
 
@@ -1018,6 +1046,8 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     } else {
         (filter_tokens.to_vec(), None)
     };
+    let (filter_tokens, distinct_names) =
+        strip_search_library_different_names_clause_lexed(&filter_tokens);
     let filter_words = parser_text_word_refs(&filter_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -1069,12 +1099,14 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         if let Some(color_count) = color_count {
             base_filter.color_count = Some(color_count);
         }
+        base_filter.distinct_names |= distinct_names;
         Ok(base_filter)
     } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards") {
         let mut filter = ObjectFilter::default();
         if let Some(color_count) = color_count {
             filter.color_count = Some(color_count);
         }
+        filter.distinct_names |= distinct_names;
         Ok(filter)
     } else if word_slice_contains(&filter_words, "or") {
         let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
@@ -1088,6 +1120,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         if let Some(color_count) = color_count {
             filter.color_count = Some(color_count);
         }
+        filter.distinct_names |= distinct_names;
         Ok(filter)
     } else {
         let mut filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
@@ -1099,6 +1132,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         if let Some(color_count) = color_count {
             filter.color_count = Some(color_count);
         }
+        filter.distinct_names |= distinct_names;
         Ok(filter)
     }
 }

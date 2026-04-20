@@ -5862,6 +5862,13 @@ pub(super) fn describe_compact_destroy_color_choice(effect: &Effect) -> Option<S
 }
 
 pub(super) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
+    let effect = if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && is_implicit_reference_tag(tagged.tag.as_str())
+    {
+        tagged.effect.as_ref()
+    } else {
+        effect
+    };
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
     if choose_mode.min_choose_count != choose_mode.choose_count
         || !matches!(choose_mode.choose_count, Value::Fixed(1))
@@ -5923,11 +5930,46 @@ pub(super) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String>
             abilities.push(grant_all.abilities[0].display().to_ascii_lowercase());
             continue;
         }
+        if let Some(apply) = mode.effects[0].downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        {
+            if !matches!(apply.until, Until::EndOfTurn)
+                || !apply.additional_modifications.is_empty()
+                || !apply.runtime_modifications.is_empty()
+            {
+                return None;
+            }
+            let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification
+            else {
+                return None;
+            };
+            let (mode_subject, mode_plural_subject) = describe_apply_continuous_target(apply);
+            if let Some(existing) = &subject {
+                if existing != &mode_subject {
+                    return None;
+                }
+            } else {
+                plural_subject = mode_plural_subject;
+                subject = Some(mode_subject);
+            }
+            abilities.push(
+                ability
+                    .granted_inline_ability()
+                    .map(describe_inline_ability)
+                    .unwrap_or_else(|| ability.display())
+                    .to_ascii_lowercase(),
+            );
+            continue;
+        }
         return None;
     }
 
-    abilities.sort();
-    abilities.dedup();
+    let mut unique_abilities = Vec::new();
+    for ability in abilities {
+        if !unique_abilities.contains(&ability) {
+            unique_abilities.push(ability);
+        }
+    }
+    let abilities = unique_abilities;
     if abilities.len() < 2 {
         return None;
     }
@@ -6088,16 +6130,26 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of differently named {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::DistinctPowers(filter) => format!(
+            "the number of different powers among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
         Value::CreaturesDiedThisTurnControlledBy(filter) => format!(
             "the number of creatures that died under {} control this turn",
             describe_possessive_player_filter(filter)
         ),
         Value::CountPlayers(filter) => format!("the number of {}", describe_player_filter(filter)),
-        Value::PlayersWhoControlMoreThanYou(filter) => format!(
-            "the number of players who control more {} than you",
-            describe_count_filter_value_subject(filter)
-        ),
+        Value::PlayersWhoControlMoreThanYou(filter) => {
+            let mut controlled_filter = filter.clone();
+            if controlled_filter.zone == Some(Zone::Battlefield) {
+                controlled_filter.zone = None;
+            }
+            format!(
+                "the number of players who control more {} than you",
+                describe_count_filter_value_subject(&controlled_filter)
+            )
+        }
         Value::PartySize(filter) => {
             format!(
                 "the number of creatures in {} party",
@@ -7308,6 +7360,11 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             )
         }
         crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+            if blockers.description().eq_ignore_ascii_case("creature")
+                && attacker.description().eq_ignore_ascii_case("creature")
+            {
+                return "All creatures able to block target creature do so".to_string();
+            }
             format!(
                 "{} must block {} if able",
                 blockers.description(),

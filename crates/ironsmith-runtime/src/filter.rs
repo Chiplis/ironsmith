@@ -655,6 +655,18 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(colors.count() as i32)
         }
+        Value::DistinctPowers(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    if let Some(power) = game.calculated_power(object.id).or_else(|| object.power())
+                    {
+                        seen.insert(power);
+                    }
+                }
+            }
+            Some(seen.len() as i32)
+        }
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
@@ -1747,6 +1759,27 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if let Some(total_cmp) = &self.total_power_toughness {
+            let Some(power) = resolve_object_power_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            let Some(toughness) = resolve_object_toughness_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            if !total_cmp.satisfies_with_context(power + toughness, game, ctx, stack_entry) {
+                return false;
+            }
+        }
 
         // Mana value check
         if let Some(mv_cmp) = &self.mana_value {
@@ -2202,6 +2235,20 @@ impl ObjectFilterExt for ObjectFilter {
                     return false;
                 }
             } else {
+                return false;
+            }
+        }
+        if let Some(total_cmp) = &self.total_power_toughness {
+            let Some(power) = resolve_snapshot_power_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            let Some(toughness) =
+                resolve_snapshot_toughness_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            if !total_cmp.satisfies_with_context(power + toughness, game, ctx, None) {
                 return false;
             }
         }
@@ -2900,6 +2947,9 @@ impl ObjectFilterExt for ObjectFilter {
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
+        if self.distinct_names {
+            parts.push("with different names".to_string());
+        }
 
         // Handle name
         if let Some(ref name) = self.name {
@@ -2951,6 +3001,12 @@ impl ObjectFilterExt for ObjectFilter {
                 };
                 parts.push(format!("with {label} {}", describe_comparison(toughness)));
             }
+        }
+        if let Some(ref total_power_toughness) = self.total_power_toughness {
+            parts.push(format!(
+                "with total power and toughness {}",
+                describe_comparison(total_power_toughness)
+            ));
         }
         if let Some(ref mana_value) = self.mana_value {
             parts.push(format!(
@@ -3598,9 +3654,7 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
         if let AbilityKind::Static(static_ability) = &ability.kind {
             matches!(
                 static_ability.id(),
-                StaticAbilityId::KeywordMarker
-                    | StaticAbilityId::KeywordText
-                    | StaticAbilityId::KeywordFallbackText
+                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
             ) && static_ability.display().eq_ignore_ascii_case(marker)
         } else {
             false
@@ -3621,9 +3675,7 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     object.level_granted_abilities().iter().any(|ability| {
         matches!(
             ability.id(),
-            StaticAbilityId::KeywordMarker
-                | StaticAbilityId::KeywordText
-                | StaticAbilityId::KeywordFallbackText
+            StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
         ) && ability.display().eq_ignore_ascii_case(marker)
     })
 }
@@ -3665,9 +3717,7 @@ fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marke
         if let AbilityKind::Static(static_ability) = &ability.kind
             && matches!(
                 static_ability.id(),
-                StaticAbilityId::KeywordMarker
-                    | StaticAbilityId::KeywordText
-                    | StaticAbilityId::KeywordFallbackText
+                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordText
             )
             && static_ability.display().eq_ignore_ascii_case(marker)
         {
@@ -3814,6 +3864,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
+            }
+            Value::DistinctPowers(filter) => {
+                format!(
+                    "the number of different powers among {}",
+                    filter.description()
+                )
             }
             Value::CountersOnSource(counter_type) => {
                 format!(

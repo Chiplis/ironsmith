@@ -147,8 +147,9 @@ pub use permanents::{
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ConspireCostEffect, ConvertEffect,
     CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect, ExertCostEffect, FlipEffect,
     GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect,
-    PhaseOutEffect, PutStickerEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
-    SoulbondPairEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
+    PhaseInEffect, PhaseOutEffect, PutStickerEffect, RegenerateEffect, RenownEffect,
+    SaddleCostEffect, SoulbondPairEffect, TapEffect, TransformEffect, UmbraArmorEffect,
+    UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,

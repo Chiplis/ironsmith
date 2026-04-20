@@ -202,10 +202,43 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
                 player: PlayerAst::You,
             }],
             player: PlayerAst::You,
-            mana,
+            cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
         }],
     });
     Ok(Some(effects))
+}
+
+fn normalize_unless_payment_clause_tokens(
+    action_tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let mut tokens = trim_commas(action_tokens);
+    let first = tokens.first()?.as_word()?;
+    let normalized_first = match first {
+        "pay" | "pays" => "pay",
+        "sacrifice" | "sacrifices" => "sacrifice",
+        _ => return None,
+    };
+
+    if tokens[0].as_word() != Some(normalized_first) {
+        tokens[0].replace_word(normalized_first);
+    }
+
+    if let Some(before_idx) = find_index(&tokens, |token| token.is_word("before")) {
+        tokens.truncate(before_idx);
+    }
+
+    Some(trim_commas(&tokens))
+}
+
+fn parse_unless_payment_clause_as_cost(
+    action_tokens: &[OwnedLexToken],
+) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+    let Some(payment_tokens) = normalize_unless_payment_clause_tokens(action_tokens) else {
+        return Ok(None);
+    };
+    crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
+        &payment_tokens,
+    )
 }
 
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
@@ -378,29 +411,6 @@ pub(crate) fn try_build_unless(
     let action_word_storage = SentencePrimitiveNormalizedWords::new(action_tokens);
     let action_words = action_word_storage.to_word_refs();
 
-    // "unless [player] pays N life" should compile as an unless-action branch
-    // where the deciding player loses life.
-    if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
-        let life_tokens = &action_tokens[1..];
-        if let Some((amount, used)) = parse_value(life_tokens)
-            && life_tokens
-                .get(used)
-                .is_some_and(|token| token.is_word("life"))
-            && life_tokens
-                .get(used + 1)
-                .map_or(true, |token| token.is_period())
-        {
-            return Ok(Some(EffectAst::UnlessAction {
-                effects,
-                alternative: vec![EffectAst::LoseLife { amount, player }],
-                player,
-            }));
-        }
-    }
-
-    // Try mana payment first: "pay(s) {mana} [optional trailing condition]"
-    // Uses greedy mana parsing — collects mana symbols until first non-mana word,
-    // then categorizes remaining tokens to decide whether to accept.
     if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
         if contains_word_window(&action_words, &["mana", "cost"]) {
             return Err(CardTextError::ParseError(format!(
@@ -408,67 +418,19 @@ pub(crate) fn try_build_unless(
                 crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
+    } else if matches!(action_words.first(), Some(&"draw" | &"draws")) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported non-cost unless action (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
 
-        // Skip any non-word tokens between "pay" and mana
-        let mana_start = find_index(&action_tokens[1..], |token: &OwnedLexToken| {
-            token.as_word().is_some() || mana_pips_from_token(token).is_some()
-        })
-        .map(|idx| idx + 1)
-        .unwrap_or(1);
-        let mana_tokens = &action_tokens[mana_start..];
-        let mut mana = Vec::new();
-        let mut remaining_idx = mana_tokens.len();
-        for (i, token) in mana_tokens.iter().enumerate() {
-            if let Some(group) = mana_pips_from_token(token) {
-                mana.extend(group);
-                continue;
-            }
-            if let Some(word) = token.as_word() {
-                match parse_mana_symbol(word) {
-                    Ok(symbol) => mana.push(symbol),
-                    Err(_) => {
-                        remaining_idx = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if !mana.is_empty() {
-            // Check what follows the mana symbols
-            let remaining_word_storage =
-                SentencePrimitiveNormalizedWords::new(&mana_tokens[remaining_idx..]);
-            let remaining_words = remaining_word_storage.to_word_refs();
-
-            let accept = if remaining_words.is_empty() {
-                // Pure mana payment (e.g., "pays {2}")
-                true
-            } else if remaining_words.first() == Some(&"life") {
-                // "pay N life" — not a mana payment, it's a life cost
-                false
-            } else if remaining_words.first() == Some(&"before") {
-                // Timing condition like "before that step" — accept, drop condition
-                true
-            } else {
-                // Unknown trailing tokens (for each, where X is, etc.) — skip for now
-                false
-            };
-
-            if accept {
-                return Ok(Some(EffectAst::UnlessPays {
-                    effects,
-                    player,
-                    mana,
-                }));
-            }
-
-            if !remaining_words.is_empty() {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing unless-payment clause (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                )));
-            }
-        }
+    if let Some(cost) = parse_unless_payment_clause_as_cost(action_tokens)? {
+        return Ok(Some(EffectAst::UnlessPays {
+            effects,
+            player,
+            cost,
+        }));
     }
 
     // Prefer the action-only slice for explicit-player clauses like

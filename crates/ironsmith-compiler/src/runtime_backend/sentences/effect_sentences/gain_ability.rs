@@ -6,6 +6,7 @@ use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
     self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or,
 };
+use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::lowering_support::{
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
@@ -1287,6 +1288,14 @@ pub(crate) fn append_gain_ability_trailing_effects(
     }
 
     let trimmed = trim_commas(trailing_tokens);
+    if let Some(predicate) = parse_trailing_if_predicate_lexed(&trimmed) {
+        return Ok(vec![EffectAst::Conditional {
+            predicate,
+            if_true: effects,
+            if_false: Vec::new(),
+        }]);
+    }
+
     if trimmed.first().is_some_and(|token| token.is_word("unless")) {
         if let Some(unless_effect) = try_build_unless(effects, &trimmed, 0)? {
             return Ok(vec![unless_effect]);

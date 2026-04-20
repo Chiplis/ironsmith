@@ -59,12 +59,10 @@ fn write_cards_with_unsupported_json(path: &Path) {
         path,
         r#"[
   {
-    "name":"Broken Borrow",
-    "oracle_text":"As long as a creature card with flying is in a graveyard, this creature has flying. The same is true for fear, first strike, double strike, deathtouch, haste, landwalk, lifelink, protection, reach, trample, shroud, and vigilance.",
-    "mana_cost":"{3}{B}{B}",
-    "type_line":"Creature — Elemental",
-    "power":"4",
-    "toughness":"4"
+    "name":"Unsupported Fixture",
+    "oracle_text":"Choose a word. You win the game if a sentence contains that word.",
+    "mana_cost":"{1}{U}",
+    "type_line":"Sorcery"
   }
 ]"#,
     )
@@ -86,6 +84,29 @@ fn write_cards_with_parenthetical_json(path: &Path) {
 ]"#,
     )
     .expect("write cards.json with parenthetical reminder text");
+}
+
+fn write_cards_with_worker_stack_pressure_json(path: &Path) {
+    fs::write(
+        path,
+        r#"[
+  {
+    "name":"Lightning Bolt",
+    "oracle_text":"Lightning Bolt deals 3 damage to any target.",
+    "mana_cost":"{R}",
+    "type_line":"Instant"
+  },
+  {
+    "name":"\"Lifetime\" Pass Holder",
+    "oracle_text":"This creature enters tapped.\nWhen this creature dies, open an Attraction.\nWhenever you roll to visit your Attractions, if you roll a 6, you may return this card from your graveyard to the battlefield.",
+    "mana_cost":"{B}",
+    "type_line":"Creature — Zombie Guest",
+    "power":"2",
+    "toughness":"1"
+  }
+]"#,
+    )
+    .expect("write cards.json with worker-stack-pressure card");
 }
 
 fn query_count(db_path: &Path, sql: &str) -> i64 {
@@ -347,6 +368,37 @@ fn sync_bins_strip_parenthetical_text_from_stored_oracle_and_compiled_columns() 
     assert!(registry_parse_input.contains(
         "Flying (This creature can't be blocked except by creatures with flying or reach.)"
     ));
+}
+
+#[test]
+fn sync_card_status_db_configures_worker_stack_for_deep_compile_paths() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("engine-status.sqlite3");
+    write_cards_with_worker_stack_pressure_json(&cards_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .env_remove("RUST_MIN_STACK")
+        .output()
+        .expect("run sync_card_status_db");
+    assert!(
+        output.status.success(),
+        "sync_card_status_db should configure enough worker stack for deep compile paths; stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        query_count(&db_path, "SELECT COUNT(*) FROM latest_card_compilation"),
+        2
+    );
+    let stdout = String::from_utf8(output.stdout).expect("sync stdout utf8");
+    assert!(
+        stdout.contains("Rayon worker stack: 16777216 bytes"),
+        "expected sync output to report configured worker stack, got {stdout}"
+    );
 }
 
 #[test]
@@ -742,7 +794,7 @@ fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
 
     let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
         .arg("--name")
-        .arg("Broken Borrow")
+        .arg("Unsupported Fixture")
         .arg("--cards")
         .arg(&cards_path)
         .arg("--db-path")
@@ -761,7 +813,7 @@ fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
     let conn = Connection::open(&db_path).expect("open sqlite db");
     let parse_status: String = conn
         .query_row(
-            "SELECT parse_status FROM latest_card_compilation WHERE card_name = 'Broken Borrow'",
+            "SELECT parse_status FROM latest_card_compilation WHERE card_name = 'Unsupported Fixture'",
             [],
             |row| row.get(0),
         )

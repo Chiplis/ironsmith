@@ -2486,7 +2486,7 @@ impl StaticAbility {
     }
 
     pub fn keyword_marker(marker: impl Into<String>) -> Self {
-        Self::keyword_fallback_text(marker)
+        Self::new(KeywordMarker::new(marker))
     }
 
     pub fn look_at_top_card_of_library() -> Self {

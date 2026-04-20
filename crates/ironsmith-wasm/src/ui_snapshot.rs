@@ -787,7 +787,8 @@ impl GameSnapshot {
         {
             stack_preview.insert(0, obj.name.clone());
             let pending_effect_text = {
-                let lines = ironsmith::compiled_text::compiled_lines(&obj.to_card_definition());
+                let lines =
+                    ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition());
                 if lines.is_empty() {
                     None
                 } else {
@@ -892,7 +893,7 @@ pub(super) fn build_object_details_snapshot(
         (obj.power(), obj.toughness())
     };
     let counters = counter_snapshots_for_object(obj);
-    let compiled_text = ironsmith::compiled_text::compiled_lines(&obj.to_card_definition());
+    let compiled_text = ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition());
 
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,

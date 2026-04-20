@@ -98,7 +98,7 @@ pub(super) fn try_parse(
                 player: PlayerAst::You,
             }],
             player: PlayerAst::You,
-            mana,
+            cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
         }],
     });
     Ok(Some(effects))

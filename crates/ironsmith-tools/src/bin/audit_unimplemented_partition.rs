@@ -239,8 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 AbilityKind::Static(static_ability) => {
                     if matches!(
                         static_ability.id(),
-                        StaticAbilityId::KeywordMarker
-                            | StaticAbilityId::KeywordFallbackText
+                        StaticAbilityId::KeywordFallbackText
                             | StaticAbilityId::RuleFallbackText
                             | StaticAbilityId::UnsupportedParserLine
                     ) {

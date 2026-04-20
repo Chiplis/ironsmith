@@ -13,6 +13,40 @@ use std::sync::Arc;
 
 pub type EffectMode = CoreEffectMode<Effect>;
 
+fn legacy_unless_payment_cost(
+    mana: Vec<crate::mana::ManaSymbol>,
+    life: Option<Value>,
+    additional_generic: Option<Value>,
+    mana_multiplier: Option<Value>,
+    x_value: Option<Value>,
+) -> crate::cost::TotalCost {
+    let mut components = Vec::new();
+    let mana_cost = crate::mana::ManaCost::from_symbols(mana);
+    if !mana_cost.is_empty()
+        || additional_generic.is_some()
+        || mana_multiplier.is_some()
+        || x_value.is_some()
+    {
+        if additional_generic.is_some() || mana_multiplier.is_some() || x_value.is_some() {
+            components.push(crate::costs::Cost::dynamic_mana(
+                ironsmith_core::DynamicManaCost::new(
+                    mana_cost,
+                    x_value,
+                    additional_generic,
+                    mana_multiplier,
+                    ironsmith_core::DynamicManaDisplayHint::Default,
+                ),
+            ));
+        } else {
+            components.push(crate::costs::Cost::mana(mana_cost));
+        }
+    }
+    if let Some(life) = life {
+        components.push(crate::costs::Cost::life(life));
+    }
+    crate::cost::TotalCost::from_costs(components)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmblemDescription {
     pub name: String,
@@ -585,11 +619,19 @@ impl Effect {
         Self::new(crate::effects::UnlessPaysEffect {
             player,
             effects,
-            mana,
-            life: None,
-            additional_generic: None,
-            x_value: None,
-            mana_multiplier: None,
+            cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+        })
+    }
+
+    pub fn unless_pays_total_cost(
+        effects: Vec<Effect>,
+        player: crate::target::PlayerFilter,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        Self::new(crate::effects::UnlessPaysEffect {
+            player,
+            effects,
+            cost,
         })
     }
 
@@ -691,6 +733,10 @@ impl Effect {
 
     pub fn phase_out(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::PhaseOutEffect::with_spec(target))
+    }
+
+    pub fn phase_in(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::PhaseInEffect::with_spec(target))
     }
 
     pub fn explore(target: crate::target::ChooseSpec) -> Self {
@@ -866,14 +912,11 @@ impl Effect {
             ),
             _ => crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
         };
+        let cost = legacy_unless_payment_cost(mana, life, additional, None, x);
         Self::new(crate::effects::UnlessPaysEffect {
             player,
             effects: vec![Self::counter(target)],
-            mana,
-            life,
-            additional_generic: additional,
-            x_value: x,
-            mana_multiplier: None,
+            cost,
         })
     }
 
@@ -1539,6 +1582,22 @@ impl Effect {
         )
     }
 
+    pub fn counter_unless_pays_total_cost(
+        target: crate::target::ChooseSpec,
+        cost: crate::cost::TotalCost,
+    ) -> Self {
+        let player = match target.base() {
+            crate::target::ChooseSpec::SpecificObject(id) => {
+                crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Specific(*id))
+            }
+            crate::target::ChooseSpec::Tagged(tag) => crate::target::PlayerFilter::ControllerOf(
+                crate::target::ObjectRef::Tagged(tag.clone()),
+            ),
+            _ => crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+        };
+        Self::unless_pays_total_cost(vec![Self::counter(target)], player, cost)
+    }
+
     pub fn unless_pays_with_life_additional_and_multiplier(
         effects: Vec<Effect>,
         player: crate::target::PlayerFilter,
@@ -1547,14 +1606,17 @@ impl Effect {
         additional_generic: Option<Value>,
         multiplier: Option<Value>,
     ) -> Self {
+        let cost = legacy_unless_payment_cost(
+            mana_symbols_per_counter,
+            life,
+            additional_generic,
+            multiplier,
+            None,
+        );
         Self::new(crate::effects::UnlessPaysEffect {
             player,
             effects,
-            mana: mana_symbols_per_counter,
-            life,
-            additional_generic,
-            x_value: None,
-            mana_multiplier: multiplier,
+            cost,
         })
     }
 

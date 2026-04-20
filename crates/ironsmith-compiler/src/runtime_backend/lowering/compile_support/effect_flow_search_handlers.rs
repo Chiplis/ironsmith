@@ -70,7 +70,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
         EffectAst::UnlessPays {
             effects,
             player,
-            mana,
+            cost,
         } => {
             if effects.len() == 1
                 && let EffectAst::ForEachObject {
@@ -83,7 +83,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     effects: vec![EffectAst::UnlessPays {
                         effects: per_object_effects.clone(),
                         player: *player,
-                        mana: mana.clone(),
+                        cost: cost.clone(),
                     }],
                 };
                 return Ok(Some(compile_effect(&rewritten, ctx)?));
@@ -99,7 +99,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
-            let effect = Effect::unless_pays(inner_effects, player_filter, mana.clone());
+            let effect = Effect::unless_pays_total_cost(inner_effects, player_filter, cost.clone());
             (vec![effect], inner_choices)
         }
         EffectAst::UnlessAction {

@@ -37,6 +37,48 @@ fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) 
         .is_some()
 }
 
+fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
+    let raw = line.info.raw_line.trim();
+    let full = line.full_text.trim();
+    if raw != full && raw_label_prefix_preserves_triggered_source(raw, full) {
+        raw
+    } else {
+        full
+    }
+}
+
+fn raw_label_prefix_preserves_triggered_source(raw: &str, full: &str) -> bool {
+    let Some((label, body)) = raw.split_once('—').or_else(|| raw.split_once(" - ")) else {
+        return false;
+    };
+    let label = label.trim();
+    if label.is_empty()
+        || label.len() > 40
+        || label.contains('.')
+        || label.contains(':')
+        || label.contains('\n')
+    {
+        return false;
+    }
+
+    let body = body.trim();
+    let body_lower = body.to_ascii_lowercase();
+    if !(str_starts_with(body_lower.as_str(), "whenever ")
+        || str_starts_with(body_lower.as_str(), "when ")
+        || str_starts_with(body_lower.as_str(), "at "))
+    {
+        return false;
+    }
+
+    let normalize = |text: &str| {
+        text.trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase()
+            .replace(char::is_whitespace, " ")
+    };
+    normalize(body).eq(normalize(full).as_str())
+}
+
 pub(crate) fn lower_rewrite_statement_token_groups_to_chunks(
     info: LineInfo,
     text: &str,
@@ -159,6 +201,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     trigger_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    let source_text = triggered_line_source_text(line);
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
     let inferred_max_triggers_per_turn = line
@@ -171,7 +214,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     {
         return apply_chosen_option_to_triggered_chunk(
             apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
-            &line.full_text,
+            source_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
         );
@@ -203,7 +246,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     },
                     line.intervening_if.clone(),
                 )?,
-                line.info.raw_line.as_str(),
+                source_text,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
             );
@@ -216,7 +259,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     )?;
     apply_chosen_option_to_triggered_chunk(
         parsed,
-        line.info.raw_line.as_str(),
+        source_text,
         inferred_max_triggers_per_turn,
         chosen_option_label,
     )

@@ -99,9 +99,31 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Shuffle => parse_shuffle(tokens, subject),
         Verb::Reorder => parse_reorder(tokens, subject),
         Verb::Pay => parse_pay(tokens, subject),
+        Verb::Take => parse_take(tokens, subject),
         Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
     }
+}
+
+fn parse_take(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        ["an", "extra", "turn", "after", "this", "one"]
+    ) {
+        return Ok(EffectAst::ExtraTurnAfterTurn {
+            player: extract_subject_player(subject).unwrap_or(PlayerAst::You),
+            anchor: ExtraTurnAnchorAst::CurrentTurn,
+        });
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported take clause (clause: '{}')",
+        words.join(" ")
+    )))
 }
 
 fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

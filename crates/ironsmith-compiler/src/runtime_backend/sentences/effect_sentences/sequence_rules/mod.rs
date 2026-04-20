@@ -169,6 +169,14 @@ fn parse_search_upkeep_rule(
 
 const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
+        name: "search-reveal-named-match-battlefield-else-hand-then-shuffle",
+        feature_tag: Some("search-named-card-branch"),
+        priority: 431,
+        consumed_sentences: 4,
+        predicate: first_word_search,
+        parser: quads::parse_search_reveal_named_match_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
         name: "look-at-top-put-counted-into-hand-rest-bottom-kicker-override",
         feature_tag: Some("looked-cards-kicker-override"),
         priority: 430,

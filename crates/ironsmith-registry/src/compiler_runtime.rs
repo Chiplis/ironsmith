@@ -687,8 +687,8 @@ mod tests {
                 .unwrap_or_else(|err| panic!("{name} should compile: {err}"));
             let debug = format!("{definition:#?}");
             assert!(
-                !debug.contains("KeywordMarker"),
-                "{name} should not lower supported mechanics to KeywordMarker:\n{debug}"
+                !debug.contains("KeywordFallbackText"),
+                "{name} should not lower supported mechanics to KeywordFallbackText:\n{debug}"
             );
             assert!(
                 !debug.contains("RuleFallbackText"),

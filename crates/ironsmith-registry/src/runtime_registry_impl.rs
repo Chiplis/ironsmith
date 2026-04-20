@@ -872,11 +872,8 @@ pub(crate) fn generated_definition_support_issues(definition: &CardDefinition) -
                     push_issue("unsupported parser fallback", reason);
                 }
             }
-            StaticAbilityId::KeywordMarker => {
-                push_issue("unsupported keyword marker", display);
-            }
             StaticAbilityId::KeywordFallbackText => {
-                push_issue("unsupported keyword fallback", display);
+                push_issue("unsupported keyword marker", display);
             }
             StaticAbilityId::RuleFallbackText => {
                 push_issue("unsupported rules fallback", display);
@@ -932,8 +929,7 @@ pub fn generated_definition_has_unimplemented_content(definition: &CardDefinitio
             AbilityKind::Static(static_ability)
                 if matches!(
                     static_ability.id(),
-                    StaticAbilityId::KeywordMarker
-                        | StaticAbilityId::KeywordFallbackText
+                    StaticAbilityId::KeywordFallbackText
                         | StaticAbilityId::RuleFallbackText
                         | StaticAbilityId::UnsupportedParserLine
                 )

@@ -400,6 +400,29 @@ fn maybe_rewrite_future_zone_replacement_sentence(
     }
 }
 
+fn try_merge_otherwise_into_previous_conditional(
+    effects: &mut [EffectAst],
+    sentence_effects: &[EffectAst],
+) -> bool {
+    let [
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            effects: otherwise_effects,
+        },
+    ] = sentence_effects
+    else {
+        return false;
+    };
+    let Some(EffectAst::Conditional { if_false, .. }) = effects.last_mut() else {
+        return false;
+    };
+    if !if_false.is_empty() {
+        return false;
+    }
+    *if_false = otherwise_effects.clone();
+    true
+}
+
 pub(super) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, Value, bool)> {
@@ -653,6 +676,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 sentence_idx += consumed_sentences;
                 continue;
             }
+        }
+
+        if try_merge_otherwise_into_previous_conditional(&mut effects, &sentence_effects) {
+            sentence_idx += parse_plan.consumed_sentences;
+            continue;
         }
 
         effects.extend(sentence_effects);
@@ -1169,6 +1197,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::Flip { target }
         | EffectAst::Regenerate { target }
         | EffectAst::PhaseOut { target }
+        | EffectAst::PhaseIn { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
@@ -1358,6 +1387,57 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         Ok(())
     }
 
+    fn replace_values_in_cost_component(
+        component: &mut crate::costs::Cost,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        match component {
+            crate::costs::Cost::DynamicMana(dynamic) => {
+                if dynamic.base.has_x() && dynamic.x_value.is_none() {
+                    dynamic.x_value = Some(replacement.clone());
+                } else if let Some(value) = dynamic.x_value.as_mut() {
+                    replace_value(value, replacement, clause)?;
+                }
+                if let Some(value) = dynamic.additional_generic.as_mut() {
+                    replace_value(value, replacement, clause)?;
+                }
+                if let Some(value) = dynamic.multiplier.as_mut() {
+                    replace_value(value, replacement, clause)?;
+                }
+            }
+            crate::costs::Cost::Energy(value)
+            | crate::costs::Cost::Mill(value)
+            | crate::costs::Cost::Life(value) => replace_value(value, replacement, clause)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn replace_values_in_total_cost(
+        cost: &mut crate::cost::TotalCost,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(_) => {
+                let mut components = cost.costs().to_vec();
+                for component in &mut components {
+                    replace_values_in_cost_component(component, replacement, clause)?;
+                }
+                *cost = crate::cost::TotalCost::from_costs(components);
+            }
+            ironsmith_core::TotalCostKind::OneOf(branches) => {
+                let mut branches = branches.to_vec();
+                for branch in &mut branches {
+                    replace_values_in_total_cost(branch, replacement, clause)?;
+                }
+                *cost = crate::cost::TotalCost::one_of(branches);
+            }
+        }
+        Ok(())
+    }
+
     match effect {
         EffectAst::DealDamage { amount, .. }
         | EffectAst::DealDamageEach { amount, .. }
@@ -1448,24 +1528,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 replace_value(toughness, replacement, clause)?;
             }
         }
-        EffectAst::CounterUnlessPays {
-            mana,
-            life,
-            additional_generic,
-            x_value,
-            ..
-        } => {
-            if let Some(life) = life.as_mut() {
-                replace_value(life, replacement, clause)?;
-            }
-            if let Some(generic) = additional_generic.as_mut() {
-                replace_value(generic, replacement, clause)?;
-            }
-            if mana.iter().any(|symbol| matches!(symbol, ManaSymbol::X)) && x_value.is_none() {
-                *x_value = Some(replacement.clone());
-            } else if let Some(bound_x) = x_value.as_mut() {
-                replace_value(bound_x, replacement, clause)?;
-            }
+        EffectAst::CounterUnlessPays { cost, .. } => {
+            replace_values_in_total_cost(cost, replacement, clause)?;
         }
         EffectAst::PumpForEach { count, .. } => {
             replace_value(count, replacement, clause)?;
@@ -1562,6 +1626,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             target: effect_target,
         }
         | EffectAst::PhaseOut {
+            target: effect_target,
+        }
+        | EffectAst::PhaseIn {
             target: effect_target,
         }
         | EffectAst::RemoveFromCombat {

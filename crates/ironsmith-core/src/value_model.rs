@@ -23,6 +23,7 @@ pub enum Value {
     BasicLandTypesAmong(ObjectFilter),
     ColorsAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
+    DistinctPowers(ObjectFilter),
     CreaturesDiedThisTurn,
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
     CountPlayers(PlayerFilter),

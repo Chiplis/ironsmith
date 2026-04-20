@@ -2894,6 +2894,17 @@ impl PhaseOutEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PhaseInEffect {
+    pub target: ChooseSpec,
+}
+
+impl PhaseInEffect {
+    pub fn with_spec(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RemoveFromCombatEffect {
     pub target: ChooseSpec,
 }
@@ -5037,11 +5048,7 @@ pub struct MayEffect<E> {
 pub struct UnlessPaysEffect<E> {
     pub player: PlayerFilter,
     pub effects: Vec<E>,
-    pub mana: Vec<ManaSymbol>,
-    pub life: Option<Value>,
-    pub additional_generic: Option<Value>,
-    pub x_value: Option<Value>,
-    pub mana_multiplier: Option<Value>,
+    pub cost: crate::cost_model::TotalCost<crate::cost_model::Cost<E>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

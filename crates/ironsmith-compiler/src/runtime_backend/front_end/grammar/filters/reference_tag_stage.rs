@@ -547,6 +547,21 @@ pub(super) fn parse_object_filter_inner(
 
     let clause_words = all_words.clone();
     for idx in 0..all_words.len() {
+        let value_tokens = match all_words.get(idx..) {
+            Some(["total", "power", "and", "toughness", rest @ ..])
+            | Some(["power", "and", "toughness", "totaling", rest @ ..]) => rest,
+            _ => continue,
+        };
+        let Some((cmp, _consumed)) =
+            parse_filter_comparison_tokens("power", value_tokens, &clause_words)?
+        else {
+            continue;
+        };
+        filter.total_power_toughness = Some(cmp);
+        break;
+    }
+
+    for idx in 0..all_words.len() {
         let (is_base_reference, pt_word_idx) = if idx + 4 < all_words.len()
             && all_words[idx] == "base"
             && all_words[idx + 1] == "power"
@@ -603,6 +618,20 @@ pub(super) fn parse_object_filter_inner(
         } else {
             &[]
         };
+        if axis == "power" && value_tokens.first().copied() == Some("and") {
+            idx += 1;
+            continue;
+        }
+        if axis == "toughness"
+            && idx >= 3
+            && matches!(
+                &all_words[idx - 3..idx],
+                ["total", "power", "and"] | ["base", "power", "and"] | ["power", "and", "base"]
+            )
+        {
+            idx += 1;
+            continue;
+        }
         let Some((cmp, consumed)) =
             parse_filter_comparison_tokens(axis, value_tokens, &clause_words)?
         else {
@@ -1281,6 +1310,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.power.is_some()
         || filter.power_parity.is_some()
         || filter.toughness.is_some()
+        || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()
         || filter.mana_value_parity.is_some()
         || filter.name.is_some()
@@ -1342,6 +1372,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.power.is_some()
         || filter.power_parity.is_some()
         || filter.toughness.is_some()
+        || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()
         || filter.mana_value_parity.is_some()
         || filter.name.is_some()

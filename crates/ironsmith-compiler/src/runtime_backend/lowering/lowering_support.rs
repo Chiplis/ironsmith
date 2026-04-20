@@ -738,8 +738,8 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
             "annihilator {amount}"
         ))),
-        KeywordAction::Marker(name) => Some(StaticAbility::keyword_marker(name)),
-        KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_marker(text)),
+        KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
+        KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
         _ => None,
     }
 }
@@ -856,9 +856,17 @@ pub(crate) fn rewrite_lower_static_ability_ast(
         StaticAbilityAst::RemoveStaticAbility { filter, ability } => Ok(
             StaticAbility::remove_ability(filter, rewrite_lower_static_ability_ast(*ability)?),
         ),
-        StaticAbilityAst::RemoveKeywordAction { filter, action } => Ok(
-            StaticAbility::remove_ability(filter, rewrite_lower_keyword_action_or_err(action)?),
-        ),
+        StaticAbilityAst::RemoveKeywordAction { filter, action } => {
+            if matches!(action, KeywordAction::Soulbond) {
+                return Err(CardTextError::InvariantViolation(
+                    "removing soulbond requires non-marker semantics".to_string(),
+                ));
+            }
+            Ok(StaticAbility::remove_ability(
+                filter,
+                rewrite_lower_keyword_action_or_err(action)?,
+            ))
+        }
         StaticAbilityAst::AttachedStaticAbilityGrant {
             ability,
             display,

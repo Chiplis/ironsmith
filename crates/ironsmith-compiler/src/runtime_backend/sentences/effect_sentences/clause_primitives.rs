@@ -6,7 +6,7 @@ use super::super::grammar::effects::{
     split_choose_new_targets_clause_lexed,
 };
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::{LexStream, token_word_refs};
+use super::super::lexer::token_word_refs;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -21,8 +21,8 @@ use super::super::token_primitives::{
 use super::super::util::{
     is_article, parse_subject, parse_target_phrase, span_from_tokens, trim_commas,
 };
+use super::parse_restriction_duration;
 use super::sentence_helpers::*;
-use super::{parse_mana_symbol, parse_restriction_duration};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, OwnedLexToken,
@@ -135,11 +135,11 @@ pub(crate) fn parse_change_target_clause(
         let Some(inner) = parse_change_target_clause_inner(&main_tokens)? else {
             return Ok(None);
         };
-        let (player, mana) = parse_unless_pays_clause(&unless_tokens)?;
+        let (player, cost) = parse_unless_pays_clause(&unless_tokens)?;
         return Ok(Some(EffectAst::UnlessPays {
             effects: vec![inner],
             player,
-            mana,
+            cost,
         }));
     }
 
@@ -218,13 +218,13 @@ pub(crate) fn parse_change_target_clause_inner(
 
 pub(crate) fn parse_unless_pays_clause(
     tokens: &[OwnedLexToken],
-) -> Result<(PlayerAst, Vec<ManaSymbol>), CardTextError> {
+) -> Result<(PlayerAst, crate::cost::TotalCost), CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing unless clause".to_string(),
         ));
     }
-    let (player_slice, pays_tail) =
+    let (player_slice, _pays_tail) =
         super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
             use winnow::Parser as _;
             super::super::grammar::primitives::kw("pays").void()
@@ -235,7 +235,6 @@ pub(crate) fn parse_unless_pays_clause(
                 render_clause_words(tokens)
             ))
         })?;
-    let _ = pays_tail; // used below via tokens[pays_idx + 1..]
     let pays_idx = player_slice.len();
 
     let player_tokens = trim_commas(player_slice);
@@ -244,44 +243,22 @@ pub(crate) fn parse_unless_pays_clause(
         _ => PlayerAst::Implicit,
     };
 
-    let mana_slice = &tokens[pays_idx + 1..];
-    let (mana, trailing_start) = {
-        use winnow::combinator::repeat;
-        use winnow::prelude::*;
-
-        let mut stream = LexStream::new(mana_slice);
-        let symbols: Vec<_> = repeat(0.., grammar::mana_symbol_token)
-            .parse_next(&mut stream)
-            .unwrap_or_default();
-        let consumed = mana_slice.len() - stream.len();
-        let trailing = if consumed < mana_slice.len() {
-            Some(pays_idx + 1 + consumed)
-        } else {
-            None
-        };
-        (symbols, trailing)
-    };
-
-    if mana.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing mana cost (clause: '{}')",
-            render_clause_words(tokens)
-        )));
+    let mut payment_tokens = tokens[pays_idx..].to_vec();
+    if let Some(first) = payment_tokens.first_mut()
+        && first.is_word("pays")
+    {
+        first.replace_word("pay");
     }
 
-    if let Some(start) = trailing_start {
-        let trailing_tokens = trim_commas(&tokens[start..]);
-        let trailing_words = token_word_refs(&trailing_tokens);
-        if !trailing_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing unless-payment clause (clause: '{}', trailing: '{}')",
-                render_clause_words(tokens),
-                trailing_words.join(" ")
-            )));
-        }
-    }
+    let cost = crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_tokens)?
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported unless-payment clause (clause: '{}')",
+                render_clause_words(tokens)
+            ))
+        })?;
 
-    Ok((player, mana))
+    Ok((player, cost))
 }
 
 pub(crate) fn parse_stack_retarget_filter(

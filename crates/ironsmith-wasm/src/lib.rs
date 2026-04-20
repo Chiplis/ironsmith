@@ -221,7 +221,7 @@ fn build_stack_object_snapshot(
         }
     } else {
         let effect_text = if let Some(o) = obj.or(source_obj) {
-            let lines = ironsmith::compiled_text::compiled_lines(&o.to_card_definition());
+            let lines = ironsmith::compiled_text::debug_compiled_lines(&o.to_card_definition());
             if lines.is_empty() {
                 None
             } else {
@@ -603,7 +603,7 @@ fn fallback_stack_entry_ability_text(
         }
 
         let compiled_lines =
-            ironsmith::compiled_text::compiled_lines(&source_obj.to_card_definition());
+            ironsmith::compiled_text::debug_compiled_lines(&source_obj.to_card_definition());
         if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
             return Some(text);
         }

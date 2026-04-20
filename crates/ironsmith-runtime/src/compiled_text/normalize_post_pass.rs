@@ -382,6 +382,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         normalized_body = normalize_each_opponent_dynamic_life_exchange(&normalized_body);
         normalized_body = normalize_triggered_self_deals_damage_phrase(def, &normalized_body);
         normalized_body = normalize_gain_life_plus_phrase(&normalized_body);
+        normalized_body = normalize_color_count_plus_one_surface(&normalized_body);
         normalized_body = normalize_gift_if_otherwise_surface(&normalized_body);
         normalized_body = normalize_strip_standard_gift_surface(def, &normalized_body);
         normalized_body = normalize_dual_target_gift_fight_surface(&normalized_body);
@@ -574,15 +575,6 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
                 "if it isn't that player's turn, create a tapped Treasure token",
             );
         }
-        if oracle_lower.contains("search your library for three cards and reveal them")
-            && oracle_lower.contains("target opponent chooses one")
-            && oracle_lower
-                .contains("put that card into your hand and the rest into your graveyard")
-            && let Some(rewritten) =
-                normalize_target_opponent_divvy_library_clause(&normalized_body)
-        {
-            normalized_body = rewritten;
-        }
         if oracle_lower.contains("search your library for up to x plains cards")
             && oracle_lower
                 .contains("where x is the number of players who control more lands than you")
@@ -680,6 +672,7 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
     normalized = normalize_each_opponent_dynamic_life_exchange(&normalized);
     normalized = normalize_triggered_self_deals_damage_phrase(def, &normalized);
     normalized = normalize_gain_life_plus_phrase(&normalized);
+    normalized = normalize_color_count_plus_one_surface(&normalized);
     normalized = normalize_gift_if_otherwise_surface(&normalized);
     normalized = normalize_strip_standard_gift_surface(def, &normalized);
     normalized = normalize_dual_target_gift_fight_surface(&normalized);
@@ -829,13 +822,6 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
             "if it isn't that player's turn, create a tapped Treasure token",
         );
     }
-    if oracle_lower.contains("search your library for three cards and reveal them")
-        && oracle_lower.contains("target opponent chooses one")
-        && oracle_lower.contains("put that card into your hand and the rest into your graveyard")
-        && let Some(rewritten) = normalize_target_opponent_divvy_library_clause(&normalized)
-    {
-        normalized = rewritten;
-    }
     if oracle_lower.contains("as an additional cost to cast this spell, sacrifice a creature")
         && let Some(rewritten) = replace_once_ascii_ci(
             &normalized,
@@ -869,27 +855,9 @@ pub(super) fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str
         .unwrap_or(normalized)
 }
 
-fn normalize_target_opponent_divvy_library_clause(text: &str) -> Option<String> {
-    let normalized = text.trim().trim_end_matches('.');
-    let lower = normalized.to_ascii_lowercase();
-    if !lower.contains("and tags it as 'searched'. reveal it.")
-        || !lower.contains("target opponent chooses exactly 1")
-        || !lower.contains("and tags it as 'divvy_chosen'. return the tagged object 'divvy_chosen' to its owner's hand.")
-        || !lower.contains("for each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches")
-        || !lower.contains("put that object into its owner's graveyard. shuffle your library")
-    {
-        return None;
-    }
-    Some(
-        "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
-            .to_string(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::normalize_choose_creature_type_then_chosen_type_clause;
-    use super::normalize_target_opponent_divvy_library_clause;
 
     #[test]
     fn normalize_choose_creature_type_then_return_x_target_of_chosen_type() {
@@ -919,18 +887,6 @@ mod tests {
         let input = "You choose a creature type. Draw a card.";
         let result = normalize_choose_creature_type_then_chosen_type_clause(input);
         assert_eq!(result, None);
-    }
-
-    #[test]
-    fn normalize_target_opponent_divvy_library_clause_rewrites_current_bundle() {
-        let input = "You search your library for up to three card in library and tags it as 'searched'. Reveal it. target opponent chooses exactly 1 permanent in a library and tags it as 'divvy_chosen'. Return the tagged object 'divvy_chosen' to its owner's hand. For each tagged 'divvy_source' object, if it isn't true that the tagged object 'divvy_chosen' matches permanent, Put that object into its owner's graveyard. Shuffle your library";
-        assert_eq!(
-            normalize_target_opponent_divvy_library_clause(input),
-            Some(
-                "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
-                    .to_string()
-            )
-        );
     }
 }
 
@@ -982,6 +938,12 @@ pub(super) fn normalize_gain_life_plus_phrase(text: &str) -> String {
         );
     }
     trimmed.to_string()
+}
+
+fn normalize_color_count_plus_one_surface(text: &str) -> String {
+    text.replace("that many color plus one", "that many colors plus one")
+        .replace("Count the color of", "Count the colors of")
+        .replace("count the color of", "count the colors of")
 }
 
 pub(super) fn normalize_each_opponent_dynamic_life_exchange(text: &str) -> String {
@@ -2629,6 +2591,32 @@ fn normalize_repeated_target_player_unless_process_once(text: &str) -> Option<St
     Some(format!("{first}. Repeat this process once."))
 }
 
+fn normalize_different_names_search_surface(text: &str) -> String {
+    let mut normalized = text.to_string();
+    for (digit, word) in [
+        ("1", "one"),
+        ("2", "two"),
+        ("3", "three"),
+        ("4", "four"),
+        ("5", "five"),
+        ("6", "six"),
+        ("7", "seven"),
+        ("8", "eight"),
+        ("9", "nine"),
+        ("10", "ten"),
+    ] {
+        normalized = normalized.replace(
+            &format!("up to {digit} with different names cards"),
+            &format!("up to {word} cards with different names"),
+        );
+        normalized = normalized.replace(
+            &format!("exactly {digit} with different names cards"),
+            &format!("exactly {word} cards with different names"),
+        );
+    }
+    normalized
+}
+
 pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     let text = text
         .replace(
@@ -2644,6 +2632,7 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    normalized = normalize_different_names_search_surface(&normalized);
     normalized = normalized.replace(" until end of turn, where X is X", " until end of turn");
     normalized = normalized.replace(
         " gain Haste until end of turn",
@@ -7460,6 +7449,36 @@ pub(super) fn normalize_search_reveal_into_hand_clause(text: &str) -> Option<Str
             "your",
         ),
         (
+            "you search your library for up to one ",
+            "up to one",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you search your library for a ",
+            "exactly one",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you search your library for an ",
+            "exactly one",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you searches for a ",
+            "exactly one",
+            "search your library for",
+            "your",
+        ),
+        (
+            "you searches for an ",
+            "exactly one",
+            "search your library for",
+            "your",
+        ),
+        (
             "you may searches for up to one ",
             "up to one",
             "you may search your library for",
@@ -7470,9 +7489,10 @@ pub(super) fn normalize_search_reveal_into_hand_clause(text: &str) -> Option<Str
         let Some((before, rest)) = split_once_ascii_ci(text, marker) else {
             continue;
         };
-        let Some((descriptor_raw, after)) =
-            split_once_ascii_ci(rest, " in a library and tags it as 'searched'. ")
-        else {
+        let split = split_once_ascii_ci(rest, " in a library and tags it as 'searched'. ")
+            .or_else(|| split_once_ascii_ci(rest, " in library and tags it as 'searched'. "))
+            .or_else(|| split_once_ascii_ci(rest, " and tags it as 'searched'. "));
+        let Some((descriptor_raw, after)) = split else {
             continue;
         };
         let Some((subject, pronoun)) =

@@ -393,7 +393,9 @@ fn parse_card_text_with_policy(
     if let Some(cached) = lookup_cached_parse(&cache_key) {
         return cached;
     }
-    let result = compile_to_runtime_definition(&builder, text, allow_unsupported);
+    let result = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        compile_to_runtime_definition(&builder, text, allow_unsupported)
+    });
     store_cached_parse(cache_key, result)
 }
 
@@ -421,13 +423,14 @@ fn parse_card_text_with_annotations_policy(
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
     let text = text.into();
     let cache_key = ParseCacheKey::new(&builder, &text, allow_unsupported);
-    let compiled =
+    let compiled = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         compiler_runtime_for_tests::compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
             runtime_builder_snapshot(&builder),
             text,
             allow_unsupported,
         )
-        .map_err(compiler_runtime_error_to_card_text_error)?;
+    })
+    .map_err(compiler_runtime_error_to_card_text_error)?;
     let _ = store_cached_parse(cache_key, Ok(compiled.definition.clone()));
     Ok((
         compiled.definition,
@@ -1753,12 +1756,51 @@ impl CardDefinitionBuilder {
                 })
             }
             KeywordAction::Marker(name) => {
-                self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(name)))
+                if name.eq_ignore_ascii_case("fuse") {
+                    self.has_fuse()
+                } else if let Some(amount) = parse_standalone_bolster_marker(name) {
+                    self.with_standalone_bolster_effect(amount)
+                } else {
+                    self.with_ability(Ability::static_ability(
+                        StaticAbility::keyword_fallback_text(name),
+                    ))
+                }
             }
             KeywordAction::MarkerText(text) => {
-                self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)))
+                if text.eq_ignore_ascii_case("fuse") {
+                    self.has_fuse()
+                } else if let Some(amount) = parse_standalone_bolster_marker(&text) {
+                    self.with_standalone_bolster_effect(amount)
+                } else {
+                    self.with_ability(Ability::static_ability(
+                        StaticAbility::keyword_fallback_text(text),
+                    ))
+                }
             }
         }
+    }
+
+    fn with_standalone_bolster_effect(mut self, amount: u32) -> Self {
+        if !self
+            .card_builder
+            .card_types_ref()
+            .iter()
+            .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
+        {
+            return self.with_ability(Ability::static_ability(
+                StaticAbility::keyword_fallback_text(format!("Bolster {amount}")),
+            ));
+        }
+
+        let effect = Effect::bolster(amount);
+        if let Some(existing) = &mut self.spell_effect {
+            existing.push(effect);
+        } else {
+            self.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
+                effect,
+            ]));
+        }
+        self
     }
 
     /// Build a CardDefinition from oracle text.
@@ -2815,7 +2857,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(Condition::XValueAtLeast(5)),
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
+            text: Some("Ravenous".to_string()),
         })
     }
 
@@ -3611,6 +3653,10 @@ impl CardDefinitionBuilder {
     pub fn rampage(self, amount: u32) -> Self {
         let text = format!("Rampage {amount}");
         self.with_ability(
+            Ability::static_ability(StaticAbility::keyword_marker(format!("rampage {amount}")))
+                .with_text(&text),
+        )
+        .with_ability(
             Ability::triggered(
                 Trigger::this_becomes_blocked(),
                 vec![Effect::pump(
@@ -4217,6 +4263,14 @@ impl CardDefinitionBuilder {
         });
         finalize_cipher_effects(definition)
     }
+}
+
+fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
+    let mut parts = text.split_whitespace();
+    matches!(parts.next(), Some(keyword) if keyword.eq_ignore_ascii_case("bolster"))
+        .then(|| parts.next().and_then(|amount| amount.parse::<u32>().ok()))
+        .flatten()
+        .filter(|_| parts.next().is_none())
 }
 
 #[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
@@ -9911,6 +9965,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Fabricate 1")
             .expect("parse fabricate keyword line");
 
+        let rendered = compiled_lines(&def).join(" | ");
+        assert!(
+            rendered.contains("Fabricate 1"),
+            "expected raw compiled output to keep keyword-only fabricate text, got {rendered}"
+        );
+        assert!(
+            !rendered.to_ascii_lowercase().contains("choose one"),
+            "keyword-only fabricate should not render the expanded modal scaffold, got {rendered}"
+        );
+
         let debug = format!("{:?}", def.abilities);
         assert!(
             debug.contains("ZoneChangeTrigger") && debug.contains("Specific(Battlefield)"),
@@ -10786,7 +10850,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect_err("loses soulbond copy modifier should fail until it has real semantics");
 
         assert!(
-            format!("{err:?}").contains("KeywordMarker"),
+            format!("{err:?}").to_ascii_lowercase().contains("soulbond"),
             "expected loses-soulbond marker to fail loudly, got: {err:?}"
         );
     }
@@ -12665,8 +12729,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .find(|line| line.starts_with("Spell effects"))
             .expect("expected spell effects line");
         assert!(
-            spell.contains("must block") && spell.contains("if able"),
-            "expected must-block-if-able spell text, got {spell}"
+            spell.contains("All creatures able to block target creature this turn do so"),
+            "expected all-creatures-do-so spell text, got {spell}"
         );
     }
 

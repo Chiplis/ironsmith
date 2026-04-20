@@ -468,6 +468,15 @@ fn advance_reference_frame_for_effect(
         EffectAst::PhaseOut { target } => {
             maybe_tag_target(&target, frame, id_gen, "phased_out")?;
         }
+        EffectAst::PhaseOutAll { filter } => {
+            track_player_from_object_filter(filter, frame);
+        }
+        EffectAst::PhaseIn { target } => {
+            maybe_tag_target(&target, frame, id_gen, "phased_in")?;
+        }
+        EffectAst::PhaseInAll { filter } => {
+            track_player_from_object_filter(filter, frame);
+        }
         EffectAst::RemoveFromCombat { target } => {
             maybe_tag_target(&target, frame, id_gen, "removed_from_combat")?;
         }
@@ -1347,21 +1356,8 @@ fn resolve_effect_result_values_in_fields(
         EffectAst::RemoveCountersAll { amount, .. } => {
             resolve_effect_result_value(amount, state)?;
         }
-        EffectAst::CounterUnlessPays {
-            life,
-            additional_generic,
-            x_value,
-            ..
-        } => {
-            if let Some(value) = life.as_mut() {
-                resolve_effect_result_value(value, state)?;
-            }
-            if let Some(value) = additional_generic.as_mut() {
-                resolve_effect_result_value(value, state)?;
-            }
-            if let Some(value) = x_value.as_mut() {
-                resolve_effect_result_value(value, state)?;
-            }
+        EffectAst::CounterUnlessPays { cost, .. } => {
+            resolve_effect_result_values_in_total_cost(cost, state)?;
         }
         EffectAst::AddManaFromLandCouldProduce { amount, .. } => {
             resolve_effect_result_value(amount, state)?;
@@ -1406,6 +1402,53 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count_value, state)?;
             }
         }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn resolve_effect_result_values_in_total_cost(
+    cost: &mut crate::cost::TotalCost,
+    state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => {
+            let mut components = cost.costs().to_vec();
+            for component in &mut components {
+                resolve_effect_result_values_in_cost_component(component, state)?;
+            }
+            *cost = crate::cost::TotalCost::from_costs(components);
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut branches = branches.to_vec();
+            for branch in &mut branches {
+                resolve_effect_result_values_in_total_cost(branch, state)?;
+            }
+            *cost = crate::cost::TotalCost::one_of(branches);
+        }
+    }
+    Ok(())
+}
+
+fn resolve_effect_result_values_in_cost_component(
+    component: &mut crate::costs::Cost,
+    state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match component {
+        crate::costs::Cost::DynamicMana(dynamic) => {
+            if let Some(value) = dynamic.x_value.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+            if let Some(value) = dynamic.additional_generic.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+            if let Some(value) = dynamic.multiplier.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+        }
+        crate::costs::Cost::Energy(value)
+        | crate::costs::Cost::Mill(value)
+        | crate::costs::Cost::Life(value) => resolve_effect_result_value(value, state)?,
         _ => {}
     }
     Ok(())
@@ -1566,9 +1609,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             bind_unresolved_it_in_filter(tap_filter, seed_tag)
                 + bind_unresolved_it_in_filter(untap_filter, seed_tag)
         }
+        EffectAst::PhaseOutAll { filter } | EffectAst::PhaseInAll { filter } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+        }
         EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::PhaseOut { target }
+        | EffectAst::PhaseIn { target }
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Connive { target }
@@ -2113,7 +2160,9 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
-        | Value::ColorsAmong(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
+        | Value::ColorsAmong(filter)
+        | Value::DistinctNames(filter)
+        | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)

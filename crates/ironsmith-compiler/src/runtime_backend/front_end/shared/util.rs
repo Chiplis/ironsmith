@@ -957,6 +957,7 @@ fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKe
         | StaticAbilityId::Reach
         | StaticAbilityId::Defender
         | StaticAbilityId::Flash
+        | StaticAbilityId::Phasing
         | StaticAbilityId::Indestructible
         | StaticAbilityId::Shroud
         | StaticAbilityId::Wither
@@ -1430,6 +1431,26 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     let filter_words = &words[filter_start..filter_end];
+    if matches!(
+        filter_words.get(..3),
+        Some(["different", "powers", "among"])
+    ) || matches!(
+        filter_words.get(..4),
+        Some(["different", "power", "values", "among"])
+    ) || matches!(filter_words.get(..3), Some(["different", "power", "among"]))
+    {
+        let scope_start = if filter_words.get(2) == Some(&"among") {
+            filter_start + 3
+        } else {
+            filter_start + 4
+        };
+        let filter_tokens = words[scope_start..filter_end]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        return Some((Value::DistinctPowers(filter), filter_end));
+    }
     if (words_contain(filter_words, "spell") || words_contain(filter_words, "spells"))
         && (words_contain(filter_words, "cast") || words_contain(filter_words, "casts"))
         && words_contain(filter_words, "this")
@@ -3389,13 +3410,23 @@ pub(crate) fn parse_morph_keyword_line(
         )));
     }
 
-    let cost = parse_activation_cost(&cost_tokens).map_err(|_| {
+    let unsupported_cost_clause = || {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         CardTextError::ParseError(format!(
             "unsupported {mechanic} cost clause (line: '{}')",
             render_token_slice(&cost_tokens).trim()
         ))
-    })?;
+    };
+    let cost = match parse_activation_cost(&cost_tokens) {
+        Ok(cost) if !cost.is_free() => cost,
+        _ if leading_mana_cost_from_tokens(&cost_tokens).is_some() => {
+            return Err(unsupported_cost_clause());
+        }
+        _ => {
+            crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&cost_tokens)?
+                .ok_or_else(unsupported_cost_clause)?
+        }
+    };
     if cost.is_free() {
         let mechanic = if is_megamorph { "megamorph" } else { "morph" };
         return Err(CardTextError::ParseError(format!(
@@ -4111,7 +4142,14 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
             "alternative cost line missing cost clause".to_string(),
         ));
     }
-    let total_cost = parse_activation_cost(cost_tokens)?;
+    let total_cost = crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported alternative cost clause (line: '{}', cost: '{}')",
+                line,
+                render_token_slice(cost_tokens).trim()
+            ))
+        })?;
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost",
         total_cost,

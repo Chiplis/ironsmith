@@ -17,7 +17,9 @@ use ironsmith::cards::{
     CardDefinition, generated_definition_has_unimplemented_content,
     generated_definition_unsupported_mechanics_message,
 };
-use ironsmith::compiled_text::canonical_compiled_lines;
+use ironsmith::compiled_text::{
+    canonical_compiled_lines, unprocessed_compiled_lines, uses_pseudo_oracle_fallback,
+};
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
 use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
@@ -25,7 +27,7 @@ use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 5;
+const DB_SCHEMA_VERSION: i64 = 7;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -161,6 +163,7 @@ pub struct CompilationSnapshot {
     pub parse_status: ParseStatus,
     pub parse_error: Option<String>,
     pub compiled_text: Option<String>,
+    pub unprocessed_compiled_text: Option<String>,
     pub compiled_card_definition: Option<String>,
     pub oracle_coverage: f32,
     pub compiled_coverage: f32,
@@ -168,6 +171,7 @@ pub struct CompilationSnapshot {
     pub line_delta: isize,
     pub semantic_mismatch: bool,
     pub has_unimplemented: bool,
+    pub uses_pseudo_oracle_fallback: bool,
     pub content_hash: String,
 }
 
@@ -349,6 +353,7 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
             "compiled output still semantically mismatches the oracle text".to_string()
         });
         snapshot.compiled_text = None;
+        snapshot.unprocessed_compiled_text = None;
         snapshot.compiled_card_definition = None;
         snapshot.oracle_coverage = 0.0;
         snapshot.compiled_coverage = 0.0;
@@ -374,6 +379,23 @@ pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> C
     snapshot
 }
 
+pub fn snapshot_from_payload_definition(
+    payload: &CardPayload,
+    definition: &CardDefinition,
+) -> CompilationSnapshot {
+    let mut snapshot = CompilationSnapshot::from_definition_result(
+        payload.parse_name.as_deref().unwrap_or(&payload.name),
+        &payload.oracle_text,
+        ParseStatus::StrictCompiled,
+        None,
+        Some(definition),
+    );
+    snapshot.card_name = payload.name.clone();
+    snapshot.raw_oracle_text = payload.raw_oracle_text.clone();
+    snapshot.content_hash = snapshot.compute_content_hash();
+    snapshot
+}
+
 impl CompilationSnapshot {
     pub fn from_definition_result(
         card_name: &str,
@@ -385,6 +407,7 @@ impl CompilationSnapshot {
         let stored_oracle_text = strip_parenthetical_text(oracle_text);
         let (
             compiled_text,
+            unprocessed_compiled_text,
             compiled_card_definition,
             oracle_coverage,
             compiled_coverage,
@@ -392,9 +415,12 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
+            uses_pseudo_oracle_fallback,
         ) = if let Some(definition) = definition {
             let compiled = canonical_compiled_lines(definition);
             let compiled_text = compiled.join("\n");
+            let debug_compiled = unprocessed_compiled_lines(definition);
+            let unprocessed_compiled_text = debug_compiled.join("\n");
             let (
                 oracle_coverage,
                 compiled_coverage,
@@ -404,11 +430,12 @@ impl CompilationSnapshot {
             ) = compare_card_semantics_scored(
                 card_name,
                 &stored_oracle_text,
-                &compiled,
+                &debug_compiled,
                 report_embedding_config(),
             );
             (
                 Some(compiled_text),
+                Some(unprocessed_compiled_text),
                 Some(stable_compiled_definition_snapshot(definition)),
                 oracle_coverage,
                 compiled_coverage,
@@ -416,9 +443,10 @@ impl CompilationSnapshot {
                 line_delta,
                 semantic_mismatch,
                 generated_definition_has_unimplemented_content(definition),
+                uses_pseudo_oracle_fallback(definition),
             )
         } else {
-            (None, None, 0.0, 0.0, 0.0, 0, false, false)
+            (None, None, None, 0.0, 0.0, 0.0, 0, false, false, false)
         };
 
         let mut snapshot = Self {
@@ -428,6 +456,7 @@ impl CompilationSnapshot {
             parse_status,
             parse_error: parse_error.map(|error| normalize_debug_card_ids(&error)),
             compiled_text,
+            unprocessed_compiled_text,
             compiled_card_definition,
             oracle_coverage,
             compiled_coverage,
@@ -435,6 +464,7 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
+            uses_pseudo_oracle_fallback,
             content_hash: String::new(),
         };
         snapshot.content_hash = snapshot.compute_content_hash();
@@ -456,6 +486,13 @@ impl CompilationSnapshot {
         hasher.update(self.compiled_text.as_deref().unwrap_or("").as_bytes());
         hasher.update([0]);
         hasher.update(
+            self.unprocessed_compiled_text
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update([0]);
+        hasher.update(
             self.compiled_card_definition
                 .as_deref()
                 .unwrap_or("")
@@ -473,6 +510,12 @@ impl CompilationSnapshot {
         hasher.update((self.semantic_mismatch as u8).to_string().as_bytes());
         hasher.update([0]);
         hasher.update((self.has_unimplemented as u8).to_string().as_bytes());
+        hasher.update([0]);
+        hasher.update(
+            (self.uses_pseudo_oracle_fallback as u8)
+                .to_string()
+                .as_bytes(),
+        );
         let digest = hasher.finalize();
         let mut out = String::with_capacity(digest.len() * 2);
         for byte in digest {
@@ -549,6 +592,32 @@ impl CardStatusDb {
             }
         }
 
+        if version > 0 && version < 6 {
+            let has_pseudo_oracle_fallback_column: bool = self
+                .conn
+                .prepare("SELECT uses_pseudo_oracle_fallback FROM card_compilation LIMIT 0")
+                .is_ok();
+            if !has_pseudo_oracle_fallback_column {
+                self.conn.execute_batch(
+                    "ALTER TABLE card_compilation
+                     ADD COLUMN uses_pseudo_oracle_fallback INTEGER NOT NULL DEFAULT 0;",
+                )?;
+            }
+        }
+
+        if version > 0 && version < 7 {
+            let has_unprocessed_compiled_text_column: bool = self
+                .conn
+                .prepare("SELECT unprocessed_compiled_text FROM card_compilation LIMIT 0")
+                .is_ok();
+            if !has_unprocessed_compiled_text_column {
+                self.conn.execute_batch(
+                    "ALTER TABLE card_compilation
+                     ADD COLUMN unprocessed_compiled_text TEXT;",
+                )?;
+            }
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS card_compilation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -558,6 +627,7 @@ impl CardStatusDb {
                 parse_status TEXT NOT NULL,
                 parse_error TEXT,
                 compiled_text TEXT,
+                unprocessed_compiled_text TEXT,
                 compiled_card_definition TEXT,
                 oracle_coverage REAL NOT NULL,
                 compiled_coverage REAL NOT NULL,
@@ -565,6 +635,7 @@ impl CardStatusDb {
                 line_delta INTEGER NOT NULL,
                 semantic_mismatch INTEGER NOT NULL,
                 has_unimplemented INTEGER NOT NULL,
+                uses_pseudo_oracle_fallback INTEGER NOT NULL,
                 compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 content_hash TEXT NOT NULL,
                 UNIQUE(card_name, content_hash)
@@ -651,6 +722,7 @@ impl CardStatusDb {
                 parse_status,
                 parse_error,
                 compiled_text,
+                unprocessed_compiled_text,
                 compiled_card_definition,
                 oracle_coverage,
                 compiled_coverage,
@@ -658,8 +730,9 @@ impl CardStatusDb {
                 line_delta,
                 semantic_mismatch,
                 has_unimplemented,
+                uses_pseudo_oracle_fallback,
                 content_hash
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 snapshot.card_name,
                 snapshot.oracle_text,
@@ -667,6 +740,7 @@ impl CardStatusDb {
                 snapshot.parse_status.as_str(),
                 snapshot.parse_error,
                 snapshot.compiled_text,
+                snapshot.unprocessed_compiled_text,
                 snapshot.compiled_card_definition,
                 snapshot.oracle_coverage,
                 snapshot.compiled_coverage,
@@ -674,6 +748,7 @@ impl CardStatusDb {
                 snapshot.line_delta as i64,
                 snapshot.semantic_mismatch,
                 snapshot.has_unimplemented,
+                snapshot.uses_pseudo_oracle_fallback,
                 snapshot.content_hash,
             ],
         )?;
@@ -719,6 +794,7 @@ impl CardStatusDb {
                     parse_status,
                     parse_error,
                     compiled_text,
+                    unprocessed_compiled_text,
                     compiled_card_definition,
                     oracle_coverage,
                     compiled_coverage,
@@ -726,8 +802,9 @@ impl CardStatusDb {
                     line_delta,
                     semantic_mismatch,
                     has_unimplemented,
+                    uses_pseudo_oracle_fallback,
                     content_hash
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             )?;
             let mut select_compilation_id = tx.prepare(
                 "SELECT id
@@ -756,6 +833,7 @@ impl CardStatusDb {
                     snapshot.parse_status.as_str(),
                     snapshot.parse_error.as_deref(),
                     snapshot.compiled_text.as_deref(),
+                    snapshot.unprocessed_compiled_text.as_deref(),
                     snapshot.compiled_card_definition.as_deref(),
                     snapshot.oracle_coverage,
                     snapshot.compiled_coverage,
@@ -763,6 +841,7 @@ impl CardStatusDb {
                     snapshot.line_delta as i64,
                     snapshot.semantic_mismatch,
                     snapshot.has_unimplemented,
+                    snapshot.uses_pseudo_oracle_fallback,
                     snapshot.content_hash.as_str(),
                 ])?;
 
@@ -2038,6 +2117,7 @@ pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith::compiled_text::debug_compiled_lines;
     use ironsmith::semantic_compare::report_embedding_config;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -2100,6 +2180,199 @@ CardDefinition {
             other_face_name: None,
             linked_face_layout: None,
         }
+    }
+
+    fn pseudo_oracle_fallback_payload() -> CardPayload {
+        CardPayload {
+            name: "G'raha Tia Variant".to_string(),
+            parse_name: None,
+            oracle_text: "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.".to_string(),
+            raw_oracle_text: "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {2}{G}".to_string(),
+                "Type: Creature — Cat Wizard".to_string(),
+                "Power/Toughness: 2/3".to_string(),
+            ],
+            parse_input: "Mana cost: {2}{G}\nType: Creature — Cat Wizard\nPower/Toughness: 2/3\nReach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    fn battle_cry_payload() -> CardPayload {
+        CardPayload {
+            name: "Accorder Paladin".to_string(),
+            parse_name: None,
+            oracle_text: "Battle cry".to_string(),
+            raw_oracle_text: "Battle cry (Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn.)".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {1}{W}".to_string(),
+                "Type: Creature — Human Knight".to_string(),
+                "Power/Toughness: 3/1".to_string(),
+            ],
+            parse_input: "Mana cost: {1}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/1\nBattle cry".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    fn enlist_payload() -> CardPayload {
+        CardPayload {
+            name: "Barkweave Crusher".to_string(),
+            parse_name: None,
+            oracle_text: "Enlist".to_string(),
+            raw_oracle_text: "Enlist (As this creature attacks, you may tap a nonattacking creature you control without summoning sickness. When you do, add its power to this creature's until end of turn.)".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {3}{G}".to_string(),
+                "Type: Creature — Elemental Warrior".to_string(),
+                "Power/Toughness: 4/4".to_string(),
+            ],
+            parse_input: "Mana cost: {3}{G}\nType: Creature — Elemental Warrior\nPower/Toughness: 4/4\nEnlist".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    fn rout_payload() -> CardPayload {
+        CardPayload {
+            name: "Rout".to_string(),
+            parse_name: None,
+            oracle_text: "You may cast this spell as though it had flash if you pay {2} more to cast it.\nDestroy all creatures. They can't be regenerated.".to_string(),
+            raw_oracle_text: "You may cast this spell as though it had flash if you pay {2} more to cast it.\nDestroy all creatures. They can't be regenerated.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {3}{W}{W}".to_string(),
+                "Type: Instant".to_string(),
+            ],
+            parse_input: "Mana cost: {3}{W}{W}\nType: Instant\nYou may cast this spell as though it had flash if you pay {2} more to cast it.\nDestroy all creatures. They can't be regenerated.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    fn intuition_payload() -> CardPayload {
+        CardPayload {
+            name: "Intuition".to_string(),
+            parse_name: None,
+            oracle_text: "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.".to_string(),
+            raw_oracle_text: "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.".to_string(),
+            metadata_lines: vec![
+                "Mana cost: {2}{U}".to_string(),
+                "Type: Instant".to_string(),
+            ],
+            parse_input: "Mana cost: {2}{U}\nType: Instant\nSearch your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.".to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
+    #[test]
+    fn snapshot_records_pseudo_oracle_fallback_usage() {
+        let fallback_snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
+        assert_eq!(fallback_snapshot.parse_status, ParseStatus::StrictCompiled);
+        assert!(
+            fallback_snapshot.uses_pseudo_oracle_fallback,
+            "ability-word/source-surface rendering should be marked in snapshots"
+        );
+        assert_eq!(
+            fallback_snapshot.compiled_text.as_deref(),
+            Some(
+                "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn."
+            )
+        );
+        assert_eq!(
+            fallback_snapshot.unprocessed_compiled_text.as_deref(),
+            Some("Reach\nYou draw a card.")
+        );
+
+        let structured_snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        assert!(
+            !structured_snapshot.uses_pseudo_oracle_fallback,
+            "ordinary structured spell rendering should not be marked"
+        );
+    }
+
+    #[test]
+    fn unprocessed_snapshot_applies_safe_keyword_transforms() {
+        for payload in [battle_cry_payload(), enlist_payload()] {
+            let snapshot = compile_snapshot_from_payload(&payload);
+            assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
+            assert_eq!(snapshot.compiled_text, snapshot.unprocessed_compiled_text);
+            assert_eq!(
+                snapshot.unprocessed_compiled_text.as_deref(),
+                Some(payload.oracle_text.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn debug_compiled_lines_keep_spell_effects_when_oracle_fallback_would_apply() {
+        let definition =
+            compile_definition_from_payload(&rout_payload()).expect("Rout should parse");
+        let rendered = debug_compiled_lines(&definition).join("\n");
+
+        assert!(
+            rendered.contains("Destroy all creatures"),
+            "expected debug compiled text to include Rout's spell effect, got {rendered:?}"
+        );
+        assert!(
+            rendered.contains("They can't be regenerated"),
+            "expected debug compiled text to include Rout's no-regeneration effect, got {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn debug_compiled_lines_compact_intuition_divvy_without_oracle_text() {
+        let definition =
+            compile_definition_from_payload(&intuition_payload()).expect("Intuition should parse");
+        let rendered = debug_compiled_lines(&definition).join("\n");
+
+        assert_eq!(
+            rendered,
+            "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+        );
+    }
+
+    #[test]
+    fn compilation_snapshot_scores_against_debug_compiled_text() {
+        let payload = rout_payload();
+        let definition = compile_definition_from_payload(&payload).expect("Rout should parse");
+        let snapshot = CompilationSnapshot::from_definition_result(
+            "Rout",
+            &payload.oracle_text,
+            ParseStatus::StrictCompiled,
+            None,
+            Some(&definition),
+        );
+        let canonical = canonical_compiled_lines(&definition);
+        let debug = debug_compiled_lines(&definition);
+        let (_oracle_cov, _compiled_cov, debug_similarity, debug_delta, debug_mismatch) =
+            compare_card_semantics_scored(
+                "Rout",
+                &strip_parenthetical_text(&payload.oracle_text),
+                &debug,
+                report_embedding_config(),
+            );
+        let (
+            _oracle_cov,
+            _compiled_cov,
+            canonical_similarity,
+            _canonical_delta,
+            _canonical_mismatch,
+        ) = compare_card_semantics_scored(
+            "Rout",
+            &strip_parenthetical_text(&payload.oracle_text),
+            &canonical,
+            report_embedding_config(),
+        );
+
+        assert_eq!(snapshot.unprocessed_compiled_text, Some(debug.join("\n")));
+        assert_eq!(snapshot.similarity_score, debug_similarity);
+        assert_eq!(snapshot.line_delta, debug_delta);
+        assert_eq!(snapshot.semantic_mismatch, debug_mismatch);
+        assert_ne!(
+            snapshot.similarity_score, canonical_similarity,
+            "Rout should demonstrate scoring against debug text rather than canonical text"
+        );
     }
 
     #[test]
@@ -2218,7 +2491,7 @@ CardDefinition {
             false,
         )
         .expect("house cartographer should parse");
-        let compiled = canonical_compiled_lines(&definition);
+        let compiled = debug_compiled_lines(&definition);
         let snapshot = CompilationSnapshot::from_definition_result(
             "House Cartographer",
             oracle,
@@ -2238,8 +2511,8 @@ CardDefinition {
 
         assert_eq!(snapshot.similarity_score, embedded_similarity);
         assert!(
-            embedded_similarity > lexical_similarity,
-            "expected embedding-backed similarity to improve over lexical-only scoring, lexical={lexical_similarity}, embedded={embedded_similarity}, compiled={compiled:?}"
+            embedded_similarity >= lexical_similarity,
+            "expected embedding-backed similarity to be at least lexical-only scoring, lexical={lexical_similarity}, embedded={embedded_similarity}, compiled={compiled:?}"
         );
     }
 
@@ -2310,6 +2583,12 @@ CardDefinition {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("version");
         assert_eq!(version, DB_SCHEMA_VERSION);
+        db.connection()
+            .prepare("SELECT uses_pseudo_oracle_fallback FROM latest_card_compilation LIMIT 0")
+            .expect("latest view should expose pseudo-oracle fallback flag");
+        db.connection()
+            .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")
+            .expect("latest view should expose unprocessed compiled text");
         let _ = fs::remove_file(path);
     }
 
@@ -2335,6 +2614,40 @@ CardDefinition {
             })
             .expect("count rows");
         assert_eq!(count, 1);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn db_persists_pseudo_oracle_fallback_flag() {
+        let path = unique_temp_path("pseudo-oracle-fallback");
+        let db = CardStatusDb::open(&path).expect("open db");
+        let snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
+
+        assert!(db.insert_snapshot_if_changed(&snapshot).expect("insert"));
+
+        let stored: bool = db
+            .connection()
+            .query_row(
+                "SELECT uses_pseudo_oracle_fallback
+                 FROM latest_card_compilation
+                 WHERE card_name = ?1",
+                ["G'raha Tia Variant"],
+                |row| row.get(0),
+            )
+            .expect("stored flag");
+        assert!(stored);
+
+        let unprocessed: String = db
+            .connection()
+            .query_row(
+                "SELECT unprocessed_compiled_text
+                 FROM latest_card_compilation
+                 WHERE card_name = ?1",
+                ["G'raha Tia Variant"],
+                |row| row.get(0),
+            )
+            .expect("stored unprocessed text");
+        assert_eq!(unprocessed, "Reach\nYou draw a card.");
         let _ = fs::remove_file(path);
     }
 

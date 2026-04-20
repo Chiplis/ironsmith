@@ -420,6 +420,34 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
+        Value::DistinctPowers(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen: HashSet<i32> = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    if let Some(power) = snapshot.power {
+                        seen.insert(power);
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen: HashSet<i32> = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                if let Some(power) = game.calculated_power(obj.id).or_else(|| obj.power()) {
+                    seen.insert(power);
+                }
+            }
+            Ok(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => Ok(game
             .turn_store
             .turn_history

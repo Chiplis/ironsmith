@@ -8,7 +8,7 @@ use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
     compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
     compile_snapshot_from_payload, default_cards_path, default_db_path, load_card_by_name,
-    parse_card_definition_with_runtime_builder,
+    parse_card_definition_with_runtime_builder, snapshot_from_payload_definition,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -366,9 +366,15 @@ fn print_compiled_job(
         println!("{:#?}", display_def);
     }
 
+    let fresh_snapshot = job
+        .db_payload
+        .as_ref()
+        .map(|payload| snapshot_from_payload_definition(payload, def));
     store_snapshot_if_requested(
         should_write_db,
-        job.authoritative_snapshot.as_ref(),
+        fresh_snapshot
+            .as_ref()
+            .or(job.authoritative_snapshot.as_ref()),
         job.db_payload.as_ref(),
         db_path,
     )?;

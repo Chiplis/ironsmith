@@ -10,7 +10,7 @@ use super::super::activation_and_restrictions::{
     parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_single_word_keyword_action, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause, parse_you_choose_player_clause,
+    parse_you_choose_objects_clause, parse_you_choose_player_clause, starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::{
@@ -33,6 +33,7 @@ use super::super::util::{
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
+use super::dispatch_inner::parse_take_extra_turn_sentence;
 use super::for_each_helpers::{
     has_demonstrative_object_reference, is_mana_replacement_clause_words,
     is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,
@@ -104,6 +105,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             player: crate::cards::builders::PlayerAst::You,
         });
     }
+    if let Some(effect) = parse_take_extra_turn_sentence(tokens)? {
+        return Ok(effect);
+    }
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana replacement clause (clause: '{}') [rule=mana-replacement]",
@@ -116,6 +120,40 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             "unsupported mana-triggered additional-mana clause (clause: '{}') [rule=mana-trigger-additional]",
             clause_words.join(" ")
         )));
+    }
+
+    if word_slice_starts_with(&clause_words, &["for", "each", "opponent"])
+        && let Some(then_return_idx) = find_word_sequence_index(&clause_words, &["then", "return"])
+        && let Some(unless_idx) = find_word_sequence_index(&clause_words, &["unless"])
+        && unless_idx > then_return_idx
+        && clause_words.get(unless_idx + 1..unless_idx + 8)
+            == Some(["its", "controller", "has", "you", "draw", "a", "card"].as_slice())
+    {
+        let choose_start = 3usize;
+        if clause_words.get(choose_start) == Some(&"choose") {
+            let target_token_start =
+                token_index_for_word_index(tokens, choose_start + 1).unwrap_or(tokens.len());
+            let target_token_end =
+                token_index_for_word_index(tokens, then_return_idx).unwrap_or(tokens.len());
+            let target_tokens = trim_commas(&tokens[target_token_start..target_token_end]);
+            let target = parse_target_phrase(&target_tokens)?;
+            return Ok(EffectAst::ForEachOpponent {
+                effects: vec![
+                    EffectAst::TargetOnly { target },
+                    EffectAst::UnlessAction {
+                        effects: vec![EffectAst::ReturnToHand {
+                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            random: false,
+                        }],
+                        alternative: vec![EffectAst::Draw {
+                            count: Value::Fixed(1),
+                            player: PlayerAst::You,
+                        }],
+                        player: PlayerAst::ItsController,
+                    },
+                ],
+            });
+        }
     }
 
     if let Some(effect) = run_clause_primitives(tokens)? {
@@ -211,6 +249,19 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             _ => false,
         };
         if is_player_target {
+            return Ok(EffectAst::TargetOnly { target });
+        }
+    }
+
+    if matches!(clause_words.first().copied(), Some("choose" | "chooses"))
+        && word_slice_contains(&clause_words, "target")
+    {
+        let target_tokens = trim_commas(&tokens[1..]);
+        if !target_tokens.is_empty()
+            && starts_with_target_indicator(&target_tokens)
+            && find_verb(&target_tokens).is_none()
+        {
+            let target = parse_target_phrase(&target_tokens)?;
             return Ok(EffectAst::TargetOnly { target });
         }
     }

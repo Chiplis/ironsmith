@@ -1,4 +1,10 @@
 use super::*;
+use crate::runtime_backend::util::parse_value;
+use crate::runtime_backend::value_helpers::{
+    parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
+};
+
+const PAYMENT_FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
 
 pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
@@ -134,6 +140,39 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
     text
 }
 
+fn strip_leading_keyword_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = 0usize;
+    while start < tokens.len() && matches!(tokens[start].kind, TokenKind::Dash | TokenKind::EmDash)
+    {
+        start += 1;
+    }
+    &tokens[start..]
+}
+
+fn echo_text(total_cost: &TotalCost, cost_tokens: &[OwnedLexToken]) -> String {
+    if let Some(cost) = total_cost.mana_cost()
+        && !total_cost.has_non_mana_costs()
+    {
+        return format!("Echo {}", cost.to_oracle());
+    }
+
+    let payload = cost_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if payload.is_empty() {
+        return "Echo".to_string();
+    }
+
+    let mut chars = payload.chars();
+    let first = chars.next().expect("payload is not empty");
+    let mut normalized = String::new();
+    normalized.push(first.to_ascii_uppercase());
+    normalized.push_str(chars.as_str());
+    format!("Echo—{normalized}")
+}
+
 fn parse_payment_clause_as_effects(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<Effect>>, CardTextError> {
@@ -142,7 +181,7 @@ fn parse_payment_clause_as_effects(
         return Ok(None);
     }
 
-    if let Some(or_idx) = trimmed.iter().position(|token| token.is_word("or")) {
+    if let Some(or_idx) = find_payment_alternative_or(&trimmed) {
         let left = parse_payment_clause_as_effects(&trimmed[..or_idx])?.ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported payment cost before 'or' (clause: '{}')",
@@ -186,12 +225,39 @@ fn parse_payment_clause_as_effects(
     }
 }
 
+fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx)).then_some(idx)
+    })
+}
+
 pub(crate) fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
+    }
+
+    if let Some(or_idx) = find_payment_alternative_or(&trimmed) {
+        let left = parse_payment_clause_as_total_cost(&trimmed[..or_idx])?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported payment cost before 'or' (clause: '{}')",
+                words(&trimmed[..or_idx]).join(" ")
+            ))
+        })?;
+        let right =
+            parse_payment_clause_as_total_cost(&trimmed[or_idx + 1..])?.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported payment cost after 'or' (clause: '{}')",
+                    words(&trimmed[or_idx + 1..]).join(" ")
+                ))
+            })?;
+        return Ok(Some(TotalCost::one_of(vec![left, right])));
+    }
+
+    if let Some(dynamic_cost) = parse_dynamic_payment_clause_as_total_cost(&trimmed)? {
+        return Ok(Some(dynamic_cost));
     }
 
     if let Ok(total_cost) = parse_activation_cost(&trimmed)
@@ -206,6 +272,144 @@ pub(crate) fn parse_payment_clause_as_total_cost(
     crate::costs::payment_effects_to_total_cost(effects)
         .map(Some)
         .map_err(CardTextError::ParseError)
+}
+
+fn parse_dynamic_payment_clause_as_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TotalCost>, CardTextError> {
+    let tokens = if tokens
+        .first()
+        .is_some_and(|token| token.is_word("pay") || token.is_word("pays"))
+    {
+        &tokens[1..]
+    } else {
+        tokens
+    };
+    let tokens = trim_edge_punctuation(&trim_commas(tokens));
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+    let token_words = words(&tokens);
+    if token_words.first().copied() == Some("mana")
+        && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
+            .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
+    {
+        return Ok(Some(TotalCost::from_cost(
+            crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+                ManaCost::new(),
+                None,
+                Some(value),
+                None,
+                ironsmith_core::DynamicManaDisplayHint::ManaEqualTo,
+            )),
+        )));
+    }
+
+    let mut mana = Vec::new();
+    let mut consumed = 0usize;
+    for token in tokens.iter() {
+        if let Some(group) = mana_pips_from_token(token) {
+            mana.extend(group);
+            consumed += 1;
+            continue;
+        }
+        let Some(word) = token.as_word() else {
+            break;
+        };
+        match parse_mana_symbol(word) {
+            Ok(symbol) => {
+                mana.push(symbol);
+                consumed += 1;
+            }
+            Err(_) => break,
+        }
+    }
+    if mana.is_empty() {
+        return Ok(None);
+    }
+    let trailing = trim_edge_punctuation(&trim_commas(&tokens[consumed..]));
+    if trailing.is_empty() {
+        return Ok(None);
+    }
+
+    let mana_cost = ManaCost::from_symbols(mana.clone());
+    let mut x_value = None;
+    let mut additional_generic = None;
+    let mut multiplier = None;
+    let trailing_words = words(&trailing);
+    if trailing.first().is_some_and(|token| token.is_word("and")) {
+        let life_tokens = trim_edge_punctuation(&trim_commas(&trailing[1..]));
+        if let Some((amount, used)) = parse_value(&life_tokens)
+            && life_tokens
+                .get(used)
+                .is_some_and(|token| token.is_word("life"))
+            && trim_edge_punctuation(&trim_commas(&life_tokens[used + 1..])).is_empty()
+        {
+            return Ok(Some(TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(mana_cost),
+                crate::costs::Cost::life(amount),
+            ])));
+        }
+        return Ok(None);
+    } else if grammar::words_match_any_prefix(
+        &trailing,
+        &[&["where", "x", "is"], &["where", "x", "equals"]],
+    )
+    .is_some()
+    {
+        if !mana_cost.has_x() {
+            return Err(CardTextError::ParseError(format!(
+                "where-X payment clause has no X mana symbol (clause: '{}')",
+                words(&tokens).join(" ")
+            )));
+        }
+        x_value = parse_where_x_value_clause(&trailing).or_else(|| {
+            if trailing_words
+                .iter()
+                .any(|word| matches!(*word, "graveyard" | "graveyards"))
+                && (crate::runtime_backend::token_primitives::contains_window(
+                    &trailing_words,
+                    &["same", "name", "as", "the", "spell"],
+                ) || crate::runtime_backend::token_primitives::contains_window(
+                    &trailing_words,
+                    &["same", "name", "as", "that", "spell"],
+                ))
+            {
+                Some(Value::Count(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Graveyard)
+                        .match_tagged(
+                            TagKey::from("triggering"),
+                            crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                        ),
+                ))
+            } else {
+                None
+            }
+        });
+        if x_value.is_none() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported where-X payment clause (clause: '{}')",
+                words(&tokens).join(" ")
+            )));
+        }
+    } else if grammar::words_match_any_prefix(&trailing, PAYMENT_FOR_EACH_PREFIXES).is_some() {
+        multiplier = parse_dynamic_cost_modifier_value(&trailing)?;
+    } else if let Some(value) = parse_dynamic_cost_modifier_value(&trailing)? {
+        additional_generic = Some(value);
+    } else {
+        return Ok(None);
+    }
+
+    Ok(Some(TotalCost::from_cost(
+        crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+            mana_cost,
+            x_value,
+            additional_generic,
+            multiplier,
+            ironsmith_core::DynamicManaDisplayHint::Default,
+        )),
+    )))
 }
 
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
@@ -818,52 +1022,30 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     if head == "echo" {
-        if let Some((cost_text, consumed)) = leading_mana_symbols_to_oracle(&words[1..])
-            && consumed > 0
-            && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
-        {
-            return Some(KeywordAction::Echo {
-                total_cost: crate::cost::TotalCost::mana(cost),
-                text: format!("Echo {cost_text}"),
-            });
-        }
+        let reminder_start = find_index(phrase_tokens, |token| {
+            token.is_period() || token.kind == TokenKind::LParen
+        })
+        .or_else(|| {
+            phrase_tokens
+                .iter()
+                .enumerate()
+                .skip(1)
+                .find_map(|(idx, token)| token.is_word("at").then_some(idx))
+        })
+        .unwrap_or(phrase_tokens.len());
+        let raw_cost_tokens = trim_commas(&phrase_tokens[1..reminder_start]);
+        let cost_tokens = strip_leading_keyword_cost_separator(&raw_cost_tokens).to_vec();
 
-        let reminder_start = find_index(phrase_tokens, |token| token.is_period())
-            .or_else(|| {
-                phrase_tokens
-                    .iter()
-                    .enumerate()
-                    .skip(1)
-                    .find_map(|(idx, token)| token.is_word("at").then_some(idx))
-            })
-            .unwrap_or(phrase_tokens.len());
-        let cost_tokens = trim_commas(&phrase_tokens[1..reminder_start]).to_vec();
-
-        if !cost_tokens.is_empty()
-            && let Ok(total_cost) = parse_activation_cost(&cost_tokens)
-        {
-            let text = if let Some(cost) = total_cost.mana_cost()
-                && !total_cost.has_non_mana_costs()
-            {
-                format!("Echo {}", cost.to_oracle())
-            } else {
-                let payload = cost_tokens
-                    .iter()
-                    .filter_map(OwnedLexToken::as_word)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                if payload.is_empty() {
-                    "Echo".to_string()
-                } else {
-                    let mut chars = payload.chars();
-                    let first = chars.next().expect("payload is not empty");
-                    let mut normalized = String::new();
-                    normalized.push(first.to_ascii_uppercase());
-                    normalized.push_str(chars.as_str());
-                    format!("Echo—{normalized}")
+        if !cost_tokens.is_empty() {
+            match parse_payment_clause_as_total_cost(&cost_tokens) {
+                Ok(Some(total_cost)) => {
+                    let text = echo_text(&total_cost, &cost_tokens);
+                    return Some(KeywordAction::Echo { total_cost, text });
                 }
-            };
-            return Some(KeywordAction::Echo { total_cost, text });
+                Ok(None) | Err(_) => {
+                    return None;
+                }
+            }
         }
 
         if words.len() == 1 {

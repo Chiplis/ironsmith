@@ -185,6 +185,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
+        Value::DistinctPowers(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the number of different powers among {}",
+                filter.description()
+            )),
+        ),
         Value::PartySize(player) => {
             let owner = match player {
                 PlayerFilter::You => "your",

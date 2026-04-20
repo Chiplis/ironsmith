@@ -76,6 +76,97 @@ pub trait EffectModelInterpreterHooks<M: EffectModel> {
     }
 }
 
+fn interpret_core_cost_model<M, H>(
+    cost: ironsmith_core::Cost<M::Effect>,
+    hooks: &mut H,
+) -> Result<crate::costs::Cost, H::Error>
+where
+    M: EffectModel,
+    H: EffectModelInterpreterHooks<M>,
+{
+    let runtime_model = match cost {
+        ironsmith_core::Cost::Mana(mana) => ironsmith_core::Cost::Mana(mana),
+        ironsmith_core::Cost::DynamicMana(dynamic_mana) => {
+            ironsmith_core::Cost::DynamicMana(dynamic_mana)
+        }
+        ironsmith_core::Cost::Tap => ironsmith_core::Cost::Tap,
+        ironsmith_core::Cost::Untap => ironsmith_core::Cost::Untap,
+        ironsmith_core::Cost::DiscardSource => ironsmith_core::Cost::DiscardSource,
+        ironsmith_core::Cost::SacrificeSelf => ironsmith_core::Cost::SacrificeSelf,
+        ironsmith_core::Cost::Sacrifice(filter) => ironsmith_core::Cost::Sacrifice(filter),
+        ironsmith_core::Cost::Discard { count, card_types } => {
+            ironsmith_core::Cost::Discard { count, card_types }
+        }
+        ironsmith_core::Cost::DiscardHand => ironsmith_core::Cost::DiscardHand,
+        ironsmith_core::Cost::RemoveCounters {
+            counter_type,
+            count,
+        } => ironsmith_core::Cost::RemoveCounters {
+            counter_type,
+            count,
+        },
+        ironsmith_core::Cost::AddCounters {
+            counter_type,
+            count,
+        } => ironsmith_core::Cost::AddCounters {
+            counter_type,
+            count,
+        },
+        ironsmith_core::Cost::RemoveAnyCountersFromSource {
+            counter_type,
+            display_x,
+        } => ironsmith_core::Cost::RemoveAnyCountersFromSource {
+            counter_type,
+            display_x,
+        },
+        ironsmith_core::Cost::Energy(amount) => ironsmith_core::Cost::Energy(amount),
+        ironsmith_core::Cost::Mill(count) => ironsmith_core::Cost::Mill(count),
+        ironsmith_core::Cost::Life(amount) => ironsmith_core::Cost::Life(amount),
+        ironsmith_core::Cost::ExileSelf => ironsmith_core::Cost::ExileSelf,
+        ironsmith_core::Cost::ExileFromHand {
+            count,
+            color_filter,
+        } => ironsmith_core::Cost::ExileFromHand {
+            count,
+            color_filter,
+        },
+        ironsmith_core::Cost::ReturnSelfToHand => ironsmith_core::Cost::ReturnSelfToHand,
+        ironsmith_core::Cost::Effect(effect) => {
+            ironsmith_core::Cost::Effect(interpret_effect_model::<M, H>(effect, hooks)?)
+        }
+    };
+
+    crate::costs::Cost::from_model(runtime_model).map_err(|detail| {
+        hooks.unsupported_effect(format!("unsupported runtime cost model: {detail}"))
+    })
+}
+
+fn interpret_core_total_cost_model<M, H>(
+    cost: ironsmith_core::TotalCost<ironsmith_core::Cost<M::Effect>>,
+    hooks: &mut H,
+) -> Result<crate::cost::TotalCost, H::Error>
+where
+    M: EffectModel,
+    H: EffectModelInterpreterHooks<M>,
+{
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => {
+            let mut runtime_costs = Vec::with_capacity(cost.costs().len());
+            for component in cost.costs().iter().cloned() {
+                runtime_costs.push(interpret_core_cost_model::<M, H>(component, hooks)?);
+            }
+            Ok(crate::cost::TotalCost::from_costs(runtime_costs))
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut runtime_branches = Vec::with_capacity(branches.len());
+            for branch in branches.iter().cloned() {
+                runtime_branches.push(interpret_core_total_cost_model::<M, H>(branch, hooks)?);
+            }
+            Ok(crate::cost::TotalCost::one_of(runtime_branches))
+        }
+    }
+}
+
 pub fn interpret_effect_model<M, H>(effect: M::Effect, hooks: &mut H) -> Result<Effect, H::Error>
 where
     M: EffectModel,
@@ -892,6 +983,11 @@ where
             payload.target.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PhaseInEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::PhaseInEffect::with_spec(
+            payload.target.clone(),
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RemoveFromCombatEffect>(&effect) {
         return Ok(Effect::new(
             crate::effects::RemoveFromCombatEffect::with_spec(payload.target.clone()),
@@ -939,16 +1035,10 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::UnlessPaysEffect<M::Effect>>(&effect) {
+        let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
+        let cost = interpret_core_total_cost_model::<M, H>(payload.cost.clone(), hooks)?;
         return Ok(Effect::new(
-            crate::effects::UnlessPaysEffect::new_with_life_and_additional_and_multiplier_and_x(
-                convert_effects(payload.effects.iter().cloned(), hooks)?,
-                payload.player.clone(),
-                payload.mana.clone(),
-                payload.life.clone(),
-                payload.additional_generic.clone(),
-                payload.mana_multiplier.clone(),
-                payload.x_value.clone(),
-            ),
+            crate::effects::UnlessPaysEffect::new_total_cost(effects, payload.player.clone(), cost),
         ));
     }
     if let Some(payload) =

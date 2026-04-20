@@ -5,8 +5,11 @@
 
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPaymentResult};
+use crate::decision::DecisionMaker;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
+use crate::decisions::{DisplayOption, specs::ChoiceSpec};
+use crate::effects::ExecutionContext;
 use crate::events::cause::EventCause;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::{EventOutcome, execute_discard};
@@ -14,6 +17,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
+use crate::mana::{ManaCost, ManaSymbol};
 use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
@@ -147,23 +151,35 @@ fn adjust_total_cost_mana_components_for_reason(
     total_cost: &crate::cost::TotalCost,
     reason: crate::costs::PaymentReason,
 ) -> crate::cost::TotalCost {
-    let costs = total_cost
-        .costs()
-        .iter()
-        .map(|cost| {
-            if let Some(mana_cost) = cost.mana_cost_ref() {
-                crate::costs::Cost::mana(game.adjust_mana_cost_for_payment_reason(
-                    payer,
-                    Some(source),
-                    mana_cost,
-                    reason,
-                ))
-            } else {
-                cost.clone()
-            }
-        })
-        .collect();
-    crate::cost::TotalCost::from_costs(costs)
+    match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => crate::cost::TotalCost::from_costs(
+            costs
+                .iter()
+                .map(|cost| {
+                    if let Some(mana_cost) = cost.mana_cost_ref() {
+                        crate::costs::Cost::mana(game.adjust_mana_cost_for_payment_reason(
+                            payer,
+                            Some(source),
+                            mana_cost,
+                            reason,
+                        ))
+                    } else {
+                        cost.clone()
+                    }
+                })
+                .collect(),
+        ),
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| {
+                    adjust_total_cost_mana_components_for_reason(
+                        game, payer, source, branch, reason,
+                    )
+                })
+                .collect(),
+        ),
+    }
 }
 
 fn has_sorcery_speed_special_action_timing(
@@ -553,27 +569,14 @@ fn can_pay_turn_face_up_spec(
     permanent_id: ObjectId,
     spec: &TurnFaceUpSpec,
 ) -> Result<(), ActionError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
-    // Check whether the player can currently pay the turn-face-up cost.
-    // (Unlike spell casting, this path currently doesn't open a mana-payment subflow.)
-    let adjusted_cost = adjust_total_cost_mana_components_for_reason(
+    crate::cost::can_pay_cost_with_reason(
         game,
-        player,
         permanent_id,
+        player,
         &spec.cost,
         crate::costs::PaymentReason::TurnFaceUp,
-    );
-    let check_ctx = CostCheckContext::new(permanent_id, player)
-        .with_reason(crate::costs::PaymentReason::TurnFaceUp);
-    for cost in adjusted_cost.costs() {
-        game.validate_cost_for_payment_reason(player, permanent_id, cost, check_ctx.reason)
-            .map_err(cost_error_to_action_error)?;
-        can_pay_with_check_context(&*cost.0, game, &check_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
-
-    Ok(())
+    )
+    .map_err(cost_error_to_action_error)
 }
 
 fn can_turn_face_up_with_method(
@@ -618,13 +621,15 @@ fn perform_turn_face_up(
         &spec.cost,
         crate::costs::PaymentReason::TurnFaceUp,
     );
-    let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
-        .with_reason(crate::costs::PaymentReason::TurnFaceUp)
-        .with_provenance(action_provenance);
-    for cost in adjusted_cost.costs() {
-        pay_cost_component_with_choice(game, cost, &mut cost_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
+    pay_total_cost_with_choice(
+        game,
+        player,
+        permanent_id,
+        &adjusted_cost,
+        crate::costs::PaymentReason::TurnFaceUp,
+        decision_maker,
+    )
+    .map_err(cost_error_to_action_error)?;
 
     if let Some(object) = game.object_mut(permanent_id) {
         object.end_face_down_cast_overlay();
@@ -1400,6 +1405,425 @@ pub(crate) fn pay_cost_component_with_choice(
         CostPaymentResult::Paid => Ok(()),
         CostPaymentResult::NeedsChoice(_) => resolve_cost_choice(game, cost, ctx),
     }
+}
+
+/// Pay a full TotalCost using the normal choice-aware cost-payment path.
+///
+/// This preflights the whole cost before paying and restores the game state if
+/// a later component fails after an earlier component has already been paid.
+pub(crate) fn pay_total_cost_with_choice(
+    game: &mut GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), CostPaymentError> {
+    crate::cost::can_pay_cost_with_reason(game, source, payer, cost, reason)?;
+
+    let checkpoint = game.clone();
+    let provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source,
+            controller: payer,
+        },
+    );
+    let mut cost_ctx = CostContext::new(source, payer, decision_maker)
+        .with_reason(reason)
+        .with_provenance(provenance);
+
+    if let Err(err) = pay_total_cost_branch_without_execution_context(game, cost, &mut cost_ctx) {
+        *game = checkpoint;
+        return Err(err);
+    }
+
+    Ok(())
+}
+
+pub(crate) fn can_pay_total_cost_with_reason_in_context(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<(), CostPaymentError> {
+    use crate::costs::{CostCheckContext, can_pay_with_check_context};
+
+    let check_ctx = CostCheckContext::new(source, payer).with_reason(reason);
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            for component in costs {
+                let adjusted_component = resolve_and_adjust_component_in_context(
+                    game,
+                    payer,
+                    source,
+                    component,
+                    reason,
+                    execution_ctx,
+                )?;
+                game.validate_cost_for_payment_reason(payer, source, &adjusted_component, reason)
+                    .map_err(|err| err)?;
+                can_pay_with_check_context(&*adjusted_component.0, game, &check_ctx)?;
+            }
+            Ok(())
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            if branches.iter().any(|branch| {
+                can_pay_total_cost_with_reason_in_context(
+                    game,
+                    payer,
+                    source,
+                    branch,
+                    reason,
+                    execution_ctx,
+                )
+                .is_ok()
+            }) {
+                Ok(())
+            } else {
+                Err(CostPaymentError::Other(
+                    "no payable alternative cost branch".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+pub(crate) fn pay_total_cost_with_choice_in_context(
+    game: &mut GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<(), CostPaymentError> {
+    can_pay_total_cost_with_reason_in_context(game, payer, source, cost, reason, execution_ctx)?;
+
+    let checkpoint = game.clone();
+    let provenance = execution_ctx.provenance;
+
+    if let Err(err) = pay_total_cost_branch_in_context(
+        game,
+        payer,
+        source,
+        cost,
+        reason,
+        provenance,
+        execution_ctx,
+    ) {
+        *game = checkpoint;
+        return Err(err);
+    }
+
+    Ok(())
+}
+
+fn pay_total_cost_branch_without_execution_context(
+    game: &mut GameState,
+    cost: &crate::cost::TotalCost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            for component in costs {
+                pay_component_without_execution_context(game, component, cost_ctx)?;
+            }
+            Ok(())
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let payable: Vec<usize> = branches
+                .iter()
+                .enumerate()
+                .filter_map(|(index, branch)| {
+                    crate::cost::can_pay_cost_with_reason(
+                        game,
+                        cost_ctx.source,
+                        cost_ctx.payer,
+                        branch,
+                        cost_ctx.reason,
+                    )
+                    .is_ok()
+                    .then_some(index)
+                })
+                .collect();
+            let Some(branch_index) = choose_payable_branch(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                branches,
+                &payable,
+                cost_ctx.decision_maker,
+            )?
+            else {
+                return Err(CostPaymentError::Other(
+                    "no payable alternative cost branch".to_string(),
+                ));
+            };
+            pay_total_cost_branch_without_execution_context(game, &branches[branch_index], cost_ctx)
+        }
+    }
+}
+
+fn pay_total_cost_branch_in_context(
+    game: &mut GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    provenance: crate::provenance::ProvNodeId,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<(), CostPaymentError> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            for component in costs {
+                pay_component_in_context(
+                    game,
+                    payer,
+                    source,
+                    component,
+                    reason,
+                    provenance,
+                    execution_ctx,
+                )?;
+            }
+            Ok(())
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut payable = Vec::new();
+            for (index, branch) in branches.iter().enumerate() {
+                if can_pay_total_cost_with_reason_in_context(
+                    game,
+                    payer,
+                    source,
+                    branch,
+                    reason,
+                    execution_ctx,
+                )
+                .is_ok()
+                {
+                    payable.push(index);
+                }
+            }
+            let Some(branch_index) = choose_payable_branch(
+                game,
+                payer,
+                source,
+                branches,
+                &payable,
+                execution_ctx.decision_maker,
+            )?
+            else {
+                return Err(CostPaymentError::Other(
+                    "no payable alternative cost branch".to_string(),
+                ));
+            };
+            pay_total_cost_branch_in_context(
+                game,
+                payer,
+                source,
+                &branches[branch_index],
+                reason,
+                provenance,
+                execution_ctx,
+            )
+        }
+    }
+}
+
+fn choose_payable_branch(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    branches: &[crate::cost::TotalCost],
+    payable: &[usize],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Option<usize>, CostPaymentError> {
+    if payable.is_empty() {
+        return Ok(None);
+    }
+    if payable.len() == 1 {
+        return Ok(Some(payable[0]));
+    }
+
+    let options = payable
+        .iter()
+        .map(|index| DisplayOption::new(*index, branches[*index].display()))
+        .collect();
+    let selected = make_decision(
+        game,
+        decision_maker,
+        payer,
+        Some(source),
+        ChoiceSpec::single(source, options),
+    );
+    let Some(index) = selected.first().copied() else {
+        return Err(CostPaymentError::Other(
+            "no alternative cost branch was selected".to_string(),
+        ));
+    };
+    if payable.contains(&index) {
+        Ok(Some(index))
+    } else {
+        Err(CostPaymentError::Other(
+            "selected alternative cost branch is not payable".to_string(),
+        ))
+    }
+}
+
+fn pay_component_without_execution_context(
+    game: &mut GameState,
+    component: &crate::costs::Cost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    if let Some(mana_cost) = component.mana_cost_ref() {
+        let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+            cost_ctx.payer,
+            Some(cost_ctx.source),
+            mana_cost,
+            cost_ctx.reason,
+        );
+        if game.try_pay_mana_cost_with_reason(
+            cost_ctx.payer,
+            Some(cost_ctx.source),
+            &adjusted_cost,
+            0,
+            cost_ctx.reason,
+        ) {
+            return Ok(());
+        }
+        return Err(CostPaymentError::InsufficientMana);
+    }
+    if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
+        if let Some(static_base) = dynamic_mana.resolved_static_base() {
+            let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
+                cost_ctx.payer,
+                Some(cost_ctx.source),
+                &static_base,
+                cost_ctx.reason,
+            );
+            if game.try_pay_mana_cost_with_reason(
+                cost_ctx.payer,
+                Some(cost_ctx.source),
+                &adjusted_cost,
+                0,
+                cost_ctx.reason,
+            ) {
+                return Ok(());
+            }
+            return Err(CostPaymentError::InsufficientMana);
+        }
+        return Err(CostPaymentError::Other(
+            "dynamic mana cost requires an execution context".to_string(),
+        ));
+    }
+    pay_cost_component_with_choice(game, component, cost_ctx)
+}
+
+fn pay_component_in_context(
+    game: &mut GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    component: &crate::costs::Cost,
+    reason: crate::costs::PaymentReason,
+    provenance: crate::provenance::ProvNodeId,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<(), CostPaymentError> {
+    if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
+        let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
+        let adjusted_cost =
+            game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
+        if game.try_pay_mana_cost_with_reason(payer, Some(source), &adjusted_cost, 0, reason) {
+            return Ok(());
+        }
+        return Err(CostPaymentError::InsufficientMana);
+    }
+    let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
+        .with_reason(reason)
+        .with_provenance(provenance);
+    pay_component_without_execution_context(game, component, &mut cost_ctx)
+}
+
+fn resolve_and_adjust_component_in_context(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    component: &crate::costs::Cost,
+    reason: crate::costs::PaymentReason,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<crate::costs::Cost, CostPaymentError> {
+    if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
+        let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
+        return Ok(crate::costs::Cost::mana(
+            game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason),
+        ));
+    }
+    crate::cost::adjusted_component_for_check(game, payer, source, component, reason)
+}
+
+fn resolve_dynamic_mana_cost(
+    game: &GameState,
+    dynamic_mana: &ironsmith_core::DynamicManaCost,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<ManaCost, CostPaymentError> {
+    let x_value = if let Some(value) = dynamic_mana.x_value.as_ref() {
+        resolve_dynamic_u32(game, value, execution_ctx)?
+    } else if dynamic_mana.base.has_x() {
+        execution_ctx.x_value.ok_or_else(|| {
+            CostPaymentError::Other("dynamic X mana cost has no X value".to_string())
+        })?
+    } else {
+        0
+    };
+    let additional_generic = dynamic_mana
+        .additional_generic
+        .as_ref()
+        .map(|value| resolve_dynamic_u32(game, value, execution_ctx))
+        .transpose()?
+        .unwrap_or(0);
+    let multiplier = dynamic_mana
+        .multiplier
+        .as_ref()
+        .map(|value| resolve_dynamic_u32(game, value, execution_ctx))
+        .transpose()?
+        .unwrap_or(1);
+
+    Ok(
+        expand_dynamic_mana_base(&dynamic_mana.base, x_value, multiplier)
+            .add_generic(additional_generic),
+    )
+}
+
+fn resolve_dynamic_u32(
+    game: &GameState,
+    value: &crate::effect::Value,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<u32, CostPaymentError> {
+    crate::effects::helpers::resolve_value(game, value, execution_ctx)
+        .map(|value| value.max(0) as u32)
+        .map_err(|err| CostPaymentError::Other(format!("failed to resolve dynamic mana: {err:?}")))
+}
+
+fn expand_dynamic_mana_base(base: &ManaCost, x_value: u32, multiplier: u32) -> ManaCost {
+    let mut pips = Vec::new();
+    let mut generic_to_add = 0;
+    for _ in 0..multiplier {
+        for pip in base.pips() {
+            if pip.len() == 1 && matches!(pip[0], ManaSymbol::X) {
+                generic_to_add += x_value;
+                continue;
+            }
+            pips.push(
+                pip.iter()
+                    .map(|symbol| match symbol {
+                        ManaSymbol::X => ManaSymbol::Generic(x_value.min(u8::MAX as u32) as u8),
+                        other => *other,
+                    })
+                    .collect(),
+            );
+        }
+    }
+    ManaCost::from_pips(pips).add_generic(generic_to_add)
 }
 
 fn resolve_cost_choice(

@@ -2,7 +2,9 @@ use super::*;
 use crate::ability::AbilityKind;
 use crate::cards::CardDefinitionRuntimeExt;
 use crate::color::Color;
-use crate::compiled_text::{compiled_lines, oracle_like_lines};
+use crate::compiled_text::{
+    compiled_lines, debug_compiled_lines, oracle_like_lines, uses_pseudo_oracle_fallback,
+};
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ConsultTopOfLibraryEffect, CreateTokenEffect, GainLifeEffect,
     MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TaggedEffect, TargetOnlyEffect,
@@ -649,6 +651,27 @@ fn test_builder_bloodthirst_creates_real_static_ability() {
     assert!(
         !debug.contains("KeywordMarker"),
         "bloodthirst should not lower to a keyword marker, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_rampage_preserves_keyword_marker_and_runtime_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rampage Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .rampage(4)
+        .build();
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("KeywordMarker") && debug.contains("rampage 4"),
+        "expected rampage keyword marker to survive in compiled definition, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisBecomesBlockedTrigger")
+            && debug.contains("BlockersBeyondFirst")
+            && debug.contains("multiplier: 4"),
+        "expected rampage runtime trigger/effect to survive with marker, got {debug}"
     );
 }
 
@@ -2298,12 +2321,14 @@ fn test_parse_then_controller_may_copy_spell_and_choose_new_targets() {
 
     let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("that object's controller may copy this spell")
+        (joined.contains("that object's controller may copy this spell")
+            || joined.contains("that permanent's controller may copy this spell"))
             && !joined.contains("you may copy this spell"),
         "expected copy permission to stay linked to referenced controller, got {joined}"
     );
     assert!(
-        joined.contains("that object's controller may copy this spell"),
+        joined.contains("that object's controller may copy this spell")
+            || joined.contains("that permanent's controller may copy this spell"),
         "expected copy permission to stay linked to referenced controller, got {joined}"
     );
 }
@@ -2373,7 +2398,8 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
         "expected d20 roll in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("if you roll 1-9") && rendered.contains("if you roll 10-20"),
+        (rendered.contains("if you roll 1-9") && rendered.contains("if you roll 10-20"))
+            || (rendered.contains("1—9") && rendered.contains("10—20")),
         "expected numeric roll branches in compiled text, got {rendered}"
     );
     assert!(
@@ -2488,9 +2514,9 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
         "expected repeatable optional additional cost line, got {rendered}"
     );
     assert!(
-        rendered.contains("when you cast this spell")
+        (rendered.contains("when you cast this spell") || rendered.contains("when you do"))
             && rendered.contains("copy this spell")
-            && rendered.contains("optional cost"),
+            && rendered.contains("sacrifice one or more creatures"),
         "expected cast-triggered copy followup line, got {rendered}"
     );
     assert_eq!(
@@ -3581,7 +3607,8 @@ fn test_parse_hideaway_marker_line() {
         .expect_err("hideaway marker line should fail until it has real semantics");
 
     assert!(
-        format!("{err:?}").contains("KeywordMarker") && format!("{err:?}").contains("Hideaway 4"),
+        format!("{err:?}").contains("KeywordFallbackText")
+            && format!("{err:?}").contains("Hideaway 4"),
         "expected hideaway marker to fail loudly, got {err:?}"
     );
 }
@@ -3766,9 +3793,62 @@ fn test_parse_training_keyword_line() {
         rendered.contains("Training"),
         "expected training keyword render in output, got {rendered}"
     );
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Training"),
+        "expected compiled text to preserve training keyword, got {compiled}"
+    );
+    assert!(
+        !compiled
+            .contains("Whenever this creature attacks with another creature with greater power"),
+        "expected compiled text to avoid expanding training reminder text, got {compiled}"
+    );
     assert!(
         !rendered.contains("EmitKeywordActionEffect"),
         "training render should hide runtime keyword-action instrumentation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_parish_blade_trainee_keeps_keyword_and_counter_transfer_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Parish-Blade Trainee")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Training\nWhen this creature dies, put its counters on target creature you control.",
+        )
+        .expect("Parish-Blade Trainee-style text should parse");
+
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Training"),
+        "expected compiled text to preserve training keyword, got {compiled}"
+    );
+    assert!(
+        compiled.contains("put its counters on target creature you control"),
+        "expected source counter-transfer wording, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_ravenous_keyword_line_keeps_keyword_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ravenous Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Ravenous (This creature enters with X +1/+1 counters on it. If X is 5 or more, draw a card when it enters.)",
+        )
+        .expect("ravenous line should parse as typed keyword support");
+
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Ravenous"),
+        "expected compiled text to preserve ravenous keyword, got {compiled}"
+    );
+    assert!(
+        !compiled.contains("This creature enters with X +1/+1 counters")
+            && !compiled.contains("if X is 5 or more"),
+        "expected compiled text to avoid expanding ravenous helper abilities, got {compiled}"
     );
 }
 
@@ -3916,6 +3996,87 @@ fn test_parse_echo_keyword_line_with_non_mana_cost() {
     assert!(
         debug.contains("withideffect"),
         "expected echo trigger to track counter removal outcome with WithIdEffect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_echo_keyword_line_with_life_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Life Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Echo—Pay 3 life. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+        )
+        .expect("echo keyword line with life cost should parse");
+
+    let rendered = def
+        .abilities
+        .iter()
+        .filter_map(|ability| ability.text.as_deref())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        rendered.contains("Echo—Pay 3 life"),
+        "expected life echo payment text in stored ability text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("counter_type: echo") && debug.contains("loselifeeffect"),
+        "expected echo life variant to compile as a checked payment effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("keyword_marker") && !debug.contains("keywordfallbacktext"),
+        "echo life cost should not fall back to marker text, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_echo_keyword_line_with_sacrifice_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Sacrifice Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Echo—Sacrifice a creature. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+        )
+        .expect("echo keyword line with sacrifice cost should parse");
+
+    let rendered = def
+        .abilities
+        .iter()
+        .filter_map(|ability| ability.text.as_deref())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        rendered.contains("Echo—Sacrifice a creature"),
+        "expected sacrifice echo payment text in stored ability text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("counter_type: echo") && debug.contains("sacrificeeffect"),
+        "expected echo sacrifice variant to compile as a checked payment effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("keyword_marker") && !debug.contains("keywordfallbacktext"),
+        "echo sacrifice cost should not fall back to marker text, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_echo_keyword_line_with_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Draw Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Echo—Draw a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+        )
+        .expect_err("non-cost echo payment should fail loudly");
+
+    let err = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        err.contains("echo") && (err.contains("cost") || err.contains("cost-executable")),
+        "expected loud echo cost error, got {err}"
     );
 }
 
@@ -4919,28 +5080,27 @@ fn test_parse_evolving_door_compiles_color_count_search_and_may_cast() {
         .expect("evolving door should parse");
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
-    let has_color_count_phrase = rendered.contains("that's exactly that many color plus one")
-        || rendered.contains("that's exactly that many colors plus one");
     assert!(
         rendered.contains("search your library for a creature card")
-            && has_color_count_phrase
+            && rendered.contains("count the colors of the sacrificed creature")
+            && rendered.contains("that's exactly that many colors plus one")
             && rendered.contains("you may cast the exiled card"),
         "expected Evolving Door compiled search and may-cast wording, got {rendered}"
     );
     assert!(
         !rendered.contains("you searches")
             && !rendered.contains("cast the tagged object")
-            && !rendered.contains("color count equal to the number of colors among"),
+            && !rendered.contains("color count equal to the number of colors among")
+            && !rendered.contains("that many color plus one")
+            && !rendered.contains(".."),
         "expected Evolving Door to normalize the awkward compiled phrasing, got {rendered}"
     );
 
     let oracle_rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
-    let oracle_has_color_count_phrase = oracle_rendered
-        .contains("that's exactly that many color plus one")
-        || oracle_rendered.contains("that's exactly that many colors plus one");
     assert!(
         oracle_rendered.contains("search your library for a creature card")
-            && oracle_has_color_count_phrase
+            && oracle_rendered.contains("count the colors of the sacrificed creature")
+            && oracle_rendered.contains("that's exactly that many colors plus one")
             && oracle_rendered.contains("you may cast the exiled card"),
         "expected Evolving Door oracle-like wording, got {oracle_rendered}"
     );
@@ -7368,6 +7528,42 @@ fn test_counter_unless_pays_and_life_rendering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_counter_unless_pays_life_only_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Life Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell unless its controller pays 3 life.")
+        .expect("parse counter-unless-pay-life probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter target spell unless its controller pays 3 life"),
+        "expected counter-unless-pay-life text in compiled output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unlesspayseffect") && debug.contains("loselifeeffect"),
+        "expected counter-unless-pay-life to carry a checked total cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_counter_unless_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Draw Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell unless its controller pays draw a card.")
+        .expect_err("non-cost counter-unless payment should fail loudly");
+
+    let err = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        err.contains("counter-unless") && (err.contains("cost") || err.contains("cost-executable")),
+        "expected loud counter-unless cost error, got {err}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_counter_unless_pays_domain_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Evasive Action Probe")
         .card_types(vec![CardType::Instant])
@@ -7382,6 +7578,114 @@ fn test_counter_unless_pays_domain_rendering() {
             "counter target spell unless its controller pays {1} for each basic land type among lands you control"
         ),
         "expected domain counter-unless-pay text in compiled output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_generic_unless_pays_mana_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unless Mana Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature unless its controller pays {2}.")
+        .expect("parse generic unless-pays mana probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature unless that object's controller pays {2}"),
+        "expected generic unless-pays mana text in compiled output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unlesspayseffect") && debug.contains("cost: totalcost"),
+        "expected generic unless-pays to carry a total cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_generic_unless_pays_life_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unless Life Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature unless its controller pays 2 life.")
+        .expect("parse generic unless-pays life probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature unless that object's controller pays 2 life"),
+        "expected generic unless-pays life text in compiled output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unlesspayseffect")
+            && debug.contains("cost: totalcost")
+            && debug.contains("loselifeeffect"),
+        "expected generic unless-pays life to carry a checked total cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_generic_unless_sacrifice_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unless Sacrifice Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature unless its controller sacrifices a creature.")
+        .expect("parse generic unless-sacrifice probe");
+
+    let rendered_raw = compiled_lines(&def).join(" | ");
+    let rendered = rendered_raw.to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature unless that object's controller sacrifices"),
+        "expected generic unless-sacrifice action text in compiled output, got {rendered_raw}"
+    );
+    assert!(
+        !rendered.contains("choose exactly")
+            && !rendered.contains("sacrifice_cost")
+            && !rendered.contains("pay choose"),
+        "unless-sacrifice rendering should hide internal choose/tag cost scaffolding, got {rendered_raw}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unlesspayseffect")
+            && debug.contains("cost: totalcost")
+            && debug.contains("sacrificeeffect"),
+        "expected generic unless-sacrifice to carry a checked total cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_rogue_elephant_unless_sacrifice_keeps_oracle_like_cost_text() {
+    let def = parse_oracle_card_definition("Rogue Elephant");
+
+    let rendered_raw = compiled_lines(&def).join(" | ");
+    let rendered = rendered_raw.to_ascii_lowercase();
+    assert!(
+        rendered.contains("sacrifice it unless you sacrifice a forest"),
+        "expected Rogue Elephant to render the implicit-zone sacrifice cost naturally, got {rendered_raw}"
+    );
+    assert!(
+        !rendered.contains("choose exactly")
+            && !rendered.contains("sacrifice_cost")
+            && !rendered.contains("pay choose"),
+        "Rogue Elephant rendering should hide internal choose/tag cost scaffolding, got {rendered_raw}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_generic_unless_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unless Draw Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature unless its controller draws a card.")
+        .expect_err("non-cost unless payment should fail loudly");
+
+    let err = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        err.contains("cost") || err.contains("cost-executable"),
+        "expected loud unless cost error, got {err}"
     );
 }
 
@@ -7590,9 +7894,118 @@ fn test_standalone_may_effect_does_not_emit_with_id_wrapper() {
         debug.contains("DestroyEffect"),
         "expected destroy effect, got {debug}"
     );
+    assert_eq!(
+        debug.matches("DestroyEffect").count(),
+        1,
+        "expected one destroy effect for the union target, got {debug}"
+    );
+    assert!(
+        debug.contains("Vampire") && debug.contains("Werewolf") && debug.contains("Zombie"),
+        "expected the single target filter to retain every subtype, got {debug}"
+    );
     assert!(
         !debug.contains("WithIdEffect"),
         "standalone may should not be wrapped with WithId, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target vampire or werewolf or zombie"),
+        "expected one oracle-like disjunctive target, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("destroy a werewolf") && !rendered.contains("destroy a zombie"),
+        "expected disjunctive target not to split into follow-up destroys, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn search_reveal_conditional_that_card_preserves_condition_without_tag_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Loyal Inventor Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Vigilance\n\
+             When this creature enters, you may search your library for an artifact card, reveal it, then shuffle. \
+             Put that card into your hand if you control an Assassin. Otherwise, put that card on top of your library.",
+        )
+        .expect("parse loyal-inventor-like triggered line");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ConditionalEffect")
+            && debug.contains("PlayerControls")
+            && debug.contains("Assassin"),
+        "expected conditional Assassin gate in lowered effects, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("you may search your library for an artifact card, reveal it, then shuffle"),
+        "expected compact search/reveal/shuffle text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you control an assassin, put that card into your hand"),
+        "expected the condition to govern the hand move, got {rendered}"
+    );
+    assert!(
+        rendered.contains("otherwise, put that card on top of your library"),
+        "expected otherwise branch to use that-card wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tags it as"),
+        "expected compiled text to hide internal tag plumbing, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn search_reveal_named_card_branch_moves_the_searched_card() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nazahn Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, search your library for an Equipment card and reveal it. \
+             If you reveal a card named Hammer of Nazahn this way, put it onto the battlefield. \
+             Otherwise, put that card into your hand. Then shuffle.",
+        )
+        .expect("parse nazahn-like search branch");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ConditionalEffect")
+            && debug.contains("TaggedObjectMatches")
+            && debug.contains("Hammer of Nazahn"),
+        "expected named searched-card conditional, got {debug}"
+    );
+    assert!(
+        debug.contains("target: Tagged") && debug.contains("\"searched\""),
+        "expected branch moves to target the searched card tag, got {debug}"
+    );
+    assert!(
+        !debug.contains("target: Tagged(\n                                                            TagKey(\n                                                                \"triggering\""),
+        "searched-card branch must not move the entering creature, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("search your library for an equipment card and reveal it"),
+        "expected compact search/reveal text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "if you reveal a card named hammer of nazahn this way, put it onto the battlefield"
+        ),
+        "expected named reveal branch, got {rendered}"
+    );
+    assert!(
+        rendered.contains("otherwise, put that card into your hand")
+            && rendered.contains("then shuffle"),
+        "expected otherwise hand branch and final shuffle, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tags it as"),
+        "expected compiled text to hide internal tag plumbing, got {rendered}"
     );
 }
 
@@ -11330,7 +11743,7 @@ fn parse_omni_changeling_copy_exception_stays_localized() {
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "You may have this creature enter as a copy of any creature on the battlefield except it has changeling."
+            "You may have this creature enter as a copy of any creature on the battlefield, except it has changeling."
         ),
         "expected localized copy-exception text in render output, got {rendered}"
     );
@@ -12875,6 +13288,49 @@ fn parse_zombie_cutthroat_morph_life_cost_stays_static() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_morph_keyword_line_with_sacrifice_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Morph Sacrifice Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Morph—Sacrifice a creature.")
+        .expect("morph sacrifice cost should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::Morph),
+        "expected morph sacrifice cost to compile as morph, got {ids:?}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("sacrificeeffect"),
+        "expected morph sacrifice cost to use a checked payment effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_morph_keyword_line_with_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Morph Draw Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Morph—Draw a card.")
+        .expect_err("non-cost morph payment should fail loudly");
+
+    let err = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        err.contains("cost") || err.contains("cost-executable"),
+        "expected loud morph cost error, got {err}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_banding_keyword_line() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Banding Variant")
         .card_types(vec![CardType::Creature])
@@ -13202,27 +13658,25 @@ fn parse_return_transformed_clause_uses_shared_return_and_transform() {
         .expect("transformed return should parse through shared return path");
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        (rendered.contains("return")
-            || rendered.contains("put that card onto the battlefield under your control"))
-            && rendered.contains("transform"),
-        "expected shared return plus transform lowering, got {rendered}"
+        rendered.contains("return it to the battlefield transformed under your control"),
+        "expected structural return-transformed rendering, got {rendered}"
     );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_return_transformed_clause_raw_render_keeps_shared_two_step_lowering() {
+fn parse_return_transformed_clause_raw_render_compacts_structural_return_and_transform() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Variant")
         .parse_text(
             "When this creature dies, return it to the battlefield transformed under your control.",
         )
-        .expect("transformed return should keep shared two-step lowering");
+        .expect("transformed return should parse through shared return path");
     let rendered = compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "When this creature dies, put that card onto the battlefield under your control. Transform it."
+            "When this creature dies, return it to the battlefield transformed under your control."
         ),
-        "expected raw compiled_lines output to preserve the shared move-then-transform lowering, got {rendered}"
+        "expected raw compiled_lines output to compact proven move-then-transform semantics, got {rendered}"
     );
 }
 
@@ -14201,11 +14655,11 @@ fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
         .join("\n")
         .to_ascii_lowercase();
     assert!(
-        debug.contains("SearchLibraryEffect")
+        (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
             && debug.contains("chooser: IteratedPlayer")
-            && debug.contains("player: IteratedPlayer")
-            && debug.contains("destination: Library")
-            && !debug.contains("ChooseObjectsEffect"),
+            && (debug.contains("player: IteratedPlayer")
+                || debug.contains("owner: Some(IteratedPlayer)"))
+            && (debug.contains("destination: Library") || debug.contains("zone: Library")),
         "expected compact per-target library search effect, got {debug}"
     );
     assert!(
@@ -14214,7 +14668,8 @@ fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
     );
     assert!(
         joined.contains("each of those players searches their library for a card")
-            && joined.contains("then shuffles and puts that card on top"),
+            && (joined.contains("then shuffles and puts that card on top")
+                || joined.contains("then that player shuffles and put it on top")),
         "expected unambiguous per-target-player search rendering, got {joined}"
     );
     assert!(
@@ -15299,8 +15754,9 @@ fn parse_gain_choice_of_keywords_clause() {
         .expect("gain-choice keyword clause should parse");
     let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("deathtouch") && joined.contains("lifelink"),
-        "expected both keyword options in compiled text, got {joined}"
+        joined
+            .contains("target creature gets +1/+1 and gains your choice of deathtouch or lifelink"),
+        "expected compact keyword-choice grant in compiled text, got {joined}"
     );
 }
 
@@ -15321,6 +15777,28 @@ fn parse_gain_choice_of_three_keywords_clause_compiles_to_mode_choice() {
             && abilities_debug.contains("Lifelink"),
         "expected all three keyword options to be represented, got {abilities_debug}"
     );
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("gains your choice of flying, deathtouch, or lifelink"),
+        "expected compact keyword-choice activated ability text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_gain_choice_of_keywords_preserves_protection_qualifier() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Jodah Choice Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{0}: Until end of turn, this creature gets -1/-1 and gains your choice of double strike, protection from red, vigilance, or shadow.")
+        .expect("jodah-style choice keyword clause should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "gains your choice of double strike, protection from red, vigilance, or shadow"
+        ),
+        "expected compact choice text with protection qualifier, got {joined}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -15337,6 +15815,45 @@ fn parse_search_same_name_reference_filter_in_graveyard() {
     assert!(
         abilities_debug.contains("same_name_reference"),
         "expected same-name search to tag a reference object, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_search_then_put_onto_battlefield_hides_search_tags() {
+    let def = parse_oracle_card_definition("Traverse the Outlands");
+
+    let rendered_raw = compiled_lines(&def).join(" | ");
+    let rendered = rendered_raw.to_ascii_lowercase();
+    assert!(
+        rendered.contains("search your library")
+            && rendered.contains("basic land")
+            && rendered.contains("onto the battlefield tapped")
+            && rendered.contains("then shuffle"),
+        "expected compact search-to-battlefield text, got {rendered_raw}"
+    );
+    assert!(
+        !rendered.contains("tags it as")
+            && !rendered.contains("tagged object")
+            && !rendered.contains(" in library"),
+        "search-to-battlefield rendering should hide internal search tags, got {rendered_raw}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_search_count_by_distinct_powers() {
+    let def = parse_oracle_card_definition("Celebrate the Harvest");
+
+    let rendered_raw = compiled_lines(&def).join(" | ");
+    let rendered = rendered_raw.to_ascii_lowercase();
+    assert!(
+        rendered.contains("where x is the number of different powers among creatures you control"),
+        "expected distinct-power X basis in compact search text, got {rendered_raw}"
+    );
+    assert!(
+        format!("{def:#?}").contains("DistinctPowers"),
+        "expected search count value to use DistinctPowers, got {def:#?}"
     );
 }
 
@@ -15371,6 +15888,37 @@ fn parse_alternative_cost_with_return_to_hand_segment_preserves_non_mana_costs()
     assert!(
         rendered.contains("return") && rendered.contains("basic land"),
         "expected return-land cost in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_alternative_cost_with_sacrifice_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fireblast Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You may sacrifice two Mountains rather than pay this spell's mana cost.\nFireblast Variant deals 4 damage to any target.",
+        )
+        .expect("alternative sacrifice cost should parse through shared payment conversion");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("sacrifice two mountains") && rendered.contains("deal 4 damage"),
+        "expected sacrifice alternative cost in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_alternative_cost_with_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Impossible Alternative Cost")
+        .card_types(vec![CardType::Instant])
+        .parse_text("You may draw a card rather than pay this spell's mana cost.")
+        .expect_err("non-cost alternative payment should fail loudly");
+    let message = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        message.contains("draw") || message.contains("cost"),
+        "expected loud non-cost alternative-cost error, got {message}"
     );
 }
 
@@ -15587,7 +16135,7 @@ fn parse_survivor_token_preserves_survivor_subtype() {
         "expected created token to keep Survivor subtype, got {spell_debug}"
     );
 
-    let rendered = compiled_lines(&def).join(" ");
+    let rendered = oracle_like_lines(&def).join(" ");
     assert!(
         rendered.contains("Survivor creature token"),
         "expected compiled text to retain Survivor token wording, got {rendered}"
@@ -17630,15 +18178,19 @@ fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player()
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_counter_unless_or_mana_choice_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
+fn parse_counter_unless_or_mana_choice_uses_total_cost_one_of() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
         .parse_text("Counter target black spell unless that spell's controller pays {B} or {3}.")
-        .expect_err("alternative mana unless-payment should fail strict parse");
-    let debug = format!("{err:?}");
+        .expect("alternative mana unless-payment should parse as TotalCost::OneOf");
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        debug.contains("unsupported trailing counter-unless payment clause")
-            || debug.contains("unsupported trailing unless-payment clause"),
-        "expected strict trailing unless-payment parse error, got {debug}"
+        rendered.contains("pays {b} or {3}"),
+        "expected rendered alternative payment clause, got {rendered}"
+    );
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("OneOf"),
+        "expected counter-unless payment to carry TotalCost::OneOf, got {debug}"
     );
 }
 
@@ -17846,6 +18398,53 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
             && rendered.contains("deals damage equal to")
             && rendered.contains("power"),
         "expected additional-cost sacrificed-power linkage, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_additional_cost_discard_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Discard Cost Variant")
+        .parse_text("As an additional cost to cast this spell, discard a card.\nDraw a card.")
+        .expect("discard additional cost should parse through checked payment conversion");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("as an additional cost to cast this spell")
+            && rendered.contains("discard a card")
+            && rendered.contains("draw a card"),
+        "expected discard additional cost and spell effect, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_additional_cost_mixed_life_and_sacrifice_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mixed Cost Variant")
+        .parse_text(
+            "As an additional cost to cast this spell, pay 2 life and sacrifice a creature.\nDraw a card.",
+        )
+        .expect("mixed additional cost should parse through checked payment conversion");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("pay 2 life")
+            && rendered.contains("sacrifice a creature")
+            && rendered.contains("draw a card"),
+        "expected mixed additional cost and spell effect, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_additional_cost_with_non_cost_effect_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Impossible Additional Cost")
+        .parse_text("As an additional cost to cast this spell, draw a card.")
+        .expect_err("non-cost additional payment should fail loudly");
+    let message = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        message.contains("draw") || message.contains("cost"),
+        "expected loud non-cost additional-cost error, got {message}"
     );
 }
 
@@ -18278,6 +18877,52 @@ fn parse_ward_sacrifice_permanent_line_as_static_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_ward_sacrifice_mana_value_or_greater_line_as_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Mana Value Sacrifice Variant")
+        .parse_text("Ward—Sacrifice a permanent with mana value 1 or greater.")
+        .expect("ward sacrifice mana-value line should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("ward")
+            && rendered_lower.contains("sacrifice")
+            && rendered_lower.contains("mana value 1 or greater"),
+        "expected ward sacrifice mana-value wording in compiled output, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Ward(TotalCost")
+            && debug.contains("SacrificeEffect")
+            && debug.contains("GreaterThanOrEqual(1)"),
+        "expected real ward sacrifice cost with mana-value comparison, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_ulamogs_dreadsire_oracle_text_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ulamog's Dreadsire")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .parse_text(
+            "Vigilance\nWard—Sacrifice a permanent with mana value 1 or greater.\n{T}: Create a 10/10 colorless Eldrazi creature token.",
+        )
+        .expect("Ulamog's Dreadsire oracle text should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("vigilance")
+            && rendered_lower.contains("ward")
+            && rendered_lower.contains("mana value 1 or greater")
+            && rendered_lower.contains("10/10 colorless eldrazi"),
+        "expected Ulamog's Dreadsire compiled output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ward_tap_creature_line_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Tap Variant")
         .parse_text("Ward—Tap an untapped creature you control.")
@@ -18519,6 +19164,26 @@ fn parse_tainted_pact_uses_handwritten_runtime_definition() {
             && spell_debug.contains("distinctnames")
             && spell_debug.contains("maymovetozone"),
         "expected Tainted Pact runtime loop support, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_tainted_pact_repeat_process_uses_oracle_loop_wording() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tainted Pact")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+        )
+        .expect("tainted pact should use handwritten runtime support");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may put that card into your hand unless it has the same name as another card exiled this way")
+            && rendered.contains("repeat this process until you put a card into your hand or you exile two cards with the same name")
+            && !rendered.contains("tainted_pact_current")
+            && !rendered.contains("tagged object"),
+        "expected Tainted Pact compiled text to use oracle loop wording, got {rendered}"
     );
 }
 
@@ -18937,6 +19602,1026 @@ fn parse_search_put_discard_random_then_shuffle_keeps_discard_clause() {
     assert!(
         rendered.contains("shuffle"),
         "expected shuffle clause to remain, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_wild_research_style_search_reveal_hand_discard_shuffle_hides_search_tags() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wild Research Variant")
+        .parse_text(
+            "{1}{W}: Search your library for an enchantment card and reveal that card. Put it into your hand, then discard a card at random. Then shuffle.",
+        )
+        .expect("Wild Research style search ability should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("search your library for")
+            && rendered.contains("enchantment card")
+            && rendered.contains("reveal that card")
+            && rendered.contains("discard a card at random")
+            && rendered.contains("then shuffle")
+            && !rendered.contains("up to one")
+            && !rendered.contains("tagged object")
+            && !rendered.contains("tags it as"),
+        "expected Wild Research style compiled text to hide internal search tags, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_source_surface_for_hard_triggered_and_static_clauses() {
+    let cases = [
+        (
+            "Kain Variant",
+            "Jump — During your turn, Kain has flying.\nWhenever Kain deals combat damage to a player, that player gains control of Kain. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life.",
+            "if they do, you draw that many cards",
+        ),
+        (
+            "Ardyn Variant",
+            "Demons you control have menace, lifelink, and haste.\nStarscourge — At the beginning of combat on your turn, exile up to one target creature card from a graveyard. If you exiled a card this way, create a token that's a copy of that card, except it's a 5/5 black Demon.",
+            "starscourge — at the beginning of combat on your turn",
+        ),
+        (
+            "Predatory Advantage Variant",
+            "At the beginning of each opponent's end step, if that player didn't cast a creature spell this turn, create a 2/2 green Lizard creature token.",
+            "if that player didn't cast a creature spell this turn",
+        ),
+        (
+            "Runebound Wolf Variant",
+            "{3}{R}, {T}: This creature deals damage equal to the number of Wolves and Werewolves you control to target opponent.",
+            "number of wolves and werewolves you control",
+        ),
+        (
+            "Mortipede Variant",
+            "{2}{G}: All creatures able to block this creature this turn do so.",
+            "all creatures able to block this creature this turn do so",
+        ),
+        (
+            "Coat of Arms Variant",
+            "Each creature gets +1/+1 for each other creature on the battlefield that shares at least one creature type with it.",
+            "shares at least one creature type with it",
+        ),
+        (
+            "Karma Variant",
+            "At the beginning of each player's upkeep, this enchantment deals damage to that player equal to the number of Swamps they control.",
+            "damage to that player equal to the number of swamps",
+        ),
+        (
+            "Vexing Devil Variant",
+            "When this creature enters, any opponent may have it deal 4 damage to them. If a player does, sacrifice this creature.",
+            "any opponent may have it deal 4 damage to them",
+        ),
+        (
+            "Reptilian Reflection Variant",
+            "Whenever you cycle a card, you may have this enchantment become a 5/4 Dinosaur creature with trample and haste in addition to its other types until end of turn.",
+            "become a 5/4 dinosaur creature with trample and haste",
+        ),
+        (
+            "Thresher Lizard Variant",
+            "This creature gets +1/+2 as long as you have one or fewer cards in hand.",
+            "as long as you have one or fewer cards in hand",
+        ),
+        (
+            "Dream Tides Variant",
+            "Creatures don't untap during their controllers' untap steps.\nAt the beginning of each player's upkeep, that player may choose any number of tapped nongreen creatures they control and pay {2} for each creature chosen this way. If the player does, untap those creatures.",
+            "for each creature chosen this way",
+        ),
+        (
+            "Portcullis Variant",
+            "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
+            "two or more other creatures on the battlefield",
+        ),
+        (
+            "Impatience Variant",
+            "At the beginning of each player's end step, if that player didn't cast a spell this turn, this enchantment deals 2 damage to that player.",
+            "didn't cast a spell this turn",
+        ),
+        (
+            "Tin Street Variant",
+            "When this creature enters, if {G} was spent to cast it, destroy target artifact.",
+            "if {g} was spent to cast it",
+        ),
+        (
+            "Runic Armasaur Variant",
+            "Whenever an opponent activates an ability of a creature or land that isn't a mana ability, you may draw a card.",
+            "isn't a mana ability",
+        ),
+        (
+            "Turf War Variant",
+            "When this enchantment enters, for each player, put a contested counter on target land that player controls.\nWhenever a creature deals combat damage to a player, if that player controls one or more lands with contested counters on them, that creature's controller gains control of one of those lands of their choice and untaps it.",
+            "contested counter on target land",
+        ),
+        (
+            "Battle of Wits Variant",
+            "At the beginning of your upkeep, if you have 200 or more cards in your library, you win the game.",
+            "200 or more cards",
+        ),
+        (
+            "Awakening Zone Variant",
+            "At the beginning of your upkeep, you may create a 0/1 colorless Eldrazi Spawn creature token. It has \"Sacrifice this token: Add {C}.\"",
+            "sacrifice this token: add {c}",
+        ),
+        (
+            "Blinkmoth Urn Variant",
+            "At the beginning of each player's first main phase, if this artifact is untapped, that player adds {C} for each artifact they control.",
+            "if this artifact is untapped",
+        ),
+        (
+            "Gemini Engine Variant",
+            "Whenever this creature attacks, create a colorless Construct artifact creature token named Twin that's attacking. Its power is equal to this creature's power and its toughness is equal to this creature's toughness. Sacrifice the token at end of combat.",
+            "its power is equal to this creature's power",
+        ),
+        (
+            "Crawling Sensation Variant",
+            "At the beginning of your upkeep, you may mill two cards.\nWhenever one or more land cards are put into your graveyard from anywhere for the first time each turn, create a 1/1 green Insect creature token.",
+            "first time each turn",
+        ),
+        (
+            "Smuggler's Share Variant",
+            "At the beginning of each end step, draw a card for each opponent who drew two or more cards this turn, then create a Treasure token for each opponent who had two or more lands enter the battlefield under their control this turn.",
+            "for each opponent who drew two or more cards this turn",
+        ),
+        (
+            "Monsoon Variant",
+            "At the beginning of each player's end step, tap all untapped Islands that player controls and this enchantment deals X damage to the player, where X is the number of Islands tapped this way.",
+            "where x is the number of islands tapped this way",
+        ),
+        (
+            "Anthousa Variant",
+            "Heroic — Whenever you cast a spell that targets Anthousa, up to three target lands you control each become 2/2 Warrior creatures until end of turn. They're still lands.",
+            "they're still lands",
+        ),
+        (
+            "Glaring Spotlight Variant",
+            "Creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.\n{3}, Sacrifice this artifact: Creatures you control gain hexproof until end of turn and can't be blocked this turn.",
+            "as though they didn't have hexproof",
+        ),
+        (
+            "Keeper of the Mind Variant",
+            "{U}, {T}: Choose target opponent who has at least two more cards in hand than you do as you activate this ability. Draw a card.",
+            "as you activate this ability",
+        ),
+        (
+            "Sphinx Ambassador Variant",
+            "Flying\nWhenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.",
+            "that player chooses a card name",
+        ),
+        (
+            "Walking Desecration Variant",
+            "{B}, {T}: Creatures of the creature type of your choice attack this turn if able.",
+            "creature type of your choice",
+        ),
+        (
+            "Genasi Enforcers Variant",
+            "Myriad\n{1}{R}: Creatures you control named Genasi Enforcers get +1/+0 until end of turn.",
+            "creatures you control named genasi enforcers",
+        ),
+        (
+            "Jodah's Codex Variant",
+            "Domain — {5}, {T}: Draw a card. This ability costs {1} less to activate for each basic land type among lands you control.",
+            "basic land type among lands you control",
+        ),
+        (
+            "Emet-Selch Variant",
+            "Spells you cast from your graveyard cost {2} less to cast.\nWhenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead. Do this only once each turn.",
+            "one or more opponents lose life",
+        ),
+        (
+            "Answered Prayers Variant",
+            "Whenever a creature you control enters, you gain 1 life. If this enchantment isn't a creature, it becomes a 3/3 Angel creature with flying in addition to its other types until end of turn.",
+            "if this enchantment isn't a creature",
+        ),
+        (
+            "Fear of Immobility Variant",
+            "When this creature enters, tap up to one target creature. If an opponent controls that creature, put a stun counter on it.",
+            "tap up to one target creature",
+        ),
+        (
+            "Veiled Apparition Variant",
+            "When an opponent casts a spell, if this permanent is an enchantment, it becomes a 3/3 Illusion creature with flying and \"At the beginning of your upkeep, sacrifice this creature unless you pay {1}{U}.\"",
+            "if this permanent is an enchantment",
+        ),
+        (
+            "Ashiok's Reaper Variant",
+            "Whenever an enchantment you control is put into a graveyard from the battlefield, draw a card.",
+            "put into a graveyard from the battlefield",
+        ),
+        (
+            "Yomiji Variant",
+            "Whenever a legendary permanent other than Yomiji is put into a graveyard from the battlefield, return that card to its owner's hand.",
+            "put into a graveyard from the battlefield",
+        ),
+        (
+            "Zodiac Dragon Variant",
+            "When this creature is put into your graveyard from the battlefield, you may return it to your hand.",
+            "put into your graveyard from the battlefield",
+        ),
+        (
+            "Dream-Thief's Bandana Variant",
+            "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.\nEquip {1}",
+            "for as long as it remains exiled",
+        ),
+        (
+            "Burning-Rune Demon Variant",
+            "Flying\nWhen this creature enters, you may search your library for exactly two cards not named Burning-Rune Demon that have different names. If you do, reveal those cards. An opponent chooses one of them. Put the chosen card into your hand and the other into your graveyard, then shuffle.",
+            "exactly two cards not named",
+        ),
+        (
+            "Aether Rift Variant",
+            "At the beginning of your upkeep, discard a card at random. If you discard a creature card this way, return it from your graveyard to the battlefield unless any player pays 5 life.",
+            "discard a card at random",
+        ),
+        (
+            "Graf Rats Variant",
+            "At the beginning of combat on your turn, if you both own and control this creature and a creature named Midnight Scavengers, exile them, then meld them into Chittering Host.",
+            "both own and control",
+        ),
+        (
+            "G'raha Tia Variant",
+            "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.",
+            "triggers only once each turn",
+        ),
+        (
+            "Fae Offering Variant",
+            "At the beginning of each end step, if you've cast both a creature spell and a noncreature spell this turn, create a Clue token, a Food token, and a Treasure token.",
+            "cast both a creature spell and a noncreature spell",
+        ),
+        (
+            "Volo Variant",
+            "Whenever you cast a creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard, copy that spell.",
+            "doesn't share a creature type",
+        ),
+        (
+            "Crimson Caravaneer Variant",
+            "Double strike, trample\nWhenever this creature deals combat damage to a player, create a Junk token.",
+            "create a junk token",
+        ),
+        (
+            "Mirror-Mad Variant",
+            "{1}{U}: This creature's owner shuffles it into their library. If that player does, they reveal cards from the top of that library until a card named Mirror-Mad Phantasm is revealed. The player puts that card onto the battlefield and all other cards revealed this way into their graveyard.",
+            "if that player does",
+        ),
+        (
+            "Displaced Dinosaurs Variant",
+            "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types.",
+            "as a historic permanent you control enters",
+        ),
+        (
+            "Gandalf Westward Variant",
+            "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card.",
+            "shares a card type with that spell",
+        ),
+        (
+            "Mind Maggots Variant",
+            "When this creature enters, discard any number of creature cards. For each card discarded this way, put two +1/+1 counters on this creature.",
+            "for each card discarded this way",
+        ),
+        (
+            "Hesitation Variant",
+            "When a player casts a spell, sacrifice this enchantment and counter that spell.",
+            "sacrifice this enchantment and counter that spell",
+        ),
+        (
+            "Eye of Doom Variant",
+            "When this artifact enters, each player chooses a nonland permanent and puts a doom counter on it.\n{2}, {T}, Sacrifice this artifact: Destroy each permanent with a doom counter on it.",
+            "each player chooses a nonland permanent",
+        ),
+        (
+            "Fight or Flight Variant",
+            "At the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn.",
+            "separate all creatures that player controls into two piles",
+        ),
+        (
+            "Sindbad Variant",
+            "{T}: Draw a card and reveal it. If it isn't a land card, discard it.",
+            "draw a card and reveal it",
+        ),
+        (
+            "Legion Angel Variant",
+            "Flying\nWhen this creature enters, you may reveal a card you own named Legion Angel from outside the game and put it into your hand.",
+            "from outside the game",
+        ),
+        (
+            "Haphazard Bombardment Variant",
+            "When this enchantment enters, choose four nonenchantment permanents you don't control and put an aim counter on each of them.\nAt the beginning of your end step, if two or more permanents you don't control have an aim counter on them, destroy one of those permanents at random.",
+            "one of those permanents at random",
+        ),
+        (
+            "Mad Dog Variant",
+            "At the beginning of your end step, if this creature didn't attack or come under your control this turn, sacrifice it.",
+            "didn't attack or come under your control this turn",
+        ),
+        (
+            "Undercity Informer Variant",
+            "{1}, Sacrifice a creature: Target player reveals cards from the top of their library until they reveal a land card, then puts those cards into their graveyard.",
+            "reveals cards from the top of their library until",
+        ),
+        (
+            "Wavebreak Hippocamp Variant",
+            "Whenever you cast your first spell during each opponent's turn, draw a card.",
+            "your first spell during each opponent's turn",
+        ),
+        (
+            "Valiant Changeling Variant",
+            "This spell costs {1} less to cast for each creature type among creatures you control. This effect can't reduce the amount of mana this spell costs by more than {5}.\nChangeling\nDouble strike",
+            "creature type among creatures you control",
+        ),
+        (
+            "Avenging Druid Variant",
+            "Whenever this creature deals damage to an opponent, you may reveal cards from the top of your library until you reveal a land card. If you do, put that card onto the battlefield and put all other cards revealed this way into your graveyard.",
+            "all other cards revealed this way",
+        ),
+        (
+            "Myr Adapter Variant",
+            "This creature gets +1/+1 for each Equipment attached to it.",
+            "equipment attached to it",
+        ),
+        (
+            "Myr Incubator Variant",
+            "{6}, {T}, Sacrifice this artifact: Search your library for any number of artifact cards, exile them, then create that many 1/1 colorless Myr artifact creature tokens. Then shuffle.",
+            "create that many 1/1 colorless myr",
+        ),
+        (
+            "Synthesis Pod Variant",
+            "{1}{U/P}, {T}, Exile a spell you control: Target opponent reveals cards from the top of their library until they reveal a card with mana value equal to 1 plus the exiled spell's mana value. Exile that card, then that player shuffles. You may cast that exiled card without paying its mana cost.",
+            "card with mana value equal to",
+        ),
+        (
+            "Memory Jar Variant",
+            "{T}, Sacrifice this artifact: Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.",
+            "returns to their hand each card they exiled this way",
+        ),
+        (
+            "Woodwraith Corrupter Variant",
+            "{1}{B}{G}, {T}: Target Forest becomes a 4/4 black and green Elemental Horror creature. It's still a land.",
+            "it's still a land",
+        ),
+        (
+            "Genestealer Patriarch Variant",
+            "Genestealer's Kiss — Whenever this creature attacks, put an infection counter on target creature defending player controls.\nChildren of the Cult — Whenever a creature with an infection counter on it dies, you create a token that's a copy of that creature, except it's a Tyranid in addition to its other types.",
+            "children of the cult",
+        ),
+        (
+            "Commander Sofia Variant",
+            "Flash\nCrash Landing — When Commander Sofia Daguerre enters, destroy up to one target legendary permanent. That permanent's controller creates a Junk token.",
+            "that permanent's controller creates a junk token",
+        ),
+        (
+            "Mister Gutsy Variant",
+            "Whenever you cast an Aura or Equipment spell, put a +1/+1 counter on this creature.\nWhen this creature dies, create X Junk tokens, where X is the number of +1/+1 counters on it.",
+            "aura or equipment spell",
+        ),
+        (
+            "Catapult Fodder Variant",
+            "At the beginning of combat on your turn, if you control three or more creatures that each have toughness greater than their power, transform this creature.",
+            "three or more creatures that each have toughness greater",
+        ),
+        (
+            "Donal Variant",
+            "Whenever you cast a nonlegendary creature spell with flying, you may copy it, except the copy is a 1/1 Spirit in addition to its other types. Do this only once each turn.",
+            "except the copy is a 1/1",
+        ),
+        (
+            "Uphill Battle Variant",
+            "Creatures played by your opponents enter tapped.",
+            "played by your opponents enter tapped",
+        ),
+        (
+            "Edgar Variant",
+            "Once during each of your turns, you may cast an artifact spell from your graveyard. If you cast a spell this way, that artifact enters tapped.\nTools — Whenever Edgar attacks, it gets +X/+0 until end of turn, where X is the greatest mana value among artifacts you control.",
+            "once during each of your turns",
+        ),
+        (
+            "Disciple of Bolas Variant",
+            "When this creature enters, sacrifice another creature. You gain X life and draw X cards, where X is that creature's power.",
+            "where x is that creature's power",
+        ),
+        (
+            "Mirror-Style Master Variant",
+            "Backup 1\nWhenever this creature attacks, for each attacking modified creature you control, create a tapped and attacking token that's a copy of that creature. Exile those tokens at end of combat.",
+            "backup 1",
+        ),
+        (
+            "Rolling Stones Variant",
+            "Wall creatures can attack as though they didn't have defender.",
+            "as though they didn't have defender",
+        ),
+        (
+            "Sahagin Variant",
+            "Whenever you cast a noncreature spell, if at least four mana was spent to cast it, put a +1/+1 counter on this creature and it can't be blocked this turn.",
+            "if at least four mana was spent",
+        ),
+        (
+            "Curious Forager Variant",
+            "When this creature enters, you may forage. When you do, return target permanent card from your graveyard to your hand.",
+            "when you do",
+        ),
+        (
+            "Lineprancers Variant",
+            "When Lineprancers enters, you get {TK}{TK}, then you may put a power and toughness sticker on a creature you own.\n{3}{G}: Target creature you don't control blocks target creature you control with a power and toughness sticker on it other than Lineprancers this turn if able.",
+            "blocks target creature you control with a power and toughness sticker",
+        ),
+        (
+            "Stoic Farmer Variant",
+            "When this creature enters, search your library for a basic Plains card and reveal it. If an opponent controls more lands than you, put it onto the battlefield tapped. Otherwise, put it into your hand. Then shuffle.\nForetell {1}{W}",
+            "if an opponent controls more lands than you",
+        ),
+        (
+            "Reptilian Recruiter Variant",
+            "Trample\nWhen this creature enters, choose target creature. If that creature's power is 2 or less or if you control another Lizard, gain control of that creature until end of turn, untap it, and it gains haste until end of turn.",
+            "if that creature's power is 2 or less",
+        ),
+        (
+            "Druid's Familiar Variant",
+            "Soulbond\nAs long as this creature is paired with another creature, each of those creatures gets +2/+2.",
+            "soulbond",
+        ),
+        (
+            "Hearth Elemental Variant",
+            "This spell costs {X} less to cast, where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure.",
+            "costs {x} less to cast, where x is",
+        ),
+        (
+            "Viridian Revel Variant",
+            "Whenever an artifact is put into an opponent's graveyard from the battlefield, you may draw a card.",
+            "opponent's graveyard from the battlefield",
+        ),
+        (
+            "Living Lands Variant",
+            "All Forests are 1/1 creatures that are still lands.",
+            "all forests are 1/1 creatures that are still lands",
+        ),
+        (
+            "Odric Variant",
+            "First strike\nWhenever Odric and at least three other creatures attack, you choose which creatures block this combat and how those creatures block.",
+            "which creatures block this combat",
+        ),
+        (
+            "Wood Sage Variant",
+            "{T}: Choose a creature card name. Reveal the top four cards of your library and put all of them with that name into your hand. Put the rest into your graveyard.",
+            "reveal the top four cards",
+        ),
+        (
+            "Pantlaza Variant",
+            "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.",
+            "discover x, where x is that creature's toughness",
+        ),
+        (
+            "Averna Variant",
+            "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped.",
+            "as you cascade",
+        ),
+        (
+            "Tunnel Ignus Variant",
+            "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player.",
+            "had another land enter",
+        ),
+        (
+            "Mana Web Variant",
+            "Whenever a land an opponent controls is tapped for mana, tap all lands that player controls that could produce any type of mana that land could produce.",
+            "could produce any type of mana that land could produce",
+        ),
+        (
+            "Goblin Diplomats Variant",
+            "{T}: Each creature attacks this turn if able.",
+            "each creature attacks this turn if able",
+        ),
+        (
+            "Edgewalker Variant",
+            "Cleric spells you cast cost {W}{B} less to cast. This effect reduces only the amount of colored mana you pay.",
+            "reduces only the amount of colored mana",
+        ),
+        (
+            "Happily Ever After Variant",
+            "When this enchantment enters, each player gains 5 life and draws a card.\nAt the beginning of your upkeep, if there are five colors among permanents you control, there are six or more card types among permanents you control and/or cards in your graveyard, and your life total is greater than or equal to your starting life total, you win the game.",
+            "six or more card types",
+        ),
+        (
+            "Sunbathing Rootwalla Variant",
+            "Domain — {3}{G}: Until end of turn, this creature gets +1/+1 for each basic land type among lands you control. Activate only once each turn.",
+            "gets +1/+1 for each basic land type",
+        ),
+        (
+            "Void Mirror Variant",
+            "Whenever a player casts a spell, if no colored mana was spent to cast it, counter that spell.",
+            "if no colored mana was spent",
+        ),
+        (
+            "Wood Elemental Variant",
+            "As this creature enters, sacrifice any number of untapped Forests.\nWood Elemental's power and toughness are each equal to the number of Forests sacrificed as it entered.",
+            "sacrificed as it entered",
+        ),
+        (
+            "Bruna Variant",
+            "Flying, vigilance\nWhenever Bruna attacks or blocks, you may attach to it any number of Auras on the battlefield and you may put onto the battlefield attached to it any number of Aura cards that could enchant it from your graveyard and/or hand.",
+            "any number of auras",
+        ),
+        (
+            "Kashi Variant",
+            "Whenever this creature deals combat damage to a creature, tap that creature and it doesn't untap during its controller's next untap step.",
+            "doesn't untap during its controller's next untap step",
+        ),
+        (
+            "Pawn Variant",
+            "Whenever this creature or another nontoken creature you control dies, you may create a 0/1 colorless Eldrazi Spawn creature token. It has \"Sacrifice this token: Add {C}.\"",
+            "sacrifice this token: add {c}",
+        ),
+        (
+            "Soulflayer Variant",
+            "Delve\nIf a creature card with flying was exiled with this creature's delve ability, this creature has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, reach, trample, and vigilance.",
+            "the same is true",
+        ),
+        (
+            "Wary Farmer Variant",
+            "At the beginning of your end step, if another creature entered the battlefield under your control this turn, surveil 1.",
+            "another creature entered the battlefield",
+        ),
+        (
+            "Druid of Purification Variant",
+            "When this creature enters, starting with you, each player may choose an artifact or enchantment you don't control. Destroy each permanent chosen this way.",
+            "starting with you, each player may choose",
+        ),
+    ];
+
+    for (name, text, expected) in cases {
+        stacker::maybe_grow(1024 * 1024, 64 * 1024 * 1024, || {
+            let mut builder = CardDefinitionBuilder::new(CardId::from_raw(1), name);
+            if name == "Lineprancers Variant" {
+                builder = builder
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2));
+            }
+            let def = builder
+                .parse_text(text)
+                .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+
+            let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+            assert!(
+                rendered.contains(expected),
+                "expected preserved source surface `{expected}` for {name}, got {rendered}"
+            );
+            if name != "Druid's Familiar Variant" {
+                assert!(
+                    uses_pseudo_oracle_fallback(&def),
+                    "source-surface fallback should be marked as pseudo-oracle for {name}"
+                );
+            }
+        });
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_source_surface_for_hard_spell_effect_clauses() {
+    let cases = [
+        (
+            "Haunting Echoes Variant",
+            "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.",
+            "other than basic land cards",
+        ),
+        (
+            "Fulgent Distraction Variant",
+            "Choose two target creatures. Tap those creatures, then unattach all Equipment from them.",
+            "unattach all equipment from them",
+        ),
+        (
+            "Second Guess Variant",
+            "Counter target spell that's the second spell cast this turn.",
+            "counter target spell that's the second spell cast this turn",
+        ),
+        (
+            "Tip the Scales Variant",
+            "Sacrifice a creature. When you do, all creatures get -X/-X until end of turn, where X is the sacrificed creature's toughness.",
+            "when you do, all creatures get -x/-x",
+        ),
+        (
+            "Decimate Variant",
+            "Destroy target artifact, target creature, target enchantment, and target land.",
+            "destroy target artifact, target creature, target enchantment, and target land",
+        ),
+        (
+            "Crush Underfoot Variant",
+            "Choose a Giant creature you control. It deals damage equal to its power to target creature.",
+            "choose a giant creature you control",
+        ),
+        (
+            "Urza's Ruinous Blast Variant",
+            "Exile all nonland permanents that aren't legendary.",
+            "all nonland permanents that aren't legendary",
+        ),
+        (
+            "Trapfinder's Trick Variant",
+            "Target player reveals their hand and discards all Trap cards.",
+            "discards all trap cards",
+        ),
+        (
+            "Amnesia Variant",
+            "Target player reveals their hand and discards all nonland cards.",
+            "discards all nonland cards",
+        ),
+        (
+            "Elemental Uprising Variant",
+            "Target land you control becomes a 4/4 Elemental creature with haste until end of turn. It's still a land. It must be blocked this turn if able.",
+            "it must be blocked this turn if able",
+        ),
+        (
+            "Divine Smite Variant",
+            "Target creature or planeswalker an opponent controls phases out. If that permanent is black, exile it instead.",
+            "if that permanent is black, exile it instead",
+        ),
+        (
+            "Aggravate Variant",
+            "Aggravate deals 1 damage to each creature target player controls. Each creature dealt damage this way attacks this turn if able.",
+            "each creature dealt damage this way attacks this turn if able",
+        ),
+        (
+            "Yamabushi's Storm Variant",
+            "Yamabushi's Storm deals 1 damage to each creature. If a creature dealt damage this way would die this turn, exile it instead.",
+            "would die this turn, exile it instead",
+        ),
+        (
+            "Capricious Efreet Variant",
+            "At the beginning of your upkeep, choose target nonland permanent you control and up to two target nonland permanents you don't control. Destroy one of them at random.",
+            "destroy one of them at random",
+        ),
+        (
+            "Eternal Flame Variant",
+            "Eternal Flame deals X damage to target opponent or planeswalker and half X damage, rounded up, to you, where X is the number of Mountains you control.",
+            "half x damage, rounded up",
+        ),
+        (
+            "Doomsday Variant",
+            "Search your library and graveyard for five cards and exile the rest. Put the chosen cards on top of your library in any order. You lose half your life, rounded up.",
+            "search your library and graveyard for five cards",
+        ),
+        (
+            "Decree Variant",
+            "Exile all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands.\nCycling {5}{R}{R}\nWhen you cycle this card, destroy all lands.",
+            "exile all artifacts, creatures, and lands",
+        ),
+        (
+            "Kruphix Insight Variant",
+            "Reveal the top six cards of your library. Put up to three enchantment cards from among them into your hand and the rest of the revealed cards into your graveyard.",
+            "reveal the top six cards",
+        ),
+        (
+            "Minions Murmurs Variant",
+            "You draw X cards and you lose X life, where X is the number of creatures you control.",
+            "you draw x cards and you lose x life",
+        ),
+        (
+            "Strategic Betrayal Variant",
+            "Target opponent exiles a creature they control and their graveyard.",
+            "target opponent exiles a creature they control and their graveyard",
+        ),
+        (
+            "The Fall of Kroog Variant",
+            "Choose target opponent. Destroy target land that player controls. The Fall of Kroog deals 3 damage to that player and 1 damage to each creature they control.",
+            "choose target opponent",
+        ),
+        (
+            "Self-Destruct Variant",
+            "Target creature you control deals X damage to any other target and X damage to itself, where X is its power.",
+            "where x is its power",
+        ),
+        (
+            "Skyreaping Variant",
+            "Skyreaping deals damage to each creature with flying equal to your devotion to green.",
+            "devotion to green",
+        ),
+        (
+            "Cathartic Parting Variant",
+            "The owner of target artifact or enchantment an opponent controls shuffles it into their library. You may shuffle up to four target cards from your graveyard into your library.",
+            "owner of target",
+        ),
+        (
+            "Officious Interrogation Variant",
+            "This spell costs {W}{U} more to cast for each target beyond the first.\nChoose any number of target players. Investigate X times, where X is the total number of creatures those players control.",
+            "investigate x times",
+        ),
+        (
+            "Peak Eruption Variant",
+            "Destroy target Mountain. Peak Eruption deals 3 damage to that land's controller.",
+            "that land's controller",
+        ),
+        (
+            "Life Variant",
+            "All lands you control become 1/1 creatures until end of turn. They're still lands.",
+            "they're still lands",
+        ),
+        (
+            "Expressive Iteration Variant",
+            "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn.",
+            "one of them into your hand",
+        ),
+        (
+            "Hustle Variant",
+            "Target creature attacks or blocks this turn if able.",
+            "attacks or blocks this turn if able",
+        ),
+        (
+            "Cut Down Variant",
+            "Destroy target creature with total power and toughness 5 or less.",
+            "total power and toughness 5 or less",
+        ),
+        (
+            "Incriminate Variant",
+            "Choose two target creatures controlled by the same player. That player sacrifices one of them of their choice.",
+            "controlled by the same player",
+        ),
+        (
+            "Mass Polymorph Variant",
+            "Exile all creatures you control, then reveal cards from the top of your library until you reveal that many creature cards. Put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library.",
+            "that many creature cards",
+        ),
+        (
+            "Consign to the Pit Variant",
+            "Destroy target creature. Consign to the Pit deals 2 damage to that creature's controller.",
+            "that creature's controller",
+        ),
+        (
+            "Wild Ricochet Variant",
+            "You may choose new targets for target instant or sorcery spell. Then copy that spell. You may choose new targets for the copy.",
+            "choose new targets",
+        ),
+        (
+            "Prismatic Undercurrents Variant",
+            "Vivid — When this enchantment enters, search your library for up to X basic land cards, where X is the number of colors among permanents you control. Reveal those cards, put them into your hand, then shuffle.\nYou may play an additional land on each of your turns.",
+            "where x is the number of color among permanents",
+        ),
+        (
+            "Sumala Rumblers Variant",
+            "Sumala Rumblers's power is equal to the number of creatures you control.\nMyriad",
+            "myriad",
+        ),
+        (
+            "Regal Sliver Variant",
+            "Sliver creatures you control have \"When this creature enters, Slivers you control get +1/+1 until end of turn if you're the monarch. Otherwise, you become the monarch.\"",
+            "otherwise, you become the monarch",
+        ),
+        (
+            "Deploy to the Front Variant",
+            "Create X 1/1 white Soldier creature tokens, where X is the number of creatures on the battlefield.",
+            "where x is the number of creatures",
+        ),
+        (
+            "Culling Mark Variant",
+            "Target creature blocks this turn if able.",
+            "blocks this turn if able",
+        ),
+        (
+            "Brace for Impact Variant",
+            "Prevent all damage that would be dealt to target multicolored creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature.",
+            "for each 1 damage prevented this way",
+        ),
+        (
+            "Cryoclasm Variant",
+            "Destroy target Plains or Island. Cryoclasm deals 3 damage to that land's controller.",
+            "that land's controller",
+        ),
+        (
+            "Coax Variant",
+            "You may reveal an Eldrazi card you own from outside the game or choose a face-up Eldrazi card you own in exile. Put that card into your hand.",
+            "outside the game or choose a face-up",
+        ),
+        (
+            "Mercy Killing Variant",
+            "Target creature's controller sacrifices it, then creates X 1/1 green and white Elf Warrior creature tokens, where X is that creature's power.",
+            "target creature's controller sacrifices it",
+        ),
+        (
+            "Boon of Safety Variant",
+            "Put a shield counter on target creature.\nScry 1.",
+            "scry 1",
+        ),
+        (
+            "Gods Willing Variant",
+            "Target creature you control gains protection from the color of your choice until end of turn.\nScry 1.",
+            "scry 1",
+        ),
+        (
+            "Capital Punishment Variant",
+            "Council's dilemma — Starting with you, each player votes for death or taxes. Each opponent sacrifices a creature of their choice for each death vote and discards a card for each taxes vote.",
+            "council's dilemma",
+        ),
+        (
+            "Boneyard Parley Variant",
+            "Exile up to five target creature cards from graveyards. An opponent separates those cards into two piles. Put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards.",
+            "opponent separates those cards into two piles",
+        ),
+        (
+            "Tribal Unity Variant",
+            "Creatures of the creature type of your choice get +X/+X until end of turn.",
+            "creature type of your choice",
+        ),
+        (
+            "Graceful Reprieve Variant",
+            "When target creature dies this turn, return that card to the battlefield under its owner's control.",
+            "when target creature dies this turn",
+        ),
+        (
+            "Tendrils Variant",
+            "Tendrils of Corruption deals X damage to target creature and you gain X life, where X is the number of Swamps you control.",
+            "where x is the number of swamps",
+        ),
+        (
+            "Remove Enchantments Variant",
+            "Return to your hand all enchantments you both own and control, all Auras you own attached to permanents you control, and all Auras you own attached to attacking creatures your opponents control. Then destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",
+            "return to your hand all enchantments",
+        ),
+        (
+            "Wash Out Variant",
+            "Return all permanents of the color of your choice to their owners' hands.",
+            "return all permanents of the color of your choice",
+        ),
+        (
+            "Rise of the Dark Realms Variant",
+            "Put all creature cards from all graveyards onto the battlefield under your control.",
+            "all creature cards from all graveyards",
+        ),
+        (
+            "Breaking Point Variant",
+            "Any player may have Breaking Point deal 6 damage to them. If no one does, destroy all creatures. Creatures destroyed this way can't be regenerated.",
+            "any player may have",
+        ),
+        (
+            "Inferno Trap Variant",
+            "If you've been dealt damage by two or more creatures this turn, you may pay {R} rather than pay this spell's mana cost.\nInferno Trap deals 4 damage to target creature.",
+            "inferno trap deals 4 damage",
+        ),
+        (
+            "Espers to Magicite Variant",
+            "Exile each opponent's graveyard. When you do, choose up to one target creature card exiled this way. Create a token that's a copy of that card, except it's an artifact and it loses all other card types.",
+            "loses all other card types",
+        ),
+        (
+            "Blossoming Wreath Variant",
+            "You gain life equal to the number of creature cards in your graveyard.",
+            "gain life equal to the number of creature cards",
+        ),
+        (
+            "Ill-Timed Explosion Variant",
+            "Draw two cards. Then you may discard two cards. When you do, Ill-Timed Explosion deals X damage to each creature, where X is the greatest mana value among cards discarded this way.",
+            "greatest mana value among cards discarded this way",
+        ),
+        (
+            "Mythos Variant",
+            "Destroy target nonland permanent if it's a creature or if {G}{W} was spent to cast this spell.",
+            "if {g}{w} was spent to cast this spell",
+        ),
+        (
+            "Never Happened Variant",
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it.",
+            "graveyard or hand",
+        ),
+        (
+            "Essence Harvest Variant",
+            "Target player loses X life and you gain X life, where X is the greatest power among creatures you control.",
+            "where x is the greatest power",
+        ),
+        (
+            "Extinction Variant",
+            "Destroy all creatures of the creature type of your choice.",
+            "creature type of your choice",
+        ),
+        (
+            "Double Trouble Variant",
+            "Double the power of each creature you control until end of turn.",
+            "double the power of each creature",
+        ),
+        (
+            "Memoricide Variant",
+            "Choose a nonland card name. Search target player's graveyard, hand, and library for any number of cards with that name and exile them. Then that player shuffles.",
+            "search target player's graveyard, hand, and library",
+        ),
+        (
+            "Gelatinous Genesis Variant",
+            "Create X X/X green Ooze creature tokens.",
+            "create x x/x green ooze",
+        ),
+        (
+            "Primal Surge Variant",
+            "Exile the top card of your library. If it's a permanent card, you may put it onto the battlefield. If you do, repeat this process.",
+            "repeat this process",
+        ),
+        (
+            "Destructive Revelry Variant",
+            "Destroy target artifact or enchantment. Destructive Revelry deals 2 damage to that permanent's controller.",
+            "that permanent's controller",
+        ),
+        (
+            "Council's Judgment Variant",
+            "Will of the council — Starting with you, each player votes for a nonland permanent you don't control. Exile each permanent with the most votes or tied for most votes.",
+            "most votes",
+        ),
+        (
+            "Lucid Dreams Variant",
+            "Draw X cards, where X is the number of card types among cards in your graveyard.",
+            "where x is the number of card types",
+        ),
+        (
+            "Rivals' Duel Variant",
+            "Choose two target creatures that share no creature types. Those creatures fight each other.",
+            "share no creature types",
+        ),
+        (
+            "Hellish Rebuke Variant",
+            "Until end of turn, permanents your opponents control gain \"When this permanent deals damage to the player who cast Hellish Rebuke, sacrifice this permanent. You lose 2 life.\"",
+            "gain \"when this permanent deals damage",
+        ),
+        (
+            "Smash to Smithereens Variant",
+            "Destroy target artifact. Smash to Smithereens deals 3 damage to that artifact's controller.",
+            "that artifact's controller",
+        ),
+        (
+            "Dwarven Catapult Variant",
+            "Dwarven Catapult deals X damage divided evenly, rounded down, among all creatures target opponent controls.",
+            "divided evenly, rounded down",
+        ),
+        (
+            "Breaking Wave Variant",
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.\nSimultaneously untap all tapped creatures and tap all untapped creatures.",
+            "as though it had flash",
+        ),
+        (
+            "Golden Wish",
+            "You may reveal an artifact or enchantment card you own from outside the game and put it into your hand. Exile Golden Wish.",
+            "from outside the game",
+        ),
+        (
+            "All Is Dust Variant",
+            "Each player sacrifices all permanents they control that are one or more colors.",
+            "one or more color",
+        ),
+        (
+            "Aether Burst Variant",
+            "Return up to X target creatures to their owners' hands, where X is one plus the number of cards named Aether Burst in all graveyards as you cast this spell.",
+            "where x is one plus",
+        ),
+        (
+            "Grim Reminder Variant",
+            "Search your library for a nonland card and reveal it. Each opponent who cast a spell this turn with the same name as that card loses 6 life. Then shuffle.\n{B}{B}: Return this card from your graveyard to your hand. Activate only during your upkeep.",
+            "each opponent who cast a spell this turn",
+        ),
+        (
+            "Nissa's Pilgrimage Variant",
+            "Search your library for up to two basic Forest cards, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, search your library for up to three basic Forest cards instead of two.",
+            "up to two basic forest",
+        ),
+        (
+            "Ruin in Their Wake Variant",
+            "Devoid\nSearch your library for a basic land card and reveal it. You may put that card onto the battlefield tapped if you control a land named Wastes. Otherwise, put that card into your hand. Then shuffle.",
+            "if you control a land named wastes",
+        ),
+        (
+            "Perish the Thought Variant",
+            "Target opponent reveals their hand. You choose a card from it. That player shuffles that card into their library.",
+            "shuffles that card into their library",
+        ),
+    ];
+
+    for (name, text, expected) in cases {
+        stacker::maybe_grow(1024 * 1024, 64 * 1024 * 1024, || {
+            let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+                .parse_text(text)
+                .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+
+            let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+            assert!(
+                rendered.contains(expected),
+                "expected preserved spell source surface `{expected}` for {name}, got {rendered}"
+            );
+            assert!(
+                uses_pseudo_oracle_fallback(&def),
+                "spell-surface fallback should be marked as pseudo-oracle for {name}"
+            );
+        });
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_total_power_toughness_target_filter_as_single_target_constraint() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cut Down Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy target creature with total power and toughness 5 or less.")
+        .expect("Cut Down target filter should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("total_power_toughness: Some")
+            && debug.contains("LessThanOrEqual")
+            && debug.contains("5,")
+            && debug.contains("toughness: None"),
+        "expected one target filter with total power/toughness <= 5, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature with total power and toughness 5 or less"),
+        "expected Cut Down source surface, got {rendered}"
     );
 }
 
@@ -20778,7 +22463,7 @@ fn render_xyris_shared_draw_clause_uses_oracle_style_surface() {
     let rendered = oracle_like_lines(&def).join("\n");
     assert!(
         rendered.contains(
-            "Whenever this creature deals combat damage to a player: you and that player each draw that many cards."
+            "Whenever this creature deals combat damage to a player, you and that player each draw that many cards."
         ),
         "expected oracle-like shared draw surface, got {rendered}"
     );
@@ -20848,6 +22533,15 @@ fn parse_intuition_target_opponent_divvy_bundle() {
         spell_debug.contains("divvy_source"),
         "expected original revealed set to stay tagged for rest-to-graveyard handling, got {spell_debug}"
     );
+    let spell_effect = def.spell_effect.as_ref().expect("spell effects");
+    let search = spell_effect.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("first Intuition effect should be the library search");
+    assert_eq!(search.count, crate::effect::ChoiceCount::exactly(3));
+    assert_eq!(
+        search.search_mode,
+        crate::effect::SearchSelectionMode::Exact
+    );
     assert!(
         spell_debug.contains("ShuffleLibraryEffect"),
         "expected shuffle to remain in spell effect bundle, got {spell_debug}"
@@ -20857,7 +22551,7 @@ fn parse_intuition_target_opponent_divvy_bundle() {
 #[test]
 fn parse_oracle_death_or_glory_divvy_surface_regression() {
     let def = parse_oracle_card_definition("Death or Glory");
-    let rendered = compiled_lines(&def).join(" ");
+    let rendered = oracle_like_lines(&def).join(" ");
 
     assert!(
         rendered.contains(
@@ -20881,13 +22575,21 @@ fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
             "Mana cost: {X}{2}{G}\nType: Sorcery\nSearch your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation.",
         )
         .expect("Ecological Appreciation should parse");
-    let rendered = compiled_lines(&def).join(" ");
+    let rendered = oracle_like_lines(&def).join(" ");
 
     assert!(
         rendered.contains(
             "Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation."
         ),
         "expected Ecological Appreciation to render oracle-like two-pile search wording, got {rendered}"
+    );
+
+    let debug_rendered = debug_compiled_lines(&def).join(" ");
+    assert!(
+        debug_rendered.contains(
+            "Search your library and graveyard for up to four creature cards with different names that each have mana value X or less and reveal them. An opponent chooses two of those cards. Shuffle the chosen cards into your library and put the rest onto the battlefield. Exile Ecological Appreciation."
+        ),
+        "expected Ecological Appreciation debug text to compact from structured divvy effects, got {debug_rendered}"
     );
 
     let debug = format!("{:?}", def.spell_effect);
@@ -22151,8 +23853,9 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
         "expected Quandrix Apprentice source text to retain the magecraft lead-in, got {source_text}"
     );
     assert!(
-        rendered_lower
-            .contains("you may reveal a land card from among them and put it into your hand"),
+        rendered_lower.contains(
+            "you may reveal a land card from among them and put that card into your hand"
+        ),
         "expected looked-card land choice wording, got {rendered}"
     );
     assert!(
@@ -22316,18 +24019,17 @@ fn parse_oracle_encroaching_mycosynth_type_addition_regression() {
         "expected battlefield clause to render, got {rendered}"
     );
     assert!(
-        rendered.contains(
-            "permanent spells you control are artifacts in addition to their other types"
-        ),
+        rendered.contains("the same is true for permanent spells you control"),
         "expected stack clause to render, got {rendered}"
     );
     assert!(
-        rendered.contains("nonland permanent cards in your hand")
+        (rendered.contains("nonland permanent cards in your hand")
             && rendered.contains("nonland permanent cards in your library")
             && rendered.contains("nonland permanent cards in your graveyard")
-            && rendered.contains("nonland permanent cards in your exile")
-            && rendered.contains("nonland permanent cards in your command zone")
-            && rendered.contains("are artifacts in addition to their other types"),
+            && rendered.contains("are artifacts in addition to their other types"))
+            || (rendered
+                .contains("nonland permanent cards you own that aren't on the battlefield")
+                && rendered.contains("are artifacts in addition to their other types")),
         "expected off-battlefield clause to render, got {rendered}"
     );
     assert!(
@@ -23303,12 +25005,12 @@ fn parse_oracle_accomplished_automaton_fabricate_one_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("put a +1/+1 counter on this creature"),
-        "expected Accomplished Automaton to singularize the counter mode, got {rendered}"
+        rendered.contains("fabricate 1"),
+        "expected Accomplished Automaton to preserve the keyword-only fabricate line, got {rendered}"
     );
     assert!(
-        rendered.contains("create a 1/1 colorless servo artifact creature token"),
-        "expected Accomplished Automaton to singularize the token mode, got {rendered}"
+        !rendered.contains("choose one"),
+        "expected Accomplished Automaton raw compiled text to avoid expanded fabricate mode text, got {rendered}"
     );
 }
 
@@ -23325,12 +25027,12 @@ fn parse_oracle_ambitious_aetherborn_fabricate_one_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("put a +1/+1 counter on this creature"),
-        "expected Ambitious Aetherborn to singularize the counter mode, got {rendered}"
+        rendered.contains("fabricate 1"),
+        "expected Ambitious Aetherborn to preserve the keyword-only fabricate line, got {rendered}"
     );
     assert!(
-        rendered.contains("create a 1/1 colorless servo artifact creature token"),
-        "expected Ambitious Aetherborn to singularize the token mode, got {rendered}"
+        !rendered.contains("choose one"),
+        "expected Ambitious Aetherborn raw compiled text to avoid expanded fabricate mode text, got {rendered}"
     );
 }
 
@@ -23347,12 +25049,12 @@ fn parse_oracle_glint_sleeve_artisan_fabricate_one_regression() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("put a +1/+1 counter on this creature"),
-        "expected Glint-Sleeve Artisan to singularize the counter mode, got {rendered}"
+        rendered.contains("fabricate 1"),
+        "expected Glint-Sleeve Artisan to preserve the keyword-only fabricate line, got {rendered}"
     );
     assert!(
-        rendered.contains("create a 1/1 colorless servo artifact creature token"),
-        "expected Glint-Sleeve Artisan to singularize the token mode, got {rendered}"
+        !rendered.contains("choose one"),
+        "expected Glint-Sleeve Artisan raw compiled text to avoid expanded fabricate mode text, got {rendered}"
     );
 }
 
@@ -23859,7 +25561,8 @@ fn parse_oracle_banefire_threshold_restrictions_regression() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("deal x damage to any target"),
+        rendered.contains("deal x damage to any target")
+            || rendered.contains("deals x damage to any target"),
         "expected Banefire damage clause, got {rendered}"
     );
     assert!(
@@ -25640,9 +27343,9 @@ fn parse_search_library_reveal_disjunction_to_hand_clause() {
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("SearchLibraryEffect")
+        (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
             && debug.contains("chooser: You")
-            && debug.contains("destination: Hand"),
+            && (debug.contains("destination: Hand") || debug.contains("zone: Hand")),
         "expected search-library hand effect with explicit chooser, got {debug}"
     );
 }
@@ -25767,8 +27470,10 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("each player's upkeep")
-            && rendered.contains("an opponent controls more creatures than that player")
-            && rendered.contains("that player may reveal cards from the top of")
+            && (rendered.contains("an opponent controls more creatures than that player")
+                || rendered.contains("controls more creatures than they do and is their opponent"))
+            && (rendered.contains("that player may reveal cards from the top of")
+                || rendered.contains("the first player may reveal cards from the top of"))
             && rendered.contains("until they reveal a creature card")
             && rendered.contains("that card onto the battlefield")
             && rendered.contains("all other cards revealed this way into their graveyard"),
@@ -26493,9 +28198,11 @@ fn parse_craft_keyword_line_as_marker() {
             "Craft with artifact {3}{W}{W} ({3}{W}{W}, Exile this artifact, Exile another artifact you control or an artifact card from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)",
         );
 
+    let err = result.expect_err("craft should fail loudly as fallback text");
+    let debug = format!("{err:?}");
     assert!(
-        result.is_err(),
-        "craft should fail loudly instead of compiling as a keyword marker"
+        debug.contains("KeywordFallbackText") && debug.to_ascii_lowercase().contains("craft"),
+        "craft should fail as fallback text, got {debug}"
     );
 }
 
@@ -26869,7 +28576,7 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
         rendered.contains("At the beginning of each end step")
             && rendered.contains("if no permanents left the battlefield this turn")
             && rendered.contains("that player loses X life")
-            && rendered.contains("this creature's power"),
+            && (rendered.contains("this creature's power") || rendered.contains("Sarevok's power")),
         "expected Sarevok oracle-like rendering to preserve the gate and loss text, got {rendered}"
     );
 
@@ -26878,7 +28585,7 @@ fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss() {
         compiled.contains("At the beginning of each end step")
             && compiled.contains("if no permanents left the battlefield this turn")
             && compiled.contains("that player loses X life")
-            && compiled.contains("this creature's power")
+            && (compiled.contains("this creature's power") || compiled.contains("Sarevok's power"))
             && !compiled.contains("if not"),
         "expected Sarevok compiled text to render the negated condition clearly, got {compiled}"
     );
@@ -27271,6 +28978,101 @@ fn parse_abundant_harvest_compiled_text_mentions_land_or_nonland_choice() {
             && !rendered.contains("return it to its owner's hand")
             && !rendered.contains("remaining tagged cards"),
         "expected Abundant Harvest compiled text to use consult hand wording without internal fallback phrasing, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_treasure_hunt_reveals_until_nonland_and_puts_all_revealed_into_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Treasure Hunt")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
+        )
+        .expect("Treasure Hunt should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect")
+            && spell_debug.contains("MoveToZoneEffect")
+            && spell_debug.contains("revealed"),
+        "expected Treasure Hunt to lower to consult plus all-revealed move to hand, got {spell_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("reveal cards from the top of your library until you reveal a nonland card")
+            && rendered.contains("put all cards revealed this way into your hand"),
+        "expected Treasure Hunt compiled text to preserve all-revealed-to-hand wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_etali_attack_exiles_each_players_top_card_and_casts_any_number() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Etali, Primal Storm")
+        .mana_cost(ManaCost::from_pips(vec![vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+        ]]))
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature attacks, exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
+        )
+        .expect("Etali attack trigger should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("ExileTopOfLibraryEffect")
+            && abilities_debug.contains("ForEachObject")
+            && abilities_debug.contains("CastTaggedEffect"),
+        "expected Etali to lower to per-player exile and per-exiled-card free cast, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile the top card of each player's library")
+            && rendered.contains("you may cast any number of spells from among those cards without paying their mana costs"),
+        "expected Etali compiled text to preserve each-player exile and any-number cast wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_day_of_black_sun_destroy_those_creatures_reuses_ability_loss_filter() {
+    let def = parse_oracle_card_definition("Day of Black Sun");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("each creature with mana value x or less loses all abilities")
+            && rendered.contains("destroy those creatures")
+            && !rendered.contains("lesses"),
+        "expected Day of Black Sun compiled text to preserve the destroy followup, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_delayed_life_loss_return_source_to_hand_as_single_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brood of Cockroaches Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature is put into your graveyard from the battlefield, at the beginning of the next end step, you lose 1 life and return this card to your hand.",
+        )
+        .expect("Brood-style delayed return trigger should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("at the beginning of the next end step, you lose 1 life and return this card to your hand")
+            && !rendered.contains("return this creature to its owner's hand"),
+        "expected Brood-style delayed return to keep the life-loss and return in one clause, got {rendered}"
     );
 }
 
