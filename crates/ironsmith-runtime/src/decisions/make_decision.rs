@@ -145,7 +145,7 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 .modes
                 .iter()
                 .map(|m| {
-                    super::context::SelectableOption::with_legality(
+                    let option = super::context::SelectableOption::with_legality(
                         m.index,
                         m.description.clone(),
                         m.legal,
@@ -153,7 +153,12 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                     .with_repeatability(
                         ctx.spec.allow_repeated_modes,
                         Some(ctx.spec.max_modes.min(u32::MAX as usize) as u32),
-                    )
+                    );
+                    if let Some(object_ids) = &m.related_object_ids {
+                        option.with_related_objects(object_ids.clone())
+                    } else {
+                        option
+                    }
                 })
                 .collect();
             let select_ctx = super::context::SelectOptionsContext::new(

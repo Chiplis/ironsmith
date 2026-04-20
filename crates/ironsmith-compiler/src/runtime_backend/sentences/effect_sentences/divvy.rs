@@ -302,27 +302,42 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             ],
         )
     {
-        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::Opponent,
-            effects: vec![
-                EffectAst::ChooseObjects {
+        let chosen_pile_filter = ObjectFilter::creature()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .match_tagged(
+                TagKey::from("divvy_pile"),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+        let other_pile_filter = ObjectFilter::creature()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .not_tagged(TagKey::from("divvy_pile"));
+
+        return Ok(Some(vec![
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::Opponent,
+                effects: vec![EffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
                     count_value: None,
+                    player: PlayerAst::That,
+                    tag: TagKey::from("divvy_pile"),
+                }],
+            },
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::Opponent,
+                effects: vec![EffectAst::UnlessAction {
                     player: PlayerAst::You,
-                    tag: TagKey::from("divvy_chosen"),
-                },
-                EffectAst::SacrificeAll {
-                    filter: ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::IteratedPlayer)
-                        .match_tagged(
-                            TagKey::from("divvy_chosen"),
-                            TaggedOpbjectRelation::IsTaggedObject,
-                        ),
-                    player: PlayerAst::Implicit,
-                },
-            ],
-        }]));
+                    effects: vec![EffectAst::SacrificeAll {
+                        filter: chosen_pile_filter,
+                        player: PlayerAst::Implicit,
+                    }],
+                    alternative: vec![EffectAst::SacrificeAll {
+                        filter: other_pile_filter,
+                        player: PlayerAst::Implicit,
+                    }],
+                }],
+            },
+        ]));
     }
 
     if first_sentence_has_prefix(

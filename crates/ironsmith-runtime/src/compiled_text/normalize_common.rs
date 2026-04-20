@@ -4410,11 +4410,6 @@ pub(super) fn normalize_reveal_tagged_draw_clause(line: &str) -> Option<String> 
     None
 }
 
-pub(super) fn normalize_zero_pt_prefix(text: &str) -> String {
-    text.replace(" gets 0/+", " gets +0/+")
-        .replace(" gets 0/", " gets +0/")
-}
-
 pub(super) fn strip_square_bracketed_segments(text: &str) -> String {
     if !text.contains('[') {
         return text.to_string();
@@ -5659,50 +5654,6 @@ pub(super) fn normalize_search_you_own_clause(text: &str) -> Option<String> {
             ", then shuffle and put that card on top",
         );
     Some(format!("Search your library for {selection}{tail}"))
-}
-
-pub(super) fn normalize_split_search_battlefield_then_hand_clause(text: &str) -> Option<String> {
-    let trimmed = text.trim().trim_end_matches('.');
-    let (first, second) = trimmed.split_once(". ")?;
-
-    let first = first.strip_prefix("Search your library for ")?;
-    let (first_selection, first_tail) = first.split_once(", ")?;
-    let first_tail_ok = first_tail.eq_ignore_ascii_case("put it onto the battlefield tapped")
-        || first_tail.eq_ignore_ascii_case("reveal it, put it onto the battlefield tapped");
-    if !first_tail_ok {
-        return None;
-    }
-
-    let second = second.strip_prefix("Search your library for ")?;
-    let (second_selection, second_tail) = second.split_once(", ")?;
-    let second_tail_ok = second_tail
-        .eq_ignore_ascii_case("reveal it, put it into your hand, then shuffle")
-        || second_tail.eq_ignore_ascii_case("put it into your hand, then shuffle");
-    if !second_tail_ok {
-        return None;
-    }
-
-    let normalize_selection = |raw: &str| {
-        raw.trim()
-            .trim_start_matches("up to one ")
-            .trim_start_matches("a ")
-            .trim_start_matches("an ")
-            .trim_end_matches(" you own")
-            .trim_end_matches(" card")
-            .trim_end_matches(" cards")
-            .trim()
-            .to_string()
-    };
-
-    let first_subject = normalize_selection(first_selection);
-    let second_subject = normalize_selection(second_selection);
-    if first_subject.is_empty() || second_subject.is_empty() || first_subject != second_subject {
-        return None;
-    }
-
-    Some(format!(
-        "Search your library for up to two {second_subject} cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle."
-    ))
 }
 
 pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {

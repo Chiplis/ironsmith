@@ -9,12 +9,6 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-fn token(name: &str) -> CardDefinition {
-    CardDefinitionBuilder::new(CardId::new(), name)
-        .token()
-        .build()
-}
-
 fn role_token(name: &str) -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), name)
         .token()

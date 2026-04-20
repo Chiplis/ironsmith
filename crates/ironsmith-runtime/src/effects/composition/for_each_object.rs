@@ -8,12 +8,16 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
-use crate::target::TaggedOpbjectRelation;
+use crate::target::{ChooseSpec, TaggedOpbjectRelation};
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 impl EffectExecutor for ForEachObject {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
     }
 
     fn execute(

@@ -119,6 +119,11 @@ fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextEr
     parse_object_filter_lexed(&tokens, other)
 }
 
+fn filter_text_mentions_spell(text: &str) -> bool {
+    text.split(|ch: char| !ch.is_ascii_alphabetic())
+        .any(|word| matches!(word, "spell" | "spells"))
+}
+
 fn parse_card_type_word(word: &str) -> Option<CardType> {
     match word.to_ascii_lowercase().as_str() {
         "creature" | "creatures" => Some(CardType::Creature),
@@ -1797,6 +1802,11 @@ pub(crate) fn lower_activation_cost_cst(
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = parse_filter_text(filter_text, false)?;
+                if filter_text_mentions_spell(filter_text) {
+                    filter.zone = Some(crate::zone::Zone::Stack);
+                    filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+                    filter.has_mana_cost = true;
+                }
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);
                 }

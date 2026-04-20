@@ -288,14 +288,23 @@ pub(crate) fn parse_you_choose_objects_clause(
     ) {
         choose_filter.controller = None;
     }
+    let chooser = if choose_word_idx == 0 {
+        PlayerAst::Implicit
+    } else {
+        PlayerAst::You
+    };
+
     if references_it {
         choose_filter.controller = None;
         choose_filter.owner = None;
-    } else if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
+    } else if chooser == PlayerAst::You
+        && choose_filter.controller.is_none()
+        && choose_filter.owner.is_none()
+    {
         choose_filter.controller = Some(PlayerFilter::You);
     }
 
-    Ok(Some((PlayerAst::You, choose_filter, count)))
+    Ok(Some((chooser, choose_filter, count)))
 }
 
 pub(crate) fn parse_you_choose_player_clause(
@@ -568,6 +577,23 @@ mod tests {
         assert!(
             filter.owner.is_none(),
             "expected no owner pin, got {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_bare_choose_objects_clause_keeps_implicit_chooser() {
+        let tokens = tokenize_line("Choose an artifact.", 0);
+
+        let (chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse bare choose-artifact clause")
+            .expect("expected choose clause");
+
+        assert_eq!(chooser, PlayerAst::Implicit);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        assert!(
+            filter.controller.is_none(),
+            "implicit choose should let lowering bind the controller to the chooser, got {filter:?}"
         );
     }
 

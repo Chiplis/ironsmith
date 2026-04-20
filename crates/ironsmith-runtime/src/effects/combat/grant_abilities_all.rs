@@ -8,6 +8,7 @@ use crate::filter::ObjectFilter;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::static_abilities::StaticAbility;
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
 /// Effect that grants multiple abilities to all creatures matching a filter for a duration.
@@ -52,6 +53,10 @@ impl GrantAbilitiesAllEffect {
 }
 
 impl EffectExecutor for GrantAbilitiesAllEffect {
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

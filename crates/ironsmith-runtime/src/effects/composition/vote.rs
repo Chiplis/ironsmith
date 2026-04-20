@@ -96,6 +96,17 @@ impl EffectExecutor for VoteEffect {
         super::target_metadata::first_target_spec(&groups)
     }
 
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        let VoteChoice::NamedOptions(options) = &self.choice else {
+            return Vec::new();
+        };
+        let groups: Vec<&[Effect]> = options
+            .iter()
+            .map(|option| option.effects_per_vote.as_slice())
+            .collect();
+        super::target_metadata::related_object_specs(&groups)
+    }
+
     fn target_description(&self) -> &'static str {
         let VoteChoice::NamedOptions(options) = &self.choice else {
             return "target";

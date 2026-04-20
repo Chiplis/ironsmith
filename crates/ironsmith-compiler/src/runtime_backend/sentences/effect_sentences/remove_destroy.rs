@@ -338,6 +338,32 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 delayed_timing,
             ));
         }
+        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+        let chosen_this_way_suffixes: [&[&str]; 3] = [
+            &["chosen", "this", "way"],
+            &["that", "were", "chosen", "this", "way"],
+            &["that", "was", "chosen", "this", "way"],
+        ];
+        if let Some(suffix) = chosen_this_way_suffixes.iter().find(|suffix| {
+            filter_words.len() >= suffix.len()
+                && &filter_words[filter_words.len() - suffix.len()..] == **suffix
+        }) {
+            let cutoff = filter_words.len() - suffix.len();
+            let token_cutoff = if cutoff == 0 {
+                0
+            } else {
+                token_index_for_word_index(filter_tokens, cutoff).unwrap_or(filter_tokens.len())
+            };
+            let base_filter_tokens = trim_commas(&filter_tokens[..token_cutoff]);
+            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+            filter =
+                filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            return Ok(wrap_destroy_with_delayed_timing(
+                EffectAst::DestroyAll { filter },
+                delayed_timing,
+            ));
+        }
+
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(wrap_destroy_with_delayed_timing(
             EffectAst::DestroyAll { filter },

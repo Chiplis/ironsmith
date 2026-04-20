@@ -142,6 +142,45 @@ pub trait EffectExecutor:
         None
     }
 
+    /// Return structured object specs that are useful to preview when this
+    /// effect appears as one option in a player decision.
+    ///
+    /// This is display metadata only: it must not mutate game state or make any
+    /// choices. By default, targeted effects preview their target spec. Effects
+    /// that affect a proven set through an `ObjectFilter` can expose that set as
+    /// `ChooseSpec::All(filter)`.
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        self.get_target_spec().cloned().into_iter().collect()
+    }
+
+    /// Return object ids that are useful to preview when this effect appears as
+    /// one option in a player decision.
+    ///
+    /// This centralizes object preview resolution so individual effects only
+    /// need to expose structured specs, not duplicate object lookup logic.
+    fn related_object_ids_for_decision(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+    ) -> Option<Vec<ObjectId>> {
+        let specs = self.decision_related_object_specs();
+        if specs.is_empty() {
+            return None;
+        }
+
+        let mut ids = Vec::new();
+        for spec in specs {
+            if let Some(mut spec_ids) =
+                crate::effects::helpers::preview_object_ids_for_choose_spec(game, &spec, ctx)
+            {
+                ids.append(&mut spec_ids);
+            }
+        }
+        ids.sort();
+        ids.dedup();
+        Some(ids)
+    }
+
     /// Get a human-readable description of what this effect targets.
     ///
     /// Used for UI/logging during target selection.

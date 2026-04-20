@@ -180,6 +180,17 @@ fn target_object_ids(
 }
 
 impl EffectExecutor for ApplyContinuousEffect {
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        if let Some(spec) = &self.target_spec {
+            return vec![spec.clone()];
+        }
+        match &self.target {
+            EffectTarget::Filter(filter) => vec![ChooseSpec::All(filter.clone())],
+            EffectTarget::Specific(id) => vec![ChooseSpec::SpecificObject(*id)],
+            _ => Vec::new(),
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

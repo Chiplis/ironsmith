@@ -1333,6 +1333,14 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
     struct ChooseFirstObjectDecisionMaker;
 
     impl DecisionMaker for ChooseFirstObjectDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            panic!("Make an Example should not use a boolean pile-choice prompt: {ctx:?}");
+        }
+
         fn decide_objects(
             &mut self,
             _game: &GameState,
@@ -1344,6 +1352,31 @@ fn test_make_an_example_leaves_unselected_creatures_on_the_battlefield() {
                 .map(|candidate| candidate.id)
                 .take(1)
                 .collect()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert_eq!(ctx.description, "Choose a mode");
+            assert!(
+                ctx.options
+                    .iter()
+                    .any(|option| option.description == "Choose the separated pile"),
+                "expected a named separated-pile choice, got {ctx:?}"
+            );
+            assert!(
+                ctx.options.iter().any(|option| {
+                    option.description == "Choose the separated pile"
+                        && option
+                            .related_object_ids
+                            .as_ref()
+                            .is_some_and(|object_ids| !object_ids.is_empty())
+                }),
+                "expected pile options to expose their related objects, got {ctx:?}"
+            );
+            vec![0]
         }
     }
 
@@ -10533,6 +10566,14 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
     struct ChooseFirstObjectDecisionMaker;
 
     impl DecisionMaker for ChooseFirstObjectDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            panic!("Make an Example should not use a boolean pile-choice prompt: {ctx:?}");
+        }
+
         fn decide_objects(
             &mut self,
             _game: &GameState,
@@ -10544,6 +10585,31 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
                 .map(|candidate| candidate.id)
                 .take(1)
                 .collect()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert_eq!(ctx.description, "Choose a mode");
+            assert!(
+                ctx.options
+                    .iter()
+                    .any(|option| option.description == "Choose the separated pile"),
+                "expected a named separated-pile choice, got {ctx:?}"
+            );
+            assert!(
+                ctx.options.iter().any(|option| {
+                    option.description == "Choose the separated pile"
+                        && option
+                            .related_object_ids
+                            .as_ref()
+                            .is_some_and(|object_ids| !object_ids.is_empty())
+                }),
+                "expected pile options to expose their related objects, got {ctx:?}"
+            );
+            vec![0]
         }
     }
 
@@ -10591,6 +10657,131 @@ fn test_make_an_example_sacrifices_the_chosen_pile() {
     assert!(
         !game.battlefield.contains(&pile_bear_id),
         "the chosen creature should leave the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_make_an_example_multiplayer_splits_all_piles_before_caster_choices() {
+    use crate::effects::ExecutionContext;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum MakeAnExampleDecision {
+        Split(PlayerId),
+        Choose(PlayerId),
+    }
+
+    struct RecordingPileDecisionMaker {
+        calls: Vec<MakeAnExampleDecision>,
+    }
+
+    impl DecisionMaker for RecordingPileDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            panic!("Make an Example should not use a boolean pile-choice prompt: {ctx:?}");
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.calls.push(MakeAnExampleDecision::Split(ctx.player));
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.calls.push(MakeAnExampleDecision::Choose(ctx.player));
+            assert_eq!(ctx.description, "Choose a mode");
+            assert!(
+                ctx.options
+                    .iter()
+                    .any(|option| option.description == "Choose the separated pile"),
+                "expected a named separated-pile choice, got {ctx:?}"
+            );
+            assert!(
+                ctx.options.iter().any(|option| {
+                    option.description == "Choose the separated pile"
+                        && option
+                            .related_object_ids
+                            .as_ref()
+                            .is_some_and(|object_ids| !object_ids.is_empty())
+                }),
+                "expected pile options to expose their related objects, got {ctx:?}"
+            );
+            vec![0]
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let make_an_example = CardDefinitionBuilder::new(CardId::new(), "Make an Example")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile. (Piles can be empty.)",
+        )
+        .expect("Make an Example should parse");
+
+    let source_id = game.create_object_from_definition(&make_an_example, alice, Zone::Hand);
+    for (controller, name) in [
+        (bob, "Bob's First Creature"),
+        (bob, "Bob's Second Creature"),
+        (charlie, "Charlie's First Creature"),
+        (charlie, "Charlie's Second Creature"),
+    ] {
+        let creature = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&creature, controller, Zone::Battlefield);
+    }
+
+    let spell_effects = make_an_example
+        .spell_effect
+        .as_ref()
+        .expect("Make an Example should have spell effects");
+    let mut dm = RecordingPileDecisionMaker { calls: Vec::new() };
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Make an Example effect should resolve");
+    }
+
+    assert_eq!(
+        dm.calls,
+        vec![
+            MakeAnExampleDecision::Split(bob),
+            MakeAnExampleDecision::Split(charlie),
+            MakeAnExampleDecision::Choose(alice),
+            MakeAnExampleDecision::Choose(alice),
+        ],
+        "all opponents should separate their piles before the caster chooses any pile"
     );
 }
 

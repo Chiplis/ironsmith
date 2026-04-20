@@ -260,6 +260,10 @@ impl EffectExecutor for UnlessPaysEffect {
         super::target_metadata::first_target_spec(&[&self.effects])
     }
 
+    fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
+        super::target_metadata::related_object_specs(&[&self.effects])
+    }
+
     fn target_description(&self) -> &'static str {
         super::target_metadata::first_target_description(&[&self.effects], "target")
     }

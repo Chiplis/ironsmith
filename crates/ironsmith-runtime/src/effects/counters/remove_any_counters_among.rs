@@ -12,6 +12,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
+use crate::target::ChooseSpec;
 use crate::types::CardType;
 use crate::zone::Zone;
 pub use ironsmith_core::RemoveAnyCountersAmongEffect;
@@ -120,6 +121,10 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
 impl EffectExecutor for RemoveAnyCountersAmongEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
     }
 
     fn execute(

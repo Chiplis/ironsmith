@@ -1,5 +1,50 @@
 use super::*;
 
+fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(String, TaggedOpbjectRelation)> {
+    let [EffectAst::SacrificeAll { filter, .. }] = effects else {
+        return None;
+    };
+    filter.tagged_constraints.iter().find_map(|constraint| {
+        matches!(
+            constraint.relation,
+            TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::IsNotTaggedObject
+        )
+        .then(|| (constraint.tag.as_str().to_string(), constraint.relation))
+    })
+}
+
+fn binary_pile_choice_labels(
+    effects: &[EffectAst],
+    alternative: &[EffectAst],
+) -> Option<(&'static str, &'static str)> {
+    let (main_tag, main_relation) = sacrifice_all_tag_relation(effects)?;
+    let (alternative_tag, alternative_relation) = sacrifice_all_tag_relation(alternative)?;
+    if main_tag != alternative_tag
+        || !matches!(
+            (main_relation, alternative_relation),
+            (
+                TaggedOpbjectRelation::IsTaggedObject,
+                TaggedOpbjectRelation::IsNotTaggedObject
+            ) | (
+                TaggedOpbjectRelation::IsNotTaggedObject,
+                TaggedOpbjectRelation::IsTaggedObject
+            )
+        )
+    {
+        return None;
+    }
+
+    Some(match main_relation {
+        TaggedOpbjectRelation::IsTaggedObject => {
+            ("Choose the separated pile", "Choose the other pile")
+        }
+        TaggedOpbjectRelation::IsNotTaggedObject => {
+            ("Choose the other pile", "Choose the separated pile")
+        }
+        _ => return None,
+    })
+}
+
 pub(super) fn try_compile_flow_and_iteration_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -135,7 +180,23 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
-            let effect = Effect::unless_action(inner_effects, alt_effects, player_filter);
+            let effect = if matches!(player_filter, PlayerFilter::You)
+                && let Some((main_label, alternative_label)) =
+                    binary_pile_choice_labels(effects, alternative)
+            {
+                Effect::choose_one(vec![
+                    EffectMode {
+                        description: main_label.to_string(),
+                        effects: inner_effects,
+                    },
+                    EffectMode {
+                        description: alternative_label.to_string(),
+                        effects: alt_effects,
+                    },
+                ])
+            } else {
+                Effect::unless_action(inner_effects, alt_effects, player_filter)
+            };
             let mut choices = inner_choices;
             choices.extend(alt_choices);
             (vec![effect], choices)

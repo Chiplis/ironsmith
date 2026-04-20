@@ -7673,6 +7673,19 @@ fn rewrite_lexed_return_all_not_chosen_this_way_tracks_it_tag_exclusion() {
 }
 
 #[test]
+fn rewrite_lexed_destroy_each_chosen_this_way_tracks_it_tag() {
+    let text = "Destroy each permanent chosen this way.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify chosen-this-way destroy");
+
+    let parsed = parse_effect_sentence_lexed(&lexed).expect("destroy-each sentence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DestroyAll"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+    assert!(debug.contains("\"__it__\""), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_tainted_pact_loop() {
     let text = "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify tainted pact text");
@@ -8503,6 +8516,25 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter_text == "cards from your graveyard"
     ));
+
+    let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)
+        .expect("lexer should classify exile-spell activation cost");
+    let lowered = super::parse_activation_cost(&exile_spell_tokens)
+        .expect("activation-cost parser should support exiling a controlled spell");
+    let lowered_debug = format!("{lowered:#?}");
+    let lowered_debug_compact = lowered_debug.split_whitespace().collect::<String>();
+    assert!(
+        lowered_debug_compact.contains("zone:Some(Stack"),
+        "expected exile-spell cost to choose from the stack, got {lowered_debug}"
+    );
+    assert!(
+        lowered_debug_compact.contains("stack_kind:Some(Spell"),
+        "expected exile-spell cost to require a spell stack object, got {lowered_debug}"
+    );
+    assert!(
+        !lowered_debug_compact.contains("zone:Some(Battlefield"),
+        "exile-spell costs must not target battlefield objects, got {lowered_debug}"
+    );
 
     let top_library_tokens = lex_line("Exile the top two cards of your library", 0)
         .expect("lexer should classify exile-top-library activation cost");

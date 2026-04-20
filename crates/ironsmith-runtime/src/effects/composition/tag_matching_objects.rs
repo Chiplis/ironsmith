@@ -24,6 +24,17 @@ fn effect_zones(effect: &TagMatchingObjectsEffect) -> Vec<Zone> {
 }
 
 impl EffectExecutor for TagMatchingObjectsEffect {
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        effect_zones(self)
+            .into_iter()
+            .map(|zone| {
+                let mut filter = self.filter.clone();
+                filter.zone = Some(zone);
+                ChooseSpec::All(filter)
+            })
+            .collect()
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

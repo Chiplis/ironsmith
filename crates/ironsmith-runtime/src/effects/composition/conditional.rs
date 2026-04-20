@@ -60,6 +60,10 @@ impl EffectExecutor for ConditionalEffect {
         super::target_metadata::first_target_spec(&[&self.if_true, &self.if_false])
     }
 
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        super::target_metadata::related_object_specs(&[&self.if_true, &self.if_false])
+    }
+
     fn target_description(&self) -> &'static str {
         super::target_metadata::first_target_description(&[&self.if_true, &self.if_false], "target")
     }

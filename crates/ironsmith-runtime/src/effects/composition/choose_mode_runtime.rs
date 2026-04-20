@@ -31,6 +31,31 @@ fn check_mode_legal(
     true
 }
 
+fn related_object_ids_for_mode(
+    game: &GameState,
+    mode: &EffectMode,
+    ctx: &ExecutionContext,
+) -> Option<Vec<ObjectId>> {
+    let mut saw_preview = false;
+    let mut ids = Vec::new();
+
+    for effect in &mode.effects {
+        let Some(mut effect_ids) = effect.0.related_object_ids_for_decision(game, ctx) else {
+            continue;
+        };
+        saw_preview = true;
+        ids.append(&mut effect_ids);
+    }
+
+    if !saw_preview {
+        return None;
+    }
+
+    ids.sort();
+    ids.dedup();
+    Some(ids)
+}
+
 fn find_source_activated_ability_index(
     game: &GameState,
     source: ObjectId,
@@ -144,7 +169,13 @@ pub(crate) fn run_choose_mode(
             .iter()
             .enumerate()
             .map(|(i, mode)| {
-                ModeOption::with_legality(i, mode.description.clone(), is_mode_legal(i))
+                let option =
+                    ModeOption::with_legality(i, mode.description.clone(), is_mode_legal(i));
+                if let Some(object_ids) = related_object_ids_for_mode(game, mode, ctx) {
+                    option.with_related_objects(object_ids)
+                } else {
+                    option
+                }
             })
             .collect();
 
@@ -252,6 +283,8 @@ pub(crate) fn run_choose_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decision::DecisionMaker;
+    use crate::decisions::SelectOptionsContext;
     use crate::effect::{Effect, EffectMode};
     use crate::effects::ChooseModeEffect;
     use crate::game_state::TargetAssignment;
@@ -271,6 +304,22 @@ mod tests {
             .subtypes(vec![Subtype::Squirrel])
             .power_toughness(crate::card::PowerToughness::fixed(1, 1))
             .build()
+    }
+
+    #[derive(Default)]
+    struct CapturingOptionsDecisionMaker {
+        captured: Option<SelectOptionsContext>,
+    }
+
+    impl DecisionMaker for CapturingOptionsDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.captured.is_some()
+        }
+
+        fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+            self.captured = Some(ctx.clone());
+            Vec::new()
+        }
     }
 
     #[test]
@@ -418,5 +467,49 @@ mod tests {
         assert_eq!(token_count_after, token_count_before + 1);
         assert_eq!(game.player(alice).expect("alice").life, 20);
         assert_eq!(game.player(bob).expect("bob").life, 23);
+    }
+
+    #[test]
+    fn choose_mode_previews_related_objects_from_effect_target_spec() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+
+        let creature_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_002), "Mode Preview Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
+        let creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+
+        let effect = ChooseModeEffect::choose_one(vec![
+            EffectMode::new(
+                "Destroy target creature an opponent controls",
+                vec![Effect::new(crate::effects::DestroyEffect::target(
+                    ChooseSpec::Object(
+                        crate::filter::ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::Opponent),
+                    ),
+                ))],
+            ),
+            EffectMode::new("Gain 3 life", vec![Effect::gain_life(3)]),
+        ]);
+
+        let mut decision_maker = CapturingOptionsDecisionMaker::default();
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+            let result =
+                run_choose_mode(&effect, &mut game, &mut ctx).expect("choose mode prompts");
+            assert_eq!(result.count_or_zero(), 0);
+            assert!(ctx.decision_maker.awaiting_choice());
+        }
+
+        let captured = decision_maker.captured.expect("mode prompt captured");
+        assert_eq!(
+            captured.options[0].related_object_ids.as_deref(),
+            Some([creature].as_slice())
+        );
+        assert_eq!(captured.options[1].related_object_ids, None);
     }
 }

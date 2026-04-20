@@ -26,3 +26,11 @@ pub(super) fn first_target_description(
 pub(super) fn first_target_count(groups: &[&[Effect]]) -> Option<ChoiceCount> {
     first_targeted_effect(groups).and_then(|effect| effect.0.get_target_count())
 }
+
+pub(super) fn related_object_specs(groups: &[&[Effect]]) -> Vec<ChooseSpec> {
+    groups
+        .iter()
+        .flat_map(|group| group.iter())
+        .flat_map(|effect| effect.0.decision_related_object_specs())
+        .collect()
+}

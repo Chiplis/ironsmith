@@ -171,6 +171,10 @@ impl EffectExecutor for SacrificePlayerEffect {
         Some(self)
     }
 
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -211,6 +215,10 @@ impl CostExecutableEffect for SacrificePlayerEffect {
 impl EffectExecutor for SacrificeEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
     }
 
     fn execute(
@@ -449,6 +457,10 @@ impl EachPlayerSacrificesEffect {
 impl EffectExecutor for EachPlayerSacrificesEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
     }
 
     fn execute(

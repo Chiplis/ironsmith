@@ -36,6 +36,8 @@ pub struct ModeOption {
     pub description: String,
     /// Whether this mode is currently legal to choose.
     pub legal: bool,
+    /// Optional related objects this mode would affect or otherwise refers to.
+    pub related_object_ids: Option<Vec<ObjectId>>,
 }
 
 impl ModeOption {
@@ -45,6 +47,7 @@ impl ModeOption {
             index,
             description: description.into(),
             legal: true,
+            related_object_ids: None,
         }
     }
 
@@ -54,7 +57,13 @@ impl ModeOption {
             index,
             description: description.into(),
             legal,
+            related_object_ids: None,
         }
+    }
+
+    pub fn with_related_objects(mut self, object_ids: Vec<ObjectId>) -> Self {
+        self.related_object_ids = Some(object_ids);
+        self
     }
 }
 
@@ -155,11 +164,17 @@ impl DecisionSpec for ModesSpec {
             .modes
             .iter()
             .map(|m| {
-                SelectableOption::with_legality(m.index, m.description.clone(), m.legal)
-                    .with_repeatability(
-                        self.allow_repeated_modes,
-                        Some(self.max_modes.min(u32::MAX as usize) as u32),
-                    )
+                let option =
+                    SelectableOption::with_legality(m.index, m.description.clone(), m.legal)
+                        .with_repeatability(
+                            self.allow_repeated_modes,
+                            Some(self.max_modes.min(u32::MAX as usize) as u32),
+                        );
+                if let Some(object_ids) = &m.related_object_ids {
+                    option.with_related_objects(object_ids.clone())
+                } else {
+                    option
+                }
             })
             .collect();
 

@@ -33,7 +33,14 @@ export function decisionKey(decision) {
     return decision.candidates.map((c) => c.id).join(",") + `|${metaKey}`;
   }
   if (decision.options) {
-    return decision.options.map((o) => `${o.index}:${o.description}`).join(",") + `|${metaKey}`;
+    return decision.options
+      .map((o) => {
+        const related = Array.isArray(o.related_object_ids)
+          ? o.related_object_ids.join("+")
+          : "";
+        return `${o.index}:${o.description}:${related}`;
+      })
+      .join(",") + `|${metaKey}`;
   }
   if (decision.requirements) {
     return decision.requirements

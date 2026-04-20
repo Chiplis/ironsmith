@@ -1094,6 +1094,68 @@ fn value_candidate_ids_for_filter(
     ids
 }
 
+/// Non-mutating object preview for decision UI metadata.
+///
+/// This is intentionally narrower than effect resolution: it answers "which
+/// visible objects does this structured spec prove are relevant to this
+/// option?" without prompting, choosing targets, or applying fallback behavior.
+pub(crate) fn preview_object_ids_for_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext,
+) -> Vec<ObjectId> {
+    let filter_ctx = ctx.filter_context(game);
+    let mut ids: Vec<ObjectId> = value_candidate_ids_for_filter(game, filter, ctx)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+        .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+        .map(|(id, _)| id)
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+pub(crate) fn preview_object_ids_for_choose_spec(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Option<Vec<ObjectId>> {
+    match spec {
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            preview_object_ids_for_choose_spec(game, inner, ctx)
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            Some(preview_object_ids_for_filter(game, filter, ctx))
+        }
+        ChooseSpec::SpecificObject(id) => Some(vec![*id]),
+        ChooseSpec::Source => Some(vec![ctx.source]),
+        ChooseSpec::Tagged(tag) => Some(
+            ctx.get_tagged_all(tag)
+                .map(|tagged| {
+                    let mut ids: Vec<ObjectId> = tagged
+                        .iter()
+                        .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
+                        .collect();
+                    ids.sort();
+                    ids.dedup();
+                    ids
+                })
+                .unwrap_or_default(),
+        ),
+        ChooseSpec::Iterated => ctx.iteration.iterated_object.map(|id| vec![id]),
+        ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::PlayerOrPlaneswalker(_)
+        | ChooseSpec::AttackedPlayerOrPlaneswalker
+        | ChooseSpec::Player(_)
+        | ChooseSpec::SpecificPlayer(_)
+        | ChooseSpec::SourceController
+        | ChooseSpec::SourceOwner
+        | ChooseSpec::EachPlayer(_) => None,
+    }
+}
+
 fn count_matching_objects_for_player(
     game: &GameState,
     filter: &crate::filter::ObjectFilter,

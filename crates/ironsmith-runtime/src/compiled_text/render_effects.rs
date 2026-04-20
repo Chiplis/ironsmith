@@ -344,6 +344,38 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if filtered.len() == 2
+        && let Some(split_for_players) =
+            filtered[0].downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(choice_for_players) =
+            filtered[1].downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(compact) = describe_for_players_split_piles_then_choose_sacrifice_pair(
+            split_for_players,
+            choice_for_players,
+        )
+    {
+        return compact;
+    }
+
+    let visible_effects = filtered
+        .iter()
+        .copied()
+        .filter(|effect| {
+            !effect
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
+        })
+        .collect::<Vec<_>>();
+
+    if visible_effects.len() == 2
+        && let Some(for_players) =
+            visible_effects[0].downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(destroy) = visible_effects[1].downcast_ref::<crate::effects::DestroyEffect>()
+        && let Some(compact) =
+            describe_for_players_may_choose_then_destroy_chosen(for_players, destroy)
+    {
+        return compact;
+    }
+    if filtered.len() == 2
         && let Some(life_loss) = filtered[0].downcast_ref::<crate::effects::LoseLifeEffect>()
         && let Some(return_to_hand) =
             filtered[1].downcast_ref::<crate::effects::ReturnToHandEffect>()
@@ -5680,38 +5712,6 @@ pub(super) fn describe_for_each_tagged_this_way_subject(filter: &ObjectFilter) -
     Some(format!("For each {subject} {action} this way"))
 }
 
-pub(super) fn normalize_put_counter_number_for_each(line: &str) -> Option<String> {
-    let (before, after) = split_once_ascii_ci(line, "put the number of ")?;
-    let (count_and_counter, after_target) = after.split_once(" counter(s) on ")?;
-    let (target, suffix) = after_target
-        .split_once(". ")
-        .map(|(target, tail)| (target, format!(". {tail}")))
-        .unwrap_or_else(|| (after_target.trim_end_matches('.'), String::new()));
-    let target = target.trim();
-
-    let count_filter = if let Some(filter) = count_and_counter.strip_suffix(" +1/+1") {
-        format!("a +1/+1 counter on {target} for each {filter}")
-    } else if let Some(filter) = count_and_counter.strip_suffix(" -1/-1") {
-        format!("a -1/-1 counter on {target} for each {filter}")
-    } else {
-        return None;
-    };
-
-    let mut rewritten = String::with_capacity(line.len());
-    rewritten.push_str(before);
-    if !before.is_empty() && !before.ends_with(' ') {
-        rewritten.push(' ');
-    }
-    rewritten.push_str("Put ");
-    rewritten.push_str(&count_filter);
-    if suffix.is_empty() {
-        rewritten.push('.');
-    } else {
-        rewritten.push_str(&suffix);
-    }
-    Some(rewritten)
-}
-
 pub(super) fn strip_indefinite_article(text: &str) -> &str {
     let trimmed = text.trim();
     if let Some(rest) = trimmed
@@ -5907,6 +5907,63 @@ pub(super) fn sacrifice_uses_chosen_tag(filter: &ObjectFilter, tag: &str) -> boo
     })
 }
 
+fn filter_uses_chosen_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == tag
+    })
+}
+
+fn filter_excludes_chosen_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            && constraint.tag.as_str() == tag
+    })
+}
+
+fn is_iterated_player_creature_battlefield_filter(filter: &ObjectFilter) -> bool {
+    filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
+        && filter.card_types == vec![CardType::Creature]
+        && filter.controller == Some(PlayerFilter::IteratedPlayer)
+}
+
+fn describe_for_players_may_choose_then_destroy_chosen(
+    for_players: &crate::effects::ForPlayersEffect,
+    destroy: &crate::effects::DestroyEffect,
+) -> Option<String> {
+    if for_players.effects.len() != 1 {
+        return None;
+    }
+    let may = for_players.effects[0].downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.is_some() || may.effects.len() != 1 {
+        return None;
+    }
+    let choose = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.is_search
+        || !choose.count.is_single()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.chooser != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+    let ChooseSpec::All(destroy_filter) = &destroy.spec else {
+        return None;
+    };
+    if !filter_uses_chosen_tag(destroy_filter, choose.tag.as_str()) {
+        return None;
+    }
+
+    let subject = match for_players.filter {
+        PlayerFilter::Any => "Each player",
+        PlayerFilter::Opponent => "Each opponent",
+        _ => return None,
+    };
+    let chosen = describe_choose_selection(choose);
+    Some(format!(
+        "{subject} may choose {chosen}. Destroy each permanent chosen this way"
+    ))
+}
+
 pub(super) fn describe_for_players_choose_types_then_sacrifice_rest(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -6010,6 +6067,101 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
     };
     let chosen = with_indefinite_article(&choose.filter.description());
     Some(format!("{subject} {verb} {chosen} of {possessive} choice"))
+}
+
+pub(super) fn describe_for_players_split_piles_then_choose_sacrifice(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Opponent || for_players.effects.len() != 2 {
+        return None;
+    }
+
+    let split = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    describe_split_pile_choice_effect(split, &for_players.effects[1])
+}
+
+pub(super) fn describe_for_players_split_piles_then_choose_sacrifice_pair(
+    split_for_players: &crate::effects::ForPlayersEffect,
+    choice_for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if split_for_players.filter != PlayerFilter::Opponent
+        || choice_for_players.filter != PlayerFilter::Opponent
+        || split_for_players.effects.len() != 1
+        || choice_for_players.effects.len() != 1
+    {
+        return None;
+    }
+
+    let split =
+        split_for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    describe_split_pile_choice_effect(split, &choice_for_players.effects[0])
+}
+
+fn describe_split_pile_choice_effect(
+    split: &crate::effects::ChooseObjectsEffect,
+    pile_choice_effect: &Effect,
+) -> Option<String> {
+    if split.tag.as_str() != "divvy_pile"
+        || split.chooser != PlayerFilter::IteratedPlayer
+        || choose_primary_zone(split) != Some(Zone::Battlefield)
+        || split.is_search
+        || !split.count.is_any_number()
+        || !is_iterated_player_creature_battlefield_filter(&split.filter)
+    {
+        return None;
+    }
+
+    let (main_sacrifice, alternative_sacrifice) = if let Some(pile_choice) =
+        pile_choice_effect.downcast_ref::<crate::effects::ChooseModeEffect>()
+    {
+        if !matches!(pile_choice.choose_count, Value::Fixed(1))
+            || !matches!(pile_choice.min_choose_count, Value::Fixed(1))
+            || pile_choice.modes.len() != 2
+            || pile_choice.modes[0].effects.len() != 1
+            || pile_choice.modes[1].effects.len() != 1
+        {
+            return None;
+        }
+        (
+            sacrifice_view(&pile_choice.modes[0].effects[0])?,
+            sacrifice_view(&pile_choice.modes[1].effects[0])?,
+        )
+    } else {
+        let pile_choice =
+            pile_choice_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+        if pile_choice.player != PlayerFilter::You
+            || pile_choice.effects.len() != 1
+            || pile_choice.alternative.len() != 1
+        {
+            return None;
+        }
+        (
+            sacrifice_view(&pile_choice.effects[0])?,
+            sacrifice_view(&pile_choice.alternative[0])?,
+        )
+    };
+    let sacrifices_chosen_pile =
+        sacrifice_uses_chosen_tag(main_sacrifice.filter, split.tag.as_str())
+            && filter_excludes_chosen_tag(alternative_sacrifice.filter, split.tag.as_str());
+    let sacrifices_other_pile =
+        filter_excludes_chosen_tag(main_sacrifice.filter, split.tag.as_str())
+            && sacrifice_uses_chosen_tag(alternative_sacrifice.filter, split.tag.as_str());
+    if !sacrifices_chosen_pile && !sacrifices_other_pile {
+        return None;
+    }
+    for sacrifice in [main_sacrifice, alternative_sacrifice] {
+        if sacrifice.player != &PlayerFilter::IteratedPlayer
+            || !matches!(sacrifice.count, Value::Count(count_filter) if count_filter == sacrifice.filter)
+            || !is_iterated_player_creature_battlefield_filter(sacrifice.filter)
+        {
+            return None;
+        }
+    }
+
+    Some(
+        "Each opponent separates the creatures they control into two piles. For each opponent, you choose one of their piles. Each opponent sacrifices the creatures in their chosen pile."
+            .to_string(),
+    )
 }
 
 pub(super) fn describe_choose_then_sacrifice(
@@ -7102,12 +7254,56 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     describe_plural_selection(describe_choice_count(&choose.count), &card_desc)
 }
 
+fn describe_stack_spell_choice(choose: &crate::effects::ChooseObjectsEffect) -> Option<String> {
+    if !choose.count.is_single() {
+        return None;
+    }
+    let filter = &choose.filter;
+    if !filter.all_card_types.is_empty()
+        || !filter.excluded_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+        || filter.colors.is_some()
+        || !filter.excluded_colors.is_empty()
+        || filter.targets_object.is_some()
+        || filter.targets_player.is_some()
+    {
+        return None;
+    }
+
+    let mut spell_text = if filter.card_types.is_empty() {
+        "spell".to_string()
+    } else {
+        let type_names = filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string())
+            .collect::<Vec<_>>();
+        format!("{} spell", join_with_or(&type_names))
+    };
+    if filter.controller == Some(PlayerFilter::You) {
+        spell_text.push_str(" you control");
+    } else if filter.controller.is_some() {
+        return None;
+    }
+    Some(with_indefinite_article(&spell_text))
+}
+
 pub(super) fn describe_choose_then_exile(
     choose: &crate::effects::ChooseObjectsEffect,
     exile: &crate::effects::ExileEffect,
 ) -> Option<String> {
     if choose.is_search || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str()) {
         return None;
+    }
+
+    if choose_primary_zone(choose) == Some(Zone::Stack)
+        && choose.filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+    {
+        let chosen = describe_stack_spell_choice(choose)
+            .unwrap_or_else(|| describe_choose_selection(choose));
+        let face_down_suffix = if exile.face_down { " face down" } else { "" };
+        return Some(format!("Exile {chosen}{face_down_suffix}"));
     }
 
     let zone_text = match choose_primary_zone(choose)? {
@@ -10804,6 +11000,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_split_piles_then_choose_sacrifice(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
@@ -16351,19 +16550,6 @@ pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilt
             crate::target::PlayerFilter::You => "you".to_string(),
             other => crate::filter::describe_player_filter(other),
         },
-    }
-}
-
-pub(super) fn ability_can_render_as_keyword_group(ability: &Ability) -> bool {
-    match &ability.kind {
-        AbilityKind::Static(static_ability) => {
-            static_ability.is_keyword()
-                || static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
-                || static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordText
-                || static_ability.id()
-                    == crate::static_abilities::StaticAbilityId::KeywordFallbackText
-        }
-        _ => false,
     }
 }
 

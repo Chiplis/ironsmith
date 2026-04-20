@@ -306,46 +306,6 @@ pub(super) fn normalize_keyword_and_phrase(text: &str) -> Option<String> {
     )
 }
 
-pub(super) fn normalize_gains_tail(predicate: &str) -> String {
-    let normalized = normalize_keyword_predicate_case(predicate);
-    if let Some((first, second)) = normalized.split_once(", and gains ")
-        && let Some(second) = second.strip_suffix(" until end of turn")
-        && is_keyword_phrase(first)
-        && is_keyword_phrase(second)
-    {
-        return format!(
-            "{} and {} until end of turn",
-            first.to_ascii_lowercase(),
-            second.to_ascii_lowercase()
-        );
-    }
-    normalized
-}
-
-pub(super) fn merge_sentence_subject_predicates(line: &str) -> Option<String> {
-    let (left, right) = line.split_once(". ")?;
-    let (left_subject, left_verb, left_rest) = split_subject_predicate_clause(left)?;
-    let (right_subject, right_verb, right_rest) = split_subject_predicate_clause(right)?;
-    if !left_subject.eq_ignore_ascii_case(right_subject)
-        || !can_merge_subject_predicates(left_verb, right_verb)
-    {
-        return None;
-    }
-
-    let right_rest = normalize_gains_tail(right_rest);
-    if let (Some(left_body), Some(right_body)) = (
-        left_rest.strip_suffix(" until end of turn"),
-        right_rest.strip_suffix(" until end of turn"),
-    ) {
-        return Some(format!(
-            "{left_subject} {left_verb} {left_body} and {right_verb} {right_body} until end of turn"
-        ));
-    }
-    Some(format!(
-        "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
-    ))
-}
-
 pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::new();
     let mut idx = 0usize;
@@ -790,91 +750,6 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         idx += 1;
     }
     merged
-}
-
-pub(super) fn normalize_repeated_has_keyword_list(tail: &str) -> String {
-    let mut normalized = tail.trim().trim_end_matches('.').to_string();
-    if normalized.is_empty() {
-        return normalized;
-    }
-    normalized = normalized.replace(" and has ", " and ");
-    normalized = normalized.replace(", has ", ", ");
-
-    let mut parts: Vec<String> = if normalized.contains(',') {
-        normalized
-            .split(',')
-            .map(str::trim)
-            .filter(|part| !part.is_empty())
-            .map(|part| part.trim_start_matches("and ").trim())
-            .map(|part| part.to_string())
-            .collect()
-    } else {
-        normalized
-            .split(" and ")
-            .map(str::trim)
-            .filter(|part| !part.is_empty())
-            .map(|part| part.to_string())
-            .collect()
-    };
-
-    if parts.len() < 2 {
-        return normalized;
-    }
-    if !parts.iter().all(|part| is_keyword_phrase(part)) {
-        return normalized;
-    }
-    for part in &mut parts {
-        *part = part.to_ascii_lowercase();
-    }
-
-    if parts.len() == 2 {
-        return format!("{} and {}", parts[0], parts[1]);
-    }
-    let last = parts.pop().unwrap_or_default();
-    format!("{}, and {}", parts.join(", "), last)
-}
-
-pub(super) fn merge_subject_is_legendary_gets_then_has_lines(lines: Vec<String>) -> Vec<String> {
-    if lines.len() != 2 {
-        return lines;
-    }
-    let left = lines[0].trim().trim_end_matches('.');
-    let right = lines[1].trim().trim_end_matches('.');
-
-    let (right_subject, right_tail) = if let Some((subject, tail)) = right.split_once(" has ") {
-        (subject.trim().to_string(), tail.trim().to_string())
-    } else if let Some((subject, tail)) = right.split_once(" have ") {
-        (subject.trim().to_string(), tail.trim().to_string())
-    } else {
-        return lines;
-    };
-
-    let (left_subject, left_rest) = if let Some((subject, rest)) = left.split_once(" is ") {
-        (subject.trim(), rest.trim())
-    } else {
-        return lines;
-    };
-    if !left_subject.eq_ignore_ascii_case(&right_subject) {
-        return lines;
-    }
-
-    let Some((state, gets_tail)) = left_rest.split_once(" and gets ") else {
-        return lines;
-    };
-    if !state.trim().eq_ignore_ascii_case("legendary") {
-        return lines;
-    }
-    let gets_tail = gets_tail.trim();
-    if gets_tail.is_empty() {
-        return lines;
-    }
-
-    let right_tail = normalize_repeated_has_keyword_list(&right_tail);
-    let subject = right_subject;
-    let verb = have_verb_for_subject(&subject);
-    vec![format!(
-        "{subject} is legendary, gets {gets_tail}, and {verb} {right_tail}."
-    )]
 }
 
 pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {

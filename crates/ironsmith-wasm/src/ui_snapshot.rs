@@ -159,10 +159,19 @@ pub(super) fn protected_object_ids_for_decision(
                 }
             }
         }
+        DecisionContext::SelectOptions(options) => {
+            for option in &options.options {
+                if let Some(object_id) = option.object_id {
+                    ids.insert(object_id);
+                }
+                if let Some(related_object_ids) = &option.related_object_ids {
+                    ids.extend(related_object_ids.iter().copied());
+                }
+            }
+        }
         DecisionContext::Modes(_)
         | DecisionContext::HybridChoice(_)
         | DecisionContext::TextInput(_)
-        | DecisionContext::SelectOptions(_)
         | DecisionContext::Boolean(_)
         | DecisionContext::Number(_)
         | DecisionContext::Order(_)

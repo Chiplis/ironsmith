@@ -235,6 +235,10 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         super::target_metadata::first_target_spec(&[&self.payment, &self.failure])
     }
 
+    fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
+        super::target_metadata::related_object_specs(&[&self.payment, &self.failure])
+    }
+
     fn target_description(&self) -> &'static str {
         super::target_metadata::first_target_description(&[&self.payment, &self.failure], "target")
     }

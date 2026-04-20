@@ -743,6 +743,7 @@ struct OptionView {
     max_count: Option<u32>,
     object_id: Option<u64>,
     object_controller: Option<u8>,
+    related_object_ids: Option<Vec<u64>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -918,6 +919,7 @@ impl DecisionView {
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
+                        related_object_ids: None,
                     },
                     OptionView {
                         index: 0,
@@ -927,6 +929,7 @@ impl DecisionView {
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
+                        related_object_ids: None,
                     },
                 ],
                 source_id: resolve_source_id(boolean.source),
@@ -992,6 +995,14 @@ impl DecisionView {
                             let visible_object_id = opt
                                 .object_id
                                 .and_then(|id| decision_object_visible(id).then_some(id));
+                            let visible_related_object_ids =
+                                opt.related_object_ids.as_ref().map(|object_ids| {
+                                    object_ids
+                                        .iter()
+                                        .filter(|id| decision_object_visible(**id))
+                                        .map(|id| id.0)
+                                        .collect::<Vec<_>>()
+                                });
                             OptionView {
                                 index: opt.index,
                                 description: if opt.object_id.is_some()
@@ -1008,6 +1019,7 @@ impl DecisionView {
                                 object_controller: visible_object_id
                                     .and_then(|id| game.object(id))
                                     .map(|obj| obj.controller.0),
+                                related_object_ids: visible_related_object_ids,
                             }
                         })
                         .collect()
@@ -1035,6 +1047,10 @@ impl DecisionView {
                         max_count: Some(modes.spec.max_modes.min(u32::MAX as usize) as u32),
                         object_id: None,
                         object_controller: None,
+                        related_object_ids: mode
+                            .related_object_ids
+                            .as_ref()
+                            .map(|object_ids| object_ids.iter().map(|id| id.0).collect()),
                     })
                     .collect(),
                 source_id: resolve_source_id(modes.source),
@@ -1062,6 +1078,7 @@ impl DecisionView {
                         max_count: Some(1),
                         object_id: None,
                         object_controller: None,
+                        related_object_ids: None,
                     })
                     .collect(),
                 source_id: resolve_source_id(hybrid.source),
@@ -1093,6 +1110,7 @@ impl DecisionView {
                         object_controller: decision_object_visible(*object_id)
                             .then(|| game.object(*object_id).map(|obj| obj.controller.0))
                             .flatten(),
+                        related_object_ids: None,
                     })
                     .collect(),
                 source_id: resolve_source_id(order.source),
@@ -1136,6 +1154,7 @@ impl DecisionView {
                             object_controller: visible_object_id
                                 .and_then(|object_id| game.object(object_id))
                                 .map(|obj| obj.controller.0),
+                            related_object_ids: None,
                         }
                     })
                     .collect(),
@@ -1168,6 +1187,7 @@ impl DecisionView {
                             max_count: Some(if repeatable_colors { colors.count } else { 1 }),
                             object_id: None,
                             object_controller: None,
+                            related_object_ids: None,
                         })
                         .collect(),
                     source_id: resolve_source_id(colors.source),
@@ -1200,6 +1220,7 @@ impl DecisionView {
                         max_count: Some(*available),
                         object_id: None,
                         object_controller: None,
+                        related_object_ids: None,
                     })
                     .collect(),
                 source_id: resolve_source_id(counters.source),
@@ -1256,6 +1277,7 @@ impl DecisionView {
                             .get(index)
                             .and_then(|(id, _)| game.object(*id))
                             .map(|obj| obj.controller.0),
+                        related_object_ids: None,
                     })
                     .chain(proliferate.eligible_players.iter().enumerate().map(
                         |(offset, (_, name))| OptionView {
@@ -1266,6 +1288,7 @@ impl DecisionView {
                             max_count: Some(1),
                             object_id: None,
                             object_controller: None,
+                            related_object_ids: None,
                         },
                     ))
                     .collect(),

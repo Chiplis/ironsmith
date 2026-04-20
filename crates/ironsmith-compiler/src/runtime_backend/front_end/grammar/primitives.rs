@@ -562,23 +562,6 @@ pub(crate) fn mana_pips_token<'a>(
     })
 }
 
-/// Parse a single mana symbol (flattened) from the next token.
-pub(crate) fn mana_symbol_token<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<ManaSymbol, ErrMode<ContextError>> {
-    let checkpoint = input.checkpoint();
-    let token: &'a LexToken = any.parse_next(input)?;
-    let word = token.as_word().ok_or_else(|| {
-        input.reset(&checkpoint);
-        backtrack_err("mana", "mana symbol word")
-    })?;
-
-    super::values::parse_mana_symbol(word).map_err(|_| {
-        input.reset(&checkpoint);
-        backtrack_err("mana", "mana symbol word")
-    })
-}
-
 /// Skip one or more tokens that are commas and/or the keyword "or".
 /// Suitable as the separator argument to `separated()`.
 pub(crate) fn comma_or_separator<'a>(

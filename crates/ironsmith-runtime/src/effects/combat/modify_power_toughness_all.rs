@@ -7,7 +7,7 @@ use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::target::ObjectFilter;
+use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
 /// Effect that modifies power and toughness for all creatures matching a filter.
@@ -92,6 +92,10 @@ impl ModifyPowerToughnessAllEffect {
 }
 
 impl EffectExecutor for ModifyPowerToughnessAllEffect {
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

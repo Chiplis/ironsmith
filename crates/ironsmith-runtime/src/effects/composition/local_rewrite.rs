@@ -79,6 +79,10 @@ impl EffectExecutor for LocalRewriteEffect {
         self.effect.0.get_target_spec()
     }
 
+    fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
+        self.effect.0.decision_related_object_specs()
+    }
+
     fn target_description(&self) -> &'static str {
         self.effect.0.target_description()
     }

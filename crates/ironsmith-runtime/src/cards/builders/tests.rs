@@ -10514,6 +10514,80 @@ fn parse_exile_this_card_from_graveyard_cost_uses_source_and_graveyard_zone() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_exile_spell_activation_cost_uses_stack_spell_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nivmagus Variant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 2))
+        .parse_text(
+            "Exile an instant or sorcery spell you control: Put two +1/+1 counters on this creature.",
+        )
+        .expect("exile-spell activation cost should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated ability");
+    let mana_cost_debug = format!("{:#?}", activated.mana_cost);
+    let mana_cost_debug_compact = mana_cost_debug.split_whitespace().collect::<String>();
+    assert!(
+        mana_cost_debug_compact.contains("zone:Some(Stack"),
+        "expected exile-spell cost to choose from the stack, got {mana_cost_debug}"
+    );
+    assert!(
+        mana_cost_debug_compact.contains("stack_kind:Some(Spell"),
+        "expected exile-spell cost to require a spell stack object, got {mana_cost_debug}"
+    );
+    assert!(
+        !mana_cost_debug_compact.contains("zone:Some(Battlefield"),
+        "exile-spell costs must not target battlefield objects, got {mana_cost_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Exile an instant or sorcery spell you control: Put two +1/+1 counters on this creature."
+        ),
+        "expected debug-safe text to compact the stack-spell exile cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_each_player_may_choose_destroy_chosen_this_way_binds_iterated_choices() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Druid Variant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "When this creature enters, each player may choose an artifact or enchantment you don't control. Destroy each permanent chosen this way.",
+        )
+        .expect("each-player choose/destroy-chosen pattern should parse");
+
+    let debug = format!("{def:#?}");
+    let debug_compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug_compact.contains("chooser:IteratedPlayer"),
+        "each player should make their own choice, got {debug}"
+    );
+    assert!(
+        debug_compact.contains("relation:IsTaggedObject"),
+        "destroy-chosen follow-up should bind to chosen objects, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "When this creature enters, each player may choose an artifact or enchantment you don't control. Destroy each permanent chosen this way."
+        ),
+        "expected debug-safe text to compact the each-player choice and destroy follow-up, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_targeted_exile_activation_cost_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Targeted Exile Cost Variant")
         .card_types(vec![CardType::Artifact])
@@ -23289,25 +23363,28 @@ fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
-    assert!(
-        rendered.contains("for each opponent"),
-        "expected the per-opponent framing to survive compilation, got {rendered}"
-    );
-    assert!(
-        rendered.contains("you choose"),
-        "expected chooser selection to survive compilation, got {rendered}"
-    );
-    assert!(
-        rendered.contains("sacrific"),
-        "expected sacrifice wording to survive compilation, got {rendered}"
+    assert_eq!(
+        rendered,
+        "each opponent separates the creatures they control into two piles. for each opponent, you choose one of their piles. each opponent sacrifices the creatures in their chosen pile."
     );
 
-    let spell_debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let spell_debug_compact = spell_debug.split_whitespace().collect::<String>();
     assert!(
-        spell_debug.contains("chooseobjectseffect")
-            && (spell_debug.contains("sacrificeeffect")
-                || spell_debug.contains("sacrificeplayereffect")),
-        "expected Make an Example to lower through the normal choose/sacrifice machinery, got {spell_debug}"
+        spell_debug_compact.contains("\"divvy_pile\"")
+            && spell_debug_compact.contains("chooser:IteratedPlayer"),
+        "expected each opponent to split their creatures into a pile, got {spell_debug}"
+    );
+    assert!(
+        spell_debug_compact.contains("ChooseModeEffect")
+            && spell_debug.contains("Choose the separated pile")
+            && spell_debug.contains("Choose the other pile"),
+        "expected the caster to choose which pile is used through a modal choice, got {spell_debug}"
+    );
+    assert!(
+        spell_debug_compact.contains("relation:IsTaggedObject")
+            && spell_debug_compact.contains("relation:IsNotTaggedObject"),
+        "expected chosen-pile and other-pile branches to be represented structurally, got {spell_debug}"
     );
 
     let canonical = canonical_compiled_lines(&def).join(" ");

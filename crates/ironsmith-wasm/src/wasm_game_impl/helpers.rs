@@ -365,7 +365,13 @@ pub(super) fn decision_exposes_object_to_perspective(
                 && options
                     .options
                     .iter()
-                    .any(|opt| opt.object_id.is_some_and(|object_id| object_id == id))
+                    .any(|opt| {
+                        opt.object_id.is_some_and(|object_id| object_id == id)
+                            || opt
+                                .related_object_ids
+                                .as_ref()
+                                .is_some_and(|object_ids| object_ids.contains(&id))
+                    })
         }
         DecisionContext::Targets(targets) => {
             targets.player == perspective

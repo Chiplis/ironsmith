@@ -172,13 +172,38 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt) {
       ? objectNameById.get(String(opt.object_id)) || ""
       : "";
   const accent = optionAccent(state, objectControllerById, opt);
-  return (
+  const relatedObjectIds = Array.isArray(opt?.related_object_ids)
+    ? opt.related_object_ids
+    : null;
+  const relatedNames = relatedObjectIds
+    ? relatedObjectIds
+        .map((id) => objectNameById.get(String(id)) || `Object #${id}`)
+        .filter(Boolean)
+    : [];
+  const relatedText = relatedObjectIds
+    ? relatedNames.length > 0
+      ? relatedNames.join(", ")
+      : "Empty pile"
+    : "";
+
+  const label = (
     <HighlightedDecisionText
       className="decision-option-label"
       text={normalizedText}
       highlightText={objectName}
       highlightColor={accent?.hex || null}
     />
+  );
+
+  if (!relatedText) return label;
+
+  return (
+    <span className="flex min-w-0 flex-col items-start gap-0.5 whitespace-normal leading-tight">
+      {label}
+      <span className="max-w-full truncate text-[11px] font-medium opacity-75">
+        {relatedText}
+      </span>
+    </span>
   );
 }
 

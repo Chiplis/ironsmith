@@ -63,6 +63,10 @@ impl EffectExecutor for IfEffect {
         super::target_metadata::first_target_spec(&[&self.then, &self.else_])
     }
 
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        super::target_metadata::related_object_specs(&[&self.then, &self.else_])
+    }
+
     fn target_description(&self) -> &'static str {
         super::target_metadata::first_target_description(&[&self.then, &self.else_], "target")
     }

@@ -378,6 +378,8 @@ pub struct SelectableOption {
     pub max_count: Option<u32>,
     /// Optional object this option is associated with for richer UI rendering.
     pub object_id: Option<ObjectId>,
+    /// Optional related objects this option would affect or otherwise refers to.
+    pub related_object_ids: Option<Vec<ObjectId>>,
 }
 
 impl SelectableOption {
@@ -390,6 +392,7 @@ impl SelectableOption {
             repeatable: false,
             max_count: Some(1),
             object_id: None,
+            related_object_ids: None,
         }
     }
 
@@ -402,6 +405,7 @@ impl SelectableOption {
             repeatable: false,
             max_count: Some(1),
             object_id: None,
+            related_object_ids: None,
         }
     }
 
@@ -413,6 +417,11 @@ impl SelectableOption {
 
     pub fn with_object(mut self, object_id: ObjectId) -> Self {
         self.object_id = Some(object_id);
+        self
+    }
+
+    pub fn with_related_objects(mut self, object_ids: Vec<ObjectId>) -> Self {
+        self.related_object_ids = Some(object_ids);
         self
     }
 }
