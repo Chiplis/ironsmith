@@ -302,6 +302,7 @@ pub(crate) enum PredicateAst {
     ItIsSoulbondPaired,
     SourceChosenOption(String),
     ItMatches(ObjectFilter),
+    TargetMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
     EnchantedPermanentAttackedThisTurn,
     PlayerTaggedObjectMatches {

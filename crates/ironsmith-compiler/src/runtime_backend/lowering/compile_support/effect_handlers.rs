@@ -1016,6 +1016,10 @@ pub(super) fn try_compile_stack_and_condition_effect(
             ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
                 || matches!(
                     predicate,
+                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)
+                )
+                || matches!(
+                    predicate,
                     PredicateAst::PlayerTaggedObjectMatches { tag, .. } if tag.as_str() == IT_TAG
                 );
 

@@ -8044,7 +8044,9 @@ fn test_guard_dogs_keeps_color_sharing_prevention_clause() {
     assert!(
         ability_debug.contains("ConditionalEffect")
             && ability_debug.contains("TargetMatches")
-            && ability_debug.contains("PreventAllCombatDamageFromEffect"),
+            && ability_debug.contains("SharesColorWithTagged")
+            && (ability_debug.contains("PreventAllCombatDamageEffect")
+                || ability_debug.contains("PreventAllCombatDamageFromEffect")),
         "expected conditional prevention lowering, got {ability_debug}"
     );
 
@@ -8052,9 +8054,11 @@ fn test_guard_dogs_keeps_color_sharing_prevention_clause() {
         .join(" | ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("shares a color with that object")
-            && rendered.contains("prevent all combat damage")
-            && rendered.contains("target creature"),
+        rendered.contains("choose a permanent you control")
+            && rendered.contains(
+                "prevent all combat damage target creature would deal this turn if it shares a color with that permanent"
+            )
+            && !rendered.contains("if it matches creature"),
         "expected guard dogs color-sharing clause in compiled text, got {rendered}"
     );
 }
