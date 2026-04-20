@@ -723,7 +723,7 @@ mod tests {
             .expect("each-player scry should parse");
 
         let debug = format!("{:?}", definition.spell_effect);
-        let rendered = crate::compiled_text::compiled_lines(&definition).join(" ");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&definition).join(" ");
         assert!(
             debug.contains("EachPlayerScryEffect"),
             "expected each-player scry lowering, got {debug}"

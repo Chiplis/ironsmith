@@ -34,9 +34,10 @@ mod tests {
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_emrakul_compiled_text_preserves_cost_reduction_and_after_that_turn() {
-        let rendered = crate::compiled_text::compiled_lines(&emrakul_the_promised_end())
-            .join("\n")
-            .to_ascii_lowercase();
+        let rendered =
+            crate::compiled_text::unprocessed_compiled_lines(&emrakul_the_promised_end())
+                .join("\n")
+                .to_ascii_lowercase();
 
         assert!(
             rendered.contains("this spell costs {1} less to cast")

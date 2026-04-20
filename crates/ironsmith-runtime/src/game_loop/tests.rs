@@ -18293,7 +18293,7 @@ fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
                 "When this creature enters, you may put a land card from your hand onto the battlefield tapped. If you do, draw a card and repeat this process.",
             )
             .expect("Cultivator Colossus ETB text should parse");
-    let rendered = crate::compiled_text::compiled_lines(&cultivator)
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&cultivator)
         .join(" ")
         .to_ascii_lowercase();
     assert!(

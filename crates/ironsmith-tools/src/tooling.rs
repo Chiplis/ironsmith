@@ -17,9 +17,7 @@ use ironsmith::cards::{
     CardDefinition, generated_definition_has_unimplemented_content,
     generated_definition_unsupported_mechanics_message,
 };
-use ironsmith::compiled_text::{
-    canonical_compiled_lines, unprocessed_compiled_lines, uses_pseudo_oracle_fallback,
-};
+use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
 use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
@@ -27,7 +25,7 @@ use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 7;
+const DB_SCHEMA_VERSION: i64 = 8;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -171,7 +169,6 @@ pub struct CompilationSnapshot {
     pub line_delta: isize,
     pub semantic_mismatch: bool,
     pub has_unimplemented: bool,
-    pub uses_pseudo_oracle_fallback: bool,
     pub content_hash: String,
 }
 
@@ -415,7 +412,6 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
-            uses_pseudo_oracle_fallback,
         ) = if let Some(definition) = definition {
             let compiled = canonical_compiled_lines(definition);
             let compiled_text = compiled.join("\n");
@@ -443,10 +439,9 @@ impl CompilationSnapshot {
                 line_delta,
                 semantic_mismatch,
                 generated_definition_has_unimplemented_content(definition),
-                uses_pseudo_oracle_fallback(definition),
             )
         } else {
-            (None, None, None, 0.0, 0.0, 0.0, 0, false, false, false)
+            (None, None, None, 0.0, 0.0, 0.0, 0, false, false)
         };
 
         let mut snapshot = Self {
@@ -464,7 +459,6 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
-            uses_pseudo_oracle_fallback,
             content_hash: String::new(),
         };
         snapshot.content_hash = snapshot.compute_content_hash();
@@ -510,12 +504,6 @@ impl CompilationSnapshot {
         hasher.update((self.semantic_mismatch as u8).to_string().as_bytes());
         hasher.update([0]);
         hasher.update((self.has_unimplemented as u8).to_string().as_bytes());
-        hasher.update([0]);
-        hasher.update(
-            (self.uses_pseudo_oracle_fallback as u8)
-                .to_string()
-                .as_bytes(),
-        );
         let digest = hasher.finalize();
         let mut out = String::with_capacity(digest.len() * 2);
         for byte in digest {
@@ -537,6 +525,95 @@ impl CardStatusDb {
         let db = Self { conn };
         db.initialize()?;
         Ok(db)
+    }
+
+    fn card_compilation_has_column(&self, column: &str) -> bool {
+        self.conn
+            .prepare(&format!("SELECT {column} FROM card_compilation LIMIT 0"))
+            .is_ok()
+    }
+
+    fn drop_uses_pseudo_oracle_fallback_column_if_present(&self) -> Result<(), Box<dyn Error>> {
+        if !self.card_compilation_has_column("uses_pseudo_oracle_fallback") {
+            return Ok(());
+        }
+
+        self.conn
+            .execute_batch("DROP VIEW IF EXISTS latest_card_compilation;")?;
+        if self
+            .conn
+            .execute_batch(
+                "ALTER TABLE card_compilation
+                 DROP COLUMN uses_pseudo_oracle_fallback;",
+            )
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        self.conn.execute_batch(
+            "ALTER TABLE card_compilation RENAME TO card_compilation_old;
+             CREATE TABLE card_compilation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_name TEXT NOT NULL,
+                oracle_text TEXT NOT NULL,
+                raw_oracle_text TEXT NOT NULL,
+                parse_status TEXT NOT NULL,
+                parse_error TEXT,
+                compiled_text TEXT,
+                unprocessed_compiled_text TEXT,
+                compiled_card_definition TEXT,
+                oracle_coverage REAL NOT NULL,
+                compiled_coverage REAL NOT NULL,
+                similarity_score REAL NOT NULL,
+                line_delta INTEGER NOT NULL,
+                semantic_mismatch INTEGER NOT NULL,
+                has_unimplemented INTEGER NOT NULL,
+                compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                content_hash TEXT NOT NULL,
+                UNIQUE(card_name, content_hash)
+             );
+             INSERT INTO card_compilation (
+                id,
+                card_name,
+                oracle_text,
+                raw_oracle_text,
+                parse_status,
+                parse_error,
+                compiled_text,
+                unprocessed_compiled_text,
+                compiled_card_definition,
+                oracle_coverage,
+                compiled_coverage,
+                similarity_score,
+                line_delta,
+                semantic_mismatch,
+                has_unimplemented,
+                compiled_at,
+                content_hash
+             )
+             SELECT
+                id,
+                card_name,
+                oracle_text,
+                raw_oracle_text,
+                parse_status,
+                parse_error,
+                compiled_text,
+                unprocessed_compiled_text,
+                compiled_card_definition,
+                oracle_coverage,
+                compiled_coverage,
+                similarity_score,
+                line_delta,
+                semantic_mismatch,
+                has_unimplemented,
+                compiled_at,
+                content_hash
+             FROM card_compilation_old;
+             DROP TABLE card_compilation_old;",
+        )?;
+        Ok(())
     }
 
     pub fn initialize(&self) -> Result<(), Box<dyn Error>> {
@@ -592,19 +669,6 @@ impl CardStatusDb {
             }
         }
 
-        if version > 0 && version < 6 {
-            let has_pseudo_oracle_fallback_column: bool = self
-                .conn
-                .prepare("SELECT uses_pseudo_oracle_fallback FROM card_compilation LIMIT 0")
-                .is_ok();
-            if !has_pseudo_oracle_fallback_column {
-                self.conn.execute_batch(
-                    "ALTER TABLE card_compilation
-                     ADD COLUMN uses_pseudo_oracle_fallback INTEGER NOT NULL DEFAULT 0;",
-                )?;
-            }
-        }
-
         if version > 0 && version < 7 {
             let has_unprocessed_compiled_text_column: bool = self
                 .conn
@@ -616,6 +680,10 @@ impl CardStatusDb {
                      ADD COLUMN unprocessed_compiled_text TEXT;",
                 )?;
             }
+        }
+
+        if version > 0 && version < 8 {
+            self.drop_uses_pseudo_oracle_fallback_column_if_present()?;
         }
 
         self.conn.execute_batch(
@@ -635,7 +703,6 @@ impl CardStatusDb {
                 line_delta INTEGER NOT NULL,
                 semantic_mismatch INTEGER NOT NULL,
                 has_unimplemented INTEGER NOT NULL,
-                uses_pseudo_oracle_fallback INTEGER NOT NULL,
                 compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 content_hash TEXT NOT NULL,
                 UNIQUE(card_name, content_hash)
@@ -730,9 +797,8 @@ impl CardStatusDb {
                 line_delta,
                 semantic_mismatch,
                 has_unimplemented,
-                uses_pseudo_oracle_fallback,
                 content_hash
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 snapshot.card_name,
                 snapshot.oracle_text,
@@ -748,7 +814,6 @@ impl CardStatusDb {
                 snapshot.line_delta as i64,
                 snapshot.semantic_mismatch,
                 snapshot.has_unimplemented,
-                snapshot.uses_pseudo_oracle_fallback,
                 snapshot.content_hash,
             ],
         )?;
@@ -802,9 +867,8 @@ impl CardStatusDb {
                     line_delta,
                     semantic_mismatch,
                     has_unimplemented,
-                    uses_pseudo_oracle_fallback,
                     content_hash
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )?;
             let mut select_compilation_id = tx.prepare(
                 "SELECT id
@@ -841,7 +905,6 @@ impl CardStatusDb {
                     snapshot.line_delta as i64,
                     snapshot.semantic_mismatch,
                     snapshot.has_unimplemented,
-                    snapshot.uses_pseudo_oracle_fallback,
                     snapshot.content_hash.as_str(),
                 ])?;
 
@@ -2266,13 +2329,9 @@ CardDefinition {
     }
 
     #[test]
-    fn snapshot_records_pseudo_oracle_fallback_usage() {
+    fn snapshot_records_canonical_and_debug_safe_text() {
         let fallback_snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
         assert_eq!(fallback_snapshot.parse_status, ParseStatus::StrictCompiled);
-        assert!(
-            fallback_snapshot.uses_pseudo_oracle_fallback,
-            "ability-word/source-surface rendering should be marked in snapshots"
-        );
         assert_eq!(
             fallback_snapshot.compiled_text.as_deref(),
             Some(
@@ -2282,12 +2341,6 @@ CardDefinition {
         assert_eq!(
             fallback_snapshot.unprocessed_compiled_text.as_deref(),
             Some("Reach\nYou draw a card.")
-        );
-
-        let structured_snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
-        assert!(
-            !structured_snapshot.uses_pseudo_oracle_fallback,
-            "ordinary structured spell rendering should not be marked"
         );
     }
 
@@ -2583,9 +2636,12 @@ CardDefinition {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("version");
         assert_eq!(version, DB_SCHEMA_VERSION);
-        db.connection()
-            .prepare("SELECT uses_pseudo_oracle_fallback FROM latest_card_compilation LIMIT 0")
-            .expect("latest view should expose pseudo-oracle fallback flag");
+        assert!(
+            db.connection()
+                .prepare("SELECT uses_pseudo_oracle_fallback FROM latest_card_compilation LIMIT 0")
+                .is_err(),
+            "latest view should not expose removed pseudo-oracle fallback flag"
+        );
         db.connection()
             .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")
             .expect("latest view should expose unprocessed compiled text");
@@ -2618,24 +2674,12 @@ CardDefinition {
     }
 
     #[test]
-    fn db_persists_pseudo_oracle_fallback_flag() {
-        let path = unique_temp_path("pseudo-oracle-fallback");
+    fn db_persists_unprocessed_compiled_text() {
+        let path = unique_temp_path("unprocessed-compiled-text");
         let db = CardStatusDb::open(&path).expect("open db");
         let snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
 
         assert!(db.insert_snapshot_if_changed(&snapshot).expect("insert"));
-
-        let stored: bool = db
-            .connection()
-            .query_row(
-                "SELECT uses_pseudo_oracle_fallback
-                 FROM latest_card_compilation
-                 WHERE card_name = ?1",
-                ["G'raha Tia Variant"],
-                |row| row.get(0),
-            )
-            .expect("stored flag");
-        assert!(stored);
 
         let unprocessed: String = db
             .connection()

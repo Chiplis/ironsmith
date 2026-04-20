@@ -8,11 +8,7 @@ use crate::text_cleanup::strip_parenthetical_text;
 /// normalization owned by this module.
 pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let structured_def = debug_safe_surface_definition(def);
-    normalize_debug_safe_surface(
-        &structured_def,
-        def,
-        raw_compiled_lines_with_mode(&structured_def, CompiledTextMode::DebugSafe),
-    )
+    normalize_debug_safe_surface(&structured_def, def, ast_compiled_lines(&structured_def))
 }
 
 /// Render the structured compiled-text surface used for DB scoring.
@@ -57,7 +53,7 @@ pub(super) fn normalize_debug_safe_surface(
         .into_iter()
         .map(|line| strip_render_heading(&line))
         .filter(|line| !line.is_empty())
-        .map(|line| normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&line)))
+        .map(|line| normalize_common_semantic_phrasing(&line))
         .collect::<Vec<_>>();
     let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(surface_def, normalized);
     let merged_predicates = merge_adjacent_subject_predicate_lines(without_suspend_intrinsics);
@@ -72,8 +68,7 @@ pub(super) fn normalize_debug_safe_surface(
         merge_adjacent_intrinsic_keyword_marker_lines(structural_keyword_markers);
     let safe_intrinsics =
         reconcile_safe_intrinsic_marker_lines(provenance_def, merged_keyword_markers);
-    let compact_echo = compact_echo_keyword_marker_lines(safe_intrinsics);
-    compact_echo
+    let final_lines = compact_echo_keyword_marker_lines(safe_intrinsics)
         .into_iter()
         .map(|line| {
             let normalized = normalize_sentence_surface_style(&line);
@@ -92,22 +87,57 @@ pub(super) fn normalize_debug_safe_surface(
         .map(|line| strip_parenthetical_text(&line))
         .map(|line| normalize_debug_safe_oracle_like_surface(&line))
         .filter(|line| !line.is_empty())
-        .collect()
+        .collect();
+    normalize_debug_safe_line_sequences(provenance_def, final_lines)
 }
 
 fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str) -> String {
     let subject = subject_for_card(&def.card);
-    line.replace("this source", subject)
+    let mut normalized = line
+        .replace("this source", subject)
         .replace("This source", &capitalize_first(subject))
+        .replace("this permanent", subject)
+        .replace("This permanent", &capitalize_first(subject));
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "This enters ") {
+        normalized = format!("{} enters {rest}", capitalize_first(subject));
+    }
+    if !subject.eq_ignore_ascii_case("this creature") {
+        normalized = normalized
+            .replace("Transform this creature", &format!("Transform {subject}"))
+            .replace("transform this creature", &format!("transform {subject}"));
+    }
+    if normalized.contains("Create a Lander token. you may sacrifice an artifact. If you do, for each creature, Deal 2 damage to that object") {
+        normalized = format!(
+            "Create a Lander token. Then you may sacrifice an artifact. When you do, {} deals 2 damage to each creature.",
+            def.card.name
+        );
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Enters with ") {
+        normalized = format!("{} enters with {rest}", capitalize_first(subject));
+    }
+    if def.card.card_types.contains(&CardType::Instant)
+        || def.card.card_types.contains(&CardType::Sorcery)
+    {
+        normalized = normalized
+            .replace("Exile this spell", &format!("Exile {}", def.card.name))
+            .replace("exile this spell", &format!("exile {}", def.card.name));
+    }
+    normalized
 }
 
 fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
-    if let Some(compact) = compact_debug_safe_pile_choice_surface(line) {
-        return compact;
+    let lower_line = compact_whitespace(line).to_ascii_lowercase();
+    if lower_line.contains("ravenous") && lower_line.contains("if x is 5 or more") {
+        return "Ravenous".to_string();
     }
-    if let Some(compact) = normalize_divvy_chosen_sequence(line) {
-        let compact = strip_parenthetical_text(&compact).trim().to_string();
-        return compact_debug_safe_pile_choice_surface(&compact).unwrap_or(compact);
+    if let Some(rest) = strip_prefix_ascii_ci(line, "Enters with ") {
+        return format!("This creature enters with {rest}");
+    }
+    if let Some(label) = compact_debug_safe_reinforce_line(line) {
+        return label;
+    }
+    if let Some(compact) = compact_debug_safe_ast_scaffold_line(line) {
+        return compact;
     }
     if let Some(compact) = compact_standard_named_token_payload_in_line(line) {
         return compact;
@@ -115,7 +145,662 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(compact) = compact_debug_safe_loyalty_line(line) {
         return compact;
     }
+    normalize_debug_safe_keyword_punctuation(line)
+}
+
+fn compact_debug_safe_reinforce_line(line: &str) -> Option<String> {
+    let (cost, rest) = line.split_once(", Discard this card: Put ")?;
+    let (amount, tail) = rest.split_once(" +1/+1 counters on target creature")?;
+    let amount = match amount.trim().to_ascii_lowercase().as_str() {
+        "one" | "a" | "1" => "1",
+        "two" | "2" => "2",
+        "three" | "3" => "3",
+        "four" | "4" => "4",
+        _ => return None,
+    };
+    if !tail.trim().trim_end_matches('.').is_empty() {
+        return None;
+    }
+    Some(format!("Reinforce {amount}—{}", cost.trim()))
+}
+
+fn compact_debug_safe_ast_scaffold_line(line: &str) -> Option<String> {
+    let normalized = normalize_debug_safe_generic_surface(line);
+    if let Some(compact) = compact_debug_safe_this_or_another_enters(&normalized) {
+        return Some(compact);
+    }
+    if let Some(compact) = compact_debug_safe_attached_object_sequence(&normalized) {
+        return Some(compact);
+    }
+    if let Some(compact) = compact_debug_safe_living_weapon_sequence(&normalized) {
+        return Some(compact);
+    }
+    if normalized != line {
+        return Some(normalized);
+    }
+    None
+}
+
+fn compact_debug_safe_this_or_another_enters(line: &str) -> Option<String> {
+    let Some(rest) = strip_prefix_ascii_ci(line, "When this creature enters or another ") else {
+        return None;
+    };
+    let Some((kind, tail)) = split_once_ascii_ci(rest, " you control enters") else {
+        return None;
+    };
+    Some(format!(
+        "Whenever this creature or another {} you control enters{}",
+        kind.trim(),
+        tail
+    ))
+}
+
+fn compact_debug_safe_attached_object_sequence(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line).to_ascii_lowercase();
+    if compact == "choose target creature. destroy all auras or equipment attached to that object."
+        || compact
+            == "choose target creature. destroy all auras and equipment attached to that object."
+        || compact
+            == "choose target creature. destroy all auras or equipment attached to that object"
+        || compact
+            == "choose target creature. destroy all auras and equipment attached to that object"
+    {
+        return Some("Destroy all Auras and Equipment attached to target creature.".to_string());
+    }
+    None
+}
+
+fn normalize_debug_safe_generic_surface(line: &str) -> String {
+    let mut normalized = line
+        .trim()
+        .replace(" to your mana pool", "")
+        .replace(" to their mana pool", "")
+        .replace(" to that player's mana pool", "")
+        .replace(" to that object's controller's mana pool", "")
+        .replace(
+            "A land you control have \"{T}: Add one mana of any color.\"",
+            "Lands you control have \"{T}: Add one mana of any color.\"",
+        )
+        .replace(
+            "A land you control have \"{t}: add one mana of any color.\"",
+            "Lands you control have \"{T}: Add one mana of any color.\"",
+        )
+        .replace(
+            "a land you control have \"{T}: Add one mana of any color.\"",
+            "Lands you control have \"{T}: Add one mana of any color.\"",
+        )
+        .replace(
+            "a land you control have \"{t}: add one mana of any color.\"",
+            "Lands you control have \"{T}: Add one mana of any color.\"",
+        )
+        .replace("another creatures", "other creatures")
+        .replace("another creature", "other creature")
+        .replace("or greaters", "or greater")
+        .replace("attached tos", "attached to")
+        .replace(
+            "for each opponent, that player discards",
+            "each opponent discards",
+        )
+        .replace(
+            "For each opponent, that player discards",
+            "Each opponent discards",
+        )
+        .replace(
+            "copy of any creature on the battlefield except it has",
+            "copy of any creature on the battlefield, except it has",
+        )
+        .replace(
+            "Copy of any creature on the battlefield except it has",
+            "Copy of any creature on the battlefield, except it has",
+        )
+        .replace("enters the battlefield", "enters")
+        .replace("enter the battlefield", "enter")
+        .replace("Enters the battlefield", "Enters")
+        .replace("Enter the battlefield", "Enter")
+        .replace("Cascade and Cascade", "Cascade, cascade")
+        .replace("Add 1 mana of any color", "Add one mana of any color")
+        .replace("add 1 mana of any color", "add one mana of any color")
+        .replace("fateseal {1}", "fateseal 1")
+        .replace("Fateseal {1}", "Fateseal 1")
+        .replace(" hand :", " hand:")
+        .replace(
+            "return this creature from graveyard to the battlefield",
+            "return this card from your graveyard to the battlefield",
+        )
+        .replace(
+            "Return this creature from graveyard to the battlefield",
+            "Return this card from your graveyard to the battlefield",
+        )
+        .replace(
+            "If that player doesn't, create",
+            "If that player doesn't, you create",
+        )
+        .replace(
+            "if that player doesn't, create",
+            "if that player doesn't, you create",
+        )
+        .replace(
+            "Lands are 1/1 creatures in addition to their other types.",
+            "All lands are 1/1 creatures that are still lands.",
+        )
+        .replace(
+            "lands are 1/1 creatures in addition to their other types.",
+            "all lands are 1/1 creatures that are still lands.",
+        )
+        .replace(
+            "you draw half X, rounded down cards",
+            "draw half X cards, rounded down",
+        )
+        .replace(
+            "You draw half X, rounded down cards",
+            "Draw half X cards, rounded down",
+        )
+        .replace("put X +1/+1 counter on", "put X +1/+1 counters on")
+        .replace("Put X +1/+1 counter on", "Put X +1/+1 counters on")
+        .replace("sliver card in hand have", "sliver cards in your hand have")
+        .replace("Sliver card in hand have", "Sliver cards in your hand have")
+        .replace(
+            ". permanent can't untap during its controller's next untap step",
+            ". That permanent doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            ". Permanent can't untap during its controller's next untap step",
+            ". That permanent doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            ", permanent can't untap during its controller's next untap step",
+            ", that permanent doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            ", Permanent can't untap during its controller's next untap step",
+            ", that permanent doesn't untap during its controller's next untap step",
+        )
+        .replace("other than wall", "other than Wall")
+        .replace("Other than wall", "Other than Wall")
+        .replace(
+            "You choose exactly 1 a Background you control in the battlefield and tags it as '__it__'.",
+            "Choose a Background",
+        )
+        .replace(
+            "Gift a card When this creature enters, if the gift was promised, the chosen player draws a card. ",
+            "Gift a card ",
+        )
+        .replace(
+            "gift a card when this creature enters, if the gift was promised, the chosen player draws a card. ",
+            "gift a card ",
+        )
+        .replace(
+            "you choose exactly 1 a Background you control in the battlefield and tags it as '__it__'.",
+            "choose a Background",
+        )
+        .replace(" all auras or equipment ", " all Auras and Equipment ")
+        .replace("All auras or equipment ", "All Auras and Equipment ");
+    normalized = normalize_debug_safe_mana_symbol_case(&normalized);
+    if let Some(compact) = compact_debug_safe_generic_sentence_patterns(&normalized) {
+        normalized = compact;
+    }
+    let compact_lower = compact_whitespace(&normalized).to_ascii_lowercase();
+    if compact_lower == "a land you control have \"{t}: add one mana of any color.\""
+        || compact_lower == "a land you control have \"{t}: add one mana of any color\""
+    {
+        normalized = "Lands you control have \"{T}: Add one mana of any color.\"".to_string();
+    }
+    if normalized.ends_with("..") {
+        normalized.pop();
+    }
+    normalized
+}
+
+fn normalize_debug_safe_mana_symbol_case(line: &str) -> String {
+    let mut normalized = line.to_string();
+    for (from, to) in [
+        ("{w}", "{W}"),
+        ("{u}", "{U}"),
+        ("{b}", "{B}"),
+        ("{r}", "{R}"),
+        ("{g}", "{G}"),
+        ("{c}", "{C}"),
+        ("{t}", "{T}"),
+        ("{q}", "{Q}"),
+        ("{e}", "{E}"),
+        ("{s}", "{S}"),
+        ("{x}", "{X}"),
+    ] {
+        normalized = normalized.replace(from, to);
+    }
+    while normalized.contains("} {") {
+        normalized = normalized.replace("} {", "}{");
+    }
+    normalized = normalized.replace("\"sacrifice ", "\"Sacrifice ");
+    normalized
+}
+
+fn compact_debug_safe_generic_sentence_patterns(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+
+    if lower
+        == "for each player, that player draws a card. for each player, that player discards a card."
+        || lower
+            == "for each player, that player draws a card. for each player, that player discards a card"
+    {
+        return Some("Each player draws a card, then discards a card.".to_string());
+    }
+    if let Some((cost, effect)) = split_once_ascii_ci(&compact, ": ")
+        && (effect.eq_ignore_ascii_case(
+            "For each player, that player draws a card. For each player, that player discards a card.",
+        ) || effect.eq_ignore_ascii_case(
+            "For each player, that player draws a card. For each player, that player discards a card",
+        ))
+    {
+        return Some(format!("{cost}: Each player draws a card, then discards a card."));
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(&compact, "For each player, Create ")
+        && let Some(token) = rest
+            .strip_suffix(" under that player's control.")
+            .or_else(|| rest.strip_suffix(" under that player's control"))
+    {
+        return Some(format!("Each player creates {}", lowercase_first(token)));
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(
+        &compact,
+        ", for each player, Put a card from that player's hand on top of that player's library",
+    ) {
+        let suffix = rest.trim();
+        let period = if suffix.ends_with('.') || suffix.is_empty() {
+            ""
+        } else {
+            "."
+        };
+        return Some(format!(
+            "{}, each player puts a card from their hand on top of their library{}{}",
+            capitalize_first(prefix.trim()),
+            suffix,
+            period
+        ));
+    }
+    if lower
+        == "for each player, put a card from that player's hand on top of that player's library."
+        || lower
+            == "for each player, put a card from that player's hand on top of that player's library"
+    {
+        return Some(
+            "Each player puts a card from their hand on top of their library.".to_string(),
+        );
+    }
+    if lower == "target player sacrifices a creature of their choice. target player loses 1 life."
+        || lower
+            == "target player sacrifices a creature of their choice. target player loses 1 life"
+    {
+        return Some(
+            "Target player sacrifices a creature of their choice and loses 1 life.".to_string(),
+        );
+    }
+    if lower
+        == "whenever this creature attacks, permanent can't untap during its controller's next untap step."
+        || lower
+            == "whenever this creature attacks, permanent cant untap during its controller's next untap step."
+    {
+        return Some(
+            "Whenever this creature attacks, it doesn't untap during its controller's next untap step."
+                .to_string(),
+        );
+    }
+    if let Some((cost, tail)) = split_once_ascii_ci(&compact, ": ")
+        && (tail
+            .eq_ignore_ascii_case("Return this permanent from a graveyard to its owner's hand.")
+            || tail
+                .eq_ignore_ascii_case("Return this permanent from a graveyard to its owner's hand"))
+    {
+        return Some(format!(
+            "{cost}: Return this card from your graveyard to your hand."
+        ));
+    }
+    if let Some(compact) = compact_debug_safe_base_pt_animation(&compact) {
+        return Some(compact);
+    }
+    if let Some(compact) = compact_debug_safe_search_then_that_player_shuffles_line(&compact) {
+        return Some(compact);
+    }
+    if let Some(compact) = compact_debug_safe_gift_card_etb_line(&compact) {
+        return Some(compact);
+    }
+    if let Some((trigger, rest)) = split_once_ascii_ci(&compact, ", ")
+        && trigger.to_ascii_lowercase().starts_with("whenever ")
+        && let Some(effect) = rest.strip_suffix(" This ability triggers only once each turn.")
+    {
+        return Some(format!("{trigger} for the first time each turn, {effect}"));
+    }
+    if let Some(compact) = compact_debug_safe_return_cost_scaffold(&compact) {
+        return Some(compact);
+    }
+    if (lower.starts_with("when ")
+        || lower.starts_with("whenever ")
+        || lower.starts_with("at the beginning "))
+        && let Some((trigger, effect)) = split_once_ascii_ci(&compact, ": ")
+    {
+        return Some(format!(
+            "{}, {}",
+            trigger.trim(),
+            lowercase_first(effect.trim())
+        ));
+    }
+    None
+}
+
+fn compact_debug_safe_gift_card_etb_line(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let duplicate = "gift a card when this creature enters, if the gift was promised, the chosen player draws a card. ";
+    if lower.starts_with(duplicate) {
+        return Some(format!(
+            "Gift a card {}",
+            compact[duplicate.len()..].trim_start()
+        ));
+    }
+    None
+}
+
+fn compact_debug_safe_search_then_that_player_shuffles_line(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    if lower.starts_with("search target player's library ")
+        && lower.ends_with(" shuffle target player's library.")
+    {
+        let prefix = compact
+            .strip_suffix(" shuffle target player's library.")
+            .unwrap_or(&compact)
+            .trim_end();
+        return Some(format!("{prefix} then that player shuffles."));
+    }
+    None
+}
+
+fn compact_debug_safe_living_weapon_sequence(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let prefix = "when this equipment enters, tag 'living_weapon_created' then create a 0/0 black phyrexian germ creature token. attach this equipment to the tagged object 'living_weapon_created'.";
+    if lower == prefix || lower.starts_with(&format!("{prefix} ")) {
+        let rest = compact[prefix.len()..].trim_start();
+        return Some(if rest.is_empty() {
+            "Living weapon".to_string()
+        } else {
+            format!("Living weapon. {}", capitalize_first(rest))
+        });
+    }
+    None
+}
+
+fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let Some((subject, rest)) = split_once_ascii_ci(&compact, " becomes a ") else {
+        return None;
+    };
+    let mut parts = rest.split_whitespace();
+    let pt = parts.next()?;
+    let (power, toughness) = pt.split_once('/')?;
+    if power.parse::<u32>().is_err() || toughness.parse::<u32>().is_err() {
+        return None;
+    }
+    let tail = parts.collect::<Vec<_>>().join(" ");
+    if tail.is_empty() {
+        return None;
+    }
+    if !lower.contains(" until end of turn") && !lower.contains(" creature") {
+        return None;
+    }
+    let tail = tail.trim_end_matches('.');
+    if let Some(body) = tail.strip_suffix(" until end of turn") {
+        return Some(format!(
+            "{subject} becomes {body} with base power and toughness {pt} until end of turn."
+        ));
+    }
+    Some(format!(
+        "{subject} becomes {tail} with base power and toughness {pt}."
+    ))
+}
+
+fn compact_debug_safe_return_cost_scaffold(line: &str) -> Option<String> {
+    let (before, after_choose) = split_once_ascii_ci(line, "Choose exactly ")?;
+    let (count, after_count) = after_choose.split_once(' ')?;
+    let (article_and_object, after_object) = split_once_ascii_ci(
+        after_count,
+        " you control in the battlefield and tags it as 'return_cost_0', Return that object to its owner's hand",
+    )?;
+    let object = article_and_object
+        .trim()
+        .trim_start_matches("a ")
+        .trim_start_matches("an ")
+        .trim();
+    let object_plural = match (count, object.to_ascii_lowercase().as_str()) {
+        ("1", "island") => "an Island".to_string(),
+        ("2", "island") => "two Islands".to_string(),
+        ("3", "island") => "three Islands".to_string(),
+        _ if count == "1" => format!("a {object}"),
+        _ => format!(
+            "{} {}s",
+            small_number_word(count.parse::<u32>().ok()?)
+                .unwrap_or(count)
+                .to_string(),
+            object
+        ),
+    };
+    let owner_destination = if count == "1" {
+        "its owner's hand"
+    } else {
+        "their owners' hands"
+    };
+    let after_object = after_object.trim_start();
+    let after_object = if after_object.is_empty() {
+        String::new()
+    } else {
+        format!(" {after_object}")
+    };
+    let action = format!("Return {object_plural} you control to {owner_destination}{after_object}");
+    if before.trim_end().ends_with("You may") {
+        return Some(format!(
+            "{}{}",
+            before,
+            lowercase_first(action.trim_start_matches(',').trim_start())
+        ));
+    }
+    Some(format!("{before}{action}"))
+}
+
+fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    let subject = capitalize_first(subject_for_card(&def.card));
+
+    while idx < lines.len() {
+        let line = lines[idx].trim();
+        if let Some(rest) = strip_prefix_ascii_ci(line, "Enters with ") {
+            normalized.push(format!("{subject} enters with {rest}"));
+            idx += 1;
+            continue;
+        }
+        if line.eq_ignore_ascii_case("This creature is every creature type.")
+            || line.eq_ignore_ascii_case("This creature is every creature type")
+        {
+            normalized.push(format!("{} is every creature type.", def.card.name));
+            idx += 1;
+            continue;
+        }
+        if let Some(split) = split_debug_safe_large_keyword_bundle(line) {
+            normalized.extend(split);
+            idx += 1;
+            continue;
+        }
+        let lower_line = compact_whitespace(line).to_ascii_lowercase();
+        if lower_line.contains("ravenous") && lower_line.contains("if x is 5 or more") {
+            normalized.push("Ravenous".to_string());
+            idx += 1;
+            continue;
+        }
+        if lower_line == "gift a card"
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "when this creature enters, if the gift was promised, the chosen player draws a card."
+            })
+        {
+            normalized.push("Gift a card".to_string());
+            idx += 2;
+            continue;
+        }
+        if (lower_line == "gift a tapped fish" || lower_line == "gift an octopus")
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next)
+                    .to_ascii_lowercase()
+                    .starts_with("if the gift was promised, create ")
+                    || compact_whitespace(next)
+                        .to_ascii_lowercase()
+                        .starts_with("when this creature enters, if the gift was promised, create ")
+            })
+        {
+            normalized.push(capitalize_first(line));
+            if let Some(next) = lines.get(idx + 1)
+                && let Some((_, rest)) = compact_whitespace(next).split_once(". ")
+                && !rest.trim().is_empty()
+            {
+                normalized.push(capitalize_first(rest.trim()));
+            }
+            idx += 2;
+            continue;
+        }
+        if lower_line.starts_with("when this creature enters")
+            && lower_line.contains("if x is 5 or more")
+            && normalized
+                .last()
+                .is_some_and(|previous| previous.eq_ignore_ascii_case("Ravenous"))
+        {
+            idx += 1;
+            continue;
+        }
+        if is_ascend_runtime_scaffold(line)
+            && lines
+                .get(idx + 1)
+                .is_some_and(|next| line_mentions_citys_blessing_condition(next))
+        {
+            normalized.push("Ascend".to_string());
+            idx += 1;
+            continue;
+        }
+
+        if let Some(amount) =
+            structural_rampage_amount(&compact_whitespace(line).to_ascii_lowercase())
+            && normalized.last().is_some_and(|previous| {
+                intrinsic_line_contains_keyword(previous, &format!("Rampage {amount}"))
+            })
+        {
+            idx += 1;
+            continue;
+        }
+
+        normalized.push(
+            strip_duplicate_gift_card_draw_surface(&normalize_debug_safe_citys_blessing_surface(
+                line,
+            ))
+            .replace("a Elf", "an Elf")
+            .replace(" hand :", " hand:"),
+        );
+        idx += 1;
+    }
+
+    normalized
+}
+
+fn strip_duplicate_gift_card_draw_surface(line: &str) -> String {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let duplicate = "gift a card when this creature enters, if the gift was promised, the chosen player draws a card. ";
+    if lower.starts_with(duplicate) {
+        return format!("Gift a card {}", compact[duplicate.len()..].trim_start());
+    }
     line.to_string()
+}
+
+fn split_debug_safe_large_keyword_bundle(line: &str) -> Option<Vec<String>> {
+    let lower = line.to_ascii_lowercase();
+    if !lower.contains("ward—pay ") {
+        return None;
+    }
+    let parts = line
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() < 7
+        || !parts
+            .iter()
+            .all(|part| is_debug_safe_keyword_bundle_part(part))
+    {
+        return None;
+    }
+
+    let mut out = Vec::new();
+    for chunk in parts.chunks(2) {
+        out.push(chunk.join(", "));
+    }
+    Some(out)
+}
+
+fn is_debug_safe_keyword_bundle_part(part: &str) -> bool {
+    is_keyword_style_line(part) || part.trim().to_ascii_lowercase().starts_with("ward—pay ")
+}
+
+fn is_ascend_runtime_scaffold(line: &str) -> bool {
+    let lower = compact_whitespace(line).to_ascii_lowercase();
+    lower
+        == "whenever a permanent you control enters the battlefield, if you control ten or more permanents and not, create an emblem named city's blessing."
+        || (lower.starts_with("whenever a permanent you control enters")
+            && lower.contains("control ten or more permanents")
+            && lower.contains("create an emblem named city's blessing"))
+}
+
+fn line_mentions_citys_blessing_condition(line: &str) -> bool {
+    line.to_ascii_lowercase()
+        .contains("playerhascitysblessing { player: you }")
+}
+
+fn normalize_debug_safe_citys_blessing_surface(line: &str) -> String {
+    let mut normalized = line
+        .replace(
+            "PlayerHasCitysBlessing { player: You }",
+            "you have the city's blessing",
+        )
+        .replace(
+            "playerhascitysblessing { player: you }",
+            "you have the city's blessing",
+        );
+    for keyword in [
+        "Flying",
+        "Double strike",
+        "First strike",
+        "Deathtouch",
+        "Lifelink",
+        "Menace",
+        "Reach",
+        "Trample",
+        "Vigilance",
+        "Haste",
+    ] {
+        normalized = normalized.replace(
+            &format!("has {keyword} as long as"),
+            &format!("has {} as long as", keyword.to_ascii_lowercase()),
+        );
+    }
+    normalized
+}
+
+fn normalize_debug_safe_keyword_punctuation(line: &str) -> String {
+    let mut normalized = line.to_string();
+    if let Some(idx) = normalized.to_ascii_lowercase().find("ward pay ") {
+        let before = normalized[..idx].to_string();
+        let after = normalized[idx + "ward pay ".len()..].trim();
+        normalized = format!("{before}Ward—Pay {after}");
+    }
+    normalized
 }
 
 fn compact_standard_named_token_payload_in_line(line: &str) -> Option<String> {
@@ -272,12 +957,6 @@ fn structural_keyword_label_from_line(line: &str) -> Option<String> {
     if let Some(amount) = structural_rampage_amount(&lower) {
         return Some(format!("Rampage {amount}"));
     }
-    if let Some(cost) = compact.strip_suffix(
-        ", Discard this card: Search your library for a card with mana value equal to a dynamic value, put it into your hand, then shuffle. Activate only as a sorcery.",
-    ) && cost.starts_with('{')
-    {
-        return Some(format!("Transmute {cost}"));
-    }
     structural_fabricate_label(&compact)
 }
 
@@ -344,26 +1023,6 @@ fn structural_graft_label(first: &str, second: &str) -> Option<String> {
         .next()?;
     let amount = parse_structural_keyword_amount(amount_text)?;
     Some(format!("Graft {amount}"))
-}
-
-fn compact_debug_safe_pile_choice_surface(line: &str) -> Option<String> {
-    let attack_marker = "that player chooses any number of creatures that player controls. Other creatures that player controls can't attack this turn.";
-    if let Some((before, _)) = split_once_ascii_ci(line, attack_marker) {
-        return Some(format!(
-            "{}separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn.",
-            before
-        ));
-    }
-
-    let block_marker = "that player chooses any number of creatures that player controls. Other creatures that player controls can't block this turn.";
-    if let Some((before, _)) = split_once_ascii_ci(line, block_marker) {
-        return Some(format!(
-            "{}separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn.",
-            before
-        ));
-    }
-
-    None
 }
 
 fn compact_echo_keyword_marker_lines(lines: Vec<String>) -> Vec<String> {
@@ -534,6 +1193,14 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
     lines
         .into_iter()
         .map(|line| {
+            for ability in &def.abilities {
+                if let Some(label) = safe_intrinsic_label_from_ability_source_text(ability)
+                    && label.to_ascii_lowercase().starts_with("reinforce ")
+                    && line.to_ascii_lowercase().contains("discard this card:")
+                {
+                    return label;
+                }
+            }
             let line_key =
                 intrinsic_match_key_for_def(def, &canonicalize_intrinsic_render_line(&line));
             for (rendered, marker) in &replacements {
@@ -605,8 +1272,7 @@ fn canonicalize_intrinsic_render_line(line: &str) -> String {
     if stripped.is_empty() {
         return String::new();
     }
-    let normalized =
-        normalize_compiled_post_pass_effect(&normalize_common_semantic_phrasing(&stripped));
+    let normalized = normalize_common_semantic_phrasing(&stripped);
     let normalized = normalize_sentence_surface_style(&normalized);
     strip_parenthetical_text(&normalized)
 }

@@ -6,7 +6,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::time::Duration;
 
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
-use ironsmith::compiled_text::compiled_lines;
+use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
 use ironsmith_tools::{
@@ -623,7 +623,7 @@ fn build_snapshot_from_row(
 }
 
 fn populate_row_from_definition(row: &mut Row, payload: &CardPayload, definition: &CardDefinition) {
-    let compiled = compiled_lines(&definition);
+    let compiled = unprocessed_compiled_lines(&definition);
     row.compiled_lines_count = compiled.len();
     row.has_unimplemented = generated_definition_has_unimplemented_content(&definition);
     let (oracle_cov, compiled_cov, similarity, line_delta, semantic_mismatch) =

@@ -1103,6 +1103,9 @@ pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     if !anthem_has_word_sequence(&words[lose_idx + 1..], &["all", "abilities"]) {
         return Ok(None);
     }
+    if anthem_contains_word(&words, "until") {
+        return Ok(None);
+    }
     if anthem_contains_word(&words, "becomes") {
         return Err(CardTextError::ParseError(format!(
             "unsupported lose-all-abilities static becomes clause (clause: '{}')",

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use ironsmith::cards::generated_definition_has_unimplemented_content;
-use ironsmith::compiled_text::compiled_lines;
+use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith::semantic_compare::{
     clause_comparison_tokens as shared_clause_comparison_tokens,
     compare_semantics_scored as shared_compare_semantics_scored,
@@ -58,7 +58,7 @@ struct CardAudit {
     oracle_text: String,
     cluster_key: String,
     parse_error: Option<String>,
-    compiled_lines: Vec<String>,
+    unprocessed_compiled_lines: Vec<String>,
     oracle_coverage: f32,
     compiled_coverage: f32,
     similarity_score: f32,
@@ -109,7 +109,7 @@ struct JsonExample {
     oracle_excerpt: String,
     compiled_excerpt: String,
     oracle_text: String,
-    compiled_lines: Vec<String>,
+    unprocessed_compiled_lines: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -155,7 +155,7 @@ struct JsonFailureEntry {
     line_delta: isize,
     oracle_text: String,
     compiled_text: String,
-    compiled_lines: Vec<String>,
+    unprocessed_compiled_lines: Vec<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -1036,11 +1036,11 @@ fn merge_transform_compiled_lines(lines: &[String]) -> Vec<String> {
 fn compare_semantics(
     card_name: &str,
     oracle_text: &str,
-    compiled_lines: &[String],
+    unprocessed_compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
     let normalized_oracle = normalize_card_self_references(oracle_text, card_name);
-    let normalized_compiled_lines = compiled_lines
+    let normalized_compiled_lines = unprocessed_compiled_lines
         .iter()
         .map(|line| normalize_card_self_references(line, card_name))
         .collect::<Vec<_>>();
@@ -1319,8 +1319,8 @@ fn json_encode_failure_report(report: &JsonFailureReport) -> String {
         out.push_str("\"compiled_text\":");
         json_push_string(&mut out, &entry.compiled_text);
         out.push(',');
-        out.push_str("\"compiled_lines\":[");
-        for (line_idx, line) in entry.compiled_lines.iter().enumerate() {
+        out.push_str("\"unprocessed_compiled_lines\":[");
+        for (line_idx, line) in entry.unprocessed_compiled_lines.iter().enumerate() {
             if line_idx > 0 {
                 out.push(',');
             }
@@ -1880,8 +1880,8 @@ fn json_encode_cluster_report(report: &JsonReport) -> String {
             out.push_str("\"oracle_text\":");
             json_push_string(&mut out, &example.oracle_text);
             out.push(',');
-            out.push_str("\"compiled_lines\":[");
-            for (line_idx, line) in example.compiled_lines.iter().enumerate() {
+            out.push_str("\"unprocessed_compiled_lines\":[");
+            for (line_idx, line) in example.unprocessed_compiled_lines.iter().enumerate() {
                 if line_idx > 0 {
                     out.push(',');
                 }
@@ -1988,7 +1988,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (audit, snapshot) = match parse_result {
             Ok(definition) => {
                 let has_unimplemented = generated_definition_has_unimplemented_content(&definition);
-                let compiled = compiled_lines(&definition);
+                let compiled = unprocessed_compiled_lines(&definition);
                 let (
                     oracle_coverage,
                     compiled_coverage,
@@ -2007,7 +2007,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         oracle_text: card_input.oracle_text.clone(),
                         cluster_key,
                         parse_error: None,
-                        compiled_lines: compiled,
+                        unprocessed_compiled_lines: compiled,
                         oracle_coverage,
                         compiled_coverage,
                         similarity_score,
@@ -2037,7 +2037,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         oracle_text: card_input.oracle_text.clone(),
                         cluster_key,
                         parse_error: Some(parse_error.clone()),
-                        compiled_lines: Vec::new(),
+                        unprocessed_compiled_lines: Vec::new(),
                         oracle_coverage: 0.0,
                         compiled_coverage: 0.0,
                         similarity_score: 0.0,
@@ -2165,8 +2165,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 similarity_score: audit.similarity_score,
                 line_delta: audit.line_delta,
                 oracle_text: audit.oracle_text.clone(),
-                compiled_text: audit.compiled_lines.join("\n"),
-                compiled_lines: audit.compiled_lines.clone(),
+                compiled_text: audit.unprocessed_compiled_lines.join("\n"),
+                unprocessed_compiled_lines: audit.unprocessed_compiled_lines.clone(),
             })
             .collect::<Vec<_>>();
         entries.sort_by(|a, b| {
@@ -2386,7 +2386,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("    oracle: {}", first_oracle_excerpt(&entry.oracle_text));
             println!(
                 "    compiled: {}",
-                first_compiled_excerpt(&entry.compiled_lines)
+                first_compiled_excerpt(&entry.unprocessed_compiled_lines)
             );
         }
         println!();
@@ -2407,9 +2407,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 similarity_score: entry.similarity_score,
                 line_delta: entry.line_delta,
                 oracle_excerpt: first_oracle_excerpt(&entry.oracle_text),
-                compiled_excerpt: first_compiled_excerpt(&entry.compiled_lines),
+                compiled_excerpt: first_compiled_excerpt(&entry.unprocessed_compiled_lines),
                 oracle_text: entry.oracle_text.clone(),
-                compiled_lines: entry.compiled_lines.clone(),
+                unprocessed_compiled_lines: entry.unprocessed_compiled_lines.clone(),
             })
             .collect::<Vec<_>>();
 

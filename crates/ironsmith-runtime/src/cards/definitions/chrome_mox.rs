@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn test_chrome_mox_compiled_text_mentions_imprint_clause() {
         let def = chrome_mox();
-        let rendered = crate::compiled_text::compiled_lines(&def)
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
             .join("\n")
             .to_ascii_lowercase();
 

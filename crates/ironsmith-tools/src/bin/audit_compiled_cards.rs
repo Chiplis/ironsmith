@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 
-use ironsmith::compiled_text::compiled_lines;
+use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
 use serde::Serialize;
 
@@ -175,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     parse_failed += 1;
                     filtered_unimplemented += 1;
                     parse_error = Some(
-                        "Filtered as unparseable: raw compiled output contains 'unimplemented'"
+                        "Filtered as unparseable: compiled definition contains 'unimplemented'"
                             .to_string(),
                     );
                 } else {
@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     compiled_text = if args.raw {
                         format!("{def:#?}")
                     } else {
-                        let lines = compiled_lines(&def);
+                        let lines = unprocessed_compiled_lines(&def);
                         if lines.is_empty() {
                             "<none>".to_string()
                         } else {

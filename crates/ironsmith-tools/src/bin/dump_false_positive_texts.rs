@@ -3,7 +3,7 @@ use std::fs;
 
 use serde_json::Value;
 
-use ironsmith::compiled_text::compiled_lines;
+use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         out.push_str("Compiled:\n");
         match parse_result {
             Ok(definition) => {
-                let lines = compiled_lines(&definition);
+                let lines = unprocessed_compiled_lines(&definition);
                 if lines.is_empty() {
                     out.push_str("<empty>\n");
                 } else {

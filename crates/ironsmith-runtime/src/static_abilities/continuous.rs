@@ -3548,7 +3548,7 @@ mod tests {
             )
             .expect("Kemba's Banner text should parse");
 
-        let compiled = crate::compiled_text::compiled_lines(&kembas_banner)
+        let compiled = crate::compiled_text::unprocessed_compiled_lines(&kembas_banner)
             .join(" ")
             .to_ascii_lowercase();
         assert!(
@@ -3938,7 +3938,7 @@ mod tests {
             "AttachedToSource should have been promoted to AttachedToAffected, got {abilities_debug}"
         );
 
-        let lines = crate::compiled_text::oracle_like_lines(&def);
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
         let joined = lines.join(" ").to_ascii_lowercase();
         assert!(
             joined.contains("creature you control gets +2/+0 for each equipment attached to it")

@@ -129,7 +129,6 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 fn is_noop_effect(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::GrantAbilitiesAll { abilities, .. }
-        | EffectAst::RemoveAbilitiesAll { abilities, .. }
         | EffectAst::GrantAbilitiesChoiceAll { abilities, .. } => abilities.is_empty(),
         _ => false,
     }

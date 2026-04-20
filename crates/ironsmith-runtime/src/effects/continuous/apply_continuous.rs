@@ -32,6 +32,8 @@ pub enum RuntimeModification {
     ModifyPower { value: Value },
     /// Resolve toughness delta at execution, then apply layer 7c modification.
     ModifyToughness { value: Value },
+    /// Remove all abilities from the affected objects.
+    RemoveAllAbilities,
 }
 
 /// Effect that registers a continuous effect with the game state.
@@ -160,6 +162,7 @@ fn resolve_runtime_modification(
         RuntimeModification::ModifyToughness { value } => Ok(Modification::ModifyToughness(
             resolve_value(game, value, ctx)?,
         )),
+        RuntimeModification::RemoveAllAbilities => Ok(Modification::RemoveAllAbilities),
     }
 }
 

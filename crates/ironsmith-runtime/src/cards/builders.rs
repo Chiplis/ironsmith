@@ -4941,7 +4941,7 @@ mod target_parse_tests {
 mod effect_parse_tests {
     use super::*;
     use crate::alternative_cast::AlternativeCastingMethod;
-    use crate::compiled_text::compiled_lines;
+    use crate::compiled_text::unprocessed_compiled_lines;
     use crate::effect::Value;
     use crate::effects::CantEffect;
     use crate::effects::{
@@ -5034,7 +5034,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("quoted attached activated ability should parse");
 
         let abilities_debug = format!("{:#?}", def.abilities);
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             abilities_debug.contains("AttachedAbilityGrant"),
             "expected attached activated ability grant, got {abilities_debug}"
@@ -5889,11 +5889,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected any-number target count in runtime effect, got {debug}"
         );
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("any number of target spell"),
             "expected rendered any-number target text, got {spell_line}"
@@ -5980,7 +5977,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected grouped player-choice and control-swap shape, got {debug}"
         );
 
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains("Choose any number of creatures target player controls.")
                 && rendered.contains(
@@ -6011,7 +6008,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected three ordered graveyard choices and a shared return, got {debug}"
         );
 
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains(
                 "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3."
@@ -6073,7 +6070,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             debug.contains("exactly(2)") || debug.contains("min: 2"),
             "expected two-creature exchange selection, got {debug}"
         );
-        let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             !rendered.contains("unsupported effect"),
             "expected compiled text to render exchange text boxes, got {rendered}"
@@ -6284,7 +6283,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "base P/T for Aura text should not be a spell-effect duration modification"
         );
 
-        let lines = crate::compiled_text::compiled_lines(&def);
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
         let has_base_line = lines
             .iter()
             .find(|line| line.contains("base power and toughness 0/2"))
@@ -6394,11 +6393,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Target attacking creature has base power 0 until end of turn.")
             .expect("base-power-only clause should parse");
 
-        let lines = crate::compiled_text::compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("base power 0") && spell_line.contains("until end of turn"),
             "compiled text should include temporary base power wording, got {spell_line}"
@@ -6418,11 +6414,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("exile target not-exactly-two-colors clause should parse");
 
-        let lines = crate::compiled_text::compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("not exactly two colors"),
             "compiled text should preserve exact-two-colors exclusion, got {spell_line}"
@@ -6449,11 +6442,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse tapped battlefield search");
 
-        let lines = crate::compiled_text::compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("onto the battlefield tapped"),
             "expected tapped battlefield placement in compiled text, got {spell_line}"
@@ -6689,7 +6679,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let def = CardDefinitionBuilder::new(CardId::new(), "Torch Fiend Variant")
             .parse_text("{R}, Sacrifice this creature: Destroy target artifact.")
             .expect("parse torch fiend style text");
-        let lines = crate::compiled_text::compiled_lines(&def);
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
         let joined = lines.join("\n");
         assert!(
             joined.contains("Destroy target artifact"),
@@ -6739,7 +6729,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("no-spells-last-turn predicate should parse");
 
-        let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        let joined = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             joined.contains("if no spells were cast last turn"),
             "expected no-spells predicate wording in parsed output, got {joined}"
@@ -6904,7 +6896,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("token attack-or-block-alone text should parse");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join("\n").to_ascii_lowercase();
         assert!(
             joined.contains("can't attack or block alone"),
@@ -6919,7 +6911,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("The Ring tempts you.")
             .expect("ring tempts clause should parse");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         assert!(
             lines
                 .iter()
@@ -7273,7 +7265,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Artifacts, creatures, and lands your opponents control enter the battlefield tapped.")
             .expect("should parse opponents-control enters tapped line");
 
-        let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" | ")
+            .to_ascii_lowercase();
         assert!(
             rendered.contains("opponent"),
             "expected rendered line to preserve opponents controller filter, got {rendered}"
@@ -7287,7 +7281,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Creatures played by your opponents enter tapped.")
             .expect("should parse played-by-opponents enters tapped line");
 
-        let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" | ")
+            .to_ascii_lowercase();
         assert!(
             rendered.contains("opponent"),
             "expected rendered line to preserve opponents controller filter, got {rendered}"
@@ -7501,11 +7497,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             other => panic!("expected count-based scaling, got {other:?}"),
         }
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("for each"),
             "compiled text should preserve for-each semantics: {mana_line}"
@@ -7581,11 +7574,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             }
         );
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("devotion to green"),
             "compiled text should preserve devotion semantics: {mana_line}"
@@ -7769,11 +7759,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             other => panic!("expected count-based amount, got {other:?}"),
         }
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("any one color"),
             "compiled text should preserve any-one-color semantics: {mana_line}"
@@ -7818,11 +7805,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected red/green restriction, got {colors:?}"
         );
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("in any combination of {R} and/or {G}"),
             "compiled text should preserve restricted color combination, got: {mana_line}"
@@ -7861,11 +7845,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(colors.contains(&crate::color::Color::White));
         assert!(colors.contains(&crate::color::Color::Black));
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("Add {W} or {B}"),
             "compiled text should preserve color choice wording, got: {mana_line}"
@@ -7938,11 +7919,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(colors.contains(&crate::color::Color::Green));
         assert!(colors.contains(&crate::color::Color::Blue));
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.to_ascii_lowercase().contains("power"),
             "compiled text should describe the X value, got: {mana_line}"
@@ -8040,11 +8018,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected opponent-controlled land filter"
         );
 
-        let lines = compiled_lines(&def);
-        let mana_line = lines
-            .iter()
-            .find(|line| line.starts_with("Mana ability"))
-            .expect("expected mana ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let mana_line = lines.join(" ");
         assert!(
             mana_line.contains("could produce"),
             "compiled text should preserve could-produce clause, got {mana_line}"
@@ -8096,7 +8071,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("artifact-gated mana ability should parse");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let gated = lines
             .iter()
             .find(|line| {
@@ -8490,11 +8465,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected effect-backed remove-counters-among activation cost, got {cost_debug}"
         );
 
-        let lines = compiled_lines(&def);
-        let line = lines
-            .iter()
-            .find(|line| line.starts_with("Activated ability"))
-            .expect("expected activated ability rendered line");
+        let lines = unprocessed_compiled_lines(&def);
+        let line = lines.join(" ");
         assert!(
             line.contains("Remove a counter from a permanent you control"),
             "expected cost text in activated rendering, got {line}"
@@ -8641,11 +8613,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected flying ability filter in runtime effect, got {debug}"
         );
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("Destroy target creature with flying"),
             "expected rendered destroy filter to include flying qualifier, got {spell_line}"
@@ -8665,11 +8634,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected islandwalk marker filter in runtime effect, got {debug}"
         );
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("Destroy target creature with islandwalk"),
             "expected rendered destroy filter to include islandwalk qualifier, got {spell_line}"
@@ -8689,11 +8655,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected flying exclusion in runtime effect, got {debug}"
         );
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("Destroy target creature without flying"),
             "expected rendered destroy filter to include without-flying qualifier, got {spell_line}"
@@ -8738,11 +8701,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Each opponent sacrifices a creature of their choice.")
             .expect("parse each-opponent sacrifice text");
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("Each opponent sacrifices a creature of their choice"),
             "expected compact each-opponent sacrifice text, got {spell_line}"
@@ -8757,11 +8717,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("{T}: Tap target creature unless its controller pays 2 life.")
             .expect("parse unless-pays-life clause");
 
-        let lines = compiled_lines(&def);
-        let activated = lines
-            .iter()
-            .find(|line| line.starts_with("Activated ability"))
-            .expect("expected activated ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let activated = lines.join(" ");
         assert!(
             activated.contains("unless"),
             "expected unless branch in render, got {activated}"
@@ -8781,11 +8738,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse damage-unless-controller alternative");
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("unless") && spell_line.contains("Deal 5 damage"),
             "expected unless-controller alternative damage text, got {spell_line}"
@@ -8806,11 +8760,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(matches!(ability.kind, AbilityKind::Activated(_)));
         assert_eq!(ability.text.as_deref(), Some("Equip {1}"));
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         assert!(
-            lines
-                .iter()
-                .any(|line| line == "Keyword ability 1: Equip {1}"),
+            lines.iter().any(|line| line == "Equip {1}"),
             "expected keyword ability line, got {:?}",
             lines
         );
@@ -8903,7 +8855,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Whenever you cast a spell from your graveyard, draw a card.")
             .expect("parse spell-cast-from-graveyard trigger");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("Whenever you cast a spell from your graveyard"),
@@ -8920,7 +8872,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse qualified spell-cast trigger");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("Whenever you cast another spell during your turn"),
@@ -8935,7 +8887,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Whenever you cast your third spell each turn, draw a card.")
             .expect("parse third-spell-each-turn trigger");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("Whenever you cast your third spell each turn"),
@@ -8952,7 +8904,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse pest token creation with dies lifegain text");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("Pest creature token"),
@@ -8967,7 +8919,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Create a 4/4 red Dragon Elemental creature token with flying and prowess.")
             .expect("parse token creation with prowess");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.to_ascii_lowercase().contains("prowess"),
@@ -8984,7 +8936,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse named-source damaged-by trigger");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("dealt damage by this creature this turn dies"),
@@ -8999,7 +8951,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Whenever a creature dealt damage by enchanted creature this turn dies, draw a card.")
             .expect("parse enchanted-creature damaged-by trigger");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("dealt damage by enchanted creature this turn dies"),
@@ -9016,7 +8968,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("enters-as-copy replacement with added ability should parse");
 
-        let lines = compiled_lines(&def);
+        let lines = unprocessed_compiled_lines(&def);
         let joined = lines.join(" ");
         assert!(
             joined.contains("copy of any creature on the battlefield, except it has"),
@@ -9173,7 +9125,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 "Create a 1/1 green Wolf creature token. It has \"This token gets +1/+1 for each card named Sound the Call in each graveyard.\"",
             )
             .expect("standalone token reminder sentence should parse as token reminder text");
-        let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        let joined = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             joined.contains("named sound the call"),
             "expected token reminder text to keep named-card clause, got {joined}"
@@ -9450,7 +9404,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && !debug.contains("StaticAbilityId::RuleFallbackText"),
             "cumulative upkeep {{1}} should not compile as fallback marker ability: {debug}"
         );
-        let joined = compiled_lines(&def).join(" ");
+        let joined = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             joined.to_ascii_lowercase().contains("cumulative upkeep"),
             "expected cumulative upkeep text in compiled abilities, got {joined}"
@@ -9965,7 +9919,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Fabricate 1")
             .expect("parse fabricate keyword line");
 
-        let rendered = compiled_lines(&def).join(" | ");
+        let rendered = unprocessed_compiled_lines(&def).join(" | ");
         assert!(
             rendered.contains("Fabricate 1"),
             "expected raw compiled output to keep keyword-only fabricate text, got {rendered}"
@@ -10054,11 +10008,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("same-name exile-until clause should parse");
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("until this permanent leaves the battlefield"),
             "compiled text should preserve exile duration, got {spell_line}"
@@ -10074,11 +10025,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("target exile-until clause should parse");
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects:"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("until this permanent leaves the battlefield"),
             "compiled text should preserve exile-until duration, got {spell_line}"
@@ -10325,7 +10273,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include meld effect, got {debug}"
         );
 
-        let rendered = crate::compiled_text::compiled_lines(&def)
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
             .join(" ")
             .to_ascii_lowercase();
         assert!(
@@ -10343,7 +10291,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("parse populate");
 
         assert!(
-            crate::compiled_text::compiled_lines(&def)
+            crate::compiled_text::unprocessed_compiled_lines(&def)
                 .join(" ")
                 .contains("Populate"),
             "expected compiled text to retain populate"
@@ -10357,7 +10305,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Populate X times.")
             .expect("parse populate x times");
 
-        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains("Populate X times"),
             "expected populate x rendering, got {rendered}"
@@ -10373,7 +10321,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse monstrous static designation");
 
-        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains("Monstrosity 1")
                 && rendered.contains("as long as this creature is monstrous"),
@@ -10433,7 +10381,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse populate followups");
 
-        let rendered = crate::compiled_text::compiled_lines(&def)
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
             .join(" ")
             .to_ascii_lowercase();
         assert!(
@@ -10453,7 +10401,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse populate enters attacking followup");
 
-        let rendered = crate::compiled_text::compiled_lines(&def)
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
             .join(" ")
             .to_ascii_lowercase();
         assert!(
@@ -10493,7 +10441,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include detain effect, got {debug}"
         );
 
-        let rendered = crate::compiled_text::compiled_lines(&def).join(" ");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains("Detain all opponent's nonland permanents with mana value 4 or less"),
             "expected detain each rendering, got {rendered}"
@@ -10506,12 +10454,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let def = CardDefinitionBuilder::new(CardId::new(), "Belbe's Armor Variant")
             .parse_text("{X}, {T}: Target creature gets -X/+X until end of turn.")
             .expect("activated dynamic gets should parse");
-        let lines = crate::compiled_text::compiled_lines(&def);
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
         let joined = lines.join("\n");
-        assert!(
-            joined.contains("Activated ability"),
-            "expected activated ability line, got {joined}"
-        );
         assert!(
             joined.contains("X"),
             "expected dynamic X modifier in rendering, got {joined}"
@@ -10828,7 +10772,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("soulbond shared mill-by-toughness line should parse");
 
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         let rendered_lower = rendered.to_ascii_lowercase();
         assert!(
             rendered_lower.contains("mill"),
@@ -11371,7 +11315,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("enchanted permanent doesnt-untap line should parse");
 
-        let compiled = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+        let compiled = unprocessed_compiled_lines(&def)
+            .join(" | ")
+            .to_ascii_lowercase();
         assert!(
             compiled.contains("enchanted permanent doesnt untap during its controllers untap step")
                 || compiled.contains(
@@ -11714,7 +11660,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected Forest and Plains slot filters, got {debug}"
         );
 
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains(
                 "search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle"
@@ -11745,7 +11691,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected Island, Swamp, and Mountain slot filters, got {debug}"
         );
 
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             rendered.contains(
                 "Search your library for an Island card, a Swamp card, and a Mountain card. Reveal those cards, put them into your hand, then shuffle"
@@ -11763,7 +11709,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("parse explicit-pt construct token");
 
-        let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             rendered.contains("create a 3/1 red construct artifact creature token with haste"),
             "expected explicit 3/1 haste construct token text, got {rendered}"
@@ -12685,11 +12633,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("{R}: Target creature can't block this creature this turn.")
             .expect("target creature can't block this creature should parse");
 
-        let lines = compiled_lines(&def);
-        let activated = lines
-            .iter()
-            .find(|line| line.starts_with("Activated ability"))
-            .expect("expected activated ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let activated = lines.join(" ");
         assert!(
             activated.contains("can't block")
                 && (activated.contains("this permanent this turn")
@@ -12705,11 +12650,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("{G}: Target creature blocks this creature this turn if able.")
             .expect("target creature blocks this creature should parse");
 
-        let lines = compiled_lines(&def);
-        let activated = lines
-            .iter()
-            .find(|line| line.starts_with("Activated ability"))
-            .expect("expected activated ability line");
+        let lines = unprocessed_compiled_lines(&def);
+        let activated = lines.join(" ");
         assert!(
             activated.contains("must block") && activated.contains("if able"),
             "expected must-block-if-able text in compiled line, got {activated}"
@@ -12723,11 +12665,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("All creatures able to block target creature this turn do so.")
             .expect("all creatures able to block target creature clause should parse");
 
-        let lines = compiled_lines(&def);
-        let spell = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell = lines.join(" ");
         assert!(
             spell.contains("All creatures able to block target creature this turn do so"),
             "expected all-creatures-do-so spell text, got {spell}"
@@ -12743,7 +12682,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("negated untap clause with tapped duration should parse");
 
-        let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
         assert!(
             rendered.contains("don't untap during their controllers' untap steps")
                 || rendered.contains("cant untap during their controllers' untap steps")
@@ -12786,7 +12727,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("for-each player put-from-graveyard should parse");
 
-        let joined = crate::compiled_text::compiled_lines(&def).join(" ");
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
             !joined.contains("target creature card in that player's graveyard"),
             "for-each choice should not become a target selection: {joined}"
@@ -12802,7 +12743,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("for-each player may-put-from-hand should parse");
 
-        let joined = crate::compiled_text::compiled_lines(&def).join(" ");
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
             !joined.contains("target artifact or creature or enchantment or land card"),
             "for-each choice should not force target wording: {joined}"
@@ -12839,11 +12780,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             )
             .expect("then-do-the-same-for subtype sentence should parse");
 
-        let lines = compiled_lines(&def);
-        let spell_line = lines
-            .iter()
-            .find(|line| line.starts_with("Spell effects"))
-            .expect("expected spell effects line");
+        let lines = unprocessed_compiled_lines(&def);
+        let spell_line = lines.join(" ");
         assert!(
             spell_line.contains("Pirate")
                 && spell_line.contains("Vampire")
@@ -12885,7 +12823,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let effects = def.spell_effect.as_ref().expect("spell effects");
         let debug = format!("{effects:?}");
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             debug.contains("MoveToZoneEffect"),
             "expected move-to-library effect, got {debug}"
@@ -12915,7 +12853,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("mesmeric sliver text should parse");
 
         let debug = format!("{def:?}");
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             debug.contains("FatesealEffect")
                 && rendered.to_ascii_lowercase().contains("fateseal 1"),
@@ -12951,7 +12889,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("marvo-style clash text should parse");
 
         let debug = format!("{def:?}");
-        let rendered = compiled_lines(&def).join(" ");
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
         assert!(
             debug.contains("WinsClashTrigger")
                 && rendered

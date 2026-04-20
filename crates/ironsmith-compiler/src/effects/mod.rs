@@ -144,6 +144,7 @@ pub mod continuous {
             source: crate::target::ChooseSpec,
             preserve_source_abilities: bool,
         },
+        RemoveAllAbilities,
     }
 }
 

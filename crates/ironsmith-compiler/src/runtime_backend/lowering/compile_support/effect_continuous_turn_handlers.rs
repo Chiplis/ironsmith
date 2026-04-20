@@ -369,28 +369,35 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
             duration,
         } => {
             let abilities = lower_granted_abilities_ast(abilities)?;
-            if abilities.is_empty() {
-                return Err(CardTextError::InvariantViolation(
-                    "normalize_effects_ast should remove RemoveAbilitiesAll with no abilities"
-                        .to_string(),
-                ));
-            }
-
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let mut apply = crate::effects::ApplyContinuousEffect::new(
-                crate::continuous::EffectTarget::Filter(resolved_filter),
-                crate::continuous::Modification::RemoveAbility(abilities[0].clone().into()),
-                duration.clone(),
-            )
-            .lock_filter_at_resolution();
+            if abilities.is_empty() {
+                (
+                    vec![Effect::new(
+                        crate::effects::ApplyContinuousEffect::new_runtime(
+                            crate::continuous::EffectTarget::Filter(resolved_filter),
+                            crate::effects::continuous::RuntimeModification::RemoveAllAbilities,
+                            duration.clone(),
+                        )
+                        .lock_filter_at_resolution(),
+                    )],
+                    Vec::new(),
+                )
+            } else {
+                let mut apply = crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Filter(resolved_filter),
+                    crate::continuous::Modification::RemoveAbility(abilities[0].clone().into()),
+                    duration.clone(),
+                )
+                .lock_filter_at_resolution();
 
-            for ability in abilities.iter().skip(1) {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::RemoveAbility(ability.clone().into()),
-                );
+                for ability in abilities.iter().skip(1) {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::RemoveAbility(ability.clone().into()),
+                    );
+                }
+
+                (vec![Effect::new(apply)], Vec::new())
             }
-
-            (vec![Effect::new(apply)], Vec::new())
         }
         EffectAst::GrantAbilitiesChoiceAll {
             filter,

@@ -4,7 +4,7 @@ use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
-use ironsmith::compiled_text::compiled_lines;
+use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
 use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path,
@@ -369,7 +369,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 row.parsed = true;
                 row.parse_strict = true;
                 row.parse_with_allow_unsupported = true;
-                let compiled = compiled_lines(&definition);
+                let compiled = unprocessed_compiled_lines(&definition);
                 row.compiled_lines_count = compiled.len();
                 row.has_unimplemented = generated_definition_has_unimplemented_content(&definition);
                 let (oracle_cov, compiled_cov, similarity, line_delta, semantic_mismatch) =
@@ -410,7 +410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         row.has_unimplemented =
                             generated_definition_has_unimplemented_content(&definition);
 
-                        let compiled = compiled_lines(&definition);
+                        let compiled = unprocessed_compiled_lines(&definition);
                         row.compiled_lines_count = compiled.len();
                         let (oracle_cov, compiled_cov, similarity, line_delta, semantic_mismatch) =
                             compare_semantics_scored(&payload.oracle_text, &compiled, None);

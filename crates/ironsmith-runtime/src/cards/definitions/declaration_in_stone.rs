@@ -86,14 +86,16 @@ mod tests {
             "expected compiled investigate player to keep aliased controller tag, got {debug}"
         );
 
-        let rendered = crate::compiled_text::oracle_like_lines(&declaration_in_stone()).join(" ");
+        let rendered =
+            crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
         assert_eq!(
             rendered,
             "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
             "expected oracle-like wording for Declaration in Stone"
         );
 
-        let compiled = crate::compiled_text::compiled_lines(&declaration_in_stone()).join(" ");
+        let compiled =
+            crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
         assert!(
             compiled.contains(
                 "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way"

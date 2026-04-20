@@ -26,7 +26,7 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::cards::definitions::{grizzly_bears, lightning_bolt};
-    use crate::compiled_text::compiled_lines;
+    use crate::compiled_text::unprocessed_compiled_lines;
     use crate::game_state::{GameState, StackEntry};
     use crate::ids::PlayerId;
     use crate::static_abilities::StaticAbilityId;
@@ -61,7 +61,7 @@ mod tests {
             "expected activated token ability"
         );
 
-        let compiled = compiled_lines(&def).join(" | ");
+        let compiled = unprocessed_compiled_lines(&def).join(" | ");
         assert!(
             compiled.contains("every creature type"),
             "compiled text should mention the generic subtype effect: {compiled}"

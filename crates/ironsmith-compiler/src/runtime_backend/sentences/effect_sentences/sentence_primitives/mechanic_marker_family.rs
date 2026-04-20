@@ -446,7 +446,13 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         "gain-ability",
         410,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("gain")],
+        &[
+            LexRuleHeadHint::Single("all"),
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("gain"),
+            LexRuleHeadHint::Single("lose"),
+            LexRuleHeadHint::Single("loses"),
+        ],
         parse_sentence_gain_ability
     ),
     primitive!(

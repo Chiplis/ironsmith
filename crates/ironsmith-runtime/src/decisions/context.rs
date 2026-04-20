@@ -5,7 +5,7 @@
 
 use crate::color::Color;
 use crate::combat_state::AttackTarget;
-use crate::compiled_text::{compile_effect_list, compiled_lines};
+use crate::compiled_text::{compile_effect_list, unprocessed_compiled_lines};
 use crate::game_state::Target;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -1425,13 +1425,13 @@ pub fn decision_source_text(
                 .filter(|text| !text.trim().is_empty());
         }
         return game.object(source).and_then(|obj| {
-            let lines = compiled_lines(&obj.to_card_definition());
+            let lines = unprocessed_compiled_lines(&obj.to_card_definition());
             (!lines.is_empty()).then(|| lines.join("; "))
         });
     }
 
     game.object(source).and_then(|obj| {
-        let lines = compiled_lines(&obj.to_card_definition());
+        let lines = unprocessed_compiled_lines(&obj.to_card_definition());
         (!lines.is_empty()).then(|| lines.join("; "))
     })
 }

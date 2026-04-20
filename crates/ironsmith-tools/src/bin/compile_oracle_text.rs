@@ -2,7 +2,7 @@ use std::env;
 use std::io::{self, IsTerminal, Read};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
-use ironsmith::compiled_text::{canonical_compiled_lines, raw_compiled_lines};
+use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
 use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
@@ -349,7 +349,7 @@ fn print_compiled_job(
         println!("- {:#?}", display_def);
     } else {
         let lines = if detailed {
-            raw_compiled_lines(&display_def)
+            unprocessed_compiled_lines(&display_def)
         } else {
             canonical_compiled_lines(&display_def)
         };

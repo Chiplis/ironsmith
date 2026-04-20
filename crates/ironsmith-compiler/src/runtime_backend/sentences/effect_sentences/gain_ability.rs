@@ -905,7 +905,12 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let (mut abilities, grant_is_choice) =
         parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, !losing)?;
-    if abilities.is_empty() && !grants_must_attack {
+    let removes_all_abilities = losing
+        && GainAbilityWordView::new(&ability_tokens)
+            .to_word_refs()
+            .as_slice()
+            == ["all", "abilities"];
+    if abilities.is_empty() && !grants_must_attack && !removes_all_abilities {
         return Ok(None);
     }
     if grants_must_attack {

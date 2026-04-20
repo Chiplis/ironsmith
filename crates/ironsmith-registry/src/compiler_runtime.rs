@@ -148,6 +148,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 source,
                 preserve_source_abilities,
             },
+            compiler::effects::continuous::RuntimeModification::RemoveAllAbilities => {
+                ironsmith::effects::continuous::RuntimeModification::RemoveAllAbilities
+            }
         })
     }
 

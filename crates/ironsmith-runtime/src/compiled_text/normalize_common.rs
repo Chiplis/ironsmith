@@ -6812,6 +6812,9 @@ pub(super) fn describe_apply_continuous_clauses(
                     describe_player_filter(player)
                 ));
             }
+            crate::effects::continuous::RuntimeModification::RemoveAllAbilities => {
+                clauses.push("loses all abilities".to_string());
+            }
         }
     }
 

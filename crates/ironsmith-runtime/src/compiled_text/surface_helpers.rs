@@ -1,0 +1,113 @@
+use super::*;
+
+pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
+    let mut normalized = line.trim().to_string();
+    if normalized.is_empty() {
+        return normalized;
+    }
+    normalized = strip_square_bracketed_segments(&normalized)
+        .trim()
+        .to_string();
+    normalized = normalized.replace('\u{00a0}', " ");
+    normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase())
+    {
+        normalized = capitalize_first(&normalized);
+    }
+    normalized = normalized
+        .replace(" ors ", " or ")
+        .replace("a artifact", "an artifact")
+        .replace("a enchantment", "an enchantment")
+        .replace("a Aura", "an Aura")
+        .replace("a Elf", "an Elf")
+        .replace("for each a ", "for each ")
+        .replace("for each an ", "for each ");
+    if !is_keyword_style_line(&normalized)
+        && !normalized.ends_with('.')
+        && !normalized.ends_with('!')
+        && !normalized.ends_with('?')
+        && !normalized.ends_with('"')
+        && !normalized.ends_with(')')
+    {
+        normalized.push('.');
+    }
+    normalized
+}
+
+pub(super) fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
+    match chapter {
+        1 => Some("I"),
+        2 => Some("II"),
+        3 => Some("III"),
+        4 => Some("IV"),
+        5 => Some("V"),
+        6 => Some("VI"),
+        7 => Some("VII"),
+        8 => Some("VIII"),
+        9 => Some("IX"),
+        10 => Some("X"),
+        _ => None,
+    }
+}
+
+pub(super) fn strip_prefix_ascii_ci<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    if text.len() < prefix.len() {
+        return None;
+    }
+    if text
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    {
+        text.get(prefix.len()..)
+    } else {
+        None
+    }
+}
+
+pub(super) fn strip_suffix_ascii_ci<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
+    if text.len() < suffix.len() {
+        return None;
+    }
+    let idx = text.len() - suffix.len();
+    if text
+        .get(idx..)
+        .is_some_and(|tail| tail.eq_ignore_ascii_case(suffix))
+    {
+        text.get(..idx)
+    } else {
+        None
+    }
+}
+
+pub(super) fn split_once_ascii_ci<'a>(
+    text: &'a str,
+    separator: &str,
+) -> Option<(&'a str, &'a str)> {
+    let lower = text.to_ascii_lowercase();
+    let sep_lower = separator.to_ascii_lowercase();
+    let idx = lower.find(&sep_lower)?;
+    Some((&text[..idx], &text[idx + separator.len()..]))
+}
+
+pub(super) fn is_render_heading_prefix(prefix: &str) -> bool {
+    let prefix = prefix.trim().to_ascii_lowercase();
+    prefix == "spell effects"
+        || prefix.starts_with("activated ability ")
+        || prefix.starts_with("triggered ability ")
+        || prefix.starts_with("static ability ")
+        || prefix.starts_with("keyword ability ")
+        || prefix.starts_with("mana ability ")
+        || prefix.starts_with("ability ")
+        || prefix.starts_with("alternative cast ")
+}
+
+pub(super) fn normalize_granted_activated_ability_clause(_text: &str) -> Option<String> {
+    None
+}
+
+pub(super) fn normalize_granted_beginning_trigger_clause(_text: &str) -> Option<String> {
+    None
+}

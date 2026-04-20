@@ -47,7 +47,7 @@ mod tests {
             AbilityKind::Activated(_) => {}
             other => panic!("expected activated ability, got {other:?}"),
         }
-        let lines = crate::compiled_text::compiled_lines(&lander);
+        let lines = crate::compiled_text::unprocessed_compiled_lines(&lander);
         let joined = lines.join("\n");
         assert!(
             joined.contains("Search your library for a basic land card, put it onto the battlefield tapped, then shuffle"),
