@@ -169,10 +169,6 @@ sentence_unsupported_adapters_lexed!(
         sentence_has_face_down_clause
     ),
     (
-        sentence_has_copy_spell_legendary_exception_clause_rule_lexed,
-        sentence_has_copy_spell_legendary_exception_clause
-    ),
-    (
         sentence_has_return_each_creature_that_isnt_list_clause_rule_lexed,
         sentence_has_return_each_creature_that_isnt_list_clause
     ),
@@ -323,13 +319,6 @@ fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> boo
 
 fn sentence_has_face_down_clause(words: &[&str], tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::has_face_down_clause_sentence_lexed(words, tokens)
-}
-
-fn sentence_has_copy_spell_legendary_exception_clause(
-    _: &[&str],
-    tokens: &[OwnedLexToken],
-) -> bool {
-    effect_grammar::has_copy_spell_legendary_exception_clause_sentence_lexed(tokens)
 }
 
 fn sentence_has_return_each_creature_that_isnt_list_clause(

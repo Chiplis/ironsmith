@@ -1165,6 +1165,7 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
                 count: Value::Fixed(1),
                 player: PlayerAst::Implicit,
                 may_choose_new_targets: true,
+                removed_supertypes: Vec::new(),
             }],
             if_false: Vec::new(),
         }]);

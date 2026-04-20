@@ -441,7 +441,11 @@ pub(crate) fn parse_copy_spell_clause(
             }
         }
         let mut count = Value::Fixed(1);
+        let copy_clause_exception_idx =
+            find_token_index(copy_clause_tail, |token| token.is_word("except"));
         let copy_target_tail = if let Some(idx) = copy_clause_split_idx {
+            &copy_clause_tail[..idx]
+        } else if let Some(idx) = copy_clause_exception_idx {
             &copy_clause_tail[..idx]
         } else {
             copy_clause_tail
@@ -475,6 +479,7 @@ pub(crate) fn parse_copy_spell_clause(
             count,
             player: PlayerAst::Implicit,
             may_choose_new_targets: copy_clause_split_idx.is_some(),
+            removed_supertypes: parse_copy_spell_removed_supertypes(copy_clause_tail),
         };
         if let Some(trailing_if) = trailing_if {
             return Ok(Some(EffectAst::Conditional {
@@ -507,7 +512,10 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     let mut count = Value::Fixed(1);
+    let exception_split_idx = find_token_index(tail, |token| token.is_word("except"));
     let mut copy_target_tail = if let Some(idx) = split_idx {
+        &tail[..idx]
+    } else if let Some(idx) = exception_split_idx {
         &tail[..idx]
     } else {
         tail
@@ -582,7 +590,21 @@ pub(crate) fn parse_copy_spell_clause(
         count,
         player,
         may_choose_new_targets,
+        removed_supertypes: parse_copy_spell_removed_supertypes(tail),
     }))
+}
+
+fn parse_copy_spell_removed_supertypes(tokens: &[OwnedLexToken]) -> Vec<crate::types::Supertype> {
+    let clause_word_view = ClausePatternCompatWords::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    if word_slice_contains(&clause_words, "legendary")
+        && (word_slice_contains(&clause_words, "except")
+            || word_slice_contains(&clause_words, "isnt"))
+    {
+        vec![crate::types::Supertype::Legendary]
+    } else {
+        Vec::new()
+    }
 }
 
 pub(crate) fn parse_counter_target_phrase(

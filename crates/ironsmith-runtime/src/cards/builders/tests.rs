@@ -2508,6 +2508,45 @@ fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(81_601), "The Sixth Doctor")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .subtypes(vec![crate::types::Subtype::Doctor])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Time Lord's Prerogative — Whenever you cast a historic spell, copy it, except the copy isn't legendary. This ability triggers only once each turn.",
+        )
+        .expect("The Sixth Doctor should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CopySpellEffect"),
+        "expected copy-spell trigger in compiled ability, got {debug}"
+    );
+    assert!(
+        debug.contains("removed_supertypes: [Legendary]"),
+        "expected legendary removal to lower into the copy effect, got {debug}"
+    );
+    assert!(
+        debug.contains("MaxTimesEachTurn(1)"),
+        "expected once-per-turn limiter to survive lowering, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("copy it, except the copy isn't legendary"),
+        "expected legendary exception to survive rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_gain_keyword_ability_does_not_fall_back_to_gain_life() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Keyword Variant")
         .card_types(vec![CardType::Instant])

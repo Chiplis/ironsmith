@@ -979,6 +979,7 @@ pub(crate) enum EffectAst {
         count: Value,
         player: PlayerAst,
         may_choose_new_targets: bool,
+        removed_supertypes: Vec<crate::types::Supertype>,
     },
     FlipCoin {
         player: PlayerAst,
