@@ -31009,3 +31009,211 @@ fn union_of_the_third_path_gains_life_equal_to_hand_size_after_draw() {
         "Alice should have 24 life (20 starting + 4 from hand size). Got {life}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stand_or_fall_probe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Stand or Fall Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn.",
+        )
+        .expect("Stand or Fall should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn stand_or_fall_compiled_text_uses_pile_choice_language() {
+    let def = stand_or_fall_probe_definition();
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("CantEffect"),
+        "expected pile-splitting structure to remain intact, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each defending player")
+            && rendered.contains("separate all creatures that player controls into two piles")
+            && rendered.contains("that player chooses one")
+            && rendered.contains("only creatures in the chosen piles can block this turn"),
+        "expected Stand or Fall text to render as a pile-choice block restriction, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose any number a creature")
+            && !rendered.contains("tags it as 'divvy_chosen'"),
+        "expected the compiled text to avoid the generic choose/tag fallback, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
+    use crate::combat_state::AttackTarget;
+    use crate::decision::{DecisionMaker, LegalAction};
+    use crate::game_loop::execute_turn_with;
+    use crate::triggers::TriggerQueue;
+
+    struct ChooseNamedPileDecisionMaker {
+        chosen_name: &'static str,
+        attacker_name: &'static str,
+    }
+
+    impl DecisionMaker for ChooseNamedPileDecisionMaker {
+        fn decide_priority(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::PriorityContext,
+        ) -> LegalAction {
+            LegalAction::PassPriority
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.legal
+                        && game
+                            .current_name(candidate.id)
+                            .is_some_and(|name| name == self.chosen_name)
+                })
+                .map(|candidate| vec![candidate.id])
+                .expect("expected to find the named chosen pile")
+        }
+
+        fn decide_attackers(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::AttackersContext,
+        ) -> Vec<crate::decisions::spec::AttackerDeclaration> {
+            let attacker = ctx
+                .attacker_options
+                .iter()
+                .find(|option| {
+                    game.current_name(option.creature)
+                        .is_some_and(|name| name == self.attacker_name)
+                })
+                .expect("expected the named attacker to be legal");
+            let target = attacker
+                .valid_targets
+                .iter()
+                .find_map(|target| match target {
+                    AttackTarget::Player(player) => Some(*player),
+                    _ => None,
+                })
+                .expect("expected a player attack target");
+
+            vec![crate::decisions::spec::AttackerDeclaration {
+                creature: attacker.creature,
+                target,
+            }]
+        }
+
+        fn decide_blockers(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::BlockersContext,
+        ) -> Vec<crate::decisions::spec::BlockerDeclaration> {
+            assert_eq!(ctx.blocker_options.len(), 1, "expected one attacker to block");
+            let option = &ctx.blocker_options[0];
+            let legal_blockers = option
+                .valid_blockers
+                .iter()
+                .map(|(id, _)| {
+                    game.current_name(*id)
+                        .unwrap_or_else(|| format!("object-{id:?}"))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                legal_blockers,
+                vec![self.chosen_name.to_string()],
+                "only the chosen pile should be legal to block"
+            );
+
+            let blocker = option
+                .valid_blockers
+                .iter()
+                .find(|(id, _)| {
+                    game.current_name(*id)
+                        .is_some_and(|name| name == self.chosen_name)
+                })
+                .map(|(id, _)| *id)
+                .expect("expected chosen blocker to remain legal");
+
+            vec![crate::decisions::spec::BlockerDeclaration {
+                blocker,
+                blocking: option.attacker,
+            }]
+        }
+    }
+
+    let def = stand_or_fall_probe_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let stand_or_fall_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let attacker_id = game.create_object_from_definition(
+        &CardBuilder::new(CardId::from_raw(2), "Attacking Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(attacker_id);
+
+    game.create_object_from_definition(
+        &CardBuilder::new(CardId::from_raw(3), "Chosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardBuilder::new(CardId::from_raw(4), "Other Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = ChooseNamedPileDecisionMaker {
+        chosen_name: "Chosen Bear",
+        attacker_name: "Attacking Bear",
+    };
+
+    execute_turn_with(&mut game, &mut combat, &mut trigger_queue, &mut dm)
+        .expect("the combat turn should complete");
+
+    assert!(
+        game.battlefield.contains(&stand_or_fall_id),
+        "Stand or Fall should remain on the battlefield after the turn"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "the chosen blocker should keep the attacker from dealing combat damage to Alice"
+    );
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "the chosen blocker should also prevent combat damage from getting through to Bob"
+    );
+}

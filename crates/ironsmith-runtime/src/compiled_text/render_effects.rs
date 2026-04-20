@@ -6097,6 +6097,39 @@ pub(super) fn describe_for_players_split_piles_then_choose_sacrifice_pair(
     describe_split_pile_choice_effect(split, &choice_for_players.effects[0])
 }
 
+pub(super) fn describe_for_players_split_piles_then_choose_block(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.effects.len() != 2 {
+        return None;
+    }
+
+    let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let cant = for_players.effects[1].downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::Block(block_filter) = &cant.restriction else {
+        return None;
+    };
+
+    if choose.tag.as_str() != "divvy_chosen"
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.is_search
+        || !choose.count.is_any_number()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || !is_iterated_player_creature_battlefield_filter(&choose.filter)
+        || cant.duration != crate::effect::Until::EndOfTurn
+        || !is_iterated_player_creature_battlefield_filter(block_filter)
+        || !filter_has_not_tagged_constraint(block_filter, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let player_filter_text = describe_player_filter(&for_players.filter);
+    let each_player = strip_leading_article(&player_filter_text);
+    Some(format!(
+        "For each {each_player}, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn."
+    ))
+}
+
 fn describe_split_pile_choice_effect(
     split: &crate::effects::ChooseObjectsEffect,
     pile_choice_effect: &Effect,
@@ -11003,6 +11036,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_split_piles_then_choose_sacrifice(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_split_piles_then_choose_block(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
