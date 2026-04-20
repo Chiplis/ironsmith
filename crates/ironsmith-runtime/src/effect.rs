@@ -601,6 +601,7 @@ pub(crate) trait RestrictionExt {
         tracker: &mut crate::game_state::CantEffectTracker,
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
+        iterated_player: Option<crate::ids::PlayerId>,
     );
 }
 
@@ -611,11 +612,14 @@ impl RestrictionExt for Restriction {
         tracker: &mut crate::game_state::CantEffectTracker,
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
+        iterated_player: Option<crate::ids::PlayerId>,
     ) {
         use crate::game_loop::player_matches_filter_with_combat;
 
         let combat = game.combat.as_ref();
-        let ctx = game.filter_context_for_combat(controller, source, None, None);
+        let ctx = game
+            .filter_context_for_combat(controller, source, None, None)
+            .with_iterated_player(iterated_player);
 
         match self {
             Restriction::AdditionalLandPlays(filter, count) => {

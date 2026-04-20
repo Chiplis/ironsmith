@@ -104,6 +104,7 @@ impl EffectExecutor for CantEffect {
                         self.duration.clone(),
                         ctx.source,
                         controller,
+                        ctx.iteration.iterated_player,
                     );
                 }
             } else {
@@ -112,6 +113,7 @@ impl EffectExecutor for CantEffect {
                     self.duration.clone(),
                     ctx.source,
                     ctx.controller,
+                    ctx.iteration.iterated_player,
                 );
             }
         } else {
@@ -120,6 +122,7 @@ impl EffectExecutor for CantEffect {
                 self.duration.clone(),
                 ctx.source,
                 ctx.controller,
+                ctx.iteration.iterated_player,
             );
         }
         game.update_cant_effects();
@@ -134,6 +137,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effects::ExecutionContext;
     use crate::effects::RegenerateEffect;
+    use crate::filter::ObjectFilterExt as _;
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::PlayerId;
@@ -250,6 +254,49 @@ mod tests {
         assert!(
             !game.can_be_blocked(creature_id),
             "tagged be-blocked restriction should stay attached to the resolved creature, not the stack object source"
+        );
+    }
+
+    #[test]
+    fn cant_effect_applies_block_restrictions_with_iterated_player() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let chosen_card = CardBuilder::new(CardId::from_raw(1), "Chosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let chosen_id = game.create_object_from_card(&chosen_card, bob, Zone::Battlefield);
+        let other_card = CardBuilder::new(CardId::from_raw(2), "Other Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let other_id = game.create_object_from_card(&other_card, bob, Zone::Battlefield);
+
+        let chosen_snapshot = ObjectSnapshot::from_object(
+            game.object(chosen_id).expect("chosen creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.iteration.iterated_player = Some(bob);
+        ctx.tag_object("divvy_chosen", chosen_snapshot);
+
+        CantEffect::until_end_of_turn(Restriction::block(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::IteratedPlayer)
+                .not_tagged("divvy_chosen"),
+        ))
+        .execute(&mut game, &mut ctx)
+        .expect("execute block cant effect");
+
+        assert!(
+            game.can_block(chosen_id),
+            "the chosen pile should remain able to block"
+        );
+        assert!(
+            !game.can_block(other_id),
+            "the unchosen pile should be unable to block"
         );
     }
 
