@@ -497,6 +497,7 @@ pub struct RestrictionEffectInstance {
     pub restriction: crate::effect::Restriction,
     pub controller: PlayerId,
     pub source: ObjectId,
+    pub iterated_player: Option<PlayerId>,
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
     pub consumed_next_untap: bool,
@@ -1944,6 +1945,7 @@ impl GameState {
         duration: crate::effect::Until,
         source: ObjectId,
         controller: PlayerId,
+        iterated_player: Option<PlayerId>,
     ) {
         let expires_end_of_turn = match duration {
             crate::effect::Until::EndOfTurn => self.turn.turn_number,
@@ -1957,6 +1959,7 @@ impl GameState {
                 restriction,
                 controller,
                 source,
+                iterated_player,
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
@@ -4440,6 +4443,7 @@ impl GameState {
                 &mut restriction_tracker,
                 effect.controller,
                 Some(effect.source),
+                effect.iterated_player,
             );
         }
         self.effect_store.cant_effects.merge(restriction_tracker);

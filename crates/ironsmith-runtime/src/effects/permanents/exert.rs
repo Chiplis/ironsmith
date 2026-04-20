@@ -42,6 +42,7 @@ impl EffectExecutor for ExertCostEffect {
             Until::ControllersNextUntapStep,
             ctx.source,
             ctx.controller,
+            None,
         );
         game.update_cant_effects();
 

@@ -908,6 +908,7 @@ mod tests {
             Until::ControllersNextUntapStep,
             relic,
             alice,
+            None,
         );
         game.update_cant_effects();
 

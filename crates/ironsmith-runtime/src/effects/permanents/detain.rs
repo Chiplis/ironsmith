@@ -52,12 +52,14 @@ impl EffectExecutor for DetainEffect {
                 Until::YourNextTurn,
                 ctx.source,
                 ctx.controller,
+                None,
             );
             game.add_restriction_effect(
                 Restriction::activate_abilities_of(filter),
                 Until::YourNextTurn,
                 ctx.source,
                 ctx.controller,
+                None,
             );
             count += 1;
         }
