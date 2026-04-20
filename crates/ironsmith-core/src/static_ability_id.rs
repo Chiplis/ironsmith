@@ -181,6 +181,7 @@ pub enum StaticAbilityId {
     EnterUntappedForFilter,
     EnterAsCopyAsEnters,
     EnterWithCountersForFilter,
+    EnterWithCharacteristicsForFilter,
     CanBeCommander,
     LevelAbilities,
     NoMaximumHandSize,
@@ -396,6 +397,7 @@ impl StaticAbilityId {
             | EnterUntappedForFilter
             | EnterAsCopyAsEnters
             | EnterWithCountersForFilter
+            | EnterWithCharacteristicsForFilter
             | CanBeCommander
             | LevelAbilities
             | NoMaximumHandSize

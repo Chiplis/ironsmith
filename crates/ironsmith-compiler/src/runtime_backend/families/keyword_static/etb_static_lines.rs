@@ -2186,3 +2186,108 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         ),
     ))
 }
+
+pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.first().copied() != Some("as") {
+        return Ok(None);
+    }
+
+    let Some(enter_word_idx) =
+        etb_word_offset(&clause_words, |word| matches!(word, "enter" | "enters"))
+    else {
+        return Ok(None);
+    };
+    if enter_word_idx <= 1 {
+        return Ok(None);
+    }
+
+    let after_enter = clause_words.get(enter_word_idx + 1..).unwrap_or_default();
+    if !etb_word_slice_starts_with(after_enter, &["it", "becomes"]) {
+        return Ok(None);
+    }
+
+    let mut descriptor_idx = 2usize;
+    if after_enter
+        .get(descriptor_idx)
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+    {
+        descriptor_idx += 1;
+    }
+    let Some(pt_word) = after_enter.get(descriptor_idx) else {
+        return Ok(None);
+    };
+    let (power, toughness) = match parse_pt_modifier(pt_word) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    descriptor_idx += 1;
+
+    let Some(addition_idx) = etb_find_word_sequence_index(
+        after_enter,
+        &["in", "addition", "to", "its", "other", "types"],
+    )
+    .or_else(|| {
+        etb_find_word_sequence_index(
+            after_enter,
+            &["in", "addition", "to", "its", "other", "type"],
+        )
+    }) else {
+        return Ok(None);
+    };
+    if addition_idx <= descriptor_idx {
+        return Ok(None);
+    }
+
+    let subject_start = token_index_for_word_index(tokens, 1).ok_or_else(|| {
+        CardTextError::ParseError("missing as-enters subject".to_string())
+    })?;
+    let enter_token_idx = token_index_for_word_index(tokens, enter_word_idx).ok_or_else(|| {
+        CardTextError::ParseError("missing as-enters enter token".to_string())
+    })?;
+    let subject_tokens = trim_commas(&tokens[subject_start..enter_token_idx]);
+    let filter = parse_object_filter(&subject_tokens, false)?;
+
+    let descriptor_words = &after_enter[descriptor_idx..addition_idx];
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    for descriptor in descriptor_words
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "a" | "an" | "and"))
+    {
+        if parse_color(descriptor).is_some() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported color-changing as-enters characteristic replacement (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if let Some(card_type) = parse_card_type(descriptor) {
+            if !card_types.contains(&card_type) {
+                card_types.push(card_type);
+            }
+            continue;
+        }
+        if let Some(subtype) = parse_subtype_flexible(descriptor) {
+            if !subtypes.contains(&subtype) {
+                subtypes.push(subtype);
+            }
+            continue;
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported as-enters characteristic descriptor '{}' (clause: '{}')",
+            descriptor,
+            clause_words.join(" ")
+        )));
+    }
+
+    if card_types.is_empty() && subtypes.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::enters_with_characteristics_for_filter(
+        filter, card_types, subtypes, power, toughness,
+    )))
+}

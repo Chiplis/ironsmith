@@ -1478,6 +1478,59 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn test_as_enters_characteristic_replacement_updates_entering_historic_permanent() {
+        let dinosaurs =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Displaced Dinosaurs")
+                .card_types(vec![crate::types::CardType::Creature])
+                .subtypes(vec![crate::types::Subtype::Dinosaur])
+                .power_toughness(crate::card::PowerToughness::fixed(7, 7))
+                .parse_text(
+                    "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types."
+                        .to_string(),
+                )
+                .expect("displaced dinosaurs replacement should parse");
+
+        let historic_artifact =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Historic Relic")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .build();
+
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        game.create_object_from_definition(&dinosaurs, alice, Zone::Battlefield);
+        let relic_id = game.create_object_from_definition(&historic_artifact, alice, Zone::Hand);
+        let cause = EventCause::from_special_action(Some(relic_id), alice);
+        let mut dm = ChooseLastReplacementDecisionMaker;
+
+        let result = game
+            .move_object_with_etb_processing_with_dm_and_cause(
+                relic_id,
+                Zone::Battlefield,
+                cause,
+                &mut dm,
+            )
+            .expect("historic artifact should enter the battlefield");
+
+        let entered = game
+            .object(result.new_id)
+            .expect("historic artifact should exist on the battlefield");
+        assert!(
+            entered
+                .card_types
+                .contains(&crate::types::CardType::Artifact)
+        );
+        assert!(
+            entered
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+        );
+        assert!(entered.subtypes.contains(&crate::types::Subtype::Dinosaur));
+        assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(7)));
+        assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(7)));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn test_copy_as_enters_can_add_ability_to_copied_permanent() {
         let omni = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Omni Replica")
             .card_types(vec![crate::types::CardType::Creature])

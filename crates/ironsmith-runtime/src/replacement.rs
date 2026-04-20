@@ -113,6 +113,13 @@ pub enum ReplacementAction {
         added_abilities: Vec<Ability>,
     },
 
+    /// Enter with permanent characteristic changes.
+    EnterWithCharacteristics {
+        added_card_types: Vec<CardType>,
+        added_subtypes: Vec<Subtype>,
+        set_base_power_toughness: Option<(i32, i32)>,
+    },
+
     /// Double the effect (e.g., double damage, double counters)
     Double,
 

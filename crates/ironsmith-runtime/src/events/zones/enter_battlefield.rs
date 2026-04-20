@@ -33,6 +33,8 @@ pub struct EnterBattlefieldEvent {
     pub added_subtypes: Vec<Subtype>,
     /// Additional abilities granted by the copy-as-enters replacement.
     pub added_abilities: Vec<Ability>,
+    /// Base power/toughness set as the object enters.
+    pub set_base_power_toughness: Option<(i32, i32)>,
 }
 
 impl EnterBattlefieldEvent {
@@ -47,6 +49,7 @@ impl EnterBattlefieldEvent {
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
+            set_base_power_toughness: None,
         }
     }
 
@@ -61,6 +64,7 @@ impl EnterBattlefieldEvent {
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
+            set_base_power_toughness: None,
         }
     }
 
@@ -139,6 +143,14 @@ impl EnterBattlefieldEvent {
         }
     }
 
+    /// Return a new event with base power/toughness set as it enters.
+    pub fn with_base_power_toughness(&self, power: i32, toughness: i32) -> Self {
+        Self {
+            set_base_power_toughness: Some((power, toughness)),
+            ..self.clone()
+        }
+    }
+
     /// Get the total count of a specific counter type.
     pub fn counter_count(&self, counter_type: CounterType) -> u32 {
         self.enters_with_counters
@@ -178,6 +190,9 @@ impl GameEventType for EnterBattlefieldEvent {
         }
         if self.enters_as_copy_of.is_some() {
             desc.push_str(" as copy");
+        }
+        if self.set_base_power_toughness.is_some() {
+            desc.push_str(" with base power and toughness");
         }
         desc
     }

@@ -36,7 +36,7 @@ use crate::replacement::{
 };
 use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 fn card_type_word(card_type: crate::types::CardType) -> &'static str {
@@ -2031,6 +2031,90 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
                 added_subtypes: self.added_subtypes.clone(),
+            },
+        ))
+    }
+}
+
+/// Permanents matching a filter enter with permanent characteristic changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnterWithCharacteristicsForFilter {
+    pub filter: ObjectFilter,
+    pub added_card_types: Vec<CardType>,
+    pub added_subtypes: Vec<Subtype>,
+    pub power: i32,
+    pub toughness: i32,
+}
+
+impl EnterWithCharacteristicsForFilter {
+    pub fn new(
+        filter: ObjectFilter,
+        added_card_types: Vec<CardType>,
+        added_subtypes: Vec<Subtype>,
+        power: i32,
+        toughness: i32,
+    ) -> Self {
+        Self {
+            filter,
+            added_card_types,
+            added_subtypes,
+            power,
+            toughness,
+        }
+    }
+}
+
+impl StaticAbilityKind for EnterWithCharacteristicsForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnterWithCharacteristicsForFilter
+    }
+
+    fn display(&self) -> String {
+        let subject = self.filter.description();
+        let plural = !subject.starts_with("a ")
+            && !subject.starts_with("an ")
+            && !subject.starts_with("this ")
+            && !subject.starts_with("that ");
+        let (enter_verb, subject_pronoun, become_verb, article, possessive_pronoun) = if plural {
+            ("enter", "they", "become", "", "their")
+        } else {
+            ("enters", "it", "becomes", "a ", "its")
+        };
+
+        let mut type_words = self
+            .added_subtypes
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>();
+        let card_type_count = self.added_card_types.len();
+        for card_type in &self.added_card_types {
+            let mut word = card_type_word(*card_type).to_string();
+            if plural && card_type_count == 1 {
+                word = pluralize(&word);
+            }
+            type_words.push(word);
+        }
+        let type_phrase = type_words.join(" ");
+
+        format!(
+            "As {subject} {enter_verb}, {subject_pronoun} {become_verb} {article}{}/{} {type_phrase} in addition to {possessive_pronoun} other types",
+            self.power, self.toughness
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            ReplacementAction::EnterWithCharacteristics {
+                added_card_types: self.added_card_types.clone(),
+                added_subtypes: self.added_subtypes.clone(),
+                set_base_power_toughness: Some((self.power, self.toughness)),
             },
         ))
     }

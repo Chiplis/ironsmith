@@ -1135,6 +1135,19 @@ impl StaticAbilityModelInterpreter {
                 count.clone(),
                 subtypes.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                filter,
+                card_types,
+                subtypes,
+                power,
+                toughness,
+            } => StaticAbility::enters_with_characteristics_for_filter(
+                filter.clone(),
+                card_types.clone(),
+                subtypes.clone(),
+                *power,
+                *toughness,
+            ),
             _ => return None,
         })
     }

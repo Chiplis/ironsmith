@@ -528,6 +528,9 @@ fn compact_debug_safe_living_weapon_sequence(line: &str) -> Option<String> {
 fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     let compact = compact_whitespace(line);
     let lower = compact.to_ascii_lowercase();
+    if lower.starts_with("as ") {
+        return None;
+    }
     let Some((subject, rest)) = split_once_ascii_ci(&compact, " becomes a ") else {
         return None;
     };

@@ -302,6 +302,7 @@ impl Event {
                 added_card_types: Vec::new(),
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
+                set_base_power_toughness: None,
             },
             ProvNodeId::default(),
         )

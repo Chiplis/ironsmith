@@ -19418,6 +19418,36 @@ fn parse_nonhistoric_filter_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_as_historic_permanent_enters_becomes_dinosaur_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Displaced Dinosaurs Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dinosaur])
+        .power_toughness(crate::card::PowerToughness::fixed(7, 7))
+        .parse_text(
+            "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types.",
+        )
+        .expect("historic as-enters characteristic replacement should parse");
+
+    assert!(
+        def.spell_effect.is_none(),
+        "as-enters replacement should not lower to a spell effect"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "As a historic permanent you control enters, it becomes a 7/7 Dinosaur creature in addition to its other types"
+        ),
+        "expected as-enters characteristic replacement rendering, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("EnterWithCharacteristicsForFilter"),
+        "expected structured ETB characteristic replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_same_name_damage_fanout_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Homing Lightning")
         .parse_text(

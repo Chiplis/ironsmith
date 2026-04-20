@@ -1422,6 +1422,8 @@ pub struct EtbEventResult {
     pub added_subtypes: Vec<crate::types::Subtype>,
     /// Additional abilities granted by an ETB copy choice.
     pub added_abilities: Vec<crate::ability::Ability>,
+    /// Base power/toughness set as the object enters.
+    pub set_base_power_toughness: Option<(i32, i32)>,
     /// An interactive replacement that requires player input.
     ///
     /// If present, the caller must:
@@ -2028,6 +2030,7 @@ pub fn process_etb_with_event_and_dm(
             added_card_types: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
+            set_base_power_toughness: None,
         },
         etb_event_provenance,
     );
@@ -2076,6 +2079,7 @@ pub fn process_etb_with_event_and_dm(
                         added_card_types: etb.added_card_types.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
                         added_abilities: etb.added_abilities.clone(),
+                        set_base_power_toughness: etb.set_base_power_toughness,
                         interactive_replacement: None,
                     };
                 }

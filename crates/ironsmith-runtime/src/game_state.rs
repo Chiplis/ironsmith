@@ -3060,6 +3060,12 @@ impl GameState {
                 }
             }
         }
+        if let Some((power, toughness)) = result.set_base_power_toughness
+            && let Some(new_obj) = self.object_mut(new_id)
+        {
+            new_obj.base_power = Some(crate::card::PtValue::Fixed(power));
+            new_obj.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+        }
 
         // Apply enters tapped
         if result.enters_tapped {

@@ -1877,6 +1877,24 @@ impl StaticAbility {
         )
     }
 
+    pub fn enters_with_characteristics_for_filter(
+        filter: crate::target::ObjectFilter,
+        added_card_types: Vec<crate::types::CardType>,
+        added_subtypes: Vec<crate::types::Subtype>,
+        power: i32,
+        toughness: i32,
+    ) -> Self {
+        Self::new(
+            crate::static_abilities::misc::EnterWithCharacteristicsForFilter::new(
+                filter,
+                added_card_types,
+                added_subtypes,
+                power,
+                toughness,
+            ),
+        )
+    }
+
     pub fn anthem(filter: crate::target::ObjectFilter, power: i32, toughness: i32) -> Self {
         Self::new(Anthem::new(filter, power, toughness))
     }

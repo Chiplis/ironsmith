@@ -316,6 +316,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: String,
     },
+    EntersWithCharacteristicsForFilter {
+        filter: ObjectFilter,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        power: i32,
+        toughness: i32,
+    },
     DoubleDamageFromSourcesYouControlOfChosenType(String),
     AdditionalLandPlays(u32),
     RevealFirstCardYouDrawEachTurn {
@@ -947,6 +954,19 @@ where
                     display,
                 }
             }
+            StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                filter,
+                card_types,
+                subtypes,
+                power,
+                toughness,
+            } => StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                filter,
+                card_types,
+                subtypes,
+                power,
+                toughness,
+            },
             StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display) => {
                 StaticAbilityPayload::DoubleDamageFromSourcesYouControlOfChosenType(display)
             }
@@ -2726,6 +2746,26 @@ impl<
                 counter,
                 count,
                 subtypes,
+            },
+        }
+    }
+
+    pub fn enters_with_characteristics_for_filter(
+        filter: ObjectFilter,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        power: i32,
+        toughness: i32,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterWithCharacteristicsForFilter),
+            label: "enters with characteristics for filter".to_string(),
+            payload: StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                filter,
+                card_types,
+                subtypes,
+                power,
+                toughness,
             },
         }
     }
