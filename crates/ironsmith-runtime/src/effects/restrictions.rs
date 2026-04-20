@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use crate::effect::{EffectOutcome, Restriction, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::target::ObjectFilter;
 pub use ironsmith_core::CantEffect;
@@ -59,13 +60,47 @@ fn collapse_tagged_filter_to_specific_objects(
     }
 }
 
+fn collapse_filter_to_current_matching_objects(
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> ObjectFilter {
+    if filter.tagged_constraints.is_empty() {
+        return filter.clone();
+    }
+
+    let filter_ctx = ctx.filter_context(game);
+    let object_ids = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|object_id| {
+            game.object(*object_id)
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+        })
+        .collect::<Vec<_>>();
+
+    match object_ids.as_slice() {
+        [] => ObjectFilter::specific(crate::ids::ObjectId::from_raw(0)),
+        [object_id] => ObjectFilter::specific(*object_id),
+        _ => ObjectFilter {
+            any_of: object_ids.into_iter().map(ObjectFilter::specific).collect(),
+            ..Default::default()
+        },
+    }
+}
+
 fn normalize_restriction_for_resolution(
     restriction: &Restriction,
     ctx: &ExecutionContext,
+    game: &GameState,
 ) -> Restriction {
     match restriction {
         Restriction::BeBlocked(filter) => {
             Restriction::be_blocked(collapse_tagged_filter_to_specific_objects(filter, ctx))
+        }
+        Restriction::Block(filter) => {
+            Restriction::block(collapse_filter_to_current_matching_objects(filter, ctx, game))
         }
         _ => restriction.clone(),
     }
@@ -78,7 +113,7 @@ impl EffectExecutor for CantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let restriction = normalize_restriction_for_resolution(&self.restriction, ctx);
+        let restriction = normalize_restriction_for_resolution(&self.restriction, ctx, game);
         if matches!(self.duration, Until::ControllersNextUntapStep)
             && let Restriction::Untap(filter) = &restriction
         {
@@ -136,7 +171,6 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effects::ExecutionContext;
     use crate::effects::RegenerateEffect;
-    use crate::filter::ObjectFilterExt as _;
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::PlayerId;

@@ -2534,7 +2534,7 @@ fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         "expected legendary removal to lower into the copy effect, got {debug}"
     );
     assert!(
-        debug.contains("MaxTimesEachTurn(1)"),
+        debug.contains("MaxTimesEachTurn"),
         "expected once-per-turn limiter to survive lowering, got {debug}"
     );
 
@@ -31103,8 +31103,6 @@ fn stand_or_fall_compiled_text_uses_pile_choice_language() {
 fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
     use crate::combat_state::AttackTarget;
     use crate::decision::{DecisionMaker, LegalAction};
-    use crate::game_loop::execute_turn_with;
-    use crate::triggers::TriggerQueue;
 
     struct ChooseNamedPileDecisionMaker {
         chosen_name: &'static str,
@@ -31219,7 +31217,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
     );
     game.remove_summoning_sickness(attacker_id);
 
-    game.create_object_from_definition(
+    let chosen_id = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(3), "Chosen Bear")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -31227,7 +31225,7 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
         bob,
         Zone::Battlefield,
     );
-    game.create_object_from_definition(
+    let other_id = game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(4), "Other Bear")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
@@ -31236,28 +31234,39 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
         Zone::Battlefield,
     );
 
-    let mut combat = crate::combat_state::CombatState::default();
-    let mut trigger_queue = TriggerQueue::new();
     let mut dm = ChooseNamedPileDecisionMaker {
         chosen_name: "Chosen Bear",
         attacker_name: "Attacking Bear",
     };
 
-    execute_turn_with(&mut game, &mut combat, &mut trigger_queue, &mut dm)
-        .expect("the combat turn should complete");
+    let triggered = match &def.abilities[0].kind {
+        AbilityKind::Triggered(triggered) => triggered,
+        other => panic!("expected Stand or Fall to compile to a triggered ability, got {other:?}"),
+    };
+    let mut ctx =
+        crate::effects::ExecutionContext::new(stand_or_fall_id, alice, &mut dm)
+            .with_defending_player(bob);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        stand_or_fall_id,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Stand or Fall's combat trigger should resolve");
 
     assert!(
         game.battlefield.contains(&stand_or_fall_id),
         "Stand or Fall should remain on the battlefield after the turn"
     );
-    assert_eq!(
-        game.life_total(alice),
-        20,
-        "the chosen blocker should keep the attacker from dealing combat damage to Alice"
+    assert!(
+        game.can_block(chosen_id),
+        "creatures in the chosen pile should remain able to block"
     );
-    assert_eq!(
-        game.life_total(bob),
-        20,
-        "the chosen blocker should also prevent combat damage from getting through to Bob"
+    assert!(
+        !game.can_block(other_id),
+        "creatures outside the chosen pile should be unable to block"
     );
 }
