@@ -741,12 +741,12 @@ fn prevent_damage_effect_with_optional_condition(
     if has_color_condition {
         let predicate = condition_filter.map_or_else(
             || {
-                PredicateAst::ItMatches(
+                PredicateAst::TargetMatches(
                     ObjectFilter::default().shares_color_with_tagged(TagKey::from(IT_TAG)),
                 )
             },
             |filter| {
-                PredicateAst::ItMatches(filter.shares_color_with_tagged(TagKey::from(IT_TAG)))
+                PredicateAst::TargetMatches(filter.shares_color_with_tagged(TagKey::from(IT_TAG)))
             },
         );
         EffectAst::Conditional {

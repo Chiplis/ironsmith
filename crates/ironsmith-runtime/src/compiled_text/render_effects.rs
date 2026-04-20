@@ -393,6 +393,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             describe_value(&life_loss.amount)
         );
     }
+    if filtered.len() == 2
+        && let Some(choose) = filtered[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(conditional) = filtered[1].downcast_ref::<crate::effects::ConditionalEffect>()
+        && let Some(compact) =
+            describe_choose_then_color_matched_combat_prevention(choose, conditional)
+    {
+        return compact;
+    }
 
     fn apply_continuous_for_compaction(
         effect: &Effect,
@@ -427,6 +435,104 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return unwrap_tag_wrappers(&tagged.effect);
         }
         effect
+    }
+
+    fn choose_reference_noun(choose: &crate::effects::ChooseObjectsEffect) -> &'static str {
+        if choose
+            .filter
+            .card_types
+            .contains(&crate::types::CardType::Creature)
+        {
+            "creature"
+        } else if choose
+            .filter
+            .card_types
+            .contains(&crate::types::CardType::Artifact)
+        {
+            "artifact"
+        } else if choose
+            .filter
+            .card_types
+            .contains(&crate::types::CardType::Enchantment)
+        {
+            "enchantment"
+        } else if choose
+            .filter
+            .card_types
+            .contains(&crate::types::CardType::Land)
+        {
+            "land"
+        } else if choose_primary_zone(choose) == Some(Zone::Battlefield) {
+            "permanent"
+        } else {
+            "object"
+        }
+    }
+
+    fn combat_damage_prevention_source(effect: &Effect) -> Option<(&ChooseSpec, &Until)> {
+        let effect = unwrap_tag_wrappers(effect);
+        if let Some(prevent_from) =
+            effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
+        {
+            return Some((&prevent_from.source, &prevent_from.until));
+        }
+        let prevent_combat =
+            effect.downcast_ref::<crate::effects::PreventAllCombatDamageEffect>()?;
+        match &prevent_combat.target {
+            crate::effects::CombatDamagePreventionTarget::From(source) => {
+                Some((source, &prevent_combat.until))
+            }
+            _ => None,
+        }
+    }
+
+    fn describe_choose_then_color_matched_combat_prevention(
+        choose: &crate::effects::ChooseObjectsEffect,
+        conditional: &crate::effects::ConditionalEffect,
+    ) -> Option<String> {
+        if choose.is_search || !choose.count.is_single() || !conditional.if_false.is_empty() {
+            return None;
+        }
+        let prevent_effect = match conditional.if_true.as_slice() {
+            [prevent_effect] => prevent_effect,
+            [target_only, prevent_effect] => {
+                target_only.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+                prevent_effect
+            }
+            _ => return None,
+        };
+        let (source, until) = combat_damage_prevention_source(prevent_effect)?;
+        if !matches!(until, Until::EndOfTurn) {
+            return None;
+        }
+
+        let crate::ConditionExpr::TargetMatches(filter) = &conditional.condition else {
+            return None;
+        };
+        if !filter
+            .card_types
+            .contains(&crate::types::CardType::Creature)
+        {
+            return None;
+        }
+        let shares_chosen_color = filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == choose.tag
+                && constraint.relation
+                    == crate::target::TaggedOpbjectRelation::SharesColorWithTagged
+        });
+        if !shares_chosen_color {
+            return None;
+        }
+
+        let target_text = describe_choose_spec(source);
+        if !target_text.contains("target creature") {
+            return None;
+        }
+        Some(format!(
+            "Choose {}. Prevent all combat damage {target_text} would deal this turn if it shares a color with that {}",
+            describe_choose_selection(choose),
+            choose_reference_noun(choose)
+        ))
     }
 
     fn sticker_phrase(action: crate::events::KeywordActionKind) -> &'static str {

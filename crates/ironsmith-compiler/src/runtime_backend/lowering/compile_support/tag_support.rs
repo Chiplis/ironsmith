@@ -303,7 +303,7 @@ fn direct_effect_targets_reference_tag(effect: &EffectAst, tag: &str) -> bool {
     references
 }
 
-fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
     filter
         .tagged_constraints
         .iter()
@@ -371,6 +371,10 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         } => {
             matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == tag)
                 || matches!(predicate, PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == tag)
+                || matches!(
+                    predicate,
+                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, tag)
+                )
                 || effects_reference_tag(if_true, tag)
                 || effects_reference_tag(if_false, tag)
         }
@@ -784,6 +788,10 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 || matches!(
                     predicate,
                     PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == IT_TAG
+                )
+                || matches!(
+                    predicate,
+                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)
                 )
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)

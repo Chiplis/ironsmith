@@ -2174,7 +2174,9 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
 #[cfg(test)]
 fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagKey) -> usize {
     match predicate {
-        PredicateAst::ItMatches(filter) | PredicateAst::TaggedMatches(_, filter) => {
+        PredicateAst::ItMatches(filter)
+        | PredicateAst::TargetMatches(filter)
+        | PredicateAst::TaggedMatches(_, filter) => {
             let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag);
             if let PredicateAst::TaggedMatches(tag, _) = predicate {
                 replacements += bind_unresolved_it_in_tag(tag, seed_tag);
