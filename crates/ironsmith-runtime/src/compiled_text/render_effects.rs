@@ -6476,24 +6476,39 @@ pub(super) fn describe_choose_then_destroy(
     {
         return None;
     }
-    let ChooseSpec::Tagged(tag) = &destroy.spec else {
-        return None;
+    let destroys_chosen = match &destroy.spec {
+        ChooseSpec::Tagged(tag) => tag.as_str() == choose.tag.as_str(),
+        ChooseSpec::Iterated => true,
+        _ => false,
     };
-    if tag.as_str() != choose.tag.as_str() {
+    if !destroys_chosen {
         return None;
     }
 
     let chooser = describe_player_filter(&choose.chooser);
     let choose_verb = player_verb(&chooser, "choose", "chooses");
     let description = choose.filter.description();
-    let chosen = if let Some(rest) = description.strip_prefix("target player's ") {
+    let chosen = if choose.filter.controller == Some(PlayerFilter::IteratedPlayer)
+        && choose.filter.card_types == vec![CardType::Creature]
+        && choose_primary_zone(choose) == Some(Zone::Battlefield)
+    {
+        "a creature they control".to_string()
+    } else if let Some(rest) = description.strip_prefix("target player's ") {
         format!("a {} they control", rest)
     } else if let Some(rest) = description.strip_prefix("that player's ") {
         format!("a {} they control", rest)
     } else {
         with_indefinite_article(&description)
     };
-    Some(format!("{chooser} {choose_verb} {chosen}. Destroy it"))
+    let destroyed = if chosen.contains("creature") {
+        "that creature"
+    } else {
+        "it"
+    };
+    Some(format!(
+        "{} {choose_verb} {chosen}. Destroy {destroyed}",
+        capitalize_first(&chooser)
+    ))
 }
 
 pub(super) fn describe_choose_then_for_each_copy(

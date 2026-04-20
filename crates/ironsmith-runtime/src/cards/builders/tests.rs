@@ -6,8 +6,9 @@ use crate::compiled_text::{
     canonical_compiled_lines, debug_compiled_lines, unprocessed_compiled_lines,
 };
 use crate::effects::{
-    AddManaEffect, ChooseModeEffect, ConsultTopOfLibraryEffect, CreateTokenEffect, GainLifeEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TaggedEffect, TargetOnlyEffect,
+    AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
+    CreateTokenEffect, DestroyEffect, GainLifeEffect, MoveToZoneEffect,
+    ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
@@ -10375,6 +10376,96 @@ fn parse_target_opponent_chooses_creature_then_destroy_that_creature() {
     assert!(
         debug.contains("DestroyEffect"),
         "expected follow-up destroy effect for chosen creature, got {debug}"
+    );
+
+    let score_path = crate::compiled_text::compile_effect_list(
+        &effects.segments[0].default_effects,
+    );
+    assert_eq!(
+        score_path,
+        "Target opponent chooses a creature they control. Destroy that creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Wei Assassins")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, target opponent chooses a creature they control. Destroy that creature.",
+        )
+        .expect("Wei Assassins ETB text should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Wei Assassins should compile to a triggered ability");
+
+    let trigger_debug = format!("{:?}", triggered.trigger);
+    assert!(
+        trigger_debug.contains("ZoneChangeTrigger")
+            && trigger_debug.contains("Specific(Battlefield)")
+            && trigger_debug.contains("this_object: true"),
+        "expected a self ETB zone-change trigger, got {trigger_debug}"
+    );
+
+    let effects = &triggered.effects;
+    assert_eq!(
+        effects.len(),
+        4,
+        "expected trigger tagging, target opponent, opponent choice, and destroy effects, got {effects:?}"
+    );
+
+    let tag_triggering = effects[0]
+        .downcast_ref::<TagTriggeringObjectEffect>()
+        .expect("first effect should tag the triggering object");
+    assert_eq!(tag_triggering.tag.as_str(), "triggering");
+
+    let target_opponent = effects[1]
+        .downcast_ref::<TargetOnlyEffect>()
+        .expect("second effect should target an opponent");
+    assert!(matches!(
+        &target_opponent.target,
+        ChooseSpec::Target(inner)
+            if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Opponent))
+    ));
+
+    let choose_creature = effects[2]
+        .downcast_ref::<ChooseObjectsEffect>()
+        .expect("third effect should make the target opponent choose a creature");
+    assert_eq!(choose_creature.count, ChoiceCount::exactly(1));
+    assert_eq!(
+        choose_creature.chooser,
+        PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
+    );
+    assert_eq!(choose_creature.filter.zone, Some(Zone::Battlefield));
+    assert_eq!(
+        choose_creature.filter.controller,
+        Some(PlayerFilter::IteratedPlayer)
+    );
+    assert_eq!(choose_creature.filter.card_types, vec![CardType::Creature]);
+    assert_eq!(choose_creature.tag.as_str(), "__it__");
+
+    let destroy_chosen = effects[3]
+        .downcast_ref::<DestroyEffect>()
+        .expect("fourth effect should destroy the chosen creature");
+    assert!(matches!(destroy_chosen.spec, ChooseSpec::Iterated));
+
+    let score_path = crate::compiled_text::compile_effect_list(effects);
+    assert_eq!(
+        score_path,
+        "Target opponent chooses a creature they control. Destroy that creature"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "When this creature enters, target opponent chooses a creature they control. Destroy that creature."
     );
 }
 
