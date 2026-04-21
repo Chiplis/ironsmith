@@ -6925,6 +6925,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let mut colors = None;
     let mut subtypes = Vec::new();
     let mut ability_text = Vec::new();
+    let mut has_generic_ability = false;
     for modification in &effect.additional_modifications {
         match modification {
             crate::continuous::Modification::SetPowerToughness {
@@ -6945,6 +6946,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
                 ability_text.push(lowercase_first(&ability.display()));
             }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
+                has_generic_ability = true;
                 ability_text.push(describe_inline_ability(ability));
             }
             _ => return None,
@@ -7021,15 +7023,14 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    let render_as_addition_to_other_types = (!preserves_land_types
-        && !ability_text.is_empty()
-        && !matches!(effect.until, Until::Forever))
-        || (preserves_land_types
-            && adds_named_types
-            && effect
-                .target_spec
-                .as_ref()
-                .is_some_and(is_up_to_land_subtype_target));
+    let render_as_addition_to_other_types =
+        (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
+            || (preserves_land_types
+                && adds_named_types
+                && effect
+                    .target_spec
+                    .as_ref()
+                    .is_some_and(is_up_to_land_subtype_target));
     if render_as_addition_to_other_types {
         if plural_target {
             text.push_str(" in addition to their other types");

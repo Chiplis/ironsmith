@@ -4400,8 +4400,20 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(move_to_zone) =
+                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) = unwrap_tag_wrappers(filtered[idx + 1])
                 .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && should_compact_tagged_choose_move_to_battlefield(choose, move_to_zone)
             && let Some(compact) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
         {
             parts.push(compact);
@@ -8218,6 +8230,14 @@ pub(super) fn describe_choose_then_move_to_battlefield(
     Some(format!(
         "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{control_suffix}"
     ))
+}
+
+fn should_compact_tagged_choose_move_to_battlefield(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> bool {
+    choose.chooser != PlayerFilter::You
+        && move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You
 }
 
 pub(super) fn describe_choose_then_move_to_library(

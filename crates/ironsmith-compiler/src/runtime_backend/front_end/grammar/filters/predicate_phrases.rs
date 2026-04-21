@@ -397,8 +397,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
         predicate_idx.and_then(|idx| {
             let subject_words = &filtered[..idx];
-            let is_source_subject =
-                is_source_reference_words(subject_words) || matches!(subject_words, ["it"]);
+            let is_source_subject = is_source_reference_words(subject_words);
             if !is_source_subject {
                 return None;
             }
