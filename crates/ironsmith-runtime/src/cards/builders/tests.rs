@@ -2658,7 +2658,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{execute_effect, ExecutionContext};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::game_state::StackEntry;
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
@@ -4531,7 +4531,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{execute_effect, ExecutionContext};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4727,7 +4727,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{execute_effect, ExecutionContext};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4821,7 +4821,7 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
     use crate::ability::AbilityKind;
-    use crate::effects::{execute_effect, ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
     use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
@@ -4934,7 +4934,7 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
 fn test_mobilize_trigger_creates_attacking_warriors() {
     use crate::ability::AbilityKind;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::effects::{execute_effect, ExecutionContext};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -6973,8 +6973,8 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line(
-) {
+fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
+ {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thought Sponge Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -12443,10 +12443,11 @@ fn parse_reveal_card_this_way_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -12464,10 +12465,11 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(def
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -14542,7 +14544,7 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
-    use crate::effects::{execute_effect, ExecutionContext, ResolvedTarget};
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
 
     fn artifact(name: &str) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
@@ -17318,6 +17320,52 @@ fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
     assert!(
         result.is_err(),
         "semicolon keyword line should fail loudly when any keyword lowers to a marker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_giant_solifuge_keeps_keyword_structure_and_compares_cleanly() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Giant Solifuge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Insect])
+        .power_toughness(PowerToughness::fixed(4, 1))
+        .parse_text("Trample; haste; shroud")
+        .expect("Giant Solifuge text should parse");
+
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        static_ids,
+        vec![
+            StaticAbilityId::Trample,
+            StaticAbilityId::Haste,
+            StaticAbilityId::Shroud,
+        ],
+        "expected Giant Solifuge to compile to its three intrinsic keywords, got {static_ids:?}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def);
+    let (_oracle_coverage, _compiled_coverage, similarity, delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            "Trample; haste; shroud",
+            &compiled,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(
+        !mismatch && similarity >= 0.99 && delta == 0,
+        "expected Giant Solifuge keyword-only debug text to compare cleanly, similarity={similarity}, delta={delta}, compiled={compiled:?}"
     );
 }
 
@@ -26304,7 +26352,7 @@ fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
 #[test]
 fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     use crate::card::CardBuilder;
-    use crate::effects::{execute_effect, ExecutionContext};
+    use crate::effects::{ExecutionContext, execute_effect};
     use crate::zone::Zone;
 
     let def = parse_oracle_card_definition("Over the Top");

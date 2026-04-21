@@ -1615,7 +1615,11 @@ fn vengeful_warchief_triggers_only_on_the_first_life_loss_each_turn() {
     queue_triggers_from_event(&mut game, &mut trigger_queue, first_loss, false);
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Vengeful Warchief should trigger on the first life loss");
-    assert_eq!(game.stack.len(), 1, "the first trigger should use the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the first trigger should use the stack"
+    );
     resolve_stack_entry(&mut game).expect("Vengeful Warchief trigger should resolve");
     assert_eq!(
         game.object(warchief_id)
@@ -18874,6 +18878,71 @@ fn test_cephalid_inkshrouder_grants_shroud_and_unblockable_after_discard() {
                     .is_some_and(|object| object.name == "Discard Fodder" && object.owner == alice)
             }),
         "the discarded card should end up in Alice's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn giant_solifuge_keywords_apply_to_targeting_haste_and_trample() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::static_abilities::StaticAbilityId;
+    use crate::targeting::{TargetingInvalidReason, TargetingResult, can_target_object};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let solifuge = CardDefinitionBuilder::new(CardId::new(), "Giant Solifuge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Insect])
+        .power_toughness(PowerToughness::fixed(4, 1))
+        .parse_text("Trample; haste; shroud")
+        .expect("Giant Solifuge text should parse");
+    let solifuge_id = game.create_object_from_definition(&solifuge, alice, Zone::Battlefield);
+
+    assert!(
+        game.current_has_static_ability_id(solifuge_id, StaticAbilityId::Trample)
+            && game.current_has_static_ability_id(solifuge_id, StaticAbilityId::Haste)
+            && game.current_has_static_ability_id(solifuge_id, StaticAbilityId::Shroud),
+        "Giant Solifuge should expose trample, haste, and shroud as static abilities"
+    );
+
+    game.set_summoning_sick(solifuge_id);
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(solifuge_id).expect("Giant Solifuge exists"),
+            &game,
+        ),
+        "haste should allow Giant Solifuge to attack despite summoning sickness"
+    );
+
+    let source = CardBuilder::new(CardId::new(), "Targeting Probe")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source, bob, Zone::Stack);
+    assert!(
+        matches!(
+            can_target_object(&game, solifuge_id, source_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::HasShroud)
+        ),
+        "shroud should make Giant Solifuge an illegal target"
+    );
+
+    let blocker_id = create_creature(&mut game, "Training Blocker", bob, 2, 2);
+    let excess = crate::rules::damage::calculate_trample_excess(
+        game.object(solifuge_id).expect("Giant Solifuge exists"),
+        &[game.object(blocker_id).expect("blocker exists")],
+        4,
+        &game,
+    );
+    assert_eq!(
+        excess, 2,
+        "trample should leave two excess damage over a 2-toughness blocker"
     );
 }
 

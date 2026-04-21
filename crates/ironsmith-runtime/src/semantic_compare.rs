@@ -5834,6 +5834,20 @@ mod tests {
     }
 
     #[test]
+    fn compare_semantics_splits_keyword_only_comma_bundles() {
+        let oracle = "Trample; haste; shroud";
+        let compiled = vec![String::from("Trample, haste, shroud")];
+        let (oracle_coverage, compiled_coverage, similarity, delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+
+        assert!(!mismatch);
+        assert_eq!(oracle_coverage, 1.0);
+        assert_eq!(compiled_coverage, 1.0);
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+    }
+
+    #[test]
     fn compare_semantics_ignores_only_once_reminder_only() {
         let oracle = "Sacrifice a Food: Draw a card. (Activate only once each turn.)";
         let compiled = vec![String::from(
