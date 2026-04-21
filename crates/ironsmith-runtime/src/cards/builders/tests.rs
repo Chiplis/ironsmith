@@ -30387,15 +30387,16 @@ fn render_mortuary_preserves_graveyard_origin_and_your_library_link() {
         .expect("Mortuary text should parse");
 
     let ability_debug = format!("{:#?}", def.abilities);
+    let ability_debug_compact = ability_debug.split_whitespace().collect::<String>();
     assert!(
-        ability_debug.contains("ZoneChangeTrigger")
-            && ability_debug.contains("from: Specific(Battlefield)")
-            && ability_debug.contains("to: Specific(Graveyard)")
-            && ability_debug.contains("owner: Some(You)")
-            && ability_debug.contains("card_types: [Creature]")
-            && ability_debug.contains("MoveToZoneEffect")
-            && ability_debug.contains("zone: Library")
-            && ability_debug.contains("to_top: true"),
+        ability_debug_compact.contains("ZoneChangeTrigger")
+            && ability_debug_compact.contains("from:Specific(Battlefield)")
+            && ability_debug_compact.contains("to:Specific(Graveyard)")
+            && ability_debug_compact.contains("owner:Some(You")
+            && ability_debug_compact.contains("card_types:[Creature")
+            && ability_debug_compact.contains("MoveToZoneEffect")
+            && ability_debug_compact.contains("zone:Library")
+            && ability_debug_compact.contains("to_top:true"),
         "expected Mortuary to lower to an owned-creature battlefield-to-graveyard trigger that moves the triggering card to library top, got {ability_debug}"
     );
 

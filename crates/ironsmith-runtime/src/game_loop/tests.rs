@@ -2663,16 +2663,17 @@ fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_library_top() {
         )
         .expect("Mortuary should parse");
     let ability_debug = format!("{:#?}", mortuary.abilities);
+    let ability_debug_compact = ability_debug.split_whitespace().collect::<String>();
     assert!(
-        ability_debug.contains("ZoneChangeTrigger")
-            && ability_debug.contains("owner: Some(You)")
-            && ability_debug.contains("MoveToZoneEffect")
-            && ability_debug.contains("zone: Library")
-            && ability_debug.contains("to_top: true"),
+        ability_debug_compact.contains("ZoneChangeTrigger")
+            && ability_debug_compact.contains("owner:Some(You")
+            && ability_debug_compact.contains("MoveToZoneEffect")
+            && ability_debug_compact.contains("zone:Library")
+            && ability_debug_compact.contains("to_top:true"),
         "expected parsed Mortuary to build the owned-creature graveyard trigger, got {ability_debug}"
     );
 
-    game.create_object_from_card(&mortuary, alice, Zone::Battlefield);
+    game.create_object_from_definition(&mortuary, alice, Zone::Battlefield);
 
     let alice_owned_creature = create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
     game.object_mut(alice_owned_creature)
