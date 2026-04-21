@@ -21079,6 +21079,10 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         "expected the enter trigger to include life gain, got {debug}"
     );
     assert!(
+        debug.contains("TargetAst::Source") || debug.contains("Source("),
+        "expected the animation clause to target the source permanent, got {debug}"
+    );
+    assert!(
         debug.contains("AddSubtypes") && debug.contains("Angel"),
         "expected the animation clause to add Angel, got {debug}"
     );
