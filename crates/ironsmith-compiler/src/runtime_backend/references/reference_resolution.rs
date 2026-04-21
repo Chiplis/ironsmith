@@ -25,7 +25,8 @@ use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::reference_helpers::{
     choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
-    resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
+    object_filter_as_tagged_reference, resolve_it_tag, resolve_non_target_player_filter,
+    resolve_target_spec_with_choices,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, RefState, ReferenceEnv, ReferenceFrame,
@@ -695,10 +696,34 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::Sacrifice {
-            player, target: _, ..
+            filter,
+            player,
+            count,
+            target,
         } => {
             track_effect_player(player.clone(), frame, true, true)?;
-            frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));
+            if target.is_some() {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));
+            } else if filter.source {
+                // Source sacrifice lowers directly to SacrificeTargetEffect(Source) and does not
+                // materialize a new tagged object reference.
+            } else {
+                let refs = lowering_reference_frame(frame);
+                let resolved_filter = match resolve_it_tag(filter, &refs) {
+                    Ok(resolved) => resolved,
+                    Err(_)
+                        if filter.tagged_constraints.len() == 1
+                            && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
+                    {
+                        ObjectFilter::source()
+                    }
+                    Err(err) => return Err(err),
+                };
+                if !(*count == 1 && object_filter_as_tagged_reference(&resolved_filter).is_some())
+                {
+                    frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));
+                }
+            }
         }
         EffectAst::SacrificeAll { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;

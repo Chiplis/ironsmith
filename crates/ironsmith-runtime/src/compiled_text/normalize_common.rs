@@ -7733,6 +7733,25 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             count,
         } => {
             let subject = describe_player_filter(player);
+            if *count == 0 {
+                let mut described_filter = filter.clone();
+                if described_filter
+                    .controller
+                    .as_ref()
+                    .is_some_and(|controller| controller == player)
+                {
+                    described_filter.controller = None;
+                }
+                let described = described_filter.description();
+                let object_text =
+                    pluralize_noun_phrase(strip_indefinite_article(&described)).to_string();
+                return format!(
+                    "{} {} no {}",
+                    subject,
+                    player_verb(&subject, "control", "controls"),
+                    object_text
+                );
+            }
             if is_owned_player_zone(filter.zone) {
                 let described =
                     strip_leading_article(&describe_owned_player_zone_filter(player, filter))

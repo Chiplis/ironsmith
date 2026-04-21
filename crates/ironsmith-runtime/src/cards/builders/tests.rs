@@ -27551,6 +27551,40 @@ fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sothera_supervoid_end_step_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sothera, the Supervoid")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature you control dies, each opponent chooses a creature they control and exiles it.\n\
+At the beginning of your end step, if a player controls no creatures, sacrifice Sothera, then put a creature card exiled with it onto the battlefield under your control with two additional +1/+1 counters on it.",
+        )
+        .expect("Sothera-style source-linked reanimation trigger should parse");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compact_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("intervening_if: Some")
+            && ability_debug.contains("PlayerControlsExactly")
+            && ability_debug.contains("count: 0"),
+        "expected no-creatures intervening-if condition, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("SacrificeTargetEffect")
+            && ability_debug.contains("MoveToZoneEffect")
+            && ability_debug.contains("zone: Battlefield")
+            && ability_debug.contains("battlefield_controller: You")
+            && ability_debug.contains("__source_exiled__")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("amount: Fixed")
+            && compact_debug.contains("Fixed(2)")
+            && ability_debug.contains("\"moved_0\"")
+            && !ability_debug.contains("\"moved_1\""),
+        "expected sacrifice, source-linked battlefield move, and two counters, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_enduring_curiosity_type_removal_followup() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Enduring Curiosity Variant")
         .parse_text(

@@ -976,30 +976,12 @@ pub fn evaluate_condition_external(
             player,
             filter,
             count,
-        } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
-                .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
-            matches == *count as usize
-        }
+        } => matching_condition_players_external(game, ctx, player)
+            .into_iter()
+            .any(|player_id| {
+                condition_count_for_player(game, ctx.source, player, player_id, filter)
+                    == *count as usize
+            }),
         Condition::PlayerControlsAtLeastWithDifferentPowers {
             player,
             filter,
@@ -1649,30 +1631,12 @@ fn evaluate_condition_simple(
             player,
             filter,
             count,
-        } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                ctx = ctx.with_iterated_player(Some(player_id));
-            }
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
-                .filter(|obj| filter.matches(obj, &ctx, game))
-                .count();
-            matches == *count as usize
-        }
+        } => matching_condition_players_simple(game, controller, player)
+            .into_iter()
+            .any(|player_id| {
+                condition_count_for_player(game, source, player, player_id, filter)
+                    == *count as usize
+            }),
         Condition::PlayerControlsAtLeastWithDifferentPowers {
             player,
             filter,
@@ -2307,18 +2271,12 @@ fn evaluate_condition(
             player,
             filter,
             count,
-        } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let mut filter_ctx = ctx.filter_context(game);
-            filter_ctx.iterated_player = Some(player_id);
-            let matches = condition_candidate_ids_for_zone(game, filter.zone)
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
-                .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
-            Ok(matches == *count as usize)
-        }
+        } => Ok(matching_condition_players_exec(game, ctx, player)?
+            .into_iter()
+            .any(|player_id| {
+                condition_count_for_player(game, ctx.source, player, player_id, filter)
+                    == *count as usize
+            })),
         Condition::PlayerControlsAtLeastWithDifferentPowers {
             player,
             filter,

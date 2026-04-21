@@ -1510,6 +1510,24 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if filtered.len() >= 4
+        && filtered[0] == "player"
+        && (filtered[1] == "control" || filtered[1] == "controls")
+        && filtered[2] == "no"
+    {
+        let control_tokens = filtered[3..]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        if let Ok(mut filter) = parse_object_filter(&control_tokens, false) {
+            filter.controller = Some(PlayerFilter::Any);
+            return Ok(PredicateAst::PlayerControlsNo {
+                player: PlayerAst::Any,
+                filter,
+            });
+        }
+    }
+
     let you_dont_control_filter_start = if filtered.len() >= 4
         && filtered[0] == "you"
         && matches!(filtered[1], "dont" | "don't")

@@ -49,99 +49,120 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_fallback_mechanic_marker
     ),
     primitive!(
-        "if-tagged-cards-remain-exiled",
+        "if-sacrifice-then-put-onto-battlefield-with-additional-counters",
         30,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("if")],
+        parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence
+    ),
+    primitive!(
+        "if-tagged-cards-remain-exiled",
+        40,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
         parse_sentence_if_tagged_cards_remain_exiled
     ),
     primitive!(
         "if-enters-with-additional-counter",
-        40,
+        50,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
         parse_if_enters_with_additional_counter_sentence
     ),
     primitive!(
+        "put-onto-battlefield-with-additional-counters",
+        60,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("put")],
+        parse_put_onto_battlefield_with_additional_counters_sentence
+    ),
+    primitive!(
         "put-multiple-counters-on-target",
-        50,
+        70,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("put")],
         parse_sentence_put_multiple_counters_on_target
     ),
     primitive!(
         "put-sticker-on",
-        60,
+        80,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("put")],
         parse_sentence_put_sticker_on
     ),
     primitive!(
         "you-and-target-player-each-draw",
-        70,
+        90,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("you")],
         parse_sentence_you_and_target_player_each_draw
     ),
     primitive!(
         "choose-player-to-effect",
-        80,
+        100,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("choose")],
         parse_sentence_choose_player_to_effect
     ),
     primitive!(
         "you-and-attacking-player-each-draw-and-lose",
-        90,
+        110,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("you")],
         parse_sentence_you_and_attacking_player_each_draw_and_lose
     ),
     primitive!(
+        "sacrifice-then-put-onto-battlefield-with-additional-counters",
+        120,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("sacrifice")],
+        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence
+    ),
+    primitive!(
         "sacrifice-it-next-end-step",
-        100,
+        130,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
         parse_sentence_sacrifice_it_next_end_step
     ),
     primitive!(
         "sacrifice-at-end-of-combat",
-        110,
+        140,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
         parse_sentence_sacrifice_at_end_of_combat
     ),
     primitive!(
         "each-player-choose-keep-rest-sacrifice",
-        120,
+        150,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("each")],
         parse_sentence_each_player_choose_and_sacrifice_rest
     ),
     primitive!(
         "target-player-choose-then-put-on-top-library",
-        130,
+        160,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
         parse_sentence_target_player_chooses_then_puts_on_top_of_library
     ),
     primitive!(
         "target-player-choose-then-you-put-it-onto-battlefield",
-        140,
+        170,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
         parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield
     ),
     primitive!(
         "target-player-reveals-random-card-from-hand",
-        150,
+        180,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
         parse_sentence_target_player_reveals_random_card_from_hand
     ),
     primitive!(
         "exile-instead-of-graveyard",
-        160,
+        190,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
         parse_sentence_exile_instead_of_graveyard

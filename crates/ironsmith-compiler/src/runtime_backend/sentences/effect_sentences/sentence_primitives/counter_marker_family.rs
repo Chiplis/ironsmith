@@ -930,6 +930,162 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }]))
 }
 
+pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("put")) {
+        return Ok(None);
+    }
+    if !grammar::contains_word(tokens, "onto") || !grammar::contains_word(tokens, "battlefield") {
+        return Ok(None);
+    }
+
+    let Some(with_idx) = rfind_token_word(tokens, "with") else {
+        return Ok(None);
+    };
+    let move_clause_tokens = trim_commas(&tokens[..with_idx]);
+    let counter_clause_tokens = trim_commas(&tokens[with_idx + 1..]);
+    if move_clause_tokens.is_empty() || counter_clause_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+        return Ok(None);
+    };
+    if on_idx + 1 >= counter_clause_tokens.len() {
+        return Ok(None);
+    }
+
+    let on_target_words =
+        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
+    if on_target_words != ["it"] && on_target_words != ["them"] {
+        return Ok(None);
+    }
+
+    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
+    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
+        return Ok(None);
+    }
+
+    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
+    let mut effects = parse_effect_chain_inner(&move_clause_tokens)?;
+    if effects.is_empty()
+        || !effects.iter().any(|effect| {
+            matches!(
+                effect,
+                EffectAst::MoveToZone {
+                    zone: Zone::Battlefield,
+                    ..
+                } | EffectAst::ReturnToBattlefield { .. }
+                    | EffectAst::ReturnAllToBattlefield { .. }
+            )
+        })
+    {
+        return Ok(None);
+    }
+
+    effects.push(EffectAst::PutCounters {
+        counter_type,
+        count: Value::Fixed(count as i32),
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        target_count: None,
+        distributed: false,
+    });
+
+    Ok(Some(effects))
+}
+
+pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
+    {
+        return Ok(None);
+    }
+
+    let Some((sacrifice_slice, put_slice)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    else {
+        return Ok(None);
+    };
+    let sacrifice_tokens = trim_commas(sacrifice_slice);
+    let put_tokens = trim_commas(put_slice);
+    if sacrifice_tokens.is_empty() || put_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(mut put_effects) =
+        parse_put_onto_battlefield_with_additional_counters_sentence(&put_tokens)?
+    else {
+        return Ok(None);
+    };
+    let mut effects = if sacrifice_tokens.len() >= 2
+        && sacrifice_tokens[0].is_word("sacrifice")
+        && sacrifice_tokens[1..]
+            .iter()
+            .all(|token| token.as_word().is_some())
+    {
+        vec![EffectAst::Sacrifice {
+            filter: ObjectFilter {
+                source: true,
+                ..Default::default()
+            },
+            player: PlayerAst::Implicit,
+            count: 1,
+            target: None,
+        }]
+    } else {
+        parse_effect_chain_inner(&sacrifice_tokens)?
+    };
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    effects.append(&mut put_effects);
+    Ok(Some(effects))
+}
+
+pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::super::lexer::TokenKind;
+
+    let Some(after_if) = grammar::strip_lexed_prefix_phrase(tokens, &["if"]) else {
+        return Ok(None);
+    };
+    let Some((predicate_slice, effect_slice)) =
+        grammar::split_lexed_once_on_delimiter(after_if, TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+
+    let predicate_tokens = trim_commas(predicate_slice);
+    let effect_tokens = trim_commas(effect_slice);
+    if predicate_tokens.is_empty() || effect_tokens.is_empty() {
+        return Ok(None);
+    }
+    if !effect_tokens
+        .first()
+        .is_some_and(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
+    {
+        return Ok(None);
+    }
+
+    let Some(effects) =
+        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
+            &effect_tokens,
+        )?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate: parse_predicate_lexed(&predicate_tokens)?,
+        if_true: effects,
+        if_false: Vec::new(),
+    }]))
+}
+
 pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

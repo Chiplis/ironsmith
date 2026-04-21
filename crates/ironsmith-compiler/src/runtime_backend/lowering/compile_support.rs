@@ -299,6 +299,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
+            if player == PlayerFilter::Any {
+                return Ok(Condition::PlayerControlsExactly {
+                    player,
+                    filter: resolved,
+                    count: 0,
+                });
+            }
             Condition::Not(Box::new(Condition::PlayerControls {
                 player,
                 filter: resolved,

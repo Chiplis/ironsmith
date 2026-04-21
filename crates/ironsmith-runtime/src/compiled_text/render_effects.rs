@@ -372,6 +372,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         })
         .collect::<Vec<_>>();
 
+    if let Some(compact) = describe_sacrifice_source_then_return_with_counters(&visible_effects) {
+        return compact;
+    }
+
     if visible_effects.len() == 2
         && let Some(for_players) =
             visible_effects[0].downcast_ref::<crate::effects::ForPlayersEffect>()
@@ -537,6 +541,68 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         Some(format!(
             "Choose {}. Prevent all combat damage {target_text} would deal this turn if it shares a color with that {}",
             chosen, chosen_noun
+        ))
+    }
+
+    fn describe_sacrifice_source_then_return_with_counters(filtered: &[&Effect]) -> Option<String> {
+        let [sacrifice_effect, move_effect, put_counter_effect] = filtered else {
+            return None;
+        };
+        let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+        if !matches!(sacrifice.target, ChooseSpec::Source) {
+            return None;
+        }
+        let move_tag = wrapped_effect_tag(move_effect)?;
+        let move_to_zone =
+            unwrap_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+            || move_to_zone.enters_tapped
+        {
+            return None;
+        }
+        let put_counters =
+            put_counter_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if put_counters.distributed
+            || put_counters.target_count.is_some()
+            || !matches!(&put_counters.target, ChooseSpec::Tagged(tag) if tag == move_tag)
+        {
+            return None;
+        }
+        let target_filter = match move_to_zone.target.base() {
+            ChooseSpec::Object(filter) => filter,
+            ChooseSpec::WithCount(inner, count) if count.is_single() => {
+                let ChooseSpec::Object(filter) = inner.base() else {
+                    return None;
+                };
+                filter
+            }
+            _ => return None,
+        };
+        if !target_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }) {
+            return None;
+        }
+
+        let mut target_text = describe_choose_spec(&move_to_zone.target);
+        target_text = target_text.replace("this enchantment", "it");
+        target_text = target_text.replace("this permanent", "it");
+        target_text = target_text.replace("this source", "it");
+        let counter_type = describe_counter_type(put_counters.counter_type);
+        let counter_suffix = match &put_counters.amount {
+            Value::Fixed(1) => format!("an additional {counter_type} counter"),
+            Value::Fixed(amount) => {
+                let count_text = number_word(*amount)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| amount.to_string());
+                format!("{count_text} additional {counter_type} counters")
+            }
+            _ => return None,
+        };
+        Some(format!(
+            "Sacrifice this enchantment, then put {target_text} onto the battlefield under your control with {counter_suffix} on it"
         ))
     }
 
@@ -5398,6 +5464,65 @@ mod tests {
     }
 
     #[test]
+    fn describe_for_players_choose_then_exile_compacts_iterated_move_targets() {
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::IteratedPlayer)
+                .in_zone(Zone::Battlefield),
+            ChoiceCount::exactly(1),
+            PlayerFilter::IteratedPlayer,
+            TagKey::from("__it__"),
+        )
+        .in_zone(Zone::Battlefield);
+        let move_to_zone =
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Exile, true);
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![Effect::new(choose), Effect::new(move_to_zone)],
+        );
+
+        let compact = describe_for_players_choose_then_exile(&for_players)
+            .expect("for-player choose/exile should compact");
+        assert_eq!(
+            compact,
+            "Each opponent chooses a creature they control and exiles it"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_source_exiled_return_with_counters() {
+        let moved_tag = TagKey::from("moved_0");
+        let mut exiled_filter = ObjectFilter::creature().in_zone(Zone::Exile);
+        exiled_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+
+        let move_to_zone = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(exiled_filter).with_count(ChoiceCount::exactly(1)),
+            Zone::Battlefield,
+            false,
+        )
+        .under_you_control();
+        let effects = vec![
+            Effect::sacrifice_source(),
+            Effect::new(move_to_zone).tag(moved_tag.clone()),
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                Value::Fixed(2),
+                ChooseSpec::Tagged(moved_tag),
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Sacrifice this enchantment, then put a creature card exiled with it onto the battlefield under your control with two additional +1/+1 counters on it"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_search_reveal_move_then_shuffle() {
         let tag = TagKey::from("searched");
         let choose = crate::effects::ChooseObjectsEffect::new(
@@ -6186,6 +6311,40 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
     Some(format!("{subject} {verb} {chosen} of {possessive} choice"))
 }
 
+fn describe_for_players_choose_then_exile(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.effects.len() != 2 {
+        return None;
+    }
+    let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let move_to_zone = for_players.effects[1].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.is_search
+        || !choose.count.is_single()
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || !move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let (subject, choose_verb, exile_verb) = match for_players.filter {
+        PlayerFilter::Any => ("Each player", "chooses", "exiles"),
+        PlayerFilter::Opponent => ("Each opponent", "chooses", "exiles"),
+        PlayerFilter::You => ("You", "choose", "exile"),
+        _ => return None,
+    };
+    let mut selected_filter = choose.filter.clone();
+    selected_filter.zone = None;
+    let selection = selected_filter
+        .description()
+        .replace("that player controls", "they control");
+    Some(format!(
+        "{subject} {choose_verb} {selection} and {exile_verb} it"
+    ))
+}
+
 pub(super) fn describe_for_players_split_piles_then_choose_sacrifice(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -6729,7 +6888,13 @@ pub(super) fn move_to_exile_uses_chosen_tag(
     tag: &str,
 ) -> bool {
     move_to_zone.zone == Zone::Exile
-        && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+        // Some parser lowerings route the chosen object through a tagged
+        // for-each wrapper and leave the move target as `Iterated`.
+        && match move_to_zone.target.base() {
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Tagged(t) => t.as_str() == tag,
+            _ => false,
+        }
 }
 
 pub(super) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
@@ -11220,6 +11385,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_choose_then_exile(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_damage_and_controlled_damage(for_players) {

@@ -3609,7 +3609,13 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
     }
     normalized = normalized
         .replace("That object's controller", "its controller")
-        .replace("that object's controller", "its controller");
+        .replace("that object's controller", "its controller")
+        .replace("Sacrifice this enchantment", "Sacrifice this")
+        .replace("sacrifice this enchantment", "sacrifice this")
+        .replace("Sacrifice this permanent", "Sacrifice this")
+        .replace("sacrifice this permanent", "sacrifice this")
+        .replace("Sacrifice this, then", "Sacrifice this then")
+        .replace("sacrifice this, then", "sacrifice this then");
     normalized
 }
 
@@ -5497,6 +5503,46 @@ mod tests {
         assert_eq!(similarity, 1.0);
         assert_eq!(delta, 0);
         assert!(!mismatch);
+    }
+
+    #[test]
+    fn self_sacrifice_name_and_card_type_references_compare_equally() {
+        let oracle = "At the beginning of your end step, sacrifice Sothera.";
+        let compiled =
+            vec!["At the beginning of your end step, sacrifice this enchantment.".to_string()];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored(
+                "Sothera, the Supervoid",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(!mismatch);
+    }
+
+    #[test]
+    fn sothera_surface_compare_clears_strict_gate() {
+        let oracle = "Whenever a creature you control dies, each opponent chooses a creature they control and exiles it.\nAt the beginning of your end step, if a player controls no creatures, sacrifice Sothera, then put a creature card exiled with it onto the battlefield under your control with two additional +1/+1 counters on it.";
+        let compiled = vec![
+            "Whenever a creature you control dies, each opponent chooses a creature they control and exiles it.".to_string(),
+            "At the beginning of your end step, if a player controls no creatures, sacrifice this enchantment, then put a creature card exiled with it onto the battlefield under your control with two additional +1/+1 counters on it.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored(
+                "Sothera, the Supervoid",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        assert_eq!(delta, 0);
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} delta={delta} mismatch={mismatch}"
+        );
     }
 
     #[test]
