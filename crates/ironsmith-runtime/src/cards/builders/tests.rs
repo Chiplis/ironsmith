@@ -22339,6 +22339,83 @@ fn thelonite_druid_forest_animation_renders_still_lands() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn fendeep_summoner_land_animation_keeps_subtypes_with_addition_tail() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fendeep Summoner")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Treefolk, Subtype::Shaman])
+        .power_toughness(PowerToughness::fixed(3, 5))
+        .parse_text(
+            "{T}: Up to two target Swamps each become 3/5 Treefolk Warrior creatures in addition to their other types until end of turn.",
+        )
+        .expect("Fendeep Summoner should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Fendeep Summoner should have an activated ability");
+    let animate = activated.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("expected land-animation continuous effect");
+
+    assert_eq!(
+        animate
+            .target_spec
+            .as_ref()
+            .map(crate::target::ChooseSpec::count),
+        Some(ChoiceCount::up_to(2)),
+        "Fendeep Summoner should target up to two Swamps"
+    );
+    let target_spec = animate
+        .target_spec
+        .as_ref()
+        .map(crate::target::ChooseSpec::base);
+    assert!(
+        matches!(target_spec, Some(crate::target::ChooseSpec::Object(filter))
+            if filter.subtypes == vec![Subtype::Swamp]),
+        "Fendeep Summoner should target Swamps, got {:?}",
+        animate.target_spec
+    );
+    assert!(
+        matches!(
+            animate.modification.as_ref(),
+            Some(crate::continuous::Modification::AddCardTypes(card_types))
+                if card_types.contains(&CardType::Creature)
+        ),
+        "expected animation to add Creature type, got {:?}",
+        animate.modification
+    );
+    assert!(
+        animate
+            .additional_modifications
+            .iter()
+            .any(|modification| matches!(
+                modification,
+                crate::continuous::Modification::AddSubtypes(subtypes)
+                    if subtypes.contains(&Subtype::Treefolk)
+                        && subtypes.contains(&Subtype::Warrior)
+            )),
+        "expected animation to add Treefolk and Warrior subtypes, got {:?}",
+        animate.additional_modifications
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("3/5 treefolk warrior creatures")
+            || rendered.contains("3/5 Treefolk Warrior creatures"),
+        "expected Fendeep Summoner compiled text to render Treefolk Warrior animation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Swordsworn Cavalier Variant")
         .card_types(vec![CardType::Creature])

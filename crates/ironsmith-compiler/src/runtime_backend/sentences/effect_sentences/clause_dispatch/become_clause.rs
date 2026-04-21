@@ -57,6 +57,10 @@ fn strip_trailing_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexTo
     &tokens[..tokens.len().saturating_sub(addition_tail_len)]
 }
 
+fn is_addition_tail_only(tokens: &[OwnedLexToken]) -> bool {
+    !tokens.is_empty() && strip_trailing_addition_tail_tokens(tokens).is_empty()
+}
+
 fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> bool {
     let token_words = TokenWordView::new(tokens).to_word_refs();
     token_words == ["it", "has", "this", "ability"]
@@ -273,6 +277,8 @@ pub(crate) fn parse_become_clause(
                 Vec::new()
             };
             let suffix_supported = if suffix_tokens.is_empty() {
+                true
+            } else if is_addition_tail_only(&suffix_tokens) {
                 true
             } else if suffix_tokens
                 .first()
