@@ -7453,6 +7453,42 @@ fn rewrite_lexed_effect_sequence_parses_divvy_choose_one_of_them_bundle() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_parses_bend_or_break_divvy_bundle() {
+    let text = "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify bend or break text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("divvy_opponent"), "{debug}");
+    assert!(debug.contains("divvy_chosen"), "{debug}");
+    assert!(debug.contains("ChoosePlayer"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("filter: Opponent"), "{debug}");
+    assert!(debug.contains("player: That"), "{debug}");
+    assert!(debug.contains("TapAll"), "{debug}");
+}
+
+#[test]
+fn bend_or_break_lowers_the_opponent_choice_into_the_pile_choice() {
+    let text = "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bend or Break Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text.to_string())
+        .expect("Bend or Break should lower cleanly");
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+
+    assert!(debug.contains("chooseplayereffect"), "{debug}");
+    assert!(debug.contains("chooser: iteratedplayer"), "{debug}");
+    assert!(debug.contains("filter: opponent"), "{debug}");
+    assert!(debug.contains("divvy_opponent"), "{debug}");
+    assert!(debug.contains("chooseobjectseffect"), "{debug}");
+    assert!(debug.contains("chooser: taggedplayer"), "{debug}");
+    assert!(debug.contains("divvy_chosen"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sequence_parses_gifts_ungiven_divvy_bundle() {
     let text = "Search your library for up to four cards with different names and reveal them. Target opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest into your hand. Then shuffle.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify Gifts Ungiven text");

@@ -548,7 +548,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         .controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
                     count_value: None,
-                    player: PlayerAst::Chosen,
+                    player: PlayerAst::That,
                     tag: TagKey::from("divvy_chosen"),
                 },
                 EffectAst::Destroy {
