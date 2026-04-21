@@ -632,7 +632,7 @@ fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
                 if paren_depth == 0 {
                     let trimmed = current.trim();
                     if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
-                        clauses.push(strip_ability_word_prefix(trimmed));
+                        push_normalized_semantic_clause(trimmed, clauses);
                     }
                     current.clear();
                     continue;
@@ -644,8 +644,147 @@ fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
     }
     let trimmed = current.trim();
     if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
-        clauses.push(strip_ability_word_prefix(trimmed));
+        push_normalized_semantic_clause(trimmed, clauses);
     }
+}
+
+fn push_normalized_semantic_clause(trimmed: &str, clauses: &mut Vec<String>) {
+    let clause = strip_ability_word_prefix(trimmed);
+    if let Some(keyword_clauses) = split_keyword_only_clause(&clause) {
+        clauses.extend(keyword_clauses);
+    } else {
+        clauses.push(clause);
+    }
+}
+
+fn split_keyword_only_clause(clause: &str) -> Option<Vec<String>> {
+    let trimmed = clause.trim().trim_end_matches('.');
+    if !trimmed.contains(',') && !trimmed.to_ascii_lowercase().contains(" and ") {
+        return None;
+    }
+
+    let normalized = trimmed
+        .replace(", and ", ", ")
+        .replace(", And ", ", ")
+        .replace(" and ", ", ")
+        .replace(" And ", ", ");
+    let parts = normalized
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() < 2 || !parts.iter().all(|part| is_keyword_only_phrase(part)) {
+        return None;
+    }
+
+    Some(
+        parts
+            .into_iter()
+            .map(normalize_keyword_clause_surface)
+            .collect(),
+    )
+}
+
+fn normalize_keyword_clause_surface(phrase: &str) -> String {
+    let lower = phrase.trim().to_ascii_lowercase();
+    let mut chars = lower.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => String::new(),
+    }
+}
+
+fn is_keyword_only_phrase(phrase: &str) -> bool {
+    let lower = phrase.trim().trim_end_matches('.').to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+    if is_landwalk_keyword_phrase(&lower) {
+        return true;
+    }
+    if lower.starts_with("protection from ") || lower.starts_with("ward ") {
+        return true;
+    }
+    if lower == "sunburst"
+        || lower.starts_with("bushido ")
+        || lower.starts_with("fading ")
+        || lower.starts_with("fabricate ")
+        || lower.starts_with("graft ")
+        || lower.starts_with("modular ")
+        || lower.starts_with("rampage ")
+        || lower.starts_with("scavenge ")
+        || lower.starts_with("transmute ")
+        || lower.starts_with("toxic ")
+        || lower.starts_with("vanishing ")
+    {
+        return true;
+    }
+    matches!(
+        lower.as_str(),
+        "flying"
+            | "first strike"
+            | "double strike"
+            | "deathtouch"
+            | "defender"
+            | "flash"
+            | "haste"
+            | "hexproof"
+            | "indestructible"
+            | "intimidate"
+            | "lifelink"
+            | "menace"
+            | "reach"
+            | "shroud"
+            | "trample"
+            | "devoid"
+            | "vigilance"
+            | "fear"
+            | "flanking"
+            | "shadow"
+            | "horsemanship"
+            | "phasing"
+            | "wither"
+            | "infect"
+            | "changeling"
+            | "battle cry"
+            | "daybound"
+            | "dethrone"
+            | "enlist"
+            | "extort"
+            | "evolve"
+            | "ingest"
+            | "melee"
+            | "myriad"
+            | "nightbound"
+            | "prowess"
+            | "provoke"
+            | "riot"
+            | "training"
+            | "persist"
+            | "undying"
+            | "partner"
+            | "assist"
+    )
+}
+
+fn is_landwalk_keyword_phrase(lower: &str) -> bool {
+    if matches!(
+        lower,
+        "landwalk" | "nonbasic landwalk" | "artifact landwalk" | "legendary landwalk"
+    ) {
+        return true;
+    }
+    if let Some(rest) = lower.strip_prefix("snow ") {
+        return is_landwalk_subtype_compound(rest);
+    }
+    is_landwalk_subtype_compound(lower)
+}
+
+fn is_landwalk_subtype_compound(lower: &str) -> bool {
+    matches!(
+        lower,
+        "plainswalk" | "islandwalk" | "swampwalk" | "mountainwalk" | "forestwalk" | "desertwalk"
+    )
 }
 
 fn looks_like_named_subject(subject: &str) -> bool {
@@ -5507,6 +5646,31 @@ mod tests {
                 &compiled,
                 strict_embedding(),
             );
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(!mismatch);
+    }
+
+    #[test]
+    fn keyword_only_lines_and_lists_compare_equally() {
+        let oracle = "Flying\nDeathtouch\nLifelink";
+        let compiled = vec!["Flying, deathtouch, lifelink".to_string()];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(!mismatch);
+
+        let oracle = "Flying, first strike, lifelink";
+        let compiled = vec![
+            "Flying".to_string(),
+            "First strike".to_string(),
+            "Lifelink".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
 
         assert_eq!(similarity, 1.0);
         assert_eq!(delta, 0);

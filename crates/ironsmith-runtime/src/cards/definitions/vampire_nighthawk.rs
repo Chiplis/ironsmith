@@ -21,7 +21,17 @@ pub fn vampire_nighthawk() -> CardDefinition {
 #[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
+    use crate::card::PowerToughness;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+    use crate::game_loop::{check_and_apply_sbas, execute_combat_damage_step};
+    use crate::ids::{CardId, PlayerId};
+    use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
+    use crate::triggers::TriggerQueue;
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
@@ -29,6 +39,131 @@ mod tests {
         let def = vampire_nighthawk();
         assert_eq!(def.name(), "Vampire Nighthawk");
         assert_eq!(def.abilities.len(), 3);
+        assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(2, 3)));
+
+        for expected in [
+            StaticAbilityId::Flying,
+            StaticAbilityId::Deathtouch,
+            StaticAbilityId::Lifelink,
+        ] {
+            assert!(
+                def.abilities.iter().any(|ability| {
+                    matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == expected)
+                }),
+                "Vampire Nighthawk should have {expected:?}"
+            );
+        }
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn vampire_nighthawk_keyword_text_matches_oracle_lines() {
+        let def = vampire_nighthawk();
+        let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            crate::semantic_compare::compare_card_semantics_scored(
+                "Vampire Nighthawk",
+                "Flying\nDeathtouch\nLifelink",
+                &compiled,
+                crate::semantic_compare::report_embedding_config(),
+            );
+
+        assert_eq!(similarity, 1.0);
+        assert_eq!(delta, 0);
+        assert!(
+            !mismatch,
+            "keyword-only rendered text should compare cleanly against oracle lines: {compiled:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn vampire_nighthawk_keywords_matter_in_combat() {
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let nighthawk_id =
+            game.create_object_from_definition(&vampire_nighthawk(), alice, Zone::Battlefield);
+        let ground_blocker = CardDefinitionBuilder::new(CardId::new(), "Ground Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let ground_blocker_id =
+            game.create_object_from_definition(&ground_blocker, bob, Zone::Battlefield);
+        let reach_blocker = CardDefinitionBuilder::new(CardId::new(), "Reach Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 4))
+            .reach()
+            .build();
+        let reach_blocker_id =
+            game.create_object_from_definition(&reach_blocker, bob, Zone::Battlefield);
+
+        assert!(
+            !crate::rules::combat::can_block(
+                game.object(nighthawk_id)
+                    .expect("Vampire Nighthawk should exist"),
+                game.object(ground_blocker_id)
+                    .expect("ground blocker should exist"),
+                &game,
+            ),
+            "a ground creature should not be able to block Vampire Nighthawk"
+        );
+        assert!(
+            crate::rules::combat::can_block(
+                game.object(nighthawk_id)
+                    .expect("Vampire Nighthawk should exist"),
+                game.object(reach_blocker_id)
+                    .expect("reach blocker should exist"),
+                &game,
+            ),
+            "a reach creature should be able to block Vampire Nighthawk"
+        );
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: nighthawk_id,
+            target: AttackTarget::Player(bob),
+        });
+        combat.blockers.insert(nighthawk_id, vec![reach_blocker_id]);
+        combat
+            .damage_assignment_order
+            .insert(nighthawk_id, vec![reach_blocker_id]);
+
+        let events = execute_combat_damage_step(&mut game, &combat, false);
+        assert!(
+            events.iter().any(|event| {
+                event.source == nighthawk_id && event.amount == 2 && event.result.life_gained == 2
+            }),
+            "Vampire Nighthawk should deal 2 combat damage with lifelink"
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").life,
+            22,
+            "lifelink should gain Alice 2 life"
+        );
+
+        let mut trigger_queue = TriggerQueue::new();
+        check_and_apply_sbas(&mut game, &mut trigger_queue)
+            .expect("state-based actions should apply after combat damage");
+
+        assert!(
+            game.player(bob)
+                .expect("Bob should exist")
+                .graveyard
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|object| object.name == "Reach Blocker"),
+            "deathtouch damage should destroy the 1/4 reach blocker"
+        );
+        assert!(
+            game.battlefield
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|object| object.name == "Vampire Nighthawk"),
+            "Vampire Nighthawk should survive 1 damage from the blocker"
+        );
     }
 
     // =========================================================================
