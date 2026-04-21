@@ -10498,6 +10498,44 @@ fn parse_scrounge_debug_text_preserves_target_opponent_choice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_dredge_the_mire_debug_text_preserves_each_opponent_choices() {
+    let oracle = "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dredge the Mire Variant")
+        .parse_text(oracle)
+        .expect("Dredge the Mire style each-opponent graveyard choice should parse");
+
+    let effects = def.spell_effect.as_ref().expect("expected spell effects");
+    let score_path =
+        crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
+    assert_eq!(
+        score_path,
+        "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control"
+    );
+
+    let rendered = debug_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![oracle.to_string()],
+        "expected Dredge the Mire debug compiled text to preserve each-opponent choices"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Dredge the Mire",
+            oracle,
+            &rendered,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert_eq!(similarity, 1.0);
+    assert_eq!(delta, 0);
+    assert!(
+        !mismatch,
+        "expected Dredge the Mire debug text to avoid semantic mismatch, got {rendered:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Wei Assassins")
         .card_types(vec![CardType::Creature])

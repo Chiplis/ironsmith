@@ -4398,6 +4398,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(for_players) =
+                filtered[idx].downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let Some(move_to_zone) = unwrap_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) =
+                describe_for_players_choose_then_move_to_battlefield(for_players, move_to_zone)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) =
@@ -5712,6 +5724,38 @@ mod tests {
     }
 
     #[test]
+    fn describe_effect_list_compacts_each_opponent_graveyard_choice_to_your_battlefield() {
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .owned_by(PlayerFilter::IteratedPlayer)
+                .in_zone(Zone::Graveyard),
+            ChoiceCount::exactly(1),
+            PlayerFilter::IteratedPlayer,
+            TagKey::from("__it__"),
+        )
+        .in_zone(Zone::Graveyard);
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![Effect::new(choose)],
+        );
+        let move_to_zone = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(TagKey::from("__it__")),
+            Zone::Battlefield,
+            false,
+        )
+        .under_you_control();
+        let effects = vec![
+            Effect::new(for_players),
+            Effect::new(move_to_zone).tag(TagKey::from("moved_0")),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_player_exile_creature_and_graveyard() {
         let player = PlayerFilter::target_opponent();
         let tag = TagKey::from("__it__");
@@ -6700,6 +6744,61 @@ fn describe_for_players_choose_then_exile(
         .replace("that player controls", "they control");
     Some(format!(
         "{subject} {choose_verb} {selection} and {exile_verb} it"
+    ))
+}
+
+fn describe_for_players_choose_then_move_to_battlefield(
+    for_players: &crate::effects::ForPlayersEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    let subject = match for_players.filter {
+        PlayerFilter::Any => "Each player",
+        PlayerFilter::Opponent => "Each opponent",
+        _ => return None,
+    };
+    if for_players.effects.len() != 1
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+    {
+        return None;
+    }
+    let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.is_search
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || !move_to_battlefield_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let primary_zone = choose_primary_zone(choose)?;
+    let choice_location = match primary_zone {
+        Zone::Hand => describe_choose_zone_origin(choose, "hand"),
+        Zone::Graveyard => describe_choose_zone_location(choose, "graveyard"),
+        Zone::Library => {
+            if choose.top_only {
+                match choose.filter.owner.as_ref() {
+                    Some(PlayerFilter::IteratedPlayer) => {
+                        "from the top of their library".to_string()
+                    }
+                    Some(owner) => format!(
+                        "from the top of {} library",
+                        describe_possessive_player_filter(owner)
+                    ),
+                    None => "from the top of a library".to_string(),
+                }
+            } else {
+                describe_choose_zone_origin(choose, "library")
+            }
+        }
+        _ => return None,
+    };
+    let chosen = describe_choose_selection(choose);
+    let tapped = if move_to_zone.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    Some(format!(
+        "{subject} chooses {chosen} {choice_location}. Put those cards onto the battlefield{tapped} under your control"
     ))
 }
 

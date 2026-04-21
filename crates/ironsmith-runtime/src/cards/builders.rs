@@ -13185,6 +13185,35 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_dredge_the_mire_each_opponent_chooses_from_graveyard() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dredge the Mire Variant")
+            .parse_text(
+                "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control.",
+            )
+            .expect("Dredge the Mire style choose-and-reanimate sequence should parse");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ForPlayersEffect")
+                && debug.contains("ChooseObjectsEffect")
+                && debug.contains("zone: Some(Graveyard)")
+                && debug.contains("owner: Some(IteratedPlayer)")
+                && debug.contains("chooser: IteratedPlayer"),
+            "expected per-opponent graveyard choice lowering, got {debug}"
+        );
+        assert!(
+            debug.contains("MoveToZoneEffect")
+                && debug.contains("target: Tagged(")
+                && debug.contains("__it__")
+                && debug.contains("zone: Battlefield")
+                && debug.contains("battlefield_controller: You"),
+            "expected chosen cards to be moved onto your battlefield, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_parley_revealed_this_way_uses_tagged_nonland_filter() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Parley Variant")
             .parse_text(
