@@ -6494,7 +6494,7 @@ pub(super) fn pluralize_word(word: &str) -> String {
             "dwarves".to_string()
         };
     }
-    if lower == "myr" {
+    if lower == "myr" || lower == "merfolk" {
         return word.to_string();
     }
     if lower == "mouse" {
@@ -8354,6 +8354,32 @@ pub(super) fn return_to_hand_uses_chosen_tag(
         }
         _ => false,
     }
+}
+
+fn describe_return_to_hand_excluded_subtypes(
+    return_to_hand: &crate::effects::ReturnToHandEffect,
+) -> Option<String> {
+    let ChooseSpec::All(filter) = &return_to_hand.spec else {
+        return None;
+    };
+    if filter.excluded_subtypes.is_empty() {
+        return None;
+    }
+
+    let mut base_filter = filter.clone();
+    base_filter.excluded_subtypes.clear();
+    let target_text = describe_choose_spec(&ChooseSpec::All(base_filter));
+    let excluded = filter
+        .excluded_subtypes
+        .iter()
+        .map(|subtype| pluralize_word(&subtype.to_string()))
+        .collect::<Vec<_>>();
+
+    Some(format!(
+        "{target_text} to {} except for {}",
+        owner_hand_phrase_for_spec(&return_to_hand.spec),
+        join_with_and(&excluded)
+    ))
 }
 
 fn half_rounded_up_subject(value: &Value) -> Option<String> {
@@ -13735,6 +13761,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "Return {} to your hand",
                 describe_choose_spec(&return_to_hand.spec)
             );
+        }
+        if let Some(exception_text) = describe_return_to_hand_excluded_subtypes(return_to_hand) {
+            return format!("Return {exception_text}");
         }
         return format!(
             "Return {} to {}",

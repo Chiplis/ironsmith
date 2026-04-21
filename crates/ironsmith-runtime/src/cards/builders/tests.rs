@@ -28405,9 +28405,56 @@ fn parse_oracle_slinn_voda_renders_kicked_exception_bounce_cleanly() {
 
     assert!(
         rendered.contains(
-            "When this creature enters, if this spell was kicked, return all non-merfolk non-kraken non-leviathan non-octopus non-serpent creatures to their owners' hands."
+            "When this creature enters, if this spell was kicked, return all creatures to their owners' hands except for Merfolk, Krakens, Leviathans, Octopuses, and Serpents."
         ),
         "expected Slinn Voda compiled text to preserve kicked ETB exception wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_whelming_wave_renders_subtype_exceptions_cleanly() {
+    let def = parse_oracle_card_definition("Whelming Wave");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Return all creatures to their owners' hands except for Krakens, Leviathans, Octopuses, and Serpents."
+        ),
+        "expected Whelming Wave compiled text to render subtype exclusions as an exception clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("non-kraken"),
+        "expected Whelming Wave compiled text to avoid repeated non-subtype adjectives, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_whelming_wave_preserves_excluded_subtype_filter_shape() {
+    let def = parse_oracle_card_definition("Whelming Wave");
+    let spell = def.spell_effect.as_ref().expect("spell effect");
+    let return_to_hand = spell
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
+        .expect("Whelming Wave should lower to ReturnToHandEffect");
+    let ChooseSpec::All(filter) = &return_to_hand.spec else {
+        panic!(
+            "Whelming Wave should return all objects matching an excluded-subtype filter, got {:?}",
+            return_to_hand.spec
+        );
+    };
+
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "Whelming Wave filter should still select creatures, got {filter:?}"
+    );
+    assert_eq!(
+        filter.excluded_subtypes,
+        vec![
+            Subtype::Kraken,
+            Subtype::Leviathan,
+            Subtype::Octopus,
+            Subtype::Serpent,
+        ]
     );
 }
 
