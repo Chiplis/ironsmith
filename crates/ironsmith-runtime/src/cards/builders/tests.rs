@@ -2863,6 +2863,32 @@ fn test_parse_create_token_for_each_creature_that_died_this_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_spoils_of_blood_uses_creatures_died_this_turn_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Spoils of Blood Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Create an X/X black Horror creature token, where X is the number of creatures that died this turn.",
+        )
+        .expect("Spoils of Blood text should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("CreaturesDiedThisTurn"),
+        "expected Spoils of Blood to use the died-this-turn value, got {spell_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("creatures that died this turn"),
+        "expected compiled Spoils of Blood text to preserve the died-this-turn count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
         .card_types(vec![CardType::Enchantment])

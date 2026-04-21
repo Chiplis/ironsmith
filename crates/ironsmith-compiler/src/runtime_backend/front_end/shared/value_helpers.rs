@@ -168,6 +168,15 @@ fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) ->
     None
 }
 
+fn parse_creatures_died_this_turn_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let word_view = ValueHelperCompatWords::new(tokens);
+    match word_view.to_word_refs().as_slice() {
+        ["creature", "that", "died", "this", "turn"]
+        | ["creatures", "that", "died", "this", "turn"] => Some(Value::CreaturesDiedThisTurn),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     let word_view = ValueHelperCompatWords::new(tokens);
     let words = word_view.to_word_refs();
@@ -256,6 +265,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_tokens = trim_edge_punctuation(&tokens[filter_start_token_idx..]);
     let filter_word_view = ValueHelperCompatWords::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
+    if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
+        return Some(value);
+    }
     if lower_words_have(&filter_word_view, "cards")
         && lower_words_have(&filter_word_view, "in")
         && lower_words_have_any(&filter_word_view, &["hand", "hands"])
@@ -309,7 +321,10 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
     let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
     let base_value =
-        if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
+        if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
+            value
+        } else if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens)
+        {
             value
         } else {
             Value::Count(parse_object_filter(&filter_tokens, false).ok()?)

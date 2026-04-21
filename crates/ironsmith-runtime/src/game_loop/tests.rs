@@ -6536,6 +6536,88 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
+    use crate::decision::LegalAction;
+    use crate::game_state::Phase;
+    use crate::game_loop::{PriorityLoopState, apply_priority_response, resolve_stack_entry};
+    use crate::mana::ManaSymbol;
+    use crate::triggers::TriggerQueue;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let spoils_text =
+        "Create an X/X black Horror creature token, where X is the number of creatures that died this turn.";
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let spoils = CardDefinitionBuilder::new(CardId::from_raw(10003), "Spoils of Blood")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(spoils_text)
+        .expect("Spoils of Blood text should parse");
+
+    let spoils_id = game.create_object_from_definition(&spoils, alice, Zone::Hand);
+    let surviving_creature = CardBuilder::new(CardId::new(), "Surviving Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let doomed_creature_1 = CardBuilder::new(CardId::new(), "Doomed Creature 1")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let doomed_creature_2 = CardBuilder::new(CardId::new(), "Doomed Creature 2")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let _surviving_id = game.create_object_from_card(&surviving_creature, alice, Zone::Battlefield);
+    let doomed_id_1 = game.create_object_from_card(&doomed_creature_1, alice, Zone::Battlefield);
+    let doomed_id_2 = game.create_object_from_card(&doomed_creature_2, alice, Zone::Battlefield);
+
+    game.move_object_by_effect(doomed_id_1, Zone::Graveyard);
+    game.move_object_by_effect(doomed_id_2, Zone::Graveyard);
+    assert_eq!(
+        game.turn_store.turn_history.total_creatures_died_this_turn(),
+        2,
+        "the setup should leave exactly two creatures dead this turn"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+
+    let mut state = PriorityLoopState::new(2);
+    let cast_response = crate::PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: spoils_id,
+        from_zone: Zone::Hand,
+        casting_method: crate::alternative_cast::CastingMethod::Normal,
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("Spoils of Blood cast should succeed");
+    assert_eq!(game.stack.len(), 1, "Spoils of Blood should be on the stack");
+
+    resolve_stack_entry(&mut game).expect("Spoils of Blood should resolve");
+
+    let horror = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .find(|obj| obj.controller == alice && obj.name == "Horror")
+        .expect("Spoils of Blood should create a Horror token");
+
+    assert_eq!(horror.kind, ObjectKind::Token, "expected a token on resolution");
+    assert_eq!(horror.power(), Some(2), "Horror token should be 2/2");
+    assert_eq!(horror.toughness(), Some(2), "Horror token should be 2/2");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
     use crate::game_state::Phase;

@@ -1500,6 +1500,13 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         };
         return Some(Value::CardTypesInGraveyard(player));
     }
+    if matches!(
+        filter_words.as_slice(),
+        ["creature", "that", "died", "this", "turn"]
+            | ["creatures", "that", "died", "this", "turn"]
+    ) {
+        return Some(Value::CreaturesDiedThisTurn);
+    }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(Value::Count(filter))
 }
