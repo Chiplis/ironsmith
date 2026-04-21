@@ -21097,8 +21097,13 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("gain 1 life") && rendered.contains("angel creature with flying"),
+        rendered.contains("gain 1 life")
+            && rendered.contains("3/3 angel creature with flying"),
         "expected oracle-like rendered text for Answered Prayers, got {rendered}"
+    );
+    assert!(
+        rendered.contains("in addition to its other types"),
+        "expected the source animation to preserve existing types, got {rendered}"
     );
 }
 

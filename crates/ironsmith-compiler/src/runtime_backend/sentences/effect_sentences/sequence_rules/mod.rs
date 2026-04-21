@@ -62,6 +62,10 @@ fn first_word_when_or_whenever(sentences: &[SentenceInput], sentence_idx: usize)
     sentence_head_word_in(sentences, sentence_idx, &["when", "whenever"])
 }
 
+fn first_word_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "you")
+}
+
 fn first_word_look(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "look")
 }
@@ -333,6 +337,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_when_or_whenever,
         parser: pairs::parse_whenever_gain_life_then_self_animate_source,
+    },
+    SequenceRuleDef {
+        name: "gain-life-then-self-animate-source",
+        feature_tag: Some("self-animate-source"),
+        priority: 241,
+        consumed_sentences: 2,
+        predicate: first_word_you,
+        parser: pairs::parse_gain_life_then_self_animate_source,
     },
     SequenceRuleDef {
         name: "damage-prevention-then-put-counters",

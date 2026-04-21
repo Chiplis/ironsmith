@@ -6996,6 +6996,13 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
+    if !preserves_land_types {
+        if plural_target {
+            text.push_str(" in addition to their other types");
+        } else {
+            text.push_str(" in addition to its other types");
+        }
+    }
     if let Some(tail) = describe_apply_continuous_tail(effect) {
         text.push(' ');
         text.push_str(&tail);

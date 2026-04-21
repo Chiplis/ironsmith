@@ -544,6 +544,9 @@ fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     if tail.is_empty() {
         return None;
     }
+    if tail.contains(" with ") {
+        return None;
+    }
     if !lower.contains(" until end of turn") && !lower.contains(" creature") {
         return None;
     }

@@ -187,6 +187,43 @@ fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
     }
 }
 
+fn parse_self_animate_followup_effects(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Ok(effects) = effect_sentences::parse_effect_sentence_lexed(tokens)
+        && effects.iter().any(contains_tagged_source_animation)
+    {
+        return Ok(Some(effects));
+    }
+
+    let words = TokenWordView::new(tokens).word_refs();
+    if !slice_starts_with(&words, &["if", "this"]) {
+        return Ok(None);
+    }
+    let Some(comma_idx) = find_index(tokens, |token: &OwnedLexToken| token.is_comma()) else {
+        return Ok(None);
+    };
+    let condition_words = TokenWordView::new(&tokens[..comma_idx]).word_refs();
+    if !condition_words.contains(&"isnt") || !condition_words.contains(&"creature") {
+        return Ok(None);
+    }
+
+    let tail = trim_commas(&tokens[comma_idx + 1..]);
+    if !TokenWordView::new(&tail)
+        .word_refs()
+        .first()
+        .is_some_and(|word| *word == "it")
+    {
+        return Ok(None);
+    }
+    let effects = effect_sentences::parse_effect_sentence_lexed(&tail)?;
+    if effects.iter().any(contains_tagged_source_animation) {
+        Ok(Some(effects))
+    } else {
+        Ok(None)
+    }
+}
+
 pub(super) fn parse_whenever_gain_life_then_self_animate_source(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -199,10 +236,34 @@ pub(super) fn parse_whenever_gain_life_then_self_animate_source(
         return Ok(None);
     }
 
-    let second_effects = effect_sentences::parse_effect_sentence_lexed(second)?;
-    if !second_effects.iter().any(contains_tagged_source_animation) {
+    let Some(second_effects) = parse_self_animate_followup_effects(second)? else {
+        return Ok(None);
+    };
+
+    let mut effects = first_effects;
+    effects.extend(
+        second_effects
+            .into_iter()
+            .map(retarget_source_self_animate_effect),
+    );
+    Ok(Some(effects))
+}
+
+pub(super) fn parse_gain_life_then_self_animate_source(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+
+    let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
+    if !first_effects.iter().any(contains_triggered_life_gain_effect) {
         return Ok(None);
     }
+
+    let Some(second_effects) = parse_self_animate_followup_effects(second)? else {
+        return Ok(None);
+    };
 
     let mut effects = first_effects;
     effects.extend(
