@@ -8430,8 +8430,7 @@ fn describe_each_player_return_all_from_their_graveyard(
     if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 1 {
         return None;
     }
-    let return_all =
-        for_players.effects[0].downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let (_, return_all) = tagged_return_all_from_graveyard(&for_players.effects[0])?;
     if return_all.filter.zone != Some(Zone::Graveyard)
         || return_all.filter.owner != Some(PlayerFilter::IteratedPlayer)
     {
@@ -8444,6 +8443,57 @@ fn describe_each_player_return_all_from_their_graveyard(
         "Each player returns {target_text} from their graveyard to the battlefield{}",
         if return_all.tapped { " tapped" } else { "" }
     ))
+}
+
+fn describe_each_player_return_all_from_their_graveyard_with_counters(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 2 {
+        return None;
+    }
+
+    let (return_all_tag, return_all) = tagged_return_all_from_graveyard(&for_players.effects[0])?;
+    if return_all.filter.zone != Some(Zone::Graveyard)
+        || return_all.filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+
+    let put_counters = for_players.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put_counters.distributed
+        || put_counters.target_count.is_some()
+        || !matches!(
+            &put_counters.target,
+            ChooseSpec::Tagged(tag) if Some(tag) == return_all_tag
+        )
+        || !matches!(put_counters.amount, Value::Fixed(1))
+    {
+        return None;
+    }
+
+    let target_text =
+        describe_choose_spec_without_graveyard_zone(&ChooseSpec::All(return_all.filter.clone()));
+    Some(format!(
+        "Each player returns {target_text} from their graveyard to the battlefield with an additional {} counter on it",
+        describe_counter_type(put_counters.counter_type),
+    ))
+}
+
+fn tagged_return_all_from_graveyard(
+    effect: &Effect,
+) -> Option<(
+    Option<&crate::TagKey>,
+    &crate::effects::ReturnAllToBattlefieldEffect,
+)> {
+    if let Some(return_all) = effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+    {
+        return Some((None, return_all));
+    }
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let return_all = tagged
+        .effect
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    Some((Some(&tagged.tag), return_all))
 }
 
 fn describe_no_more_counters_move_then_each_player_return(
@@ -12353,6 +12403,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_target_return_unless_draw(for_players) {
+            return compact;
+        }
+        if let Some(compact) =
+            describe_each_player_return_all_from_their_graveyard_with_counters(for_players)
+        {
             return compact;
         }
         if let Some(compact) = describe_each_player_return_all_from_their_graveyard(for_players) {

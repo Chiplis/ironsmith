@@ -12955,11 +12955,157 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .find_map(|effect| effect.downcast_ref::<ForPlayersEffect>())
             .expect("expected ForPlayersEffect");
         let debug = format!("{for_players:?}");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
-            debug.contains("ReturnAllToBattlefieldEffect")
+            debug.contains("TaggedEffect")
+                && debug.contains("ReturnAllToBattlefieldEffect")
                 && debug.contains("PutCountersEffect")
                 && debug.contains("MinusOneMinusOne"),
-            "expected return + -1/-1 counter effects in for-players branch, got {debug}"
+            "expected tagged return + -1/-1 counter effects in for-players branch, got {debug}"
+        );
+        assert!(
+            rendered.contains("Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it")
+                || rendered.contains("Each player returns each creature card from their graveyard to the battlefield. Put a -1/-1 counter on it"),
+            "expected rendered Pyrrhic Revival text to preserve the return-with-counter compaction, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn replay_pyrrhic_revival_returns_each_players_creatures_with_counters() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::decision::SelectFirstDecisionMaker;
+        use crate::game_loop::resolve_stack_entry_with;
+        use crate::game_state::{GameState, StackEntry};
+        use crate::ids::{CardId, ObjectId, PlayerId};
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::types::CardType;
+        use crate::zone::Zone;
+
+        fn create_graveyard_creature(
+            game: &mut GameState,
+            name: &str,
+            owner: PlayerId,
+        ) -> ObjectId {
+            game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), name)
+                    .mana_cost(ManaCost::from_pips(vec![
+                        vec![ManaSymbol::Generic(1)],
+                        vec![ManaSymbol::Green],
+                    ]))
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2))
+                    .build(),
+                owner,
+                Zone::Graveyard,
+            )
+        }
+
+        fn create_graveyard_artifact(
+            game: &mut GameState,
+            name: &str,
+            owner: PlayerId,
+        ) -> ObjectId {
+            game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), name)
+                    .card_types(vec![CardType::Artifact])
+                    .build(),
+                owner,
+                Zone::Graveyard,
+            )
+        }
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        create_graveyard_creature(&mut game, "Alice Revival Bear", alice);
+        create_graveyard_artifact(&mut game, "Alice Spare Relic", alice);
+        create_graveyard_creature(&mut game, "Bob Revival Bear", bob);
+        create_graveyard_artifact(&mut game, "Bob Spare Relic", bob);
+
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Pyrrhic Revival Variant")
+            .parse_text(
+                "Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it.",
+            )
+            .expect("Pyrrhic Revival text should parse");
+        let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+        game.stack.push(StackEntry::new(spell_id, alice));
+
+        resolve_stack_entry_with(&mut game, &mut SelectFirstDecisionMaker)
+            .expect("Pyrrhic Revival should resolve");
+
+        let alice_returned = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|&id| {
+                game.object(id)
+                    .map(|obj| obj.name == "Alice Revival Bear" && obj.controller == alice)
+                    .unwrap_or(false)
+            })
+            .expect("Alice's creature should be on the battlefield");
+        let bob_returned = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|&id| {
+                game.object(id)
+                    .map(|obj| obj.name == "Bob Revival Bear" && obj.controller == bob)
+                    .unwrap_or(false)
+            })
+            .expect("Bob's creature should be on the battlefield");
+
+        assert_eq!(
+            game.counter_count(alice_returned, crate::object::CounterType::MinusOneMinusOne),
+            1,
+            "Alice's returned creature should get exactly one -1/-1 counter"
+        );
+        assert_eq!(
+            game.counter_count(bob_returned, crate::object::CounterType::MinusOneMinusOne),
+            1,
+            "Bob's returned creature should get exactly one -1/-1 counter"
+        );
+
+        assert!(
+            game.player(alice)
+                .expect("alice exists")
+                .graveyard
+                .iter()
+                .any(|&id| {
+                    game.object(id)
+                        .map(|obj| obj.name == "Alice Spare Relic")
+                        .unwrap_or(false)
+                }),
+            "Alice's noncreature card should stay in her graveyard"
+        );
+        assert!(
+            game.player(bob).expect("bob exists").graveyard.iter().any(|&id| {
+                game.object(id)
+                    .map(|obj| obj.name == "Bob Spare Relic")
+                    .unwrap_or(false)
+            }),
+            "Bob's noncreature card should stay in his graveyard"
+        );
+        assert!(
+            game.player(alice)
+                .expect("alice exists")
+                .graveyard
+                .iter()
+                .all(|&id| {
+                    game.object(id)
+                        .map(|obj| obj.name != "Alice Revival Bear")
+                        .unwrap_or(true)
+                }),
+            "Alice's creature should leave the graveyard"
+        );
+        assert!(
+            game.player(bob).expect("bob exists").graveyard.iter().all(|&id| {
+                game.object(id)
+                    .map(|obj| obj.name != "Bob Revival Bear")
+                    .unwrap_or(true)
+            }),
+            "Bob's creature should leave the graveyard"
         );
     }
 
