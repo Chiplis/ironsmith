@@ -863,42 +863,39 @@ fn normalize_named_source_trigger_for_builder(
         return None;
     }
 
-    let lower = trimmed.to_ascii_lowercase();
-    for intro in ["whenever", "when", "at"] {
-        for name_lower in &names {
-            let prefix = format!("{intro} {name_lower} ");
-            if let Some(rest) = str_strip_prefix(lower.as_str(), prefix.as_str()) {
-                return Some(format!("{intro} {subject} {rest}"));
-            }
-        }
+    let mut rewritten = trimmed.to_ascii_lowercase();
+    for name_lower in &names {
+        rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
     }
 
-    for intro in ["whenever", "when", "at"] {
-        let intro_prefix = format!("{intro} ");
-        if !lower.starts_with(&intro_prefix) {
-            continue;
-        }
-        let (trigger_head, effect_tail) = lower
-            .split_once(',')
-            .map_or((lower.as_str(), ""), |(head, tail)| (head, tail));
-        let mut rewritten_head = trigger_head.to_string();
-        for name_lower in &names {
-            for verb in ["targets", "targeting"] {
-                let pattern = format!("{verb} {name_lower}");
-                let replacement = format!("{verb} {subject}");
-                rewritten_head = rewritten_head.replace(&pattern, &replacement);
-            }
-        }
-        if rewritten_head != trigger_head {
-            return Some(if effect_tail.is_empty() {
-                rewritten_head
-            } else {
-                format!("{rewritten_head},{effect_tail}")
-            });
-        }
+    (rewritten != trimmed.to_ascii_lowercase()).then_some(rewritten)
+}
+
+fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
+    if alias.is_empty() {
+        return text.to_string();
     }
 
-    None
+    let mut rewritten = String::with_capacity(text.len());
+    let mut cursor = 0usize;
+    let lower = text.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    while let Some(relative_start) = lower[cursor..].find(alias) {
+        let start = cursor + relative_start;
+        let end = start + alias.len();
+        let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if before_is_boundary && after_is_boundary {
+            rewritten.push_str(&lower[cursor..start]);
+            rewritten.push_str(replacement);
+            cursor = end;
+        } else {
+            rewritten.push_str(&lower[cursor..end]);
+            cursor = end;
+        }
+    }
+    rewritten.push_str(&lower[cursor..]);
+    rewritten
 }
 
 fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<String> {
@@ -1662,6 +1659,26 @@ mod tests {
                 "Whenever this creature attacks, draw a card".to_string(),
                 "Whenever it deals combat damage to a player, create a Treasure token".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_covers_trigger_bodies_as_well_as_heads() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
+            .card_types(vec![CardType::Creature]);
+
+        let rewritten = normalize_named_source_trigger_for_builder(
+            &builder,
+            "Whenever Kain deals combat damage to a player, that player gains control of Kain. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life.",
+        )
+        .expect("expected named source rewrite to apply");
+
+        assert!(
+            rewritten.contains("whenever this creature deals combat damage to a player")
+                && rewritten.contains("that player gains control of this creature")
+                && rewritten.contains("if they do, you draw that many cards")
+                && rewritten.contains("lose that much life"),
+            "expected source-name rewrite to normalize the whole triggered line, got {rewritten}"
         );
     }
 

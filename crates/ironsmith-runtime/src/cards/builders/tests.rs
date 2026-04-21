@@ -21067,6 +21067,40 @@ fn render_source_surface_for_hard_triggered_and_static_clauses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn kain_variant_keeps_control_change_if_do_and_life_loss() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Jump — During your turn, Kain has flying.\nWhenever Kain deals combat damage to a player, that player gains control of Kain. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life.",
+        )
+        .expect("Kain text should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        (rendered.contains("gain control of this creature")
+            || rendered.contains("gain control of kain"))
+            && rendered.contains("if they do")
+            && rendered.contains("draw that many cards")
+            && rendered.contains("create that many tapped treasure tokens")
+            && rendered.contains("lose that much life"),
+        "expected the rendered Kain text to preserve the control-change chain, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("GainControl") && debug.contains("LoseLife"),
+        "expected Kain's lowered ability to keep gain-control and life-loss effects, got {debug}"
+    );
+    assert!(
+        debug.contains("IfResult") || debug.contains("Conditional"),
+        "expected Kain's lowered ability to keep the If they do clause, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Answered Prayers Variant")
         .card_types(vec![CardType::Enchantment])
