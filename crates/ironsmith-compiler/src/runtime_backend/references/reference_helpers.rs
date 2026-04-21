@@ -472,10 +472,7 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 .known_last_object_tag()
                 .is_some_and(|tag| tag.as_str() == IT_TAG)
             {
-                if refs.iterated_player {
-                    return Ok(ChooseSpec::Iterated);
-                }
-                return Ok(ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+                return Ok(ChooseSpec::Iterated);
             }
             if let Some(resolved) = refs.known_last_object_tag() {
                 return Ok(ChooseSpec::Tagged(TagKey::from(resolved.as_str())));

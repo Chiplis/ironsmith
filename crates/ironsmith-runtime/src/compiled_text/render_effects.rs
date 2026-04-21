@@ -8325,7 +8325,11 @@ pub(super) fn move_to_battlefield_uses_chosen_tag(
     tag: &str,
 ) -> bool {
     move_to_zone.zone == Zone::Battlefield
-        && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+        && match move_to_zone.target.base() {
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Tagged(t) => t.as_str() == tag,
+            _ => false,
+        }
 }
 
 pub(super) fn move_to_hand_uses_chosen_tag(

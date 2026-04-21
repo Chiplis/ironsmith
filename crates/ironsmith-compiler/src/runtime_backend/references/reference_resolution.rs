@@ -949,7 +949,6 @@ fn advance_reference_frame_for_effect(
             let mut nested = saved.clone();
             nested.last_effect_id = None;
             nested.last_object_tag = Some(IT_TAG.to_string());
-            nested.iterated_player = true;
             advance_reference_frames(&effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
                 frame.last_object_tag = nested.last_object_tag;
