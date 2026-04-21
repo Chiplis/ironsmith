@@ -286,8 +286,9 @@ pub(crate) fn parse_become_clause(
                 .first()
                 .is_some_and(|token| token.is_word("with"))
             {
+                let trimmed_suffix_tokens = trim_commas(&suffix_tokens[1..]);
                 let trimmed_suffix =
-                    strip_trailing_addition_tail_tokens(trim_commas(&suffix_tokens[1..]));
+                    strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
                 parse_ability_line(trimmed_suffix)
                     .map(|actions| {
                         abilities = actions
