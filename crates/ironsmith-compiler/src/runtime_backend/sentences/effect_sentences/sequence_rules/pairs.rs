@@ -98,6 +98,7 @@ fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
             subtypes,
             colors,
             abilities,
+            granted_abilities,
             duration,
         } => {
             let target = match target {
@@ -114,6 +115,7 @@ fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
                 subtypes,
                 colors,
                 abilities,
+                granted_abilities,
                 duration,
             }
         }

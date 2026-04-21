@@ -21221,6 +21221,96 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Veiled Apparition Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When an opponent casts a spell, if this permanent is an enchantment, it becomes a 3/3 Illusion creature with flying and \"At the beginning of your upkeep, sacrifice this creature unless you pay {1}{U}.\"",
+        )
+        .expect("Veiled Apparition text should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Veiled Apparition should have a triggered ability");
+
+    assert!(
+        matches!(
+            triggered.intervening_if.as_ref(),
+            Some(crate::ConditionExpr::SourceMatches(filter))
+                if filter.card_types.as_slice() == [CardType::Enchantment]
+        ),
+        "the enchantment check should be an intervening-if on the source, got {:?}",
+        triggered.intervening_if
+    );
+
+    let default_effects = &triggered.effects.segments[0].default_effects;
+    assert!(
+        default_effects.iter().all(|effect| effect
+            .downcast_ref::<crate::effects::UnlessPaysEffect>()
+            .is_none()),
+        "the upkeep sacrifice-unless-pay clause must not resolve in the spell-cast trigger: {default_effects:?}"
+    );
+
+    let animation = default_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ApplyContinuousEffect>())
+        .expect("spell-cast trigger should animate the source");
+    assert!(
+        matches!(animation.target_spec.as_ref(), Some(ChooseSpec::Source)),
+        "animation should apply to the source permanent, got {:?}",
+        animation.target_spec
+    );
+    assert!(
+        matches!(
+            animation.modification.as_ref(),
+            Some(crate::continuous::Modification::AddCardTypes(card_types))
+                if card_types.as_slice() == [CardType::Creature]
+        ),
+        "animation should add creature to the source, got {:?}",
+        animation.modification
+    );
+
+    let granted_upkeep = animation
+        .additional_modifications
+        .iter()
+        .find_map(|modification| match modification {
+            crate::continuous::Modification::AddAbilityGeneric(ability) => match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("animation should grant the quoted upkeep triggered ability");
+    assert!(
+        format!("{:?}", granted_upkeep.trigger).contains("BeginningOfUpkeep"),
+        "granted ability should trigger at the beginning of upkeep, got {:?}",
+        granted_upkeep.trigger
+    );
+    assert!(
+        granted_upkeep.effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::UnlessPaysEffect>()
+            .is_some()),
+        "granted upkeep ability should contain the sacrifice-unless-pay effect: {granted_upkeep:?}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("spell or enchantment")
+            && rendered.contains("opponent casts a spell")
+            && rendered.contains("3/3 illusion creature with flying"),
+        "expected source-gated spell trigger rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn answered_prayers_trigger_gains_life_when_a_creature_enters() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Answered Prayers Variant")
         .card_types(vec![CardType::Enchantment])

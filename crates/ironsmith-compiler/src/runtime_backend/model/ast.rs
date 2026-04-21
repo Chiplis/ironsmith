@@ -438,6 +438,7 @@ pub(crate) enum PredicateAst {
     YouHaveNoCardsInHand,
     SourceIsTapped,
     SourceIsSaddled,
+    SourceMatches(ObjectFilter),
 
     SourceHasNoCounter(CounterType),
     TriggeringObjectHadNoCounter(CounterType),
@@ -1465,6 +1466,7 @@ pub(crate) enum EffectAst {
         subtypes: Vec<Subtype>,
         colors: Option<ColorSet>,
         abilities: Vec<StaticAbility>,
+        granted_abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     AddCardTypes {

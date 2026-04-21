@@ -518,6 +518,7 @@ pub enum Condition {
     SourceIsSaddled,
     SourceIsMonstrous,
     SourceIsFaceDown,
+    SourceMatches(ObjectFilter),
     SourceHasNoCounter(CounterType),
     SourceHasCounterAtLeast {
         counter_type: CounterType,

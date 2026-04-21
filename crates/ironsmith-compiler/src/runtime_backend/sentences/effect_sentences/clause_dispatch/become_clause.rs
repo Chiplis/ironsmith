@@ -12,6 +12,7 @@ use super::super::super::util::{
     span_from_tokens, token_index_for_word_index, trim_commas,
 };
 use super::super::clause_pattern_helpers::extract_subject_player;
+use super::super::parse_granted_abilities_for_gain_clause;
 use super::super::parse_subtype_word;
 use super::super::search_library::parse_restriction_duration;
 use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
@@ -20,6 +21,7 @@ use super::helpers::{
     parse_subtype_word_or_plural, push_unique_card_type, push_unique_subtype, render_lower_words,
     strip_base_power_toughness_subject_tokens, subject_references_base_power_toughness,
 };
+use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::target::ChooseSpec;
@@ -269,6 +271,7 @@ pub(crate) fn parse_become_clause(
             }
 
             let mut abilities = Vec::new();
+            let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
             let suffix_tokens = if let Some(creature_token_idx) =
                 token_index_for_word_index(become_body_tokens, creature_idx)
             {
@@ -286,15 +289,24 @@ pub(crate) fn parse_become_clause(
             {
                 let trimmed_suffix_tokens = trim_commas(&suffix_tokens[1..]);
                 let trimmed_suffix = strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
-                parse_ability_line(trimmed_suffix)
-                    .map(|actions| {
-                        abilities = actions
-                            .into_iter()
-                            .filter_map(keyword_action_to_static_ability)
-                            .collect::<Vec<_>>();
-                        !abilities.is_empty()
-                    })
-                    .unwrap_or(false)
+                let suffix_words = TokenWordView::new(trimmed_suffix).to_word_refs();
+                if let Ok((parsed_abilities, _)) =
+                    parse_granted_abilities_for_gain_clause(trimmed_suffix, &suffix_words, false)
+                    && !parsed_abilities.is_empty()
+                {
+                    granted_abilities = parsed_abilities;
+                    true
+                } else {
+                    parse_ability_line(trimmed_suffix)
+                        .map(|actions| {
+                            abilities = actions
+                                .into_iter()
+                                .filter_map(keyword_action_to_static_ability)
+                                .collect::<Vec<_>>();
+                            !abilities.is_empty()
+                        })
+                        .unwrap_or(false)
+                }
             } else {
                 false
             };
@@ -313,6 +325,7 @@ pub(crate) fn parse_become_clause(
                     subtypes: Vec::new(),
                     colors: None,
                     abilities: Vec::new(),
+                    granted_abilities: Vec::new(),
                     duration,
                 });
             }
@@ -324,6 +337,7 @@ pub(crate) fn parse_become_clause(
                 subtypes,
                 colors,
                 abilities,
+                granted_abilities,
                 duration,
             });
         }
@@ -341,6 +355,7 @@ pub(crate) fn parse_become_clause(
             subtypes,
             colors,
             abilities: Vec::new(),
+            granted_abilities: Vec::new(),
             duration,
         });
     }

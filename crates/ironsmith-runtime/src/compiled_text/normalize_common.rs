@@ -8156,6 +8156,15 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsTapped => "this source is tapped".to_string(),
         Condition::SourceIsSaddled => "this source is saddled".to_string(),
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
+        Condition::SourceMatches(filter) => {
+            let desc = filter.description();
+            let stripped = strip_leading_article(&desc).to_ascii_lowercase();
+            if stripped == "permanent" {
+                "this source is a permanent".to_string()
+            } else {
+                format!("this permanent is {}", ensure_indefinite_article(&desc))
+            }
+        }
         Condition::SourceHasNoCounter(counter_type) => format!(
             "there are no {} counters on this source",
             counter_type.description()
