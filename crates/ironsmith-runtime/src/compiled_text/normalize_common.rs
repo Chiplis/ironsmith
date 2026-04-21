@@ -6873,6 +6873,19 @@ fn object_filter_is_land_kind(filter: &ObjectFilter) -> bool {
         || filter.subtypes.iter().any(Subtype::is_land_subtype)
 }
 
+fn is_up_to_land_subtype_target(spec: &ChooseSpec) -> bool {
+    let count = spec.count();
+    if count.min != 0 || count.max.is_none() || count.dynamic_x || count.up_to_x || count.random {
+        return false;
+    }
+    let ChooseSpec::Object(filter) = spec.base() else {
+        return false;
+    };
+    filter.card_types.is_empty()
+        && filter.subtypes.iter().any(Subtype::is_land_subtype)
+        && filter.controller.is_none()
+}
+
 fn plural_non_target_land_animation_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
@@ -7010,7 +7023,12 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(&join_with_and(&ability_text));
     }
     let render_as_addition_to_other_types = (!preserves_land_types && !abilities.is_empty())
-        || (preserves_land_types && adds_named_types);
+        || (preserves_land_types
+            && adds_named_types
+            && effect
+                .target_spec
+                .as_ref()
+                .is_some_and(is_up_to_land_subtype_target));
     if render_as_addition_to_other_types {
         if plural_target {
             text.push_str(" in addition to their other types");
