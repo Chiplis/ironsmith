@@ -124,14 +124,14 @@ mod tests {
         let events = execute_combat_damage_step(&mut game, &combat, false);
         assert!(
             events.iter().any(|event| {
-                event.source == nighthawk_id && event.amount == 2 && event.result.life_gained == 2
+                event.source == nighthawk_id && event.amount == 1 && event.result.life_gained == 1
             }),
-            "Vampire Nighthawk should deal 2 combat damage with lifelink"
+            "Vampire Nighthawk should deal lethal deathtouch damage with lifelink"
         );
         assert_eq!(
             game.player(alice).expect("Alice should exist").life,
-            22,
-            "lifelink should gain Alice 2 life"
+            21,
+            "lifelink should gain Alice life equal to the damage dealt"
         );
 
         let mut trigger_queue = TriggerQueue::new();
