@@ -234,6 +234,7 @@ pub(super) fn describe_alternative_cast_line(
 
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
+    let mut leading_alternative_cast_lines = Vec::new();
     let mut alternative_cast_lines = Vec::new();
     let mut deferred_spell_optional_lines = Vec::new();
     let subject = subject_for_card(&def.card);
@@ -251,8 +252,17 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 .is_some()
     });
     for (idx, method) in def.alternative_casts.iter().enumerate() {
-        alternative_cast_lines.push(describe_alternative_cast_line(method, idx));
+        let line = describe_alternative_cast_line(method, idx);
+        if matches!(
+            method,
+            AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+        ) {
+            leading_alternative_cast_lines.push(line);
+        } else {
+            alternative_cast_lines.push(line);
+        }
     }
+    out.extend(leading_alternative_cast_lines);
     for cost in &def.optional_costs {
         let line = describe_optional_cost_line(cost);
         if spell_like_card && cost.label == "Conspire" {

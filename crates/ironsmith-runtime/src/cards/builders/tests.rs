@@ -15089,6 +15089,12 @@ fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
 
     let rendered = canonical_compiled_lines(&def).join("\n");
     assert!(
+        rendered.starts_with(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it"
+        ),
+        "expected flash extra-cost permission to render before the spell effect, got {rendered}"
+    );
+    assert!(
         rendered.contains(
             "You may cast this spell as though it had flash if you pay {2} more to cast it"
         ),
