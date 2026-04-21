@@ -3056,6 +3056,7 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "replicate"
             | "reinforce"
             | "renew"
+            | "squad"
             | "spectacle"
             | "strive"
             | "surge"

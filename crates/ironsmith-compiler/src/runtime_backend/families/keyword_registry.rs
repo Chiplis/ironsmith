@@ -350,6 +350,10 @@ pub(super) fn lower_squad(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if let Some(cost) = parse_squad_line_lexed(tokens)? {
+        return Ok(LineAst::OptionalCost(cost.into()));
+    }
+
     if let Some(effect_tokens) = optional_cost_tail_effect_tokens(tokens)
         && let Ok(effects) = parse_effect_sentences_lexed(effect_tokens)
         && !effects.is_empty()
@@ -357,9 +361,10 @@ pub(super) fn lower_squad(
         return Ok(LineAst::Statement { effects });
     }
 
-    Ok(LineAst::OptionalCost(
-        require_keyword_parse(line, "squad", parse_squad_line_lexed(tokens)?)?.into(),
-    ))
+    Err(CardTextError::ParseError(format!(
+        "rewrite keyword lowering could not parse squad line '{}'",
+        line.info.raw_line
+    )))
 }
 
 pub(super) fn lower_transmute(
