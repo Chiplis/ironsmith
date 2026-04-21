@@ -15122,6 +15122,40 @@ fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_flash_extra_cost_without_fixture_mana_cost_still_renders_source_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Flash Extra Cost Fixture")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.",
+        )
+        .expect("parser fixtures without mana costs should still parse flash extra-cost text");
+
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::FlashWithAdditionalCost {
+            additional_cost,
+            total_cost,
+        } => {
+            assert_eq!(additional_cost.to_oracle(), "{2}");
+            assert_eq!(
+                total_cost.mana_cost().map(ManaCost::to_oracle).as_deref(),
+                Some("{2}"),
+                "a fixture with no printed cost should preserve the extra payment as the available cast cost"
+            );
+        }
+        other => panic!("expected flash-with-additional-cost method, got {other:?}"),
+    }
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it"
+        ),
+        "expected source-surface flash extra-cost rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_create_gold_token_uses_compact_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gild Variant")
         .parse_text("Exile target creature. Create a Gold token.")

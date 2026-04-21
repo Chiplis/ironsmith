@@ -997,8 +997,6 @@ fn lower_alternative_casting_method_chunk(
     let LineChunkLoweringInput {
         mut builder,
         parsed,
-        info,
-        allow_unsupported,
         ..
     } = input;
     let NormalizedLineChunk::AlternativeCastingMethod(mut method) = parsed else {
@@ -1009,19 +1007,11 @@ fn lower_alternative_casting_method_chunk(
         ..
     } = &method
     {
-        let Some(printed_cost) = builder.card_builder.mana_cost_ref().cloned() else {
-            if allow_unsupported {
-                return Ok(super::push_unsupported_marker(
-                    builder,
-                    info.raw_line.as_str(),
-                    "flash additional-cost casting requires a printed mana cost".to_string(),
-                ));
-            }
-            return Err(CardTextError::ParseError(format!(
-                "flash additional-cost casting requires a printed mana cost: '{}'",
-                info.raw_line
-            )));
-        };
+        let printed_cost = builder
+            .card_builder
+            .mana_cost_ref()
+            .cloned()
+            .unwrap_or_default();
         let mut pips = printed_cost.pips().to_vec();
         pips.extend(additional_cost.pips().iter().cloned());
         let total_mana_cost = crate::mana::ManaCost::from_pips(pips);
