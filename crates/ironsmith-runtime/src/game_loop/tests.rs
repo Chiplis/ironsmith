@@ -285,6 +285,83 @@ fn sarevok_deathbringer_skips_end_step_if_a_permanent_left_battlefield() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn dawnbreak_reclaimer_end_step_returns_both_chosen_graveyard_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dawnbreak = CardDefinitionBuilder::new(CardId::from_raw(81_010), "Dawnbreak Reclaimer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(
+            "Flying\nAt the beginning of your end step, choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard. You may return those cards to the battlefield under their owners' control.",
+        )
+        .expect("Dawnbreak Reclaimer should parse");
+    game.create_object_from_definition(&dawnbreak, alice, Zone::Battlefield);
+
+    let bob_grave_creature = CardBuilder::new(CardId::from_raw(81_011), "Bob Gravebody")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let alice_grave_creature = CardBuilder::new(CardId::from_raw(81_012), "Alice Gravebody")
+        .card_types(vec![CardType::Creature])
+        .build();
+
+    game.create_object_from_card(&bob_grave_creature, bob, Zone::Graveyard);
+    game.create_object_from_card(&alice_grave_creature, alice, Zone::Graveyard);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Dawnbreak Reclaimer should trigger at your end step"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Dawnbreak Reclaimer trigger should go on the stack");
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Dawnbreak Reclaimer trigger should resolve");
+
+    let graveyard_has = |game: &GameState, player: PlayerId, name: &str| {
+        game.player(player)
+            .expect("player exists")
+            .graveyard
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == name))
+    };
+    let battlefield_has = |game: &GameState, owner: PlayerId, name: &str| {
+        game.battlefield.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.owner == owner && obj.name == name)
+        })
+    };
+
+    assert!(
+        !graveyard_has(&game, bob, "Bob Gravebody"),
+        "the opponent-chosen creature should leave their graveyard"
+    );
+    assert!(
+        !graveyard_has(&game, alice, "Alice Gravebody"),
+        "the chosen creature in your graveyard should leave your graveyard"
+    );
+    assert!(
+        battlefield_has(&game, bob, "Bob Gravebody"),
+        "the opponent-owned creature should return under its owner's control"
+    );
+    assert!(
+        battlefield_has(&game, alice, "Alice Gravebody"),
+        "your chosen creature should return under your control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn exert_attack_choice_draws_card_and_skips_only_next_untap() {
     #[derive(Default)]
     struct AcceptBooleanDecisionMaker;

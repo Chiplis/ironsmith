@@ -591,21 +591,42 @@ fn advance_reference_frame_for_effect(
                     other => resolve_non_target_player_filter(*other, &refs)?,
                 })
             };
+            let resolved_filter = resolve_it_tag(filter, &refs).ok();
             if let Some(player_filter) = if references_revealed_hand {
                 frame.last_player_filter.clone()
             } else {
                 None
             }
             .or_else(|| {
-                resolve_it_tag(filter, &refs).ok().and_then(|resolved| {
-                    chooser_bound_followup_player_filter(&resolved, chooser_filter.as_ref())
+                resolved_filter.as_ref().and_then(|resolved| {
+                    chooser_bound_followup_player_filter(resolved, chooser_filter.as_ref())
                 })
             })
             .or_else(|| chooser_bound_followup_player_filter(filter, chooser_filter.as_ref()))
             {
                 frame.last_player_filter = Some(player_filter);
             }
-            frame.last_object_tag = Some(tag.as_str().to_string());
+            let chosen_tag = tag.as_str().to_string();
+            if let Some(resolved_filter) = resolved_filter.as_ref() {
+                if resolved_filter
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| !is_you_player_filter(owner))
+                {
+                    frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(
+                        ObjectRef::tagged(chosen_tag.as_str()),
+                    ));
+                } else if resolved_filter
+                    .controller
+                    .as_ref()
+                    .is_some_and(|controller| !is_you_player_filter(controller))
+                {
+                    frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
+                        ObjectRef::tagged(chosen_tag.as_str()),
+                    ));
+                }
+            }
+            frame.last_object_tag = Some(chosen_tag);
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -635,21 +656,42 @@ fn advance_reference_frame_for_effect(
                     other => resolve_non_target_player_filter(*other, &refs)?,
                 })
             };
+            let resolved_filter = resolve_it_tag(filter, &refs).ok();
             if let Some(player_filter) = if references_revealed_hand {
                 frame.last_player_filter.clone()
             } else {
                 None
             }
             .or_else(|| {
-                resolve_it_tag(filter, &refs).ok().and_then(|resolved| {
-                    chooser_bound_followup_player_filter(&resolved, chooser_filter.as_ref())
+                resolved_filter.as_ref().and_then(|resolved| {
+                    chooser_bound_followup_player_filter(resolved, chooser_filter.as_ref())
                 })
             })
             .or_else(|| chooser_bound_followup_player_filter(filter, chooser_filter.as_ref()))
             {
                 frame.last_player_filter = Some(player_filter);
             }
-            frame.last_object_tag = Some(tag.as_str().to_string());
+            let chosen_tag = tag.as_str().to_string();
+            if let Some(resolved_filter) = resolved_filter.as_ref() {
+                if resolved_filter
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| !is_you_player_filter(owner))
+                {
+                    frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(
+                        ObjectRef::tagged(chosen_tag.as_str()),
+                    ));
+                } else if resolved_filter
+                    .controller
+                    .as_ref()
+                    .is_some_and(|controller| !is_you_player_filter(controller))
+                {
+                    frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
+                        ObjectRef::tagged(chosen_tag.as_str()),
+                    ));
+                }
+            }
+            frame.last_object_tag = Some(chosen_tag);
         }
         EffectAst::ChoosePlayer { chooser, tag, .. } => {
             track_effect_player(*chooser, frame, true, true)?;
@@ -907,6 +949,7 @@ fn advance_reference_frame_for_effect(
             let mut nested = saved.clone();
             nested.last_effect_id = None;
             nested.last_object_tag = Some(IT_TAG.to_string());
+            nested.iterated_player = true;
             advance_reference_frames(&effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
                 frame.last_object_tag = nested.last_object_tag;

@@ -27013,6 +27013,28 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
 }
 
 #[test]
+fn parse_oracle_dawnbreak_reclaimer_keeps_linked_player_choice_and_plural_return() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Dawnbreak Reclaimer"))
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("then that player chooses a creature card in your graveyard"),
+        "expected Dawnbreak Reclaimer to bind the second chooser to the chosen opponent, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("you may return those cards to the battlefield under their owners' control"),
+        "expected Dawnbreak Reclaimer to keep the plural return clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("an opponent chooses exactly 1 creature card in your graveyard")
+            && !rendered.contains("you may put that object onto the battlefield"),
+        "expected Dawnbreak Reclaimer to avoid generic-opponent/singular fallback wording, got {rendered}"
+    );
+}
+
+#[test]
 fn unprocessed_compiled_lines_normalize_do_or_die_divvy_destroy_clause() {
     let def = parse_oracle_card_definition("Do or Die");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
