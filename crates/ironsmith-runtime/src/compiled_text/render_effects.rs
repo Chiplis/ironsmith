@@ -1818,6 +1818,93 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         )
     }
 
+    fn describe_linked_graveyard_choices_then_may_return_bundle(
+        filtered: &[&Effect],
+    ) -> Option<String> {
+        let [first_choose_effect, second_choose_effect, may_effect] = filtered else {
+            return None;
+        };
+        let first_choose =
+            first_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let second_choose =
+            second_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+        let [move_effect] = may.effects.as_slice() else {
+            return None;
+        };
+        let move_to_zone = downcast_move_to_zone(move_effect)?;
+
+        if first_choose.is_search
+            || second_choose.is_search
+            || first_choose.replace_tagged_objects
+            || second_choose.replace_tagged_objects
+            || first_choose.tag != second_choose.tag
+            || choose_exact_count(first_choose) != Some(1)
+            || choose_exact_count(second_choose) != Some(1)
+            || choose_primary_zone(first_choose) != Some(Zone::Graveyard)
+            || choose_primary_zone(second_choose) != Some(Zone::Graveyard)
+            || !matches!(
+                &second_choose.chooser,
+                PlayerFilter::AliasedOwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                    | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                    if tag == &first_choose.tag
+            )
+            || !move_to_battlefield_uses_chosen_tag(move_to_zone, first_choose.tag.as_str())
+        {
+            return None;
+        }
+
+        let describe_choose_clause =
+            |choose: &crate::effects::ChooseObjectsEffect, capitalize_subject: bool| {
+                let chooser = describe_player_filter(&choose.chooser);
+                let chosen = describe_choose_selection(choose);
+                let location = describe_choose_zone_location(choose, "graveyard");
+                if chooser == "you" {
+                    return format!("Choose {chosen} {location}");
+                }
+                let subject = if capitalize_subject {
+                    capitalize_first(&chooser)
+                } else {
+                    chooser.clone()
+                };
+                let choose_verb = player_verb(&chooser, "choose", "chooses");
+                format!("{subject} {choose_verb} {chosen} {location}")
+            };
+
+        let first_clause = describe_choose_clause(first_choose, true);
+        let second_clause = describe_choose_clause(second_choose, false);
+        let tapped_suffix = if move_to_zone.enters_tapped {
+            " tapped"
+        } else {
+            ""
+        };
+        let controller_suffix = match move_to_zone.battlefield_controller {
+            crate::effects::BattlefieldController::Preserve => "",
+            crate::effects::BattlefieldController::Owner => " under their owners' control",
+            crate::effects::BattlefieldController::You => " under your control",
+        };
+        let decider = may
+            .decider
+            .as_ref()
+            .map(describe_player_filter)
+            .unwrap_or_else(|| "you".to_string());
+        let may_clause = if decider == "you" {
+            format!(
+                "You may return those cards to the battlefield{tapped_suffix}{controller_suffix}"
+            )
+        } else {
+            let may_verb = player_verb(&decider, "may", "may");
+            format!(
+                "{} {may_verb} return those cards to the battlefield{tapped_suffix}{controller_suffix}",
+                capitalize_first(&decider)
+            )
+        };
+
+        Some(format!(
+            "{first_clause}, then {second_clause}. {may_clause}"
+        ))
+    }
+
     fn describe_random_hand_reveal_damage_bundle(filtered: &[&Effect]) -> Option<String> {
         let [choose_effect, reveal_effect, damage_effect] = filtered else {
             return None;
@@ -2320,6 +2407,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_graveyard_mana_ladder_return_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_linked_graveyard_choices_then_may_return_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_random_hand_reveal_damage_bundle(&filtered) {
@@ -3809,6 +3899,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 4;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(rendered) =
+                describe_linked_graveyard_choices_then_may_return_bundle(&filtered[idx..idx + 3])
+        {
+            parts.push(rendered);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()
@@ -5752,6 +5850,50 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_linked_graveyard_choices_then_may_return() {
+        let tag = TagKey::from("__it__");
+        let first_choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .owned_by(PlayerFilter::Opponent)
+                .in_zone(Zone::Graveyard),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Graveyard);
+        let second_choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .owned_by(PlayerFilter::You)
+                .in_zone(Zone::Graveyard),
+            ChoiceCount::exactly(1),
+            PlayerFilter::AliasedOwnerOf(crate::filter::ObjectRef::Tagged(tag.clone())),
+            tag.clone(),
+        )
+        .in_zone(Zone::Graveyard);
+        let may_return = Effect::may_player(
+            PlayerFilter::You,
+            vec![Effect::new(
+                crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Tagged(tag),
+                    Zone::Battlefield,
+                    false,
+                )
+                .under_owner_control(),
+            )],
+        );
+        let effects = vec![
+            Effect::new(first_choose),
+            Effect::new(second_choose),
+            may_return,
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard. You may return those cards to the battlefield under their owners' control"
         );
     }
 

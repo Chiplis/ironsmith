@@ -27029,7 +27029,8 @@ fn parse_oracle_dawnbreak_reclaimer_keeps_linked_player_choice_and_plural_return
     );
     assert!(
         !rendered.contains("an opponent chooses exactly 1 creature card in your graveyard")
-            && !rendered.contains("you may put that object onto the battlefield"),
+            && !rendered.contains("you may put that object onto the battlefield")
+            && !rendered.contains("you may put it onto the battlefield under its owner's control"),
         "expected Dawnbreak Reclaimer to avoid generic-opponent/singular fallback wording, got {rendered}"
     );
 }
