@@ -5,7 +5,7 @@ use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -14,6 +14,7 @@ fn role_token(name: &str) -> CardDefinition {
         .token()
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .enchants(ObjectFilter::creature().into())
         .build()
 }
 

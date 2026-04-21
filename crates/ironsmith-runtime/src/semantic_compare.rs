@@ -3646,6 +3646,24 @@ pub fn semantic_clauses_for_compare(text: &str) -> Vec<String> {
     semantic_clauses(text)
 }
 
+fn split_compiled_lines_for_semantic_compare(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .flat_map(|line| {
+            let has_modal_bullets = line.lines().any(|part| part.trim_start().starts_with('•'));
+            if has_modal_bullets {
+                line.lines()
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            } else {
+                vec![line.replace('\n', " ")]
+            }
+        })
+        .collect()
+}
+
 fn replace_case_insensitive(text: &str, needle: &str, replacement: &str) -> String {
     let replacement_text = text.to_string();
     let haystack = replacement_text.to_ascii_lowercase();
@@ -5349,10 +5367,8 @@ pub fn compare_semantics_scored(
     let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines);
     let merged_blockability_lines = merge_blockability_compiled_lines(&merged_mana_lines);
     let compiled_normalized_lines = merge_transform_compiled_lines(&merged_blockability_lines);
-    let flattened_compiled_lines = compiled_normalized_lines
-        .iter()
-        .map(|line| line.replace('\n', " "))
-        .collect::<Vec<_>>();
+    let flattened_compiled_lines =
+        split_compiled_lines_for_semantic_compare(&compiled_normalized_lines);
     let raw_compiled_clauses = flattened_compiled_lines
         .iter()
         .flat_map(|line| semantic_clauses(line))
@@ -7533,6 +7549,29 @@ When Flash Thompson enters, choose one or both —
             !mismatch,
             "expected no mismatch for choose-one-or-both modal formatting wording"
         );
+    }
+
+    #[test]
+    fn compare_semantics_accepts_exact_choose_one_modal_bullets() {
+        let oracle = "When this creature enters, choose one —
+• Put a shield counter on target permanent.
+• Proliferate.";
+        let compiled = vec![oracle.to_string()];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        if std::env::var("DEBUG_SEMANTIC_COMPARE").is_ok() {
+            eprintln!("oracle_clauses={:?}", semantic_clauses(oracle));
+            eprintln!(
+                "compiled_clauses={:?}",
+                semantic_clauses(&compiled.join("\n"))
+            );
+            eprintln!("similarity={similarity} mismatch={mismatch}");
+        }
+        assert!(
+            similarity >= 0.99,
+            "expected exact choose-one bullet text to stay above strict threshold, got {similarity}"
+        );
+        assert!(!mismatch, "expected exact choose-one bullet text to match");
     }
 
     #[test]

@@ -15083,7 +15083,7 @@ fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
             && debug.contains("CreateTokenEffect")
             && debug.contains("Cursed Role")
             && debug.contains("AttachObjectsEffect")
-            && debug.contains("__it__"),
+            && debug.contains("target: Iterated"),
         "role creation should iterate opponent creatures and attach each token to that iterated creature, got {debug}"
     );
 
@@ -15105,6 +15105,18 @@ fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
             "For each creature your opponents control, create a Cursed Role token attached to that creature"
         ),
         "expected compact role attachment line, got {rendered}"
+    );
+
+    let unprocessed = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        unprocessed.contains(
+            "For each creature your opponents control, create a Cursed Role token attached to that creature"
+        ),
+        "expected unprocessed scoring text to compact the role attachment, got {unprocessed}"
+    );
+    assert!(
+        !unprocessed.contains("Attach it to that object"),
+        "role attachment should render as part of token creation, got {unprocessed}"
     );
 }
 
@@ -27026,7 +27038,11 @@ fn proud_pack_rhino_modal_etb_renders_with_bullets() {
     assert_eq!(modal.min_choose_count, Value::Fixed(1));
     assert_eq!(modal.choose_count, Value::Fixed(1));
 
-    let shield_mode = modal.modes[0].effects[0]
+    let shield_effect = modal.modes[0].effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(&modal.modes[0].effects[0]);
+    let shield_mode = shield_effect
         .downcast_ref::<crate::effects::PutCountersEffect>()
         .expect("first mode should put a shield counter");
     assert_eq!(
@@ -27034,7 +27050,25 @@ fn proud_pack_rhino_modal_etb_renders_with_bullets() {
         crate::object::CounterType::Named("shield")
     );
     assert_eq!(shield_mode.amount, Value::Fixed(1));
-    assert_eq!(shield_mode.target, ChooseSpec::target_permanent());
+    match shield_mode.target.base() {
+        ChooseSpec::Object(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Battlefield));
+            assert!(
+                [
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                    CardType::Land,
+                    CardType::Planeswalker,
+                    CardType::Battle,
+                ]
+                .into_iter()
+                .all(|card_type| filter.card_types.contains(&card_type)),
+                "shield mode should target a permanent, got {filter:?}"
+            );
+        }
+        other => panic!("shield mode should target a permanent, got {other:?}"),
+    }
     assert!(
         modal.modes[1].effects[0]
             .downcast_ref::<crate::effects::ProliferateEffect>()

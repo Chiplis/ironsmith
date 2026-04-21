@@ -12032,6 +12032,95 @@ pub(super) fn describe_conditional_choose_both_instead(
     Some(out)
 }
 
+fn unwrap_for_each_attachment_wrappers(effect: &Effect) -> &Effect {
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_for_each_attachment_wrappers(&tag_all.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_for_each_attachment_wrappers(&tagged.effect);
+    }
+    effect
+}
+
+fn tagged_create_token_effect(
+    effect: &Effect,
+) -> Option<(&TagKey, &crate::effects::CreateTokenEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create_token = unwrap_for_each_attachment_wrappers(&tagged.effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    Some((&tagged.tag, create_token))
+}
+
+fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) -> bool {
+    match spec {
+        ChooseSpec::Tagged(candidate) => candidate == tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter == &ObjectFilter::tagged(tag.clone())
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_references_exact_tag(inner, tag)
+        }
+        _ => false,
+    }
+}
+
+fn describe_for_each_object_filter_subject(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let subject = strip_indefinite_article(&description).trim();
+    if let Some(rest) = subject.strip_prefix("opponent's ") {
+        return format!("{rest} your opponents control");
+    }
+    subject.to_string()
+}
+
+fn describe_iterated_object_reference_noun(filter: &ObjectFilter) -> &'static str {
+    if filter.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if filter.card_types.contains(&CardType::Land) {
+        "land"
+    } else if matches!(
+        filter.zone,
+        Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
+    ) {
+        "card"
+    } else if matches!(filter.zone, Some(Zone::Battlefield) | None) {
+        "permanent"
+    } else {
+        "object"
+    }
+}
+
+fn describe_for_each_created_token_attachment(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    let [create_effect, attach_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let (created_tag, create_token) = tagged_create_token_effect(create_effect)?;
+    let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    if !matches!(attach.target, ChooseSpec::Iterated)
+        || !choose_spec_references_exact_tag(&attach.objects, created_tag)
+        || create_token.count != Value::Fixed(1)
+        || !matches!(&create_token.controller, PlayerFilter::You)
+        || create_token.controller_target.is_some()
+        || create_token.enters_tapped
+        || create_token.enters_attacking
+        || create_token.exile_at_end_of_combat
+        || create_token.sacrifice_at_end_of_combat
+        || create_token.sacrifice_at_next_end_step
+        || create_token.exile_at_next_end_step
+    {
+        return None;
+    }
+
+    let subject = describe_for_each_object_filter_subject(&for_each.filter);
+    let token = with_indefinite_article(&describe_token_blueprint(&create_token.token));
+    let target_noun = describe_iterated_object_reference_noun(&for_each.filter);
+    Some(format!(
+        "For each {subject}, create {token} attached to that {target_noun}"
+    ))
+}
+
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_reveal_until_sequence(sequence) {
@@ -12047,6 +12136,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_each_put_counters_then_untap(for_each) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_each_created_token_attachment(for_each) {
             return compact;
         }
         if for_each.effects.len() == 1
