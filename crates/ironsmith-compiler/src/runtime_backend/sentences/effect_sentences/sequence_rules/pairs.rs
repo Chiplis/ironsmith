@@ -88,6 +88,131 @@ fn parse_may_put_filtered_card_from_among_into_hand(
     Ok(Some((chooser, filter)))
 }
 
+fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
+    match effect {
+        EffectAst::BecomeBasePtCreature {
+            power,
+            toughness,
+            target,
+            card_types,
+            subtypes,
+            colors,
+            abilities,
+            duration,
+        } => {
+            let target = match target {
+                TargetAst::Tagged(tag, span)
+                    if tag.as_str() == crate::cards::builders::IT_TAG =>
+                {
+                    TargetAst::Source(span)
+                }
+                target => target,
+            };
+            EffectAst::BecomeBasePtCreature {
+                power,
+                toughness,
+                target,
+                card_types,
+                subtypes,
+                colors,
+                abilities,
+                duration,
+            }
+        }
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } => EffectAst::Conditional {
+            predicate,
+            if_true: if_true
+                .into_iter()
+                .map(retarget_source_self_animate_effect)
+                .collect(),
+            if_false: if_false
+                .into_iter()
+                .map(retarget_source_self_animate_effect)
+                .collect(),
+        },
+        EffectAst::IfResult { predicate, effects } => EffectAst::IfResult {
+            predicate,
+            effects: effects
+                .into_iter()
+                .map(retarget_source_self_animate_effect)
+                .collect(),
+        },
+        other => other,
+    }
+}
+
+fn contains_triggered_life_gain_effect(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::GainLife { .. } => true,
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            if_true.iter().any(contains_triggered_life_gain_effect)
+                || if_false.iter().any(contains_triggered_life_gain_effect)
+        }
+        EffectAst::IfResult { effects, .. } => {
+            effects.iter().any(contains_triggered_life_gain_effect)
+        }
+        _ => false,
+    }
+}
+
+fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::BecomeBasePtCreature {
+            target,
+            duration,
+            ..
+        } => {
+            let self_animate_target = matches!(
+                target,
+                TargetAst::Tagged(tag, _) if tag.as_str() == crate::cards::builders::IT_TAG
+            ) || matches!(target, TargetAst::Source(_));
+            *duration == crate::effect::Until::EndOfTurn && self_animate_target
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            if_true.iter().any(contains_tagged_source_animation)
+                || if_false.iter().any(contains_tagged_source_animation)
+        }
+        EffectAst::IfResult { effects, .. } => {
+            effects.iter().any(contains_tagged_source_animation)
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn parse_whenever_gain_life_then_self_animate_source(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+
+    let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
+    if !first_effects.iter().any(contains_triggered_life_gain_effect) {
+        return Ok(None);
+    }
+
+    let second_effects = effect_sentences::parse_effect_sentence_lexed(second)?;
+    if !second_effects.iter().any(contains_tagged_source_animation) {
+        return Ok(None);
+    }
+
+    let mut effects = first_effects;
+    effects.extend(
+        second_effects
+            .into_iter()
+            .map(retarget_source_self_animate_effect),
+    );
+    Ok(Some(effects))
+}
+
 pub(super) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     sentences: &[SentenceInput],
     sentence_idx: usize,
