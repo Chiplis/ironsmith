@@ -222,7 +222,7 @@ fn should_alias_followup_player_to_chosen_owner(
 ) -> bool {
     filter.zone == Some(crate::zone::Zone::Graveyard)
         && filter.owner == Some(PlayerFilter::Opponent)
-        && chooser.is_some_and(is_you_player_filter)
+        && chooser.map_or(true, is_you_player_filter)
 }
 
 fn maybe_tag_target(
@@ -1307,6 +1307,8 @@ fn advance_reference_env_for_effect(
                     &true_sequence.final_env.last_object_tag,
                     &false_sequence.final_env.last_object_tag,
                 ),
+                last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
+                    && false_sequence.final_env.last_it_choice_is_set,
                 last_player_filter: RefState::join(
                     &true_sequence.final_env.last_player_filter,
                     &false_sequence.final_env.last_player_filter,

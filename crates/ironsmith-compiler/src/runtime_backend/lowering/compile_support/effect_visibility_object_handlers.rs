@@ -1472,6 +1472,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             } else {
                 spec.clone()
             };
+            let resolved_spec = if !ctx.iterated_player
+                && ctx.last_object_tag.as_deref() == Some(IT_TAG)
+                && *controller == ReturnControllerAst::Owner
+                && matches!(resolved_spec.base(), ChooseSpec::Iterated)
+            {
+                ChooseSpec::Tagged(TagKey::from(IT_TAG))
+            } else {
+                resolved_spec
+            };
 
             let mut effect = tag_object_target_effect(
                 if use_move_to_zone {
@@ -1550,9 +1559,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             if !ctx.iterated_player
-                && ctx.last_it_choice_is_set
                 && ctx.last_object_tag.as_deref() == Some(IT_TAG)
-                && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+                && (ctx.last_it_choice_is_set
+                    || (*zone == Zone::Battlefield
+                        && *battlefield_controller
+                            == crate::cards::builders::ReturnControllerAst::Owner))
                 && matches!(spec.base(), ChooseSpec::Iterated)
             {
                 spec = ChooseSpec::Tagged(TagKey::from(IT_TAG));
