@@ -966,7 +966,7 @@ mod tests {
         is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
         lex_line, looks_like_statement_line, looks_like_statement_line_lexed,
         looks_like_static_line, looks_like_static_line_lexed,
-        normalize_statement_parse_groups_lexed,
+        normalize_named_source_trigger_for_builder, normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
         parse_statement_line_cst, parse_static_line_cst, parse_triggered_line_cst,
