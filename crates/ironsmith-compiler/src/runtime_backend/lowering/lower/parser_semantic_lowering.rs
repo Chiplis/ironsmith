@@ -305,6 +305,7 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
         ("if this card is in your graveyard", Zone::Graveyard),
         ("if this card is in your library", Zone::Library),
         ("if this card is in exile", Zone::Exile),
+        ("if this card is exiled", Zone::Exile),
         ("if this card is in the command zone", Zone::Command),
     ] {
         if str_contains(normalized.as_str(), needle) {

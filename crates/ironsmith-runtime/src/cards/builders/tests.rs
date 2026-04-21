@@ -3705,6 +3705,56 @@ fn test_parse_exile_named_source_with_time_counters() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_all_hallows_eve_countdown_from_exile() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "All Hallow's Eve")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile All Hallow's Eve with two scream counters on it.\n\
+             At the beginning of your upkeep, if this card is exiled with a scream counter on it, remove a scream counter from it. If there are no more scream counters on it, put it into your graveyard and each player returns all creature cards from their graveyard to the battlefield.",
+        )
+        .expect("parse All Hallow's Eve-style exiled countdown");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("MoveToZoneEffect")
+            && spell_debug.contains("target: Source")
+            && spell_debug.contains("scream"),
+        "expected source exile with named scream counters, got {spell_debug}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("SourceIsInZone(Exile)")
+            && ability_debug.contains("SourceHasCounterAtLeast")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("SourceHasNoCounter")
+            && ability_debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+        "expected exiled countdown trigger with counter removal and return branch, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("functional_zones: [Exile]"),
+        "countdown trigger should function from exile, got {ability_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile all hallow's eve with two scream counters on it"),
+        "expected compact source exile-with-counters text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if this card is exiled with a scream counter on it")
+            && rendered.contains("remove a scream counter from it")
+            && rendered.contains("if there are no scream counters on it")
+            && rendered.contains("each player returns all creature cards from their graveyard"),
+        "expected countdown and mass return rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_keyword_marker_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Marker Keywords")
         .card_types(vec![CardType::Creature])

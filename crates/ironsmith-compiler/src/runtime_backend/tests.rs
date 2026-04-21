@@ -6840,6 +6840,45 @@ fn rewrite_lexed_predicate_parser_matches_grammar_entrypoint_for_this_spell_cast
 }
 
 #[test]
+fn rewrite_lexed_predicate_parser_handles_exiled_source_with_named_counter() {
+    let text = "this card is exiled with a scream counter on it";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify exiled counter predicate");
+
+    let parser_root = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let grammar = super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+        .expect("grammar predicate entrypoint should parse");
+    let debug = format!("{parser_root:?}");
+
+    assert_eq!(debug, format!("{grammar:?}"));
+    assert!(
+        debug.contains("And("),
+        "expected conjoined predicate, got {debug}"
+    );
+    assert!(
+        debug.contains("SourceIsInZone(Exile)"),
+        "expected exile zone predicate, got {debug}"
+    );
+    assert!(
+        debug.contains("SourceHasCounterAtLeast") && debug.contains("scream"),
+        "expected named scream counter threshold, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_predicate_parser_handles_no_more_named_counters_on_it() {
+    let text = "there are no more scream counters on it";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify no-counter predicate");
+
+    let parser_root = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let debug = format!("{parser_root:?}");
+
+    assert!(
+        debug.contains("SourceHasNoCounter") && debug.contains("scream"),
+        "expected named scream no-counter predicate, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_keeps_where_x_trailing_clause_after_dispatch_inner_cutover() {
     let text = "Target creature gets +X/+0 until end of turn, where X is its power; target creature gains flying until end of turn.";
     let lexed = lex_line(text, 0)
