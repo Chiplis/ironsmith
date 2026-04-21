@@ -29,7 +29,8 @@ use super::token_primitives::{
 use super::util::{
     parse_additional_cost_choice_options_lexed, parse_bargain_line_lexed, parse_bestow_line_lexed,
     parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
-    parse_escape_line_lexed, parse_flashback_line_lexed, parse_harmonize_line_lexed,
+    parse_escape_line_lexed, parse_flash_with_additional_cost_line_lexed,
+    parse_flashback_line_lexed, parse_harmonize_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_madness_line_lexed, parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
     parse_offspring_line_lexed, parse_reinforce_line_lexed,
@@ -183,6 +184,9 @@ pub(super) fn lower_alternative_cast(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(tokens) {
+        return Ok(LineAst::AlternativeCastingMethod(method.into()));
+    }
+    if let Some(method) = parse_flash_with_additional_cost_line_lexed(tokens) {
         return Ok(LineAst::AlternativeCastingMethod(method.into()));
     }
     if let Some(method) =
@@ -639,6 +643,7 @@ fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTex
         parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
             || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?
                 .is_some()
+            || parse_flash_with_additional_cost_line_lexed(tokens).is_some()
             || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?
                 .is_some()
             || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some(),

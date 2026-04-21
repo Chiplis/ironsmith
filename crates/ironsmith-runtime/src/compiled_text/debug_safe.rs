@@ -1261,12 +1261,7 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
         for rendered_line in
             describe_ability(idx + 1, &structured_ability, subject, rewrite_it_deals)
         {
-            push_safe_intrinsic_marker_replacement(
-                def,
-                &mut replacements,
-                &rendered_line,
-                &label,
-            );
+            push_safe_intrinsic_marker_replacement(def, &mut replacements, &rendered_line, &label);
         }
     }
 
@@ -1379,6 +1374,12 @@ fn safe_intrinsic_first_time_each_turn_replacement(
 }
 
 fn alternative_cast_intrinsic_marker_line(method: &AlternativeCastingMethod) -> Option<String> {
+    if matches!(
+        method,
+        AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+    ) {
+        return None;
+    }
     if let AlternativeCastingMethod::Suspend { cost, time } = method {
         return Some(format!("Suspend {time}—{}", cost.to_oracle()));
     }

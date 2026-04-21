@@ -139,6 +139,12 @@ pub(super) fn describe_alternative_cast_line(
         }
         AlternativeCastingMethod::Madness { cost } => format!("Madness {}", cost.to_oracle()),
         AlternativeCastingMethod::Miracle { cost } => format!("Miracle {}", cost.to_oracle()),
+        AlternativeCastingMethod::FlashWithAdditionalCost {
+            additional_cost, ..
+        } => format!(
+            "You may cast this spell as though it had flash if you pay {} more to cast it",
+            additional_cost.to_oracle()
+        ),
         AlternativeCastingMethod::Plot { cost } => format!("Plot {}", cost.to_oracle()),
         AlternativeCastingMethod::Warp { cost } => format!("Warp {}", cost.to_oracle()),
         AlternativeCastingMethod::Suspend { cost, time } => {

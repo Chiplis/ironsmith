@@ -3095,6 +3095,36 @@ pub(crate) fn parse_self_free_cast_alternative_cost_line_lexed(
     parse_self_free_cast_alternative_cost_line(tokens)
 }
 
+pub(crate) fn parse_flash_with_additional_cost_line(
+    tokens: &[OwnedLexToken],
+) -> Option<AlternativeCastingMethod> {
+    let clause_word_view = UtilWordView::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    let prefix = [
+        "you", "may", "cast", "this", "spell", "as", "though", "it", "had", "flash", "if", "you",
+        "pay",
+    ];
+    if !words_have_prefix(clause_words.as_slice(), &prefix) {
+        return None;
+    }
+    let cost_start = token_index_for_word_index(tokens, prefix.len())?;
+    let (additional_cost, used) = leading_mana_cost_from_tokens(&tokens[cost_start..])?;
+    let suffix_words = UtilWordView::new(&tokens[cost_start + used..]).to_word_refs();
+    if suffix_words != ["more", "to", "cast", "it"] {
+        return None;
+    }
+    Some(AlternativeCastingMethod::flash_with_additional_cost(
+        additional_cost,
+        crate::cost::TotalCost::free(),
+    ))
+}
+
+pub(crate) fn parse_flash_with_additional_cost_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<AlternativeCastingMethod> {
+    parse_flash_with_additional_cost_line(tokens)
+}
+
 fn leading_mana_symbols_to_oracle(words_all: &[&str]) -> Option<(String, usize)> {
     let mut symbols = Vec::new();
     let mut consumed = 0usize;
