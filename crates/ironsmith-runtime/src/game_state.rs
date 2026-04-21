@@ -2838,6 +2838,9 @@ impl GameState {
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;
+        // Counters are tied to the object instance, not to the physical card.
+        // `move_object` always creates the new object for the destination.
+        new_object.counters.clear();
 
         // Reset zone-specific state on the object
         new_object.attached_to = None;
@@ -2990,6 +2993,38 @@ impl GameState {
         new_zone: Zone,
         cause: crate::events::cause::EventCause,
         decision_maker: &mut impl crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            cause,
+            decision_maker,
+            true,
+        )
+    }
+
+    pub fn move_object_with_etb_processing_without_aura_attachment_choice(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        decision_maker: &mut impl crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            false,
+        )
+    }
+
+    fn move_object_with_etb_processing_with_dm_and_cause_internal(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        decision_maker: &mut impl crate::decision::DecisionMaker,
+        choose_aura_attachment: bool,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
 
@@ -3259,7 +3294,8 @@ impl GameState {
         }
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
-        if old_zone != Zone::Stack
+        if choose_aura_attachment
+            && old_zone != Zone::Stack
             && let Some(obj) = self.object(new_id)
             && obj.subtypes.contains(&Subtype::Aura)
             && obj.attached_to.is_none()

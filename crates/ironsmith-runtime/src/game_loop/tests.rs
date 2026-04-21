@@ -977,14 +977,212 @@ fn all_hallows_eve_exiles_with_counters_and_returns_graveyard_creatures_after_co
             .is_some_and(|object| object.zone == Zone::Graveyard),
         "All Hallow's Eve should go to its owner's graveyard when the last counter is removed"
     );
-    for stable_id in [returned_a_stable_id, returned_b_stable_id] {
+    let returned_a_current_id = game
+        .find_object_by_stable_id(returned_a_stable_id)
+        .expect("Alice's returned card should still be trackable after zone change");
+    let returned_b_current_id = game
+        .find_object_by_stable_id(returned_b_stable_id)
+        .expect("Bob's returned card should still be trackable after zone change");
+    for (current_id, expected_controller) in
+        [(returned_a_current_id, alice), (returned_b_current_id, bob)]
+    {
+        let object = game
+            .object(current_id)
+            .expect("returned card should still exist after zone change");
+        assert_eq!(
+            object.zone,
+            Zone::Battlefield,
+            "creature cards from both graveyards should return to the battlefield"
+        );
+        assert_eq!(
+            object.controller, expected_controller,
+            "each returned creature should enter under its owner's control"
+        );
+        assert!(
+            game.battlefield.contains(&current_id),
+            "returned creature should be present in the battlefield index used by UI snapshots"
+        );
+    }
+    assert!(
+        !game.players[0].graveyard.contains(&returned_a_current_id)
+            && !game.players[1].graveyard.contains(&returned_b_current_id),
+        "returned creatures should leave both players' graveyard indexes"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn all_hallows_eve_sees_creatures_put_into_opponents_graveyard_by_sbas_before_it_resolves() {
+    use crate::decision::LegalAction;
+
+    struct YawgmothIntoAllHallowsDecisionMaker {
+        yawgmoth: ObjectId,
+        sacrifice: ObjectId,
+        target: ObjectId,
+        activated: bool,
+    }
+
+    impl DecisionMaker for YawgmothIntoAllHallowsDecisionMaker {
+        fn decide_priority(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::PriorityContext,
+        ) -> LegalAction {
+            if !self.activated
+                && let Some(action) = ctx.actions.iter().find(|action| {
+                    matches!(
+                        action,
+                        LegalAction::ActivateAbility { source, .. } if *source == self.yawgmoth
+                    )
+                })
+            {
+                self.activated = true;
+                return action.clone();
+            }
+
+            LegalAction::PassPriority
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            if ctx.requirements.iter().any(|requirement| {
+                requirement
+                    .legal_targets
+                    .contains(&Target::Object(self.target))
+            }) {
+                vec![Target::Object(self.target)]
+            } else {
+                Vec::new()
+            }
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| {
+                    option.legal && option.description.to_ascii_lowercase().contains("life")
+                })
+                .or_else(|| ctx.options.iter().find(|option| option.legal))
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.legal && candidate.id == self.sacrifice)
+            {
+                vec![self.sacrifice]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let all_hallows_eve = CardDefinitionBuilder::new(CardId::from_raw(99_310), "All Hallow's Eve")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile All Hallow's Eve with two scream counters on it.\n\
+             At the beginning of your upkeep, if this card is exiled with a scream counter on it, remove a scream counter from it. If there are no more scream counters on it, put it into your graveyard and each player returns all creature cards from their graveyard to the battlefield.",
+        )
+        .expect("All Hallow's Eve text should parse");
+    let all_hallows_id = game.create_object_from_definition(&all_hallows_eve, alice, Zone::Exile);
+    game.add_counters(
+        all_hallows_id,
+        crate::object::CounterType::Named("scream"),
+        1,
+    );
+
+    let registry =
+        crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+    let yawgmoth_def = registry
+        .get("Yawgmoth, Thran Physician")
+        .expect("Yawgmoth, Thran Physician should be present in registry");
+    let yawgmoth_id = game.create_object_from_definition(yawgmoth_def, alice, Zone::Battlefield);
+
+    let myr = CardDefinitionBuilder::new(CardId::from_raw(99_311), "Myr Moonvessel")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("When this creature dies, add {C}.")
+        .expect("Myr Moonvessel should parse");
+    let alice_myr_id = game.create_object_from_definition(&myr, alice, Zone::Battlefield);
+    let bob_myr_id = game.create_object_from_definition(&myr, bob, Zone::Battlefield);
+    let alice_myr_stable_id = game
+        .object(alice_myr_id)
+        .expect("Alice's Myr should exist")
+        .stable_id;
+    let bob_myr_stable_id = game
+        .object(bob_myr_id)
+        .expect("Bob's Myr should exist")
+        .stable_id;
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "All Hallow's Eve should trigger from exile with one scream counter"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("All Hallow's Eve trigger should go on the stack");
+
+    let mut dm = YawgmothIntoAllHallowsDecisionMaker {
+        yawgmoth: yawgmoth_id,
+        sacrifice: alice_myr_id,
+        target: bob_myr_id,
+        activated: false,
+    };
+    let result = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("priority loop should resolve Yawgmoth and then All Hallow's Eve");
+    assert!(
+        matches!(result, crate::decision::GameProgress::Continue),
+        "priority loop should finish the upkeep priority window"
+    );
+    assert!(dm.activated, "the test should activate Yawgmoth once");
+
+    for (stable_id, expected_controller) in [(alice_myr_stable_id, alice), (bob_myr_stable_id, bob)]
+    {
         let current_id = game
             .find_object_by_stable_id(stable_id)
-            .expect("returned card should still be trackable after zone change");
+            .expect("Myr should still be trackable after returning");
+        let object = game.object(current_id).expect("Myr should still exist");
+        assert_eq!(
+            object.zone,
+            Zone::Battlefield,
+            "All Hallow's Eve should return Myr Moonvessel from each player's graveyard"
+        );
+        assert_eq!(
+            object.controller, expected_controller,
+            "each returned Myr should enter under its owner's control"
+        );
         assert!(
-            game.object(current_id)
-                .is_some_and(|object| object.zone == Zone::Battlefield),
-            "creature cards from both graveyards should return to the battlefield"
+            object.counters.is_empty(),
+            "counters from a previous zone should not remain on the returned Myr"
+        );
+        assert!(
+            game.battlefield.contains(&current_id),
+            "returned Myr should be present in the battlefield index"
         );
     }
 }
@@ -12978,6 +13176,29 @@ fn test_asinine_antics_flash_extra_cost_is_available_at_instant_timing_only_as_a
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creature() {
+    #[derive(Default)]
+    struct AsinineAnticsDecisionMaker {
+        attach_aura_prompts: usize,
+    }
+
+    impl DecisionMaker for AsinineAnticsDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.description == "Attach Aura to" {
+                self.attach_aura_prompts += 1;
+            }
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
     let alice = PlayerId::from_index(0);
@@ -13035,7 +13256,12 @@ fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creature() {
         .expect("Asinine Antics cast should start successfully");
     assert_eq!(game.stack.len(), 1, "Asinine Antics should be on the stack");
 
-    resolve_stack_entry(&mut game).expect("Asinine Antics should resolve");
+    let mut dm = AsinineAnticsDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Asinine Antics should resolve");
+    assert_eq!(
+        dm.attach_aura_prompts, 0,
+        "attached Role token creation should not ask the player to choose what the Aura attaches to"
+    );
 
     let cursed_roles: Vec<_> = game
         .battlefield

@@ -23,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "reports" / "engine-status.sqlite3"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 PAYLOAD_FILE_NAME = "generated_registry_payload.bin"
-SCORES_FILE_ENV = "IRONSMITH_GENERATED_REGISTRY_SCORES_FILE"
 REGISTRY_DB_PATH_ENV = "IRONSMITH_REGISTRY_DB_PATH"
 
 
@@ -67,25 +66,9 @@ def rust_raw_literal(value: str) -> str:
     return json.dumps(value)
 
 
-def load_semantic_scores() -> tuple[Dict[str, float], bool]:
-    """Load card-name -> similarity-score map.
-
-    Supported formats:
-    - audits report object with `entries` list containing `name` + `similarity_score`
-    - plain object mapping `{ "Card Name": 0.98, ... }`
-    - list of objects containing `name` + `similarity_score`
-    """
-    raw_path = os.environ.get(SCORES_FILE_ENV, "").strip()
-    if not raw_path:
-        return {}, False
-
-    path = Path(raw_path)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"[generate_baked_registry] scores file not found: {path}"
-        )
-
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def load_latest_semantic_scores(db_path: Path) -> Dict[str, float]:
+    """Load card-name -> latest strict similarity-score map from SQLite."""
+    conn = sqlite3.connect(db_path)
     score_map: Dict[str, float] = {}
 
     def coerce_score(raw: object) -> float | None:
@@ -107,27 +90,28 @@ def load_semantic_scores() -> tuple[Dict[str, float], bool]:
         if prev is None or score > prev:
             score_map[key] = score
 
-    if isinstance(payload, dict):
-        entries = payload.get("entries")
-        if isinstance(entries, list):
-            for entry in entries:
-                if not isinstance(entry, dict):
-                    continue
-                parse_error = entry.get("parse_error")
-                has_unimplemented = bool(entry.get("has_unimplemented", False))
-                if parse_error is not None or has_unimplemented:
-                    continue
-                maybe_insert(entry.get("name"), entry.get("similarity_score"))
-        else:
-            for name, score in payload.items():
-                maybe_insert(name, score)
-    elif isinstance(payload, list):
-        for entry in payload:
-            if not isinstance(entry, dict):
-                continue
-            maybe_insert(entry.get("name"), entry.get("similarity_score"))
+    try:
+        for name, score in conn.execute(
+            """
+            SELECT card_name, similarity_score
+            FROM latest_card_compilation
+            WHERE parse_status = 'strict_compiled'
+              AND parse_error IS NULL
+              AND has_unimplemented = 0
+              AND compiled_text IS NOT NULL
+              AND unprocessed_compiled_text IS NOT NULL
+            """
+        ):
+            maybe_insert(name, score)
+    except sqlite3.OperationalError as error:
+        raise RuntimeError(
+            f"[generate_baked_registry] latest compiled scores are unavailable in {db_path}; "
+            "run sync_card_status_db first"
+        ) from error
+    finally:
+        conn.close()
 
-    return score_map, True
+    return score_map
 
 
 UNSCORED_SENTINEL = -1.0
@@ -141,7 +125,6 @@ AliasEntry = Tuple[str, str]
 def collect_unique_blocks(
     db_path: Path,
     semantic_scores: Dict[str, float],
-    strict_scores: bool,
 ) -> Tuple[Dict[str, SingleEntry], List[FlipPair], List[SplitPair], List[AliasEntry]]:
     unique: Dict[str, SingleEntry] = {}
     flips: List[FlipPair] = []
@@ -159,6 +142,13 @@ def collect_unique_blocks(
             if score is not None:
                 return score
         return None
+
+    def require_score(display_name: str, *candidates: str) -> float:
+        score = resolve_score(*candidates)
+        if score is None:
+            missing_scores.append(display_name)
+            return UNSCORED_SENTINEL
+        return score
 
     def parse_block_for_face(card: dict, face: dict, *, strip_fuse: bool) -> Tuple[str, str] | None:
         name = (face.get("name") or "").strip()
@@ -278,20 +268,8 @@ def collect_unique_blocks(
             front_name, front_parse_block = front_pair
             back_name, back_parse_block = back_pair
 
-            front_score = resolve_score(front_name, combined_name)
-            back_score = resolve_score(back_name, combined_name)
-            if front_score is None:
-                if strict_scores:
-                    missing_scores.append(front_name)
-                    front_score = UNSCORED_SENTINEL
-                else:
-                    front_score = 1.0
-            if back_score is None:
-                if strict_scores:
-                    missing_scores.append(back_name)
-                    back_score = UNSCORED_SENTINEL
-                else:
-                    back_score = 1.0
+            front_score = require_score(front_name, front_name, combined_name)
+            back_score = require_score(back_name, back_name, combined_name)
 
             splits.append(
                 (
@@ -333,20 +311,8 @@ def collect_unique_blocks(
             front_name, front_parse_block = front_pair
             back_name, back_parse_block = back_pair
 
-            front_score = resolve_score(front_name, combined_name)
-            back_score = resolve_score(back_name, combined_name)
-            if front_score is None:
-                if strict_scores:
-                    missing_scores.append(front_name)
-                    front_score = UNSCORED_SENTINEL
-                else:
-                    front_score = 1.0
-            if back_score is None:
-                if strict_scores:
-                    missing_scores.append(back_name)
-                    back_score = UNSCORED_SENTINEL
-                else:
-                    back_score = 1.0
+            front_score = require_score(front_name, front_name, combined_name)
+            back_score = require_score(back_name, back_name, combined_name)
 
             flips.append(
                 (
@@ -377,18 +343,12 @@ def collect_unique_blocks(
         # Leaving "Name:" inside the parse input causes strict parser failures.
         parse_block = "\n".join(lines[1:]).strip()
         key = name.casefold()
-        score = resolve_score(name)
-        if score is None:
-            if strict_scores:
-                missing_scores.append(name)
-                score = UNSCORED_SENTINEL
-            else:
-                score = 1.0
+        score = require_score(name, name)
         if key not in unique:
             unique[key] = (name, parse_block, score)
         register_root_print_aliases(card, name)
 
-    if strict_scores and missing_scores:
+    if missing_scores:
         unique_missing = sorted(set(missing_scores))
         preview = ", ".join(unique_missing[:12])
         suffix = "" if len(unique_missing) <= 12 else f", ... (+{len(unique_missing) - 12} more)"
@@ -1226,14 +1186,12 @@ def main() -> None:
         raise FileNotFoundError(
             f"[generate_baked_registry] registry DB not found: {db_path}"
         )
-    semantic_scores, strict_scores = load_semantic_scores()
-    cards, flips, splits, aliases = collect_unique_blocks(
-        db_path, semantic_scores, strict_scores
-    )
+    semantic_scores = load_latest_semantic_scores(db_path)
+    cards, flips, splits, aliases = collect_unique_blocks(db_path, semantic_scores)
     write_generated_source(cards, flips, splits, aliases, output_path)
     print(
         f"wrote {output_path} with {len(cards) + 2 * len(flips) + 2 * len(splits)} source cards "
-        f"(semantic scores loaded: {len(semantic_scores)})"
+        f"(semantic scores loaded from DB: {len(semantic_scores)})"
     )
 
 

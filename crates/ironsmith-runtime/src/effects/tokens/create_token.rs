@@ -21,6 +21,7 @@ use super::lifecycle::{
 /// * `token` - The token definition (use CardDefinitionBuilder with .token())
 /// * `count` - How many tokens to create
 /// * `controller` - Who controls the tokens
+/// * `suppress_aura_attachment_choice` - Whether Aura token attachment is handled by a later effect
 /// * `enters_tapped` - Whether the tokens enter tapped
 /// * `enters_attacking` - Whether the tokens enter attacking
 /// * `exile_at_end_of_combat` - Whether to exile the tokens at end of combat
@@ -86,11 +87,20 @@ impl EffectExecutor for CreateTokenEffect {
             let token_is_creature = token_obj.is_creature();
 
             game.add_object(token_obj);
-            let Some(entry_result) = game.move_object_with_etb_processing_with_dm(
-                id,
-                Zone::Battlefield,
-                &mut ctx.decision_maker,
-            ) else {
+            let entry_result = if self.suppress_aura_attachment_choice {
+                game.move_object_with_etb_processing_without_aura_attachment_choice(
+                    id,
+                    Zone::Battlefield,
+                    &mut ctx.decision_maker,
+                )
+            } else {
+                game.move_object_with_etb_processing_with_dm(
+                    id,
+                    Zone::Battlefield,
+                    &mut ctx.decision_maker,
+                )
+            };
+            let Some(entry_result) = entry_result else {
                 game.remove_object(id);
                 continue;
             };

@@ -404,6 +404,9 @@ pub(super) fn try_compile_token_generation_effect(
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step();
             }
+            if attached_to.is_some() {
+                effect = effect.suppress_aura_attachment_choice();
+            }
             let mut effect = Effect::new(effect);
             let resolved_dynamic_pt = dynamic_power_toughness
                 .as_ref()

@@ -839,7 +839,6 @@ export default function GameCard({
     isInspected
     || glowKind === "action-link"
     || glowKind === "attack-selected"
-    || glowKind === "spell"
   );
   const artTreatmentClass = variant === "battlefield"
     ? "opacity-100"
@@ -1287,6 +1286,7 @@ export default function GameCard({
         glowKind === "battle" && "glow-battle",
         glowKind === "artifact" && "glow-artifact",
         glowKind === "planeswalker" && "glow-planeswalker",
+        glowKind === "target-legal" && "target-legal",
         glowKind === "action-link" && "action-link",
         glowKind === "attack-candidate" && "attack-candidate",
         glowKind === "attack-selected" && "attack-selected",

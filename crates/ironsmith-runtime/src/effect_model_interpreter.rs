@@ -272,6 +272,9 @@ where
         if payload.enters_attacking {
             converted = converted.attacking();
         }
+        if payload.suppress_aura_attachment_choice {
+            converted = converted.suppress_aura_attachment_choice();
+        }
         if payload.exile_at_end_of_combat {
             converted = converted.exile_at_end_of_combat();
         }

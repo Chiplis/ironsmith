@@ -2055,6 +2055,7 @@ pub struct CreateTokenEffect<D> {
     pub count: Value,
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
+    pub suppress_aura_attachment_choice: bool,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
     pub exile_at_end_of_combat: bool,
@@ -2076,6 +2077,7 @@ impl<D> CreateTokenEffect<D> {
             count: count.into(),
             controller,
             controller_target,
+            suppress_aura_attachment_choice: false,
             enters_tapped: false,
             enters_attacking: false,
             exile_at_end_of_combat: false,
@@ -2100,6 +2102,11 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn attacking(mut self) -> Self {
         self.enters_attacking = true;
+        self
+    }
+
+    pub fn suppress_aura_attachment_choice(mut self) -> Self {
+        self.suppress_aura_attachment_choice = true;
         self
     }
 

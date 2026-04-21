@@ -1421,7 +1421,7 @@ export default function BattlefieldRow({
         const appliedGlowKind = isActionLinkedHover
           ? "action-link"
           : isLegalTarget
-            ? "spell"
+            ? "target-legal"
             : isCombatHoverTarget
               ? "attack-selected"
               : (isCombatCandidate ? combatGlowKind : (isTriggeredSource ? "ability" : abilityGlow));

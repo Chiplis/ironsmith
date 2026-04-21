@@ -293,13 +293,8 @@ pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinit
             .join("scripts/stream_scryfall_blocks.py")
             .display()
     );
-    println!("cargo:rerun-if-env-changed=IRONSMITH_GENERATED_REGISTRY_SCORES_FILE");
     println!("cargo:rerun-if-env-changed=IRONSMITH_REGISTRY_DB_PATH");
 
-    if let Some(scores_file) = env::var_os("IRONSMITH_GENERATED_REGISTRY_SCORES_FILE") {
-        let scores_file = PathBuf::from(scores_file);
-        println!("cargo:rerun-if-changed={}", scores_file.display());
-    }
     let registry_db_path = env::var_os("IRONSMITH_REGISTRY_DB_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| workspace_root.join("reports/engine-status.sqlite3"));
