@@ -134,34 +134,6 @@ fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str)
             .replace("Exile this spell", &format!("Exile {}", def.card.name))
             .replace("exile this spell", &format!("exile {}", def.card.name));
     }
-    if def.card.card_types.contains(&CardType::Creature)
-        && !def.card.name.trim().is_empty()
-        && normalized
-            .to_ascii_lowercase()
-            .contains("gains control of this creature")
-    {
-        let source_name = def
-            .card
-            .name
-            .split(',')
-            .next()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .unwrap_or(def.card.name.as_str());
-        normalized = normalized
-            .replace(
-                "Whenever this creature deals combat damage",
-                &format!("Whenever {source_name} deals combat damage"),
-            )
-            .replace(
-                "whenever this creature deals combat damage",
-                &format!("whenever {source_name} deals combat damage"),
-            )
-            .replace(
-                "gains control of this creature",
-                &format!("gains control of {source_name}"),
-            );
-    }
     normalized
 }
 

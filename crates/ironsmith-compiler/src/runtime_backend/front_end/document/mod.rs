@@ -858,17 +858,29 @@ fn normalize_named_source_trigger_for_builder(
         "this permanent"
     };
 
+    let lower = trimmed.to_ascii_lowercase();
+
+    let name = builder.card_builder.name_ref();
+    if !name.is_empty() {
+        let name_lower = name.to_ascii_lowercase();
+        if let Some(remainder) = str_strip_prefix(lower.as_str(), &(name_lower + " ")) {
+            return Some(format!("{subject} {remainder}"));
+        }
+    }
+
     let names = source_name_aliases_for_builder(builder);
-    if names.is_empty() {
-        return None;
+    if !names.is_empty() && !lower.contains(" named ") {
+        let mut rewritten = lower.clone();
+        for name_lower in &names {
+            rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
+        }
+        if rewritten != lower {
+            return Some(rewritten);
+        }
     }
 
-    let mut rewritten = trimmed.to_ascii_lowercase();
-    for name_lower in &names {
-        rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
-    }
-
-    (rewritten != trimmed.to_ascii_lowercase()).then_some(rewritten)
+    let (_, rest) = str_split_once(lower.as_str(), " enters ")?;
+    Some(format!("{subject} enters {rest}"))
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -885,7 +897,8 @@ fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> S
         let end = start + alias.len();
         let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
         let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        if before_is_boundary && after_is_boundary {
+        let is_token_name_suffix = lower[end..].starts_with(" twin");
+        if before_is_boundary && after_is_boundary && !is_token_name_suffix {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
             cursor = end;

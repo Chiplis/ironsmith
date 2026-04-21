@@ -452,6 +452,32 @@ fn maybe_append_trailing_that_much_life_loss(
     }
 }
 
+fn maybe_repair_that_player_gain_control_if_do_rewards(
+    effects: &mut Vec<EffectAst>,
+    tokens: &[OwnedLexToken],
+) {
+    if !grammar::contains_phrase(tokens, &["that", "player", "gains", "control", "of"])
+        || !grammar::contains_phrase(tokens, &["if", "they", "do"])
+        || effects.is_empty()
+        || effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::GainControl { .. }))
+    {
+        return;
+    }
+
+    let rewards = std::mem::take(effects);
+    effects.push(EffectAst::GainControl {
+        target: TargetAst::Source(None),
+        player: PlayerAst::That,
+        duration: Until::Forever,
+    });
+    effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: rewards,
+    });
+}
+
 pub(super) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, Value, bool)> {
@@ -726,7 +752,8 @@ fn parse_effect_sentences_from_sentence_inputs(
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effects) = parse_exact_card_effect_bundle_lexed(tokens) {
+    if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
+        maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
         return Ok(effects);
     }
 
@@ -734,7 +761,9 @@ pub(crate) fn parse_effect_sentences_lexed(
         .into_iter()
         .map(SentenceInput::from_lexed)
         .collect::<Vec<_>>();
-    parse_effect_sentences_from_sentence_inputs(sentences)
+    let mut effects = parse_effect_sentences_from_sentence_inputs(sentences)?;
+    maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
+    Ok(effects)
 }
 
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
