@@ -154,6 +154,7 @@ pub(crate) fn parse_you_choose_objects_clause(
     }
 
     let mut references_it = false;
+    let mut references_container_it = false;
     loop {
         let len = choose_object_tokens.len();
         let trailing_it = len >= 2
@@ -171,11 +172,13 @@ pub(crate) fn parse_you_choose_objects_clause(
             && choose_object_tokens[len - 1].is_word("in");
         if trailing_it {
             references_it = true;
+            references_container_it = true;
             choose_object_tokens.truncate(len - 2);
             continue;
         }
         if trailing_there {
             references_it = true;
+            references_container_it = true;
             choose_object_tokens.truncate(len - 3);
             continue;
         }
@@ -188,11 +191,13 @@ pub(crate) fn parse_you_choose_objects_clause(
             [.., "from", "it"] | [.., "from", "them"] | [.., "in", "it"] | [.., "in", "them"]
         ) {
             references_it = true;
+            references_container_it = true;
             choose_words.truncate(choose_words.len().saturating_sub(2));
             continue;
         }
         if matches!(choose_words.as_slice(), [.., "from", "there", "in"]) {
             references_it = true;
+            references_container_it = true;
             choose_words.truncate(choose_words.len().saturating_sub(3));
             continue;
         }
@@ -245,6 +250,13 @@ pub(crate) fn parse_you_choose_objects_clause(
             clause_words.join(" ")
         )));
     }
+    if matches!(
+        choose_words.as_slice(),
+        ["of", "them", rest @ ..] | ["of", "those", rest @ ..] if !rest.is_empty()
+    ) {
+        references_it = true;
+        choose_words = choose_words[2..].to_vec();
+    }
 
     let choose_filter_tokens = choose_words
         .iter()
@@ -266,7 +278,7 @@ pub(crate) fn parse_you_choose_objects_clause(
             })?
         };
     if references_it {
-        if choose_filter.zone.is_none() {
+        if references_container_it && choose_filter.zone.is_none() {
             choose_filter.zone = Some(Zone::Hand);
         }
         if !choose_filter

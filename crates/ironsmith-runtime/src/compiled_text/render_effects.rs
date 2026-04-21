@@ -10756,9 +10756,15 @@ pub(super) fn describe_with_id_then_may_choose_new_targets(
     with_id: &crate::effects::WithIdEffect,
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    let _copy_spell = with_id
+    let copy_effect = if let Some(tagged) = with_id
         .effect
-        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    {
+        tagged.effect.as_ref()
+    } else {
+        with_id.effect.as_ref()
+    };
+    let _copy_spell = copy_effect.downcast_ref::<crate::effects::CopySpellEffect>()?;
     if may.effects.len() != 1 {
         return None;
     }
@@ -14511,7 +14517,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Flip {}", describe_flip_target(&flip.target));
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        if is_implicit_reference_tag(tagged.tag.as_str()) {
+        if is_implicit_reference_tag(tagged.tag.as_str())
+            || tagged.tag.as_str() == "__copied_stack_object__"
+        {
             return describe_effect(&tagged.effect);
         }
         return format!(
@@ -14726,6 +14734,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
             return compact;
+        }
+        if may.effects.len() == 1
+            && let Some(retarget) =
+                may.effects[0].downcast_ref::<crate::effects::RetargetStackObjectEffect>()
+            && matches!(retarget.mode, crate::effects::RetargetMode::All)
+            && !retarget.require_change
+            && matches!(&retarget.target, ChooseSpec::Tagged(tag) if tag.as_str().contains("copied"))
+        {
+            let who = may
+                .decider
+                .as_ref()
+                .map(describe_player_filter)
+                .unwrap_or_else(|| "you".to_string());
+            if who == "you" {
+                return "You may choose new targets for the copy".to_string();
+            }
+            return format!("{who} may choose new targets for the copy");
         }
         if let Some(decider) = may.decider.as_ref() {
             let who = describe_player_filter(decider);
@@ -15643,6 +15668,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             target_text = target_text.replacen("instant or sorcery", "instant or sorcery spell", 1);
         }
         if matches!(copy_spell.count, Value::Fixed(1)) {
+            if matches!(copy_spell.target, ChooseSpec::Iterated) {
+                let mut text = "Copy that spell".to_string();
+                if copy_spell
+                    .removed_supertypes
+                    .contains(&crate::types::Supertype::Legendary)
+                {
+                    text.push_str(", except the copy isn't legendary");
+                }
+                return text;
+            }
             let mut text = format!("Copy {target_text}");
             if copy_spell
                 .removed_supertypes

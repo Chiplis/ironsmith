@@ -123,12 +123,16 @@ impl EffectExecutor for CopySpellEffect {
             // The copy has the same targets, X value, etc. but is controlled by the copier
             let mut copy_entry = StackEntry::new(copy_id, copier);
             copy_entry.targets = original_entry.targets.clone();
+            copy_entry.target_assignments = original_entry.target_assignments.clone();
             copy_entry.x_value = original_entry.x_value;
             copy_entry.ability_effects = original_entry.ability_effects.clone();
             copy_entry.is_ability = original_entry.is_ability;
             copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
             copy_entry.chosen_player = original_entry.chosen_player;
             copy_entry.chosen_modes = original_entry.chosen_modes.clone();
+            copy_entry.keyword_payment_contributions =
+                original_entry.keyword_payment_contributions.clone();
+            copy_entry.tagged_objects = original_entry.tagged_objects.clone();
 
             if let Some(chosen_player) = copy_entry.chosen_player {
                 game.set_chosen_player(copy_id, chosen_player);

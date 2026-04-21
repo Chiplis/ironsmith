@@ -2212,6 +2212,7 @@ impl CardDefinitionBuilder {
 }
 
 pub const IT_TAG: &str = crate::host::IT_TAG;
+pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;
 
 fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
     let mut parts = text.split_whitespace();

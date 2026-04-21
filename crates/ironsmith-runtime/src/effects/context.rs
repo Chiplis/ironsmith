@@ -836,6 +836,20 @@ impl<'a> ExecutionContext<'a> {
         if !source_exiled.is_empty() {
             tagged_objects.insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
         }
+        let mut target_objects = target_objects;
+        if let Some(triggering_event) = &self.triggering_event
+            && let Some(object_id) = triggering_event.object_id()
+            && let Some(snapshot) = triggering_event.snapshot().cloned().or_else(|| {
+                game.object(object_id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+            })
+        {
+            target_objects.push(snapshot.clone());
+            tagged_objects
+                .entry(TagKey::from("triggering"))
+                .or_default()
+                .push(snapshot);
+        }
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
             .with_iterated_player(self.iteration.iterated_player)

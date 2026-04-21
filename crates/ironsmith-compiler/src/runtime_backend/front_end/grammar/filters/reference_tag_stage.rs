@@ -34,6 +34,8 @@ pub(super) fn parse_object_filter_inner(
 
     let mut target_player: Option<PlayerFilter> = None;
     let mut target_object: Option<ObjectFilter> = None;
+    let mut targets_only = false;
+    let mut target_count: Option<crate::effect::ChoiceCount> = None;
     let mut base_tokens: Vec<OwnedLexToken> = tokens.to_vec();
     let mut targets_idx: Option<usize> = None;
     for (idx, token) in tokens.iter().enumerate() {
@@ -49,22 +51,51 @@ pub(super) fn parse_object_filter_inner(
         base_tokens = tokens[..that_idx].to_vec();
         let target_tokens = &tokens[targets_idx + 1..];
         let parse_target_fragment = |fragment_tokens: &[OwnedLexToken]| -> Result<
-            (Option<PlayerFilter>, Option<ObjectFilter>),
+            (
+                Option<PlayerFilter>,
+                Option<ObjectFilter>,
+                bool,
+                Option<crate::effect::ChoiceCount>,
+            ),
             CardTextError,
         > {
-            let target_words_view = GrammarFilterNormalizedWords::new(fragment_tokens);
-            let target_words = target_words_view.to_word_refs();
-            if starts_with_any_filter_phrase(&target_words, &[&["you"]]) {
-                return Ok((Some(PlayerFilter::You), None));
+            let mut fragment_tokens = trim_commas(fragment_tokens);
+            let mut only = false;
+            let mut count = None;
+            if fragment_tokens
+                .first()
+                .is_some_and(|token| token.is_word("only"))
+            {
+                only = true;
+                fragment_tokens.drain(..1);
             }
-            if starts_with_any_filter_phrase(&target_words, &[&["opponent"], &["opponents"]]) {
-                return Ok((Some(PlayerFilter::Opponent), None));
-            }
-            if starts_with_any_filter_phrase(&target_words, &[&["player"], &["players"]]) {
-                return Ok((Some(PlayerFilter::Any), None));
+            let fragment_words_view = GrammarFilterNormalizedWords::new(&fragment_tokens);
+            let fragment_words = fragment_words_view.to_word_refs();
+            if fragment_words.starts_with(&["a", "single"]) {
+                count = Some(crate::effect::ChoiceCount::exactly(1));
+                let start = normalized_token_index_for_word_index(&fragment_tokens, 2)
+                    .unwrap_or(fragment_tokens.len());
+                fragment_tokens.drain(..start);
+            } else if fragment_words.first().copied() == Some("single") {
+                count = Some(crate::effect::ChoiceCount::exactly(1));
+                let start = normalized_token_index_for_word_index(&fragment_tokens, 1)
+                    .unwrap_or(fragment_tokens.len());
+                fragment_tokens.drain(..start);
             }
 
-            let mut target_filter_tokens = fragment_tokens;
+            let target_words_view = GrammarFilterNormalizedWords::new(&fragment_tokens);
+            let target_words = target_words_view.to_word_refs();
+            if starts_with_any_filter_phrase(&target_words, &[&["you"]]) {
+                return Ok((Some(PlayerFilter::You), None, only, count));
+            }
+            if starts_with_any_filter_phrase(&target_words, &[&["opponent"], &["opponents"]]) {
+                return Ok((Some(PlayerFilter::Opponent), None, only, count));
+            }
+            if starts_with_any_filter_phrase(&target_words, &[&["player"], &["players"]]) {
+                return Ok((Some(PlayerFilter::Any), None, only, count));
+            }
+
+            let mut target_filter_tokens = fragment_tokens.as_slice();
             if target_filter_tokens
                 .first()
                 .is_some_and(|token| token.is_word("target"))
@@ -72,11 +103,13 @@ pub(super) fn parse_object_filter_inner(
                 target_filter_tokens = &target_filter_tokens[1..];
             }
             if target_filter_tokens.is_empty() {
-                return Ok((None, None));
+                return Ok((None, None, only, count));
             }
             Ok((
                 None,
                 Some(parse_object_filter_permissive(target_filter_tokens, false)?),
+                only,
+                count,
             ))
         };
 
@@ -88,17 +121,24 @@ pub(super) fn parse_object_filter_inner(
         {
             let left_tokens = trim_commas(&target_tokens[..or_token_idx]);
             let right_tokens = trim_commas(&target_tokens[or_token_idx + 1..]);
-            let (left_player, left_object) = parse_target_fragment(&left_tokens)?;
-            let (right_player, right_object) = parse_target_fragment(&right_tokens)?;
+            let (left_player, left_object, left_only, left_count) =
+                parse_target_fragment(&left_tokens)?;
+            let (right_player, right_object, right_only, right_count) =
+                parse_target_fragment(&right_tokens)?;
             target_player = left_player.or(right_player);
             target_object = left_object.or(right_object);
+            targets_only = left_only || right_only;
+            target_count = left_count.or(right_count);
             if target_player.is_some() && target_object.is_some() {
                 filter.targets_any_of = true;
             }
         } else {
-            let (parsed_player, parsed_object) = parse_target_fragment(target_tokens)?;
+            let (parsed_player, parsed_object, parsed_only, parsed_count) =
+                parse_target_fragment(target_tokens)?;
             target_player = parsed_player;
             target_object = parsed_object;
+            targets_only = parsed_only;
+            target_count = parsed_count;
         }
     }
 
@@ -165,7 +205,16 @@ pub(super) fn parse_object_filter_inner(
     }
     if let Some(mut disjunction) = parse_attached_reference_or_another_disjunction(&base_tokens)? {
         if target_player.is_some() || target_object.is_some() {
-            disjunction = disjunction.targeting(target_player.take(), target_object.take());
+            disjunction = if targets_only {
+                disjunction.targeting_only(target_player.take(), target_object.take())
+            } else {
+                disjunction.targeting(target_player.take(), target_object.take())
+            };
+            if let Some(count) = target_count {
+                disjunction = disjunction.with_target_count(count);
+            } else if targets_only {
+                disjunction = disjunction.target_count_exact(1);
+            }
         }
         return Ok(disjunction);
     }
@@ -214,6 +263,8 @@ pub(super) fn parse_object_filter_inner(
         .copied()
         .filter(|word| !is_article(word))
         .collect();
+
+    try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
     // "that were put there from the battlefield this turn" means the card entered
     // a graveyard from the battlefield this turn.
@@ -1187,7 +1238,16 @@ pub(super) fn parse_object_filter_inner(
     }
 
     if target_player.is_some() || target_object.is_some() {
-        filter = filter.targeting(target_player.take(), target_object.take());
+        filter = if targets_only {
+            filter.targeting_only(target_player.take(), target_object.take())
+        } else {
+            filter.targeting(target_player.take(), target_object.take())
+        };
+        if let Some(count) = target_count {
+            filter = filter.with_target_count(count);
+        } else if targets_only {
+            filter = filter.target_count_exact(1);
+        }
     }
 
     if let Some(or_subtype) = legendary_or_subtype
@@ -1485,4 +1545,25 @@ pub(super) fn parse_object_filter_inner(
     }
 
     Ok(filter)
+}
+
+fn try_apply_could_be_targeted_by_that_spell_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        ["that", "spell", "could", "target"].as_slice(),
+        ["this", "spell", "could", "target"].as_slice(),
+        ["it", "could", "target"].as_slice(),
+    ] {
+        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+            continue;
+        };
+        filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
+            ObjectRef::tagged(TagKey::from(IT_TAG)),
+        ));
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
 }

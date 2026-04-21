@@ -34,7 +34,9 @@ use crate::effect::Value;
 use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::TaggedObjectConstraint;
 use crate::mana::ManaSymbol;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{
+    ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation, TargetabilityConstraint,
+};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 

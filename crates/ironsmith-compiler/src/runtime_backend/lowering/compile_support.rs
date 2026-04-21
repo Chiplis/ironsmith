@@ -11,12 +11,12 @@ use crate::cards::CardDefinition;
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, ClashOpponentAst, ControlDurationAst, DamageBySpec,
-    EffectAst, EffectLoweringContext, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
-    GrantedAbilityAst, IT_TAG, IdGenContext, IfResultPredicate, LineAst, LoweringFrame,
-    NormalizedLine, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
-    ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
+    COPIED_STACK_OBJECT_TAG, CardDefinitionBuilder, CardTextError, ClashOpponentAst,
+    ControlDurationAst, DamageBySpec, EffectAst, EffectLoweringContext, ExchangeValueAst,
+    ExchangeValueKindAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, IdGenContext,
+    IfResultPredicate, LineAst, LoweringFrame, NormalizedLine, ObjectRefAst, ParseAnnotations,
+    PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;

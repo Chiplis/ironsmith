@@ -22,6 +22,19 @@ impl ObjectRef {
     }
 }
 
+/// Constraint requiring the candidate object to be a legal target for a
+/// referenced stack object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetabilityConstraint {
+    pub stack_object: ObjectRef,
+}
+
+impl TargetabilityConstraint {
+    pub fn by_stack_object(stack_object: ObjectRef) -> Self {
+        Self { stack_object }
+    }
+}
+
 /// Which power/toughness reference a filter should use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PtReference {
@@ -292,6 +305,7 @@ pub struct ObjectFilter {
     pub targets_only_player: Option<PlayerFilter>,
     pub targets_only_object: Option<Box<ObjectFilter>>,
     pub targets_only_any_of: bool,
+    pub could_be_targeted_by: Option<TargetabilityConstraint>,
     pub card_types: Vec<CardType>,
     pub all_card_types: Vec<CardType>,
     pub excluded_card_types: Vec<CardType>,
@@ -627,6 +641,11 @@ impl ObjectFilter {
 
     pub fn target_count_exact(self, count: usize) -> Self {
         self.with_target_count(ChoiceCount::exactly(count))
+    }
+
+    pub fn could_be_targeted_by(mut self, stack_object: ObjectRef) -> Self {
+        self.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(stack_object));
+        self
     }
 
     pub fn targeting_player(self, player: PlayerFilter) -> Self {
@@ -1481,7 +1500,7 @@ impl ObjectFilter {
                     && self.card_types.contains(&CardType::Instant)
                     && self.card_types.contains(&CardType::Sorcery)
                 {
-                    " and "
+                    " or "
                 } else {
                     " or "
                 };
@@ -1948,6 +1967,20 @@ impl ObjectFilter {
                 };
                 parts.push(format!("that targets {target_text}"));
             }
+        }
+
+        if let Some(targetability) = &self.could_be_targeted_by {
+            let stack_text = match &targetability.stack_object {
+                ObjectRef::Target => "that spell",
+                ObjectRef::Tagged(tag)
+                    if matches!(tag.as_str(), "triggering" | "__it__" | "it") =>
+                {
+                    "that spell"
+                }
+                ObjectRef::Tagged(tag) if tag.as_str().contains("copied") => "the copy",
+                ObjectRef::Tagged(_) | ObjectRef::Specific(_) => "that object",
+            };
+            parts.push(format!("{stack_text} could target"));
         }
 
         parts.join(" ")

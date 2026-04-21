@@ -85,6 +85,12 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         .iter()
         .any(|constraint| constraint.tag.as_str() == tag)
         || filter
+            .could_be_targeted_by
+            .as_ref()
+            .is_some_and(|constraint| {
+                matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
+            })
+        || filter
             .targets_object
             .as_deref()
             .is_some_and(|targets| filter_references_tag(targets, tag))

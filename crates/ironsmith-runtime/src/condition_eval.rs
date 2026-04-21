@@ -274,6 +274,47 @@ struct SharedConditionContext<'a> {
     triggering_event: Option<&'a TriggerEvent>,
 }
 
+fn condition_filter_context(
+    game: &GameState,
+    you: PlayerId,
+    source: ObjectId,
+    player_filter: &PlayerFilter,
+    triggering_event: Option<&TriggerEvent>,
+) -> crate::filter::FilterContext {
+    let opponents: Vec<PlayerId> = game
+        .players
+        .iter()
+        .filter(|p| p.id != you)
+        .map(|p| p.id)
+        .collect();
+    let mut ctx = crate::filter::FilterContext::new(you)
+        .with_source(source)
+        .with_opponents(opponents);
+    if *player_filter == PlayerFilter::IteratedPlayer {
+        ctx = ctx.with_iterated_player(Some(you));
+    }
+
+    let Some(event) = triggering_event else {
+        return ctx;
+    };
+    let Some(object_id) = event.object_id() else {
+        return ctx;
+    };
+    let Some(snapshot) = event.snapshot().cloned().or_else(|| {
+        game.object(object_id)
+            .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game))
+    }) else {
+        return ctx;
+    };
+
+    ctx.target_objects.push(snapshot.clone());
+    ctx.tagged_objects
+        .entry(crate::tag::TagKey::from("triggering"))
+        .or_default()
+        .push(snapshot);
+    ctx
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
@@ -942,18 +983,8 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
+            let filter_ctx =
+                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
             condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
@@ -968,18 +999,8 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
+            let filter_ctx =
+                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
             let matches = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
@@ -995,7 +1016,19 @@ pub fn evaluate_condition_external(
         } => matching_condition_players_external(game, ctx, player)
             .into_iter()
             .any(|player_id| {
-                condition_count_for_player(game, ctx.source, player, player_id, filter)
+                let filter_ctx = condition_filter_context(
+                    game,
+                    player_id,
+                    ctx.source,
+                    player,
+                    ctx.triggering_event,
+                );
+                condition_candidate_ids_for_zone(game, filter.zone)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                    .count()
                     == *count as usize
             }),
         Condition::PlayerControlsAtLeastWithDifferentPowers {
@@ -1006,36 +1039,16 @@ pub fn evaluate_condition_external(
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
+            let filter_ctx =
+                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
             count_distinct_matching_powers(game, player_id, filter, &filter_ctx) >= *count as usize
         }
         Condition::PlayerControlsMost { player, filter } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
+            let filter_ctx =
+                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
             let your_count = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
@@ -1044,18 +1057,13 @@ pub fn evaluate_condition_external(
                 .count();
             game.players.iter().filter(|p| p.id != player_id).all(|p| {
                 let other_id = p.id;
-                let other_opponents: Vec<PlayerId> = game
-                    .players
-                    .iter()
-                    .filter(|q| q.id != other_id)
-                    .map(|q| q.id)
-                    .collect();
-                let mut other_ctx = crate::filter::FilterContext::new(other_id)
-                    .with_source(ctx.source)
-                    .with_opponents(other_opponents);
-                if *player == PlayerFilter::IteratedPlayer {
-                    other_ctx = other_ctx.with_iterated_player(Some(other_id));
-                }
+                let other_ctx = condition_filter_context(
+                    game,
+                    other_id,
+                    ctx.source,
+                    player,
+                    ctx.triggering_event,
+                );
                 let other_count = condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
@@ -1067,18 +1075,13 @@ pub fn evaluate_condition_external(
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
-                let opponents: Vec<PlayerId> = game
-                    .players
-                    .iter()
-                    .filter(|p| p.id != candidate)
-                    .map(|p| p.id)
-                    .collect();
-                let mut filter_ctx = crate::filter::FilterContext::new(candidate)
-                    .with_source(ctx.source)
-                    .with_opponents(opponents);
-                if *player == PlayerFilter::IteratedPlayer {
-                    filter_ctx = filter_ctx.with_iterated_player(Some(candidate));
-                }
+                let filter_ctx = condition_filter_context(
+                    game,
+                    candidate,
+                    ctx.source,
+                    player,
+                    ctx.triggering_event,
+                );
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))

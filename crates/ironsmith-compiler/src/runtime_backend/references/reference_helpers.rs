@@ -232,6 +232,9 @@ fn resolve_object_filter_player_refs(
     if let Some(targets_only_object) = resolved.targets_only_object.as_mut() {
         **targets_only_object = resolve_object_filter_player_refs(targets_only_object, refs)?;
     }
+    if let Some(targetability) = resolved.could_be_targeted_by.as_mut() {
+        targetability.stack_object = resolve_object_ref(&targetability.stack_object, refs);
+    }
     if let Some(attacking_player) = resolved
         .attacking_player_or_planeswalker_controlled_by
         .as_mut()

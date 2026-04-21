@@ -20,7 +20,7 @@ use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
     AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectRef, ParityRequirement,
     PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
-    TaggedOpbjectRelation,
+    TaggedOpbjectRelation, TargetabilityConstraint,
 };
 
 fn normalize_name_for_match(name: &str) -> String {
@@ -741,6 +741,72 @@ fn resolve_player_filter_object_ref<'a>(
     }
 }
 
+fn resolve_object_ref_id(object_ref: &ObjectRef, ctx: &FilterContext) -> Option<ObjectId> {
+    match object_ref {
+        ObjectRef::Target => ctx
+            .target_objects
+            .first()
+            .map(|snapshot| snapshot.object_id),
+        ObjectRef::Specific(object_id) => Some(*object_id),
+        ObjectRef::Tagged(tag) => ctx
+            .tagged_objects
+            .get(tag)
+            .and_then(|snapshots| snapshots.first())
+            .map(|snapshot| snapshot.object_id),
+    }
+}
+
+fn effects_for_stack_entry(
+    game: &crate::game_state::GameState,
+    entry: &crate::game_state::StackEntry,
+) -> Vec<crate::effect::Effect> {
+    if let Some(ref effects) = entry.ability_effects {
+        return effects.to_vec();
+    }
+
+    game.object(entry.object_id)
+        .and_then(|object| object.spell_effect.clone())
+        .map(|effects| effects.to_vec())
+        .unwrap_or_default()
+}
+
+fn object_could_be_targeted_by(
+    object_id: ObjectId,
+    constraint: &TargetabilityConstraint,
+    ctx: &FilterContext,
+    game: &crate::game_state::GameState,
+) -> bool {
+    let Some(stack_object_id) = resolve_object_ref_id(&constraint.stack_object, ctx) else {
+        return false;
+    };
+    let Some(entry) = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_object_id)
+    else {
+        return false;
+    };
+
+    effects_for_stack_entry(game, entry).iter().any(|effect| {
+        let Some(spec) = effect.0.get_target_spec() else {
+            return false;
+        };
+        crate::targeting::compute_legal_targets_with_tagged_objects(
+            game,
+            spec,
+            entry.controller,
+            Some(entry.object_id),
+            if entry.tagged_objects.is_empty() {
+                None
+            } else {
+                Some(&entry.tagged_objects)
+            },
+        )
+        .into_iter()
+        .any(|target| matches!(target, crate::game_state::Target::Object(id) if id == object_id))
+    })
+}
+
 pub trait PlayerFilterExt {
     fn matches_player(&self, player: PlayerId, ctx: &FilterContext) -> bool;
 }
@@ -1161,6 +1227,12 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if self.source && ctx.source.is_none_or(|source_id| object.id != source_id) {
+            return false;
+        }
+
+        if let Some(targetability) = &self.could_be_targeted_by
+            && !object_could_be_targeted_by(object.id, targetability, ctx, game)
+        {
             return false;
         }
 
@@ -1916,6 +1988,12 @@ impl ObjectFilterExt for ObjectFilter {
             && ctx
                 .source
                 .is_none_or(|source_id| snapshot.object_id != source_id)
+        {
+            return false;
+        }
+
+        if let Some(targetability) = &self.could_be_targeted_by
+            && !object_could_be_targeted_by(snapshot.object_id, targetability, ctx, game)
         {
             return false;
         }
@@ -2832,7 +2910,7 @@ impl ObjectFilterExt for ObjectFilter {
                     && self.card_types.contains(&CardType::Instant)
                     && self.card_types.contains(&CardType::Sorcery)
                 {
-                    " and "
+                    " or "
                 } else {
                     " or "
                 };
@@ -3306,6 +3384,20 @@ impl ObjectFilterExt for ObjectFilter {
                 };
                 parts.push(format!("that targets {target_text}"));
             }
+        }
+
+        if let Some(targetability) = &self.could_be_targeted_by {
+            let stack_text = match &targetability.stack_object {
+                ObjectRef::Target => "that spell",
+                ObjectRef::Tagged(tag)
+                    if matches!(tag.as_str(), "triggering" | "__it__" | "it") =>
+                {
+                    "that spell"
+                }
+                ObjectRef::Tagged(tag) if tag.as_str().contains("copied") => "the copy",
+                ObjectRef::Tagged(_) | ObjectRef::Specific(_) => "that object",
+            };
+            parts.push(format!("{stack_text} could target"));
         }
 
         parts.join(" ")

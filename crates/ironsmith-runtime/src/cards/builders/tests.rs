@@ -12,7 +12,7 @@ use crate::effects::{
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::zone::Zone;
 use crate::{ObjectId, PlayerId};
 use std::collections::HashMap;
@@ -2409,6 +2409,74 @@ fn test_parse_choose_new_targets_for_the_copy() {
     assert!(
         debug.contains("RetargetStackObjectEffect"),
         "expected retarget effect for the copy, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn beamsplitter_mage_parses_typed_spell_and_copy_references() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Beamsplitter Mage")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Vedalken, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever you cast an instant or sorcery spell that targets only this creature, if you control one or more other creatures that spell could target, choose one of those creatures. Copy that spell. The copy targets the chosen creature.",
+        )
+        .expect("Beamsplitter Mage should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Beamsplitter Mage should compile to a triggered ability");
+
+    let trigger_debug = format!("{:#?}", triggered.trigger);
+    assert!(
+        trigger_debug.contains("targets_only_object") && trigger_debug.contains("target_count"),
+        "expected trigger filter to require a spell targeting only this creature, got {trigger_debug}"
+    );
+
+    let condition_debug = format!("{:#?}", triggered.intervening_if);
+    assert!(
+        condition_debug.contains("could_be_targeted_by")
+            && condition_debug.contains("stack_object: Target")
+            && condition_debug.contains("other: true"),
+        "expected intervening-if to ask for other creatures that spell could target, got {condition_debug}"
+    );
+
+    let choose_creature = triggered
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("trigger should choose one of the targetable creatures");
+    assert_eq!(choose_creature.count, ChoiceCount::exactly(1));
+    assert_eq!(choose_creature.filter.controller, Some(PlayerFilter::You));
+    assert!(choose_creature.filter.other);
+    assert_eq!(choose_creature.filter.card_types, vec![CardType::Creature]);
+    assert_eq!(choose_creature.tag.as_str(), "__it__");
+    let targetability = choose_creature
+        .filter
+        .could_be_targeted_by
+        .as_ref()
+        .expect("chosen creature filter should retain targetability constraint");
+    assert_eq!(
+        targetability.stack_object,
+        ObjectRef::Tagged(crate::TagKey::from("triggering"))
+    );
+
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("CopySpellEffect")
+            && effects_debug.contains("__copied_stack_object__")
+            && effects_debug.contains("RetargetStackObjectEffect"),
+        "expected tagged copy plus retarget effect, got {effects_debug}"
     );
 }
 

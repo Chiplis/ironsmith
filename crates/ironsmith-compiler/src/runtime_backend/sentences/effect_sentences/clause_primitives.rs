@@ -25,9 +25,9 @@ use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, OwnedLexToken,
-    PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst, TagKey, TargetAst,
-    TextSpan, TriggerSpec,
+    COPIED_STACK_OBJECT_TAG, CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG,
+    LineAst, OwnedLexToken, PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst,
+    TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::effect::ChoiceCount;
 use crate::mana::ManaSymbol;
@@ -75,6 +75,43 @@ pub(crate) fn parse_retarget_clause(
     Ok(None)
 }
 
+pub(crate) fn parse_copy_targets_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = token_word_refs(tokens);
+    let targets_idx = match words.as_slice() {
+        ["the", "copy", "targets", ..] | ["that", "copy", "targets", ..] => 2,
+        ["copy", "targets", ..] => 1,
+        _ => return Ok(None),
+    };
+    let targets_token_idx = super::super::util::token_index_for_word_index(tokens, targets_idx)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing targets keyword in copy-target clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+    let fixed_tokens = trim_commas(&tokens[targets_token_idx + 1..]);
+    if fixed_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing target after copy-target clause (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    let fixed_filter = parse_object_filter(&fixed_tokens, false)?;
+    Ok(Some(EffectAst::RetargetStackObject {
+        target: TargetAst::Tagged(
+            TagKey::from(COPIED_STACK_OBJECT_TAG),
+            span_from_tokens(tokens),
+        ),
+        mode: RetargetModeAst::OneToFixed {
+            target: TargetAst::Object(fixed_filter, None, None),
+        },
+        chooser: PlayerAst::Implicit,
+        require_change: false,
+    }))
+}
+
 pub(crate) fn parse_choose_new_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -82,7 +119,19 @@ pub(crate) fn parse_choose_new_targets_clause(
         return Ok(None);
     };
     if split.reference_target {
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(split.target_tokens));
+        let reference_words = token_word_refs(split.target_tokens);
+        let reference_tag = if matches!(
+            reference_words.as_slice(),
+            ["the", "copy", ..] | ["that", "copy", ..]
+        ) {
+            COPIED_STACK_OBJECT_TAG
+        } else {
+            IT_TAG
+        };
+        let target = TargetAst::Tagged(
+            TagKey::from(reference_tag),
+            span_from_tokens(split.target_tokens),
+        );
         return Ok(Some(EffectAst::RetargetStackObject {
             target,
             mode: RetargetModeAst::All,
@@ -312,6 +361,9 @@ pub(crate) fn run_clause_primitives(
         },
         ClausePrimitive {
             parser: parse_retarget_clause,
+        },
+        ClausePrimitive {
+            parser: parse_copy_targets_clause,
         },
         ClausePrimitive {
             parser: parse_copy_spell_clause,

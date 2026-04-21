@@ -16,7 +16,7 @@ use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
 use crate::static_abilities::StaticAbility;
-use crate::target::PlayerFilter;
+use crate::target::{ObjectRef, PlayerFilter};
 use crate::triggers::Trigger;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
@@ -5415,6 +5415,263 @@ fn create_creature(
         .power_toughness(PowerToughness::fixed(power, toughness))
         .build();
     game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn beamsplitter_mage_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(82_200), "Beamsplitter Mage")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Vedalken, crate::types::Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever you cast an instant or sorcery spell that targets only this creature, if you control one or more other creatures that spell could target, choose one of those creatures. Copy that spell. The copy targets the chosen creature.",
+        )
+        .expect("Beamsplitter Mage should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn nonartifact_creature_spell_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(82_201), "Friendly Calibration")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target nonartifact creature you control.")
+        .expect("single-target spell should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn artifact_creature_card(name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stack_beamsplitter_probe_spell(
+    game: &mut GameState,
+    controller: PlayerId,
+    target: ObjectId,
+) -> ObjectId {
+    let spell_def = nonartifact_creature_spell_definition();
+    let spell_id = game.create_object_from_definition(&spell_def, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller).with_targets(vec![Target::Object(target)]),
+    );
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spell_cast_event_for_stack_object(
+    game: &GameState,
+    spell_id: ObjectId,
+    caster: PlayerId,
+) -> TriggerEvent {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell_id)
+            .expect("spell object should exist on the stack"),
+        game,
+    );
+    TriggerEvent::new_with_provenance(
+        SpellCastEvent::new_with_snapshot(spell_id, caster, Zone::Hand, snapshot),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseSpecificObjectDecisionMaker {
+    desired: ObjectId,
+    seen_candidates: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl ChooseSpecificObjectDecisionMaker {
+    fn new(desired: ObjectId) -> Self {
+        Self {
+            desired,
+            seen_candidates: Vec::new(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseSpecificObjectDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.seen_candidates = ctx
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect();
+        assert!(
+            ctx.candidates
+                .iter()
+                .any(|candidate| candidate.id == self.desired && candidate.legal),
+            "expected desired Beamsplitter retarget candidate to be legal, got {:?}",
+            ctx.candidates
+        );
+        vec![self.desired]
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn beamsplitter_mage_copies_spell_and_retargets_copy_to_chosen_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let beamsplitter = beamsplitter_mage_definition();
+    let mage_id = game.create_object_from_definition(&beamsplitter, alice, Zone::Battlefield);
+    let legal_ally = create_creature(&mut game, "Legal Ally", alice, 2, 2);
+    let legal_ally_two = create_creature(&mut game, "Second Legal Ally", alice, 2, 2);
+    let illegal_artifact = game.create_object_from_card(
+        &artifact_creature_card("Alloy Ally"),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+
+    let spell_id = stack_beamsplitter_probe_spell(&mut game, alice, mage_id);
+    let triggering_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell_id)
+            .expect("triggering spell should exist on the stack"),
+        &game,
+    );
+    let mut filter_ctx = game.filter_context_for(alice, Some(mage_id));
+    filter_ctx
+        .tagged_objects
+        .insert(crate::TagKey::from("triggering"), vec![triggering_snapshot]);
+    let targetable_other_creature = crate::target::ObjectFilter::creature()
+        .controlled_by(PlayerFilter::You)
+        .could_be_targeted_by(ObjectRef::tagged("triggering"));
+    assert!(
+        game.object(legal_ally)
+            .is_some_and(|obj| { targetable_other_creature.matches(obj, &filter_ctx, &game) }),
+        "targetability primitive should include the legal ally"
+    );
+    assert!(
+        game.object(illegal_artifact)
+            .is_some_and(|obj| { !targetable_other_creature.matches(obj, &filter_ctx, &game) }),
+        "targetability primitive should exclude same-controller artifact creatures"
+    );
+    assert!(
+        game.object(bob_creature)
+            .is_some_and(|obj| { !targetable_other_creature.matches(obj, &filter_ctx, &game) }),
+        "targetability primitive should exclude opponent creatures for this spell"
+    );
+
+    let event = spell_cast_event_for_stack_object(&game, spell_id, alice);
+    let triggers = check_triggers(&game, &event);
+    assert_eq!(
+        triggers.len(),
+        1,
+        "Beamsplitter should trigger for an instant targeting only itself"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Beamsplitter trigger should go on the stack");
+    let trigger_entry = game
+        .stack
+        .last()
+        .expect("trigger should be the top stack entry");
+    let intervening_if = trigger_entry
+        .intervening_if
+        .as_ref()
+        .expect("Beamsplitter trigger should carry its intervening-if condition");
+    assert!(
+        crate::triggers::verify_intervening_if(
+            &game,
+            intervening_if,
+            trigger_entry.controller,
+            trigger_entry
+                .triggering_event
+                .as_ref()
+                .expect("trigger entry should retain the spell-cast event"),
+            trigger_entry.object_id,
+            None,
+        ),
+        "resolution-time intervening-if should still see another legal targetable creature"
+    );
+
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(legal_ally);
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Beamsplitter trigger should resolve");
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "resolving the trigger should leave the original spell plus a copy on the stack, got {:?}",
+        game.stack
+    );
+
+    assert!(
+        dm.seen_candidates.contains(&legal_ally),
+        "the legal ally should be offered as the chosen creature"
+    );
+    assert!(
+        dm.seen_candidates.contains(&legal_ally_two),
+        "the second legal ally should also be offered as a targetable creature"
+    );
+    assert!(
+        !dm.seen_candidates.contains(&illegal_artifact),
+        "same-controller artifact creature should be excluded by spell targetability"
+    );
+    assert!(
+        !dm.seen_candidates.contains(&bob_creature),
+        "opponent's creature should be excluded by spell targetability"
+    );
+
+    let original_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == spell_id)
+        .expect("original spell should remain on the stack");
+    assert_eq!(
+        original_entry.targets,
+        vec![Target::Object(mage_id)],
+        "the original spell should still target Beamsplitter"
+    );
+
+    let copy_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id != spell_id)
+        .expect("copy should be on the stack");
+    assert_eq!(
+        copy_entry.targets,
+        vec![Target::Object(legal_ally)],
+        "the copy should target the chosen legal creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn beamsplitter_mage_does_not_trigger_without_another_legal_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let beamsplitter = beamsplitter_mage_definition();
+    let mage_id = game.create_object_from_definition(&beamsplitter, alice, Zone::Battlefield);
+    create_creature(&mut game, "Bob Creature", bob, 2, 2);
+
+    let spell_id = stack_beamsplitter_probe_spell(&mut game, alice, mage_id);
+    let event = spell_cast_event_for_stack_object(&game, spell_id, alice);
+    let triggers = check_triggers(&game, &event);
+
+    assert!(
+        triggers.is_empty(),
+        "Beamsplitter should not trigger when no other creature could be targeted by the spell"
+    );
 }
 
 fn record_battlefield_entry_this_turn(game: &mut GameState, object_id: ObjectId) {

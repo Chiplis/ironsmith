@@ -734,6 +734,10 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.cast_by.is_some()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
+        || filter.could_be_targeted_by.is_some()
         || filter.alternative_cast.is_some()
         || !filter.any_of.is_empty()
 }
@@ -787,6 +791,19 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     }
     if base.targets_object.is_none() {
         base.targets_object = extra.targets_object;
+    }
+    if base.targets_only_player.is_none() {
+        base.targets_only_player = extra.targets_only_player;
+    }
+    if base.targets_only_object.is_none() {
+        base.targets_only_object = extra.targets_only_object;
+    }
+    base.targets_only_any_of |= extra.targets_only_any_of;
+    if base.target_count.is_none() {
+        base.target_count = extra.target_count;
+    }
+    if base.could_be_targeted_by.is_none() {
+        base.could_be_targeted_by = extra.could_be_targeted_by;
     }
 }
 

@@ -429,11 +429,13 @@ fn advance_reference_frame_for_effect(
             frame.last_player_filter = Some(player.clone());
         }
         EffectAst::ControlCombatChoicesThisTurn { .. } => {}
+        EffectAst::CopySpell { player, .. } => {
+            track_effect_player(player.clone(), frame, true, true)?;
+        }
         EffectAst::LookAtHand { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::Counter { target }
         | EffectAst::CounterUnlessPays { target, .. }
-        | EffectAst::CopySpell { target, .. }
         | EffectAst::PreventDamage { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::PreventDamageToTargetPutCounters { target, .. }
@@ -2166,6 +2168,11 @@ fn bind_unresolved_it_in_filter(filter: &mut ObjectFilter, seed_tag: &TagKey) ->
     }
     if let Some(controller) = filter.controller.as_mut() {
         replacements += bind_unresolved_it_in_player_filter(controller, seed_tag);
+    }
+    if let Some(targetability) = filter.could_be_targeted_by.as_mut()
+        && let crate::filter::ObjectRef::Tagged(tag) = &mut targetability.stack_object
+    {
+        replacements += bind_unresolved_it_in_tag(tag, seed_tag);
     }
     replacements
 }

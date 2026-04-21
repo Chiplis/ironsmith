@@ -130,7 +130,7 @@ pub use event_model::KeywordActionKind;
 pub use filter_model::{
     AlternativeCastKind, Comparison as FilterComparison, CounterConstraint, ObjectFilter,
     ObjectRef, ParityRequirement, PlayerFilter, PtReference, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation,
+    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
 };
 pub use grant_model::{
     DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, Grantable,

@@ -13,3 +13,4 @@ pub use crate::payload::{IfResultPredicate, KeywordAction};
 pub use ironsmith_core::TagKey;
 
 pub const IT_TAG: &str = "__it__";
+pub const COPIED_STACK_OBJECT_TAG: &str = "__copied_stack_object__";

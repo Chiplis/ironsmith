@@ -5014,6 +5014,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::SourceController => "you".to_string(),
         ChooseSpec::SourceOwner => "this source's owner".to_string(),
         ChooseSpec::Tagged(tag) => {
+            if tag.as_str().contains("copied") {
+                return "the copy".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 "it".to_string()
             } else {
