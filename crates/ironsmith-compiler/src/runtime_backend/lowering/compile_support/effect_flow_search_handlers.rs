@@ -414,6 +414,10 @@ pub(super) fn try_compile_token_generation_effect(
                     ))
                 })
                 .transpose()?;
+            let resolved_attached_to = attached_to
+                .as_ref()
+                .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
+                .transpose()?;
             let needs_created_tag = ctx.auto_tag_object_targets
                 || attached_to.is_some()
                 || resolved_dynamic_pt.is_some();
@@ -448,9 +452,7 @@ pub(super) fn try_compile_token_generation_effect(
                     .0,
                 );
             }
-            if let Some(target) = attached_to {
-                let (target_spec, target_choices) =
-                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if let Some((target_spec, target_choices)) = resolved_attached_to {
                 for choice in target_choices {
                     push_choice(&mut choices, choice);
                 }

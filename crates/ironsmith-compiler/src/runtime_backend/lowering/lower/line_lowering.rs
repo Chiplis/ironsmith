@@ -997,11 +997,39 @@ fn lower_alternative_casting_method_chunk(
     let LineChunkLoweringInput {
         mut builder,
         parsed,
+        info,
+        allow_unsupported,
         ..
     } = input;
-    let NormalizedLineChunk::AlternativeCastingMethod(method) = parsed else {
+    let NormalizedLineChunk::AlternativeCastingMethod(mut method) = parsed else {
         unreachable!("alternative-casting-method lowerer received mismatched chunk");
     };
+    if let crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost {
+        additional_cost,
+        ..
+    } = &method
+    {
+        let Some(printed_cost) = builder.card_builder.mana_cost_ref().cloned() else {
+            if allow_unsupported {
+                return Ok(super::push_unsupported_marker(
+                    builder,
+                    info.raw_line.as_str(),
+                    "flash additional-cost casting requires a printed mana cost".to_string(),
+                ));
+            }
+            return Err(CardTextError::ParseError(format!(
+                "flash additional-cost casting requires a printed mana cost: '{}'",
+                info.raw_line
+            )));
+        };
+        let mut pips = printed_cost.pips().to_vec();
+        pips.extend(additional_cost.pips().iter().cloned());
+        let total_mana_cost = crate::mana::ManaCost::from_pips(pips);
+        method = crate::alternative_cast::AlternativeCastingMethod::flash_with_additional_cost(
+            additional_cost.clone(),
+            crate::cost::TotalCost::mana(total_mana_cost),
+        );
+    }
     builder.alternative_casts.push(method);
     Ok(builder)
 }

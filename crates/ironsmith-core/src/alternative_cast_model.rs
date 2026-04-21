@@ -66,6 +66,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Miracle {
         cost: ManaCost,
     },
+    FlashWithAdditionalCost {
+        additional_cost: ManaCost,
+        total_cost: TotalCost<C>,
+    },
     Foretell {
         cost: ManaCost,
     },
@@ -102,6 +106,7 @@ where
             | Self::Disturb { .. } => Zone::Graveyard,
             Self::Madness { .. } | Self::Foretell { .. } => Zone::Exile,
             Self::Miracle { .. }
+            | Self::FlashWithAdditionalCost { .. }
             | Self::Overload { .. }
             | Self::Composed { .. }
             | Self::MindbreakTrap { .. }
@@ -130,6 +135,7 @@ where
             Self::Escape { cost, .. } => cost.as_ref(),
             Self::Madness { cost } => Some(cost),
             Self::Miracle { cost } => Some(cost),
+            Self::FlashWithAdditionalCost { total_cost, .. } => total_cost.mana_cost(),
             Self::Foretell { cost } => Some(cost),
             Self::MindbreakTrap { cost, .. } => Some(cost),
             Self::Composed { total_cost, .. } => total_cost.mana_cost(),
@@ -145,6 +151,7 @@ where
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
+            Self::FlashWithAdditionalCost { total_cost, .. } => non_mana_components(total_cost),
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
             Self::Bestow { total_cost } => non_mana_components(total_cost),
             _ => Vec::new(),
@@ -155,6 +162,7 @@ where
         match self {
             Self::Flashback { total_cost } => Some(total_cost),
             Self::Harmonize { total_cost } => Some(total_cost),
+            Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
             Self::Composed { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
             _ => None,
@@ -204,6 +212,7 @@ where
             Self::Escape { .. } => "Escape",
             Self::Madness { .. } => "Madness",
             Self::Miracle { .. } => "Miracle",
+            Self::FlashWithAdditionalCost { .. } => "Flash",
             Self::Foretell { .. } => "Foretell",
             Self::Composed { name, .. } => name,
             Self::MindbreakTrap { name, .. } => name,
@@ -248,6 +257,13 @@ where
             name,
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
+        }
+    }
+
+    pub fn flash_with_additional_cost(additional_cost: ManaCost, total_cost: TotalCost<C>) -> Self {
+        Self::FlashWithAdditionalCost {
+            additional_cost,
+            total_cost,
         }
     }
 
@@ -377,6 +393,13 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             }
             Self::Madness { cost } => AlternativeCastingMethod::Madness { cost },
             Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
+            Self::FlashWithAdditionalCost {
+                additional_cost,
+                total_cost,
+            } => AlternativeCastingMethod::FlashWithAdditionalCost {
+                additional_cost,
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
             Self::Foretell { cost } => AlternativeCastingMethod::Foretell { cost },
             Self::Composed {
                 name,

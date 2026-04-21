@@ -728,6 +728,29 @@ pub(crate) fn has_valid_spell_timing_with_view(
     game.turn.active_player == player && crate::turn::is_sorcery_timing(game)
 }
 
+fn casting_method_grants_flash_timing(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            zone,
+            use_alternative: Some(idx),
+            ..
+        } => {
+            crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+        }
+        _ => None,
+    };
+    matches!(
+        method,
+        Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
+    )
+}
+
 pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {
     crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(3)]])
 }
@@ -1192,7 +1215,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
     let timing_started_at = PerfTimer::start();
-    if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view) {
+    if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view)
+        && !casting_method_grants_flash_timing(game, player, spell, casting_method)
+    {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
         return false;
     }

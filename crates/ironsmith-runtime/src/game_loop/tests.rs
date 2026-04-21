@@ -12785,6 +12785,146 @@ fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_asinine_antics_flash_extra_cost_is_available_at_instant_timing_only_as_alternative() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 6);
+
+    let asinine_antics_def = CardDefinitionBuilder::new(CardId::new(), "Asinine Antics")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.\n\
+             For each creature your opponents control, create a Cursed Role token attached to that creature.",
+        )
+        .expect("Asinine Antics should parse");
+    let asinine_antics_id =
+        game.create_object_from_definition(&asinine_antics_def, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(_),
+            } if *spell_id == asinine_antics_id
+        )),
+        "Asinine Antics should be castable on another player's turn through its flash extra-cost method"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *spell_id == asinine_antics_id
+        )),
+        "the normal sorcery-speed cast should stay unavailable at instant timing"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creature() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 4);
+
+    let asinine_antics_def = CardDefinitionBuilder::new(CardId::new(), "Asinine Antics")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.\n\
+             For each creature your opponents control, create a Cursed Role token attached to that creature.",
+        )
+        .expect("Asinine Antics should parse");
+    let asinine_antics_id =
+        game.create_object_from_definition(&asinine_antics_def, alice, Zone::Hand);
+
+    let bob_creature_a = create_creature(&mut game, "First Opponent Creature", bob, 2, 2);
+    let bob_creature_b = create_creature(&mut game, "Second Opponent Creature", bob, 3, 3);
+    let alice_creature = create_creature(&mut game, "Friendly Creature", alice, 2, 2);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: asinine_antics_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("Asinine Antics cast should start successfully");
+    assert_eq!(game.stack.len(), 1, "Asinine Antics should be on the stack");
+
+    resolve_stack_entry(&mut game).expect("Asinine Antics should resolve");
+
+    let cursed_roles: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| (id, object)))
+        .filter(|(_, object)| object.name == "Cursed Role")
+        .collect();
+    assert_eq!(
+        cursed_roles.len(),
+        2,
+        "one Cursed Role should be created for each opponent creature only"
+    );
+
+    let attached_targets: Vec<_> = cursed_roles
+        .iter()
+        .map(|(_, object)| object.attached_to)
+        .collect();
+    assert!(
+        attached_targets.contains(&Some(crate::object::AttachmentTarget::Object(
+            bob_creature_a
+        ))),
+        "one Cursed Role should attach to the first opponent creature"
+    );
+    assert!(
+        attached_targets.contains(&Some(crate::object::AttachmentTarget::Object(
+            bob_creature_b
+        ))),
+        "one Cursed Role should attach to the second opponent creature"
+    );
+    assert!(
+        !attached_targets.contains(&Some(crate::object::AttachmentTarget::Object(
+            alice_creature
+        ))),
+        "Asinine Antics should not create a Role for your own creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_disturb_cast_uses_back_face_characteristics_on_stack() {
     use crate::cards::basic_forest;
     use crate::mana::{ManaCost, ManaSymbol};

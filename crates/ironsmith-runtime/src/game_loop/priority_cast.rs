@@ -589,6 +589,12 @@ pub(super) fn format_alternative_method(
             let cost_desc = format_mana_cost_simple(cost);
             ("Miracle".to_string(), cost_desc)
         }
+        AlternativeCastingMethod::FlashWithAdditionalCost {
+            additional_cost, ..
+        } => (
+            "Flash".to_string(),
+            format!("{} more", format_mana_cost_simple(additional_cost)),
+        ),
         AlternativeCastingMethod::Foretell { cost } => {
             let cost_desc = format_mana_cost_simple(cost);
             ("Foretell".to_string(), cost_desc)

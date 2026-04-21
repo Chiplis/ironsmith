@@ -15038,6 +15038,72 @@ fn parse_create_supported_role_tokens_attached_to_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Asinine Antics")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it.\n\
+             For each creature your opponents control, create a Cursed Role token attached to that creature.",
+        )
+        .expect("Asinine Antics should parse");
+
+    assert_eq!(
+        def.alternative_casts.len(),
+        1,
+        "flash timing with an extra cost should be a cast method, not a spell effect"
+    );
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::FlashWithAdditionalCost {
+            additional_cost,
+            total_cost,
+        } => {
+            assert_eq!(additional_cost.to_oracle(), "{2}");
+            assert_eq!(
+                total_cost.mana_cost().map(ManaCost::to_oracle).as_deref(),
+                Some("{2}{U}{U}{2}"),
+                "flash cast should use the printed cost plus the extra payment"
+            );
+        }
+        other => panic!("expected flash-with-additional-cost method, got {other:?}"),
+    }
+
+    let spell_effect = def.spell_effect.as_ref().expect("spell effect");
+    let debug = format!("{spell_effect:?}");
+    assert!(
+        !debug.contains("MayEffect") && !debug.contains("PayManaEffect"),
+        "the flash extra payment should not become a resolution-time may-pay effect: {debug}"
+    );
+    assert!(
+        debug.contains("ForEachObject")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("Cursed Role")
+            && debug.contains("AttachObjectsEffect")
+            && debug.contains("__it__"),
+        "role creation should iterate opponent creatures and attach each token to that iterated creature, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "You may cast this spell as though it had flash if you pay {2} more to cast it"
+        ),
+        "expected oracle-like flash extra-cost line, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "For each creature your opponents control, create a Cursed Role token attached to that creature"
+        ),
+        "expected compact role attachment line, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_create_gold_token_uses_compact_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gild Variant")
         .parse_text("Exile target creature. Create a Gold token.")
