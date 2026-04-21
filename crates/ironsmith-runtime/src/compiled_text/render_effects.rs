@@ -34,12 +34,25 @@ fn prevention_put_counters_follow_up(
     Some(put)
 }
 
+fn put_counters_effect_for_source(effect: &Effect) -> Option<&crate::effects::PutCountersEffect> {
+    if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        return Some(put_counters);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return put_counters_effect_for_source(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return put_counters_effect_for_source(&with_id.effect);
+    }
+    None
+}
+
 fn describe_source_exile_with_counters_pair(first: &Effect, second: &Effect) -> Option<String> {
     let exile = first.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if exile.zone != Zone::Exile || !matches!(exile.target, ChooseSpec::Source) {
         return None;
     }
-    let put_counters = second.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let put_counters = put_counters_effect_for_source(second)?;
     if put_counters.distributed
         || put_counters.target_count.is_some()
         || !matches!(put_counters.target, ChooseSpec::Source)
@@ -47,9 +60,13 @@ fn describe_source_exile_with_counters_pair(first: &Effect, second: &Effect) -> 
         return None;
     }
 
+    let exile_text = describe_effect_impl(first);
+    let subject = exile_text
+        .strip_prefix("Exile ")
+        .map(|text| text.trim_end_matches('.').to_string())
+        .unwrap_or_else(|| describe_choose_spec(&exile.target));
     Some(format!(
-        "Exile {} with {} on it",
-        describe_choose_spec(&exile.target),
+        "Exile {subject} with {} on it",
         describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type),
     ))
 }
@@ -8407,6 +8424,53 @@ fn describe_return_to_hand_excluded_subtypes(
     ))
 }
 
+fn describe_each_player_return_all_from_their_graveyard(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 1 {
+        return None;
+    }
+    let return_all =
+        for_players.effects[0].downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    if return_all.filter.zone != Some(Zone::Graveyard)
+        || return_all.filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+
+    let target_text =
+        describe_choose_spec_without_graveyard_zone(&ChooseSpec::All(return_all.filter.clone()));
+    Some(format!(
+        "Each player returns {target_text} from their graveyard to the battlefield{}",
+        if return_all.tapped { " tapped" } else { "" }
+    ))
+}
+
+fn describe_no_more_counters_move_then_each_player_return(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let Condition::SourceHasNoCounter(counter_type) = conditional.condition else {
+        return None;
+    };
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 2 {
+        return None;
+    }
+    let move_to_zone = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Graveyard
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(_))
+    {
+        return None;
+    }
+    let for_players = conditional.if_true[1].downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let return_text = describe_each_player_return_all_from_their_graveyard(for_players)?;
+
+    Some(format!(
+        "If there are no more {} counters on it, put it into your graveyard and {}",
+        counter_type.description(),
+        lowercase_first(&return_text)
+    ))
+}
+
 fn half_rounded_up_subject(value: &Value) -> Option<String> {
     let Value::HalfRoundedDown(inner) = value else {
         return None;
@@ -12288,6 +12352,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_players_target_return_unless_draw(for_players) {
             return compact;
         }
+        if let Some(compact) = describe_each_player_return_all_from_their_graveyard(for_players) {
+            return compact;
+        }
         if for_players.filter == PlayerFilter::Any
             && for_players.effects.len() == 1
             && let Some(return_to_battlefield) =
@@ -14378,6 +14445,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_conditional_choose_both_instead(conditional) {
+            return compact;
+        }
+        if let Some(compact) = describe_no_more_counters_move_then_each_player_return(conditional) {
             return compact;
         }
         let true_branch = describe_effect_clause_list(&conditional.if_true)

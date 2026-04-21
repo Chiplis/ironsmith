@@ -3729,7 +3729,7 @@ fn test_parse_all_hallows_eve_countdown_from_exile() {
             && ability_debug.contains("SourceHasCounterAtLeast")
             && ability_debug.contains("RemoveCountersEffect")
             && ability_debug.contains("SourceHasNoCounter")
-            && ability_debug.contains("ReturnFromGraveyardToBattlefieldEffect"),
+            && ability_debug.contains("ReturnAllToBattlefieldEffect"),
         "expected exiled countdown trigger with counter removal and return branch, got {ability_debug}"
     );
     assert!(
@@ -3747,8 +3747,10 @@ fn test_parse_all_hallows_eve_countdown_from_exile() {
     assert!(
         rendered.contains("if this card is exiled with a scream counter on it")
             && rendered.contains("remove a scream counter from it")
-            && rendered.contains("if there are no scream counters on it")
-            && rendered.contains("each player returns all creature cards from their graveyard"),
+            && rendered.contains("if there are no more scream counters on it")
+            && rendered.contains(
+                "put it into your graveyard and each player returns all creature cards from their graveyard"
+            ),
         "expected countdown and mass return rendering, got {rendered}"
     );
 }
