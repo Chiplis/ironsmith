@@ -878,6 +878,75 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found.as_str() == tag)
     }
 
+    fn move_to_exile_uses_chosen_tag_or_iterated(
+        move_to_zone: &crate::effects::MoveToZoneEffect,
+        tag: &str,
+    ) -> bool {
+        if move_to_zone.zone != Zone::Exile {
+            return false;
+        }
+        match move_to_zone.target.base() {
+            ChooseSpec::Iterated => true,
+            ChooseSpec::Tagged(effect_tag) => effect_tag.as_str() == tag,
+            _ => false,
+        }
+    }
+
+    fn is_all_cards_in_player_graveyard(
+        filter: &ObjectFilter,
+        player: &PlayerFilter,
+    ) -> bool {
+        let mut expected = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(player.clone());
+        expected.single_graveyard = filter.single_graveyard;
+        filter == &expected
+    }
+
+    fn describe_player_exile_controlled_creature_and_graveyard_bundle(
+        filtered: &[&Effect],
+    ) -> Option<String> {
+        let [choose_effect, exile_chosen_effect, exile_graveyard_effect] = filtered else {
+            return None;
+        };
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let exile_chosen = downcast_move_to_zone(exile_chosen_effect)?;
+        let exile_graveyard = downcast_exile(exile_graveyard_effect)?;
+        let player = &choose.chooser;
+
+        let expected_creature = ObjectFilter::creature().controlled_by(player.clone());
+        let ChooseSpec::All(graveyard_filter) = &exile_graveyard.spec else {
+            return None;
+        };
+        if choose.is_search
+            || choose_exact_count(choose) != Some(1)
+            || choose_primary_zone(choose) != Some(Zone::Battlefield)
+            || choose.filter != expected_creature
+            || !move_to_exile_uses_chosen_tag_or_iterated(exile_chosen, choose.tag.as_str())
+            || exile_graveyard.face_down
+            || !is_all_cards_in_player_graveyard(graveyard_filter, player)
+        {
+            return None;
+        }
+
+        let subject_lower = describe_player_filter(player);
+        let subject = capitalize_first(&subject_lower);
+        let verb = player_verb(&subject_lower, "exile", "exiles");
+        let controls = if subject_lower == "you" {
+            "you control"
+        } else {
+            "they control"
+        };
+        let possessive = if subject_lower == "you" {
+            "your"
+        } else {
+            "their"
+        };
+        Some(format!(
+            "{subject} {verb} a creature {controls} and {possessive} graveyard"
+        ))
+    }
+
     fn describe_exile_split_pile_opponent_choice_bundle(filtered: &[&Effect]) -> Option<String> {
         let [exile_effect, tag_effect, choose_effect, unless_effect] = filtered else {
             return None;
@@ -2211,6 +2280,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_graveyard_creature_pile_exile_return_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_player_exile_controlled_creature_and_graveyard_bundle(&filtered)
+    {
         return compact;
     }
     if let Some(compact) = describe_damage_and_die_replacement_bundle(&filtered) {
@@ -3610,6 +3684,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 2 < filtered.len()
             && let Some(rendered) =
                 describe_graveyard_creature_pile_exile_return_bundle(&filtered[idx..idx + 3])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(rendered) = describe_player_exile_controlled_creature_and_graveyard_bundle(
+                &filtered[idx..idx + 3],
+            )
         {
             parts.push(rendered);
             idx += 3;
@@ -5617,6 +5700,35 @@ mod tests {
         assert_eq!(
             compact,
             "Each opponent chooses a creature they control and exiles it"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_player_exile_creature_and_graveyard() {
+        let player = PlayerFilter::target_opponent();
+        let tag = TagKey::from("__it__");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature().controlled_by(player.clone()),
+            ChoiceCount::exactly(1),
+            player.clone(),
+            tag.clone(),
+        )
+        .in_zone(Zone::Battlefield);
+        let exile_chosen =
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Exile, false);
+        let graveyard = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(player);
+        let exile_graveyard = crate::effects::ExileEffect::with_spec(ChooseSpec::All(graveyard));
+        let effects = vec![
+            Effect::new(choose),
+            Effect::new(exile_chosen),
+            Effect::new(exile_graveyard).tag(tag),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Target opponent exiles a creature they control and their graveyard"
         );
     }
 
