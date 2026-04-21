@@ -4511,7 +4511,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("squad {2}"),
+        rendered.contains("squad—{2}"),
         "expected squad optional-cost line, got {rendered}"
     );
 
@@ -4585,6 +4585,56 @@ fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
         .filter(|obj| obj.kind == ObjectKind::Token)
         .count();
     assert_eq!(token_count, 2, "expected two squad-created tokens");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_thrill_kill_disciple_compiles_squad_as_optional_cost_and_death_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thrill-Kill Disciple")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Mercenary])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text("Squad—{1}, Discard a card.\nWhen this creature dies, create a Junk token.")
+        .expect("thrill-kill disciple should parse");
+
+    assert_eq!(def.optional_costs.len(), 1, "expected one squad cost");
+    let squad = &def.optional_costs[0];
+    assert_eq!(squad.label, "Squad");
+    assert!(squad.repeatable, "squad should be repeatable");
+
+    let costs = squad.cost.costs();
+    assert_eq!(costs.len(), 2, "expected mana plus discard squad cost");
+    assert_eq!(
+        costs[0].mana_cost_ref().map(|mana| mana.to_oracle()),
+        Some("{1}".to_string()),
+        "expected squad mana payment first, got {costs:?}"
+    );
+    assert_eq!(
+        costs[1].discard_details(),
+        Some((1, None)),
+        "expected squad discard payment second, got {costs:?}"
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "squad discard should not become a spell effect"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Squad—{1}, Discard a card")
+            && rendered.contains("When this creature dies, create a Junk token"),
+        "expected Thrill-Kill Disciple text to preserve squad and dies trigger, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("TimesPaidLabel(\"Squad\")"),
+        "expected squad copy trigger, got {debug}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

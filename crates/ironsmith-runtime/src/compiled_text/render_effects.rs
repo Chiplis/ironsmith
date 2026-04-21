@@ -5709,6 +5709,24 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     if let Some(dynamic) = cost.dynamic_mana_cost_ref() {
         return describe_dynamic_mana_cost(dynamic);
     }
+    if let Some((count, card_type)) = cost.discard_details() {
+        let Some(card_type) = card_type else {
+            return if count == 1 {
+                "Discard a card".to_string()
+            } else {
+                format!("Discard {count} cards")
+            };
+        };
+        let type_text = with_indefinite_article(&format!(
+            "{} card",
+            describe_card_type_word_local(card_type)
+        ));
+        return if count == 1 {
+            format!("Discard {type_text}")
+        } else {
+            format!("Discard {count} {type_text}")
+        };
+    }
     if let Some(effect) = cost.effect_ref() {
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
             && matches!(tap.target, ChooseSpec::Source)
@@ -17351,11 +17369,18 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),
             // Most optional-cost keywords render with a space-separated payload.
             "Bargain" => label.to_string(),
-            "Kicker" | "Multikicker" | "Buyback" | "Entwine" | "Squad" => {
+            "Kicker" | "Multikicker" | "Buyback" | "Entwine" => {
                 if cost_text.trim().is_empty() {
                     label.to_string()
                 } else {
                     format!("{label} {cost_text}")
+                }
+            }
+            "Squad" => {
+                if cost_text.trim().is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label}—{}", cost_text.trim_end_matches('.'))
                 }
             }
             other if cost.repeatable => {
