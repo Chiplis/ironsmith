@@ -7613,6 +7613,21 @@ fn test_parse_snow_landwalk_keyword_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_keyword_bundle_compacts_landwalk_variants() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keyword Bundle Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("First strike\nForestwalk\nVigilance")
+        .expect("keyword bundle should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" | ");
+    assert_eq!(
+        rendered, "First strike, forestwalk, vigilance",
+        "expected keyword markers to compact into one bundle, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_cant_be_blocked_by_more_than_one_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Max Blockers Probe")
         .card_types(vec![CardType::Creature])
