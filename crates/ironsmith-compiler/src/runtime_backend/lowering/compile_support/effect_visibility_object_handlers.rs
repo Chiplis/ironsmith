@@ -952,6 +952,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
                 .collect();
             effects.push(effect);
+            let extends_existing_it_choice_set = ctx
+                .last_object_tag
+                .as_deref()
+                .is_some_and(|existing| existing == tag.as_str());
+            let choice_can_select_multiple = count.max.map_or(true, |max| max > 1)
+                || count.dynamic_x
+                || count.up_to_x
+                || extends_existing_it_choice_set;
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
@@ -1022,6 +1031,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
                 .collect();
             effects.push(effect);
+            let extends_existing_it_choice_set = ctx
+                .last_object_tag
+                .as_deref()
+                .is_some_and(|existing| existing == tag.as_str());
+            let choice_can_select_multiple = count.max.map_or(true, |max| max > 1)
+                || count.dynamic_x
+                || count.up_to_x
+                || extends_existing_it_choice_set;
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
@@ -1529,8 +1547,16 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             battlefield_tapped,
             attached_to,
         } => {
-            let (spec, mut choices) =
+            let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if !ctx.iterated_player
+                && ctx.last_it_choice_is_set
+                && ctx.last_object_tag.as_deref() == Some(IT_TAG)
+                && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+                && matches!(spec.base(), ChooseSpec::Iterated)
+            {
+                spec = ChooseSpec::Tagged(TagKey::from(IT_TAG));
+            }
             let resolved_attach_spec = if let Some(attach_target) = attached_to {
                 if *zone != Zone::Battlefield {
                     return Err(CardTextError::ParseError(

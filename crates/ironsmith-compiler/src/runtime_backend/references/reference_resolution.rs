@@ -216,6 +216,15 @@ fn chooser_bound_followup_player_filter(
     }
 }
 
+fn should_alias_followup_player_to_chosen_owner(
+    filter: &ObjectFilter,
+    chooser: Option<&PlayerFilter>,
+) -> bool {
+    filter.zone == Some(crate::zone::Zone::Graveyard)
+        && filter.owner == Some(PlayerFilter::Opponent)
+        && chooser.is_some_and(is_you_player_filter)
+}
+
 fn maybe_tag_target(
     target: &TargetAst,
     frame: &mut ReferenceFrame,
@@ -607,24 +616,14 @@ fn advance_reference_frame_for_effect(
                 frame.last_player_filter = Some(player_filter);
             }
             let chosen_tag = tag.as_str().to_string();
-            if let Some(resolved_filter) = resolved_filter.as_ref() {
-                if resolved_filter
-                    .owner
-                    .as_ref()
-                    .is_some_and(|owner| !is_you_player_filter(owner))
-                {
-                    frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(
-                        ObjectRef::tagged(chosen_tag.as_str()),
-                    ));
-                } else if resolved_filter
-                    .controller
-                    .as_ref()
-                    .is_some_and(|controller| !is_you_player_filter(controller))
-                {
-                    frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
-                        ObjectRef::tagged(chosen_tag.as_str()),
-                    ));
-                }
+            if resolved_filter.as_ref().is_some_and(|resolved_filter| {
+                should_alias_followup_player_to_chosen_owner(
+                    resolved_filter,
+                    chooser_filter.as_ref(),
+                )
+            }) {
+                frame.last_player_filter =
+                    Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(chosen_tag.as_str())));
             }
             frame.last_object_tag = Some(chosen_tag);
         }
@@ -672,24 +671,14 @@ fn advance_reference_frame_for_effect(
                 frame.last_player_filter = Some(player_filter);
             }
             let chosen_tag = tag.as_str().to_string();
-            if let Some(resolved_filter) = resolved_filter.as_ref() {
-                if resolved_filter
-                    .owner
-                    .as_ref()
-                    .is_some_and(|owner| !is_you_player_filter(owner))
-                {
-                    frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(
-                        ObjectRef::tagged(chosen_tag.as_str()),
-                    ));
-                } else if resolved_filter
-                    .controller
-                    .as_ref()
-                    .is_some_and(|controller| !is_you_player_filter(controller))
-                {
-                    frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
-                        ObjectRef::tagged(chosen_tag.as_str()),
-                    ));
-                }
+            if resolved_filter.as_ref().is_some_and(|resolved_filter| {
+                should_alias_followup_player_to_chosen_owner(
+                    resolved_filter,
+                    chooser_filter.as_ref(),
+                )
+            }) {
+                frame.last_player_filter =
+                    Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(chosen_tag.as_str())));
             }
             frame.last_object_tag = Some(chosen_tag);
         }

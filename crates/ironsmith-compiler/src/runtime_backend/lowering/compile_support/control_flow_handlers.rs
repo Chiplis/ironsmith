@@ -746,6 +746,7 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
     if tagged_object.is_some() {
         iterated_frame.last_object_tag = Some(IT_TAG.to_string());
+        iterated_frame.last_it_choice_is_set = false;
     }
 
     let mut id_gen = ctx.id_gen_context();

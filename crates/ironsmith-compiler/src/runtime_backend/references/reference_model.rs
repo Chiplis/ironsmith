@@ -44,6 +44,7 @@ impl ReferenceFrame {
         LoweringFrame {
             last_effect_id: self.last_effect_id,
             last_object_tag: self.last_object_tag.clone(),
+            last_it_choice_is_set: false,
             last_revealed_tag: None,
             last_player_filter: self.last_player_filter.clone(),
             recent_player_choice_tags: self.recent_player_choice_tags.clone(),

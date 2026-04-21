@@ -280,6 +280,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 |ctx| {
                     ctx.last_effect_id = None;
                     ctx.last_object_tag = Some(IT_TAG.to_string());
+                    ctx.last_it_choice_is_set = false;
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
