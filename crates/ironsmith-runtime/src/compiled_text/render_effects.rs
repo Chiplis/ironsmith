@@ -361,6 +361,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    if filtered.len() == 2
+        && let Some(choose) = filtered[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(phase_out) = filtered[1].downcast_ref::<crate::effects::PhaseOutEffect>()
+        && let Some(compact) = describe_choose_type_then_phase_out(choose, phase_out)
+    {
+        return compact;
+    }
 
     let visible_effects = filtered
         .iter()
@@ -11169,6 +11176,43 @@ pub(super) fn describe_reveal_until_sequence(
 
     Some(format!(
         "{chooser} reveals cards from the top of {library_owner} library until they reveal {selection}, puts that card onto the battlefield, then shuffles"
+    ))
+}
+
+fn describe_choose_type_then_phase_out(
+    choose: &crate::effects::ChooseObjectsEffect,
+    phase_out: &crate::effects::PhaseOutEffect,
+) -> Option<String> {
+    if choose.is_search
+        || !choose.count.is_single()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+    {
+        return None;
+    }
+
+    let ChooseSpec::All(phase_filter) = &phase_out.spec else {
+        return None;
+    };
+    let shares_chosen_type = phase_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == choose.tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+    });
+    if !shares_chosen_type || !phase_filter.nontoken {
+        return None;
+    }
+
+    let has_teferi_realm_options = choose.filter.card_types.contains(&CardType::Artifact)
+        && choose.filter.card_types.contains(&CardType::Creature)
+        && choose.filter.card_types.contains(&CardType::Land)
+        && choose.filter.card_types.contains(&CardType::Enchantment)
+        && choose.filter.excluded_subtypes.contains(&Subtype::Aura);
+    if !has_teferi_realm_options {
+        return None;
+    }
+
+    Some(format!(
+        "{} chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out",
+        capitalize_first(&describe_player_filter(&choose.chooser))
     ))
 }
 

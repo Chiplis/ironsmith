@@ -8878,7 +8878,7 @@ fn test_parse_blocked_filter_sets_blocked() {
         .parse_text("Target blocked creature gains lifelink until end of turn.")
         .expect("parse blocked target filter");
 
-    let debug = format!("{:#?}", def.spell_effect);
+    let debug = format!("{:#?}", def);
     assert!(
         debug.contains("blocked: true"),
         "expected blocked filter flag, got {debug}"
@@ -8972,7 +8972,7 @@ fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
         )
         .expect("parse equal-or-lesser mana value tagged comparison");
 
-    let debug = format!("{:#?}", def.spell_effect);
+    let debug = format!("{:#?}", def);
     assert!(
         debug.contains("ManaValueLteTagged"),
         "expected equal-or-lesser mana value relation against tagged object, got {debug}"
@@ -28423,6 +28423,27 @@ fn parse_oracle_turnabout_card_type_mass_tap_choice_regression() {
             && debug.contains("UntapEffect")
             && !debug.contains("UnlessActionEffect"),
         "expected modal mass tap/untap lowering without unless fallback, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_teferis_realm_type_choice_phase_out_regression() {
+    let def = parse_oracle_card_definition("Teferi's Realm");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("all nontoken permanents of that type phase out"),
+        "expected the phase-out line to stay present, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("PhaseOutEffect")
+            && debug.contains("SharesCardType")
+            && debug.contains("Aura"),
+        "expected Teferi's Realm to keep a type-linked choose/phase-out bundle, got {debug}"
     );
 }
 

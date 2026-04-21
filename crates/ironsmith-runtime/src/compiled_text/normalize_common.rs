@@ -2318,6 +2318,13 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Exchange control of two target permanents".to_string();
     }
+    if lower_normalized.contains(
+        "phase out all nontoken permanents that share a permanent type with that object",
+    ) || lower_normalized.contains(
+        "phase out all nontoken permanents that share a card type with that object",
+    ) {
+        return "All nontoken permanents of the chosen type phase out".to_string();
+    }
     if lower_normalized == "destroy all an opponent's nonland permanent"
         || lower_normalized == "destroy all an opponent's nonland permanent."
     {
