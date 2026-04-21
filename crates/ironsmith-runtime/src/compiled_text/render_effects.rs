@@ -5709,24 +5709,6 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     if let Some(dynamic) = cost.dynamic_mana_cost_ref() {
         return describe_dynamic_mana_cost(dynamic);
     }
-    if let Some((count, card_type)) = cost.discard_details() {
-        let Some(card_type) = card_type else {
-            return if count == 1 {
-                "Discard a card".to_string()
-            } else {
-                format!("Discard {count} cards")
-            };
-        };
-        let type_text = with_indefinite_article(&format!(
-            "{} card",
-            describe_card_type_word_local(card_type)
-        ));
-        return if count == 1 {
-            format!("Discard {type_text}")
-        } else {
-            format!("Discard {count} {type_text}")
-        };
-    }
     if let Some(effect) = cost.effect_ref() {
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
             && matches!(tap.target, ChooseSpec::Source)
@@ -5737,6 +5719,11 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
             && matches!(untap.target, ChooseSpec::Source)
         {
             return "{Q}".to_string();
+        }
+        if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(text) = describe_simple_discard_cost(discard)
+        {
+            return text;
         }
         return normalize_cost_phrase(&describe_effect(effect));
     }
@@ -5762,6 +5749,48 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     } else {
         display
     }
+}
+
+fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Option<String> {
+    if discard.random || discard.player != PlayerFilter::You || discard.tag.is_some() {
+        return None;
+    }
+    let Value::Fixed(count) = discard.count else {
+        return None;
+    };
+    let count = count.max(0) as u32;
+    let card_type = match &discard.card_filter {
+        None => None,
+        Some(filter) if filter.card_types.len() == 1 => {
+            let expected = ObjectFilter {
+                zone: Some(Zone::Hand),
+                card_types: filter.card_types.clone(),
+                ..Default::default()
+            };
+            if filter != &expected {
+                return None;
+            }
+            filter.card_types.first().copied()
+        }
+        Some(_) => return None,
+    };
+
+    let Some(card_type) = card_type else {
+        return Some(if count == 1 {
+            "Discard a card".to_string()
+        } else {
+            format!("Discard {count} cards")
+        });
+    };
+    let type_text = with_indefinite_article(&format!(
+        "{} card",
+        describe_card_type_word_local(card_type)
+    ));
+    Some(if count == 1 {
+        format!("Discard {type_text}")
+    } else {
+        format!("Discard {count} {type_text}")
+    })
 }
 
 fn describe_dynamic_mana_cost(dynamic: &ironsmith_core::DynamicManaCost) -> String {
