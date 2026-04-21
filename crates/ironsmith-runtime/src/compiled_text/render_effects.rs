@@ -6318,6 +6318,66 @@ fn is_iterated_player_creature_battlefield_filter(filter: &ObjectFilter) -> bool
         && filter.controller == Some(PlayerFilter::IteratedPlayer)
 }
 
+fn is_iterated_player_nontoken_land_battlefield_filter(filter: &ObjectFilter) -> bool {
+    filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
+        && filter.card_types == vec![CardType::Land]
+        && filter.controller == Some(PlayerFilter::IteratedPlayer)
+        && filter.nontoken
+}
+
+fn describe_for_players_bend_or_break(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 4 {
+        return None;
+    }
+
+    let choose_opponent =
+        for_players.effects[0].downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    if choose_opponent.chooser != PlayerFilter::IteratedPlayer
+        || choose_opponent.filter != PlayerFilter::Opponent
+        || choose_opponent.tag.as_str() != "divvy_opponent"
+        || choose_opponent.random
+    {
+        return None;
+    }
+
+    let choose_pile =
+        for_players.effects[1].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose_pile.tag.as_str() != "divvy_chosen"
+        || choose_pile.chooser != PlayerFilter::TaggedPlayer(choose_opponent.tag.clone())
+        || choose_primary_zone(choose_pile) != Some(Zone::Battlefield)
+        || choose_pile.is_search
+        || !choose_pile.count.is_any_number()
+        || !is_iterated_player_nontoken_land_battlefield_filter(&choose_pile.filter)
+    {
+        return None;
+    }
+
+    let tagged_destroy = for_players.effects[2].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let destroy = tagged_destroy
+        .effect
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    if !matches!(&destroy.spec, ChooseSpec::Tagged(tag) if tag.as_str() == "divvy_chosen") {
+        return None;
+    }
+
+    let tap = for_players.effects[3].downcast_ref::<crate::effects::TapEffect>()?;
+    let ChooseSpec::All(tap_filter) = &tap.target else {
+        return None;
+    };
+    if !is_iterated_player_nontoken_land_battlefield_filter(tap_filter)
+        || !filter_excludes_chosen_tag(tap_filter, "divvy_chosen")
+    {
+        return None;
+    }
+
+    Some(
+        "Each player separates all nontoken lands they control into two piles. For each player, one of their piles is chosen by one of their opponents of their choice. Destroy all lands in the chosen piles. Tap all lands in the other piles."
+            .to_string(),
+    )
+}
+
 fn describe_for_players_may_choose_then_destroy_chosen(
     for_players: &crate::effects::ForPlayersEffect,
     destroy: &crate::effects::DestroyEffect,
@@ -11614,6 +11674,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) = describe_for_players_bend_or_break(for_players) {
+            return compact;
+        }
         if let Some(compact) = describe_for_players_collision_of_realms(for_players) {
             return compact;
         }

@@ -28477,7 +28477,7 @@ fn parse_oracle_bend_or_break_keeps_divvy_pile_control_binding() {
 
     let raw = format!("{:?}", def.spell_effect);
     assert!(
-        raw.contains("chooser: ChosenPlayer") && raw.contains("controller: Some(IteratedPlayer)"),
+        raw.contains("chooser: TaggedPlayer") && raw.contains("controller: Some(IteratedPlayer)"),
         "expected chosen opponent to choose from the iterated player's lands, got {raw}"
     );
 }

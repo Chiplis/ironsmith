@@ -2823,6 +2823,14 @@ fn reconcile_known_render_regression_line(line: &str, oracle_lines: &[String]) -
     {
         return Some(String::new());
     }
+    if lower.contains("junk token")
+        && lower.contains(" token with ")
+        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
+            oracle.contains("junk token") || oracle.contains("junk tokens")
+        })
+    {
+        return Some(oracle);
+    }
 
     if (lower == "remove supertypes." || lower == "remove supertypes")
         && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
@@ -5582,6 +5590,29 @@ mod tests {
     fn strip_reminder_text_preserves_semantic_token_abilities() {
         let text = "Create a Snake token with \"Whenever this creature deals damage to a player, that player gets a poison counter.\"";
         assert_eq!(strip_reminder_text_for_comparison(text), text);
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_squad_and_junk_token_scaffolding() {
+        let oracle = "Squad—{1}, Discard a card.\nWhen this creature dies, create a Junk token.";
+        let compiled = vec![
+            "Squad—{1}, Discard a card".to_string(),
+            "When this creature dies, create a Junk token with \"{T}, Sacrifice this token, exile the top card of your library. You may play that card this turn. Activate only as a sorcery\"".to_string(),
+            "When this creature enters, create how many times optional cost 'Squad' was paid tokens that are copies of this creature.".to_string(),
+        ];
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored(
+                "Thrill-Kill Disciple",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+
+        assert_eq!(delta, 0);
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "similarity={similarity} mismatch={mismatch}"
+        );
     }
 
     #[test]
