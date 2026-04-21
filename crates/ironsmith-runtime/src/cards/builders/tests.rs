@@ -21065,6 +21065,105 @@ fn render_source_surface_for_hard_triggered_and_static_clauses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Answered Prayers Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature you control enters, you gain 1 life. If this enchantment isn't a creature, it becomes a 3/3 Angel creature with flying in addition to its other types until end of turn.",
+        )
+        .expect("Answered Prayers text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("GainLifeEffect"),
+        "expected the enter trigger to include life gain, got {debug}"
+    );
+    assert!(
+        debug.contains("AddSubtypes") && debug.contains("Angel"),
+        "expected the animation clause to add Angel, got {debug}"
+    );
+    assert!(
+        debug.contains("flying"),
+        "expected the animation clause to grant flying, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("gain 1 life") && rendered.contains("angel creature with flying"),
+        "expected oracle-like rendered text for Answered Prayers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn answered_prayers_trigger_gains_life_when_a_creature_enters() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Answered Prayers Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature you control enters, you gain 1 life. If this enchantment isn't a creature, it becomes a 3/3 Angel creature with flying in addition to its other types until end of turn.",
+        )
+        .expect("Answered Prayers text should parse");
+
+    let trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Answered Prayers should have a triggered ability");
+
+    let gain_effect = trigger
+        .effects
+        .iter()
+        .find(|effect| format!("{:?}", effect).contains("GainLifeEffect"))
+        .expect("trigger should include a gain-life effect");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let answered_prayers_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let creature_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Answer Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let entering_id = game.create_object_from_definition(&creature_def, alice, Zone::Hand);
+    let snapshot =
+        crate::snapshot::ObjectSnapshot::from_object(game.object(entering_id).unwrap(), &game);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            entering_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.iter().any(|entry| entry.source == answered_prayers_id),
+        "Answered Prayers should trigger when a creature you control enters"
+    );
+
+    let starting_life = game.player(alice).unwrap().life;
+    let mut ctx = crate::effects::ExecutionContext::new_default(answered_prayers_id, alice);
+    gain_effect
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("gain life effect should resolve");
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        starting_life + 1,
+        "Answered Prayers should gain 1 life when the trigger resolves"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_source_surface_for_hard_spell_effect_clauses() {
     let cases = [
         (
