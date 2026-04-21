@@ -2658,7 +2658,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
 fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext};
     use crate::game_state::StackEntry;
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
@@ -4531,7 +4531,7 @@ fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger(
 fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4727,7 +4727,7 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext};
     use crate::object::ObjectKind;
     use crate::tests::test_helpers::setup_two_player_game;
     use crate::zone::Zone;
@@ -4821,7 +4821,7 @@ fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
 #[test]
 fn test_scavenge_uses_source_snapshot_power_after_source_is_exiled() {
     use crate::ability::AbilityKind;
-    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext, ResolvedTarget};
     use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
@@ -4934,7 +4934,7 @@ fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {
 fn test_mobilize_trigger_creates_attacking_warriors() {
     use crate::ability::AbilityKind;
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext};
     use crate::zone::Zone;
 
     let mut game = crate::tests::test_helpers::setup_two_player_game();
@@ -6973,8 +6973,8 @@ fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
- {
+fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line(
+) {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thought Sponge Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
@@ -12428,11 +12428,10 @@ fn parse_reveal_card_this_way_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(
-        def.abilities
-            .iter()
-            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
-    );
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -12450,11 +12449,10 @@ fn parse_optional_reveal_first_draw_trigger_clause() {
         AbilityKind::Static(static_ability)
             if static_ability.id() == StaticAbilityId::RevealFirstCardYouDrawEachTurn
     )));
-    assert!(
-        def.abilities
-            .iter()
-            .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
-    );
+    assert!(def
+        .abilities
+        .iter()
+        .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -14529,7 +14527,7 @@ fn parse_shape_anew_targets_controller_and_consults_until_artifact() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
-    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext, ResolvedTarget};
 
     fn artifact(name: &str) -> crate::cards::CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)
@@ -26291,7 +26289,7 @@ fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
 #[test]
 fn over_the_top_moves_nonpermanents_to_their_owners_graveyards_at_runtime() {
     use crate::card::CardBuilder;
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::{execute_effect, ExecutionContext};
     use crate::zone::Zone;
 
     let def = parse_oracle_card_definition("Over the Top");
@@ -30431,6 +30429,40 @@ fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
             || (rendered.contains("Whenever you gain life, surveil 1.")
                 && rendered.contains("This ability triggers only once each turn")),
         "expected render to preserve first-time trigger surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_vengeful_warchief_keeps_first_life_loss_trigger_shape() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vengeful Warchief")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Orc, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Whenever you lose life for the first time each turn, put a +1/+1 counter on this creature.",
+        )
+        .expect("Vengeful Warchief should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("PlayerLosesLifeTrigger")
+            && debug.contains("player: You")
+            && debug.contains("MaxTimesEachTurn(1)")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("target: Source"),
+        "expected Vengeful Warchief to lower into a self-countering life-loss trigger, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Whenever you lose life for the first time each turn, put a +1/+1 counter on this creature.",
+        "expected debug-safe compiled text to preserve the first-time wording, got {rendered}"
     );
 }
 

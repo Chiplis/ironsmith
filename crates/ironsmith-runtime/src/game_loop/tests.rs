@@ -1582,6 +1582,75 @@ fn test_queue_triggers_tracks_life_lost_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn vengeful_warchief_triggers_only_on_the_first_life_loss_each_turn() {
+    use crate::events::life::LifeLossEvent;
+    use crate::object::CounterType;
+    use crate::triggers::TriggerEvent;
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let warchief = CardDefinitionBuilder::new(CardId::from_raw(81_700), "Vengeful Warchief")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Orc, crate::types::Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Whenever you lose life for the first time each turn, put a +1/+1 counter on this creature.",
+        )
+        .expect("Vengeful Warchief should parse");
+    let warchief_id =
+        game.create_object_from_definition(&warchief, alice, crate::zone::Zone::Battlefield);
+
+    let first_loss = TriggerEvent::new_with_provenance(
+        LifeLossEvent::from_effect(alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, first_loss, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Vengeful Warchief should trigger on the first life loss");
+    assert_eq!(game.stack.len(), 1, "the first trigger should use the stack");
+    resolve_stack_entry(&mut game).expect("Vengeful Warchief trigger should resolve");
+    assert_eq!(
+        game.object(warchief_id)
+            .expect("warchief should exist")
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "the first life loss should place one +1/+1 counter"
+    );
+
+    let second_loss = TriggerEvent::new_with_provenance(
+        LifeLossEvent::from_effect(alice, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, second_loss, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second life loss should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "the trigger should not go on the stack a second time this turn"
+    );
+    assert_eq!(
+        game.object(warchief_id)
+            .expect("warchief should still exist")
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "the second life loss should not add another counter"
+    );
+}
+
 #[test]
 fn test_triggered_mana_ability_resolves_immediately_without_stack() {
     let mut game = setup_game();

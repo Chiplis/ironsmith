@@ -1216,7 +1216,12 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
         for rendered_line in
             describe_ability(idx + 1, &structured_ability, subject, rewrite_it_deals)
         {
-            push_safe_intrinsic_marker_replacement(&mut replacements, &rendered_line, &label);
+            push_safe_intrinsic_marker_replacement(
+                def,
+                &mut replacements,
+                &rendered_line,
+                &label,
+            );
         }
     }
 
@@ -1234,6 +1239,7 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
             continue;
         };
         push_safe_intrinsic_marker_replacement(
+            def,
             &mut replacements,
             &describe_alternative_cast_line(method, idx),
             &label,
@@ -1285,12 +1291,17 @@ fn is_safe_intrinsic_marker_surface(def: &CardDefinition, line: &str) -> bool {
 }
 
 fn push_safe_intrinsic_marker_replacement(
+    def: &CardDefinition,
     replacements: &mut Vec<(String, String)>,
     rendered_line: &str,
     marker_line: &str,
 ) {
     let rendered = canonicalize_intrinsic_render_line(rendered_line);
     let marker = canonicalize_intrinsic_render_line(marker_line);
+    if safe_intrinsic_first_time_each_turn_replacement(def, &rendered, &marker) {
+        replacements.push((rendered, marker));
+        return;
+    }
     if rendered.is_empty()
         || marker.is_empty()
         || rendered.eq_ignore_ascii_case(&marker)
@@ -1299,6 +1310,26 @@ fn push_safe_intrinsic_marker_replacement(
         return;
     }
     replacements.push((rendered, marker));
+}
+
+fn safe_intrinsic_first_time_each_turn_replacement(
+    def: &CardDefinition,
+    rendered_line: &str,
+    marker_line: &str,
+) -> bool {
+    let marker_lower = compact_whitespace(marker_line).to_ascii_lowercase();
+    if !marker_lower.contains("for the first time each turn") {
+        return false;
+    }
+
+    let rendered_lower = compact_whitespace(rendered_line).to_ascii_lowercase();
+    let rendered_stripped = rendered_lower
+        .replace(". this ability triggers only once each turn", "")
+        .replace(" this ability triggers only once each turn", "");
+    let marker_stripped = marker_lower.replace(" for the first time each turn", "");
+
+    intrinsic_match_key_for_def(def, &rendered_stripped)
+        == intrinsic_match_key_for_def(def, &marker_stripped)
 }
 
 fn alternative_cast_intrinsic_marker_line(method: &AlternativeCastingMethod) -> Option<String> {
