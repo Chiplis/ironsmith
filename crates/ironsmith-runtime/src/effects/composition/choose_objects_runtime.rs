@@ -1487,6 +1487,35 @@ mod tests {
     }
 
     #[test]
+    fn test_target_chooser_binds_iterated_owner_for_graveyard_choice() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let _alice_card = create_graveyard_card(&mut game, "Alice Creature", alice);
+        let bob_card = create_graveyard_card(&mut game, "Bob Creature", bob);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+
+        let filter = ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .owned_by(PlayerFilter::IteratedPlayer);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::target_opponent(), "chosen")
+            .in_zone(Zone::Graveyard);
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx)
+            .expect("target chooser should bind that player's graveyard");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(
+            chosen,
+            vec![bob_card],
+            "target opponent should choose only from their own graveyard"
+        );
+    }
+
+    #[test]
     fn test_multi_zone_search_collects_hand_and_library_candidates() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

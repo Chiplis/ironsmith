@@ -10468,6 +10468,36 @@ fn parse_target_opponent_chooses_creature_then_destroy_that_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_scrounge_debug_text_preserves_target_opponent_choice() {
+    let oracle = "Target opponent chooses an artifact card in their graveyard. Put that card onto the battlefield under your control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Scrounge Variant")
+        .parse_text(oracle)
+        .expect("Scrounge-style target-opponent graveyard choice should parse");
+
+    let rendered = debug_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![oracle.to_string()],
+        "expected debug compiled text to preserve target-opponent choice semantics"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Scrounge",
+            oracle,
+            &rendered,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert_eq!(similarity, 1.0);
+    assert_eq!(delta, 0);
+    assert!(
+        !mismatch,
+        "expected Scrounge debug text to avoid semantic mismatch, got {rendered:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_destroy() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Wei Assassins")
         .card_types(vec![CardType::Creature])

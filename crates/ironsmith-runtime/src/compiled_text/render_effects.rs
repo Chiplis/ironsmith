@@ -4401,7 +4401,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) =
-                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+                unwrap_tag_wrappers(filtered[idx + 1])
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(compact) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
         {
             parts.push(compact);
@@ -8129,6 +8130,20 @@ pub(super) fn describe_choose_zone_origin(
     }
 }
 
+fn describe_choose_zone_location(
+    choose: &crate::effects::ChooseObjectsEffect,
+    zone_text: &str,
+) -> String {
+    match choose.filter.owner.as_ref() {
+        Some(PlayerFilter::IteratedPlayer) => format!("in their {zone_text}"),
+        Some(owner) => format!(
+            "in {} {zone_text}",
+            describe_possessive_player_filter(owner)
+        ),
+        None => format!("in a {zone_text}"),
+    }
+}
+
 pub(super) fn describe_choose_then_move_to_battlefield(
     choose: &crate::effects::ChooseObjectsEffect,
     move_to_zone: &crate::effects::MoveToZoneEffect,
@@ -8137,7 +8152,8 @@ pub(super) fn describe_choose_then_move_to_battlefield(
         return None;
     }
 
-    let origin = match choose_primary_zone(choose)? {
+    let primary_zone = choose_primary_zone(choose)?;
+    let origin = match primary_zone {
         Zone::Hand => describe_choose_zone_origin(choose, "hand"),
         Zone::Graveyard => describe_choose_zone_origin(choose, "graveyard"),
         Zone::Library => {
@@ -8160,7 +8176,6 @@ pub(super) fn describe_choose_then_move_to_battlefield(
     };
 
     let chooser = describe_player_filter(&choose.chooser);
-    let put_verb = player_verb(&chooser, "put", "puts");
     let chosen = describe_choose_selection(choose);
     let tapped = if move_to_zone.enters_tapped {
         " tapped"
@@ -8179,6 +8194,28 @@ pub(super) fn describe_choose_then_move_to_battlefield(
         }
     };
 
+    if chooser != "you"
+        && move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You
+    {
+        let choice_location = match primary_zone {
+            Zone::Hand => describe_choose_zone_origin(choose, "hand"),
+            Zone::Graveyard => describe_choose_zone_location(choose, "graveyard"),
+            Zone::Library => describe_choose_zone_origin(choose, "library"),
+            _ => return None,
+        };
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let moved = if choose.count.is_single() {
+            "that card"
+        } else {
+            "those cards"
+        };
+        return Some(format!(
+            "{} {choose_verb} {chosen} {choice_location}. Put {moved} onto the battlefield{tapped}{control_suffix}",
+            capitalize_first(&chooser)
+        ));
+    }
+
+    let put_verb = player_verb(&chooser, "put", "puts");
     Some(format!(
         "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{control_suffix}"
     ))
