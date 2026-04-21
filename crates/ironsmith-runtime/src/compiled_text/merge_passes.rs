@@ -17,6 +17,9 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     if lower.is_empty() {
         return false;
     }
+    if is_landwalk_keyword_phrase(&lower) {
+        return true;
+    }
     if lower.starts_with("protection from ") {
         return true;
     }
@@ -83,6 +86,16 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
             | "partner"
             | "assist"
     )
+}
+
+fn is_landwalk_keyword_phrase(lower: &str) -> bool {
+    if lower == "landwalk" || lower == "nonbasic landwalk" || lower == "artifact landwalk" {
+        return true;
+    }
+
+    lower.ends_with("walk")
+        && lower.len() > 4
+        && (lower.split_whitespace().count() <= 2 || lower.starts_with("snow "))
 }
 
 pub(super) fn split_have_clause(clause: &str) -> Option<(String, String)> {
