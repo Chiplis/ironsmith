@@ -5918,7 +5918,7 @@ pub(super) fn with_indefinite_article(noun: &str) -> String {
         return trimmed.to_string();
     }
     let first = trimmed.chars().next().unwrap_or('a').to_ascii_lowercase();
-    let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+    let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u' | 'x') {
         "an"
     } else {
         "a"

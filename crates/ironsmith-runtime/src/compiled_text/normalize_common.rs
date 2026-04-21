@@ -6996,7 +6996,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    if !preserves_land_types {
+    if !preserves_land_types && !abilities.is_empty() {
         if plural_target {
             text.push_str(" in addition to their other types");
         } else {

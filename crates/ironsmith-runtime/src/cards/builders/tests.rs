@@ -21081,7 +21081,7 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         "expected the enter trigger to include life gain, got {debug}"
     );
     assert!(
-        debug.contains("TargetAst::Source") || debug.contains("Source("),
+        debug.contains("target: Source") || debug.contains("target_spec: Some(Source)"),
         "expected the animation clause to target the source permanent, got {debug}"
     );
     assert!(
@@ -21140,7 +21140,7 @@ fn answered_prayers_trigger_gains_life_when_a_creature_enters() {
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    let entering_id = game.create_object_from_definition(&creature_def, alice, Zone::Hand);
+    let entering_id = game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
     let snapshot =
         crate::snapshot::ObjectSnapshot::from_object(game.object(entering_id).unwrap(), &game);
     let event = crate::triggers::TriggerEvent::new_with_provenance(
