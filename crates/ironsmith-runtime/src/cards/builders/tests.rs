@@ -7,7 +7,7 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CreateTokenEffect, DestroyEffect, GainLifeEffect, MoveToZoneEffect,
+    CreateTokenEffect, DestroyEffect, EffectExecutor, GainLifeEffect, MoveToZoneEffect,
     ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
 };
 use crate::object::AuraAttachmentFilter;
@@ -26913,6 +26913,180 @@ fn raw_render_regression_demonic_pact_keeps_modal_bullets() {
             && rendered.contains("• Draw two cards.")
             && rendered.contains("• You lose the game."),
         "expected Demonic Pact raw compiled text to keep all modal bullet options, got {rendered}"
+    );
+}
+
+fn proud_pack_rhino_probe_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_000), "Proud Pack-Rhino")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rhino])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, choose one —\n• Put a shield counter on target permanent.\n• Proliferate.",
+        )
+        .expect("Proud Pack-Rhino should parse")
+}
+
+fn proud_pack_rhino_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>()),
+            _ => None,
+        })
+        .expect("Proud Pack-Rhino should have a modal ETB ability")
+}
+
+#[test]
+fn proud_pack_rhino_modal_etb_renders_with_bullets() {
+    let def = proud_pack_rhino_probe_definition();
+    let modal = proud_pack_rhino_modal_effect(&def);
+
+    assert_eq!(modal.modes.len(), 2);
+    assert_eq!(modal.min_choose_count, Value::Fixed(1));
+    assert_eq!(modal.choose_count, Value::Fixed(1));
+
+    let shield_mode = modal.modes[0].effects[0]
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .expect("first mode should put a shield counter");
+    assert_eq!(
+        shield_mode.counter_type,
+        crate::object::CounterType::Named("shield")
+    );
+    assert_eq!(shield_mode.amount, Value::Fixed(1));
+    assert_eq!(shield_mode.target, ChooseSpec::target_permanent());
+    assert!(
+        modal.modes[1].effects[0]
+            .downcast_ref::<crate::effects::ProliferateEffect>()
+            .is_some(),
+        "second mode should proliferate"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("When this creature enters, choose one")
+            && rendered.contains("\n• Put a shield counter on target permanent.")
+            && rendered.contains("\n• Proliferate."),
+        "expected Proud Pack-Rhino modal ETB to render as a header plus bullets, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose one - Put a shield counter"),
+        "expected Proud Pack-Rhino modal rendering not to flatten the first mode, got {rendered}"
+    );
+}
+
+#[test]
+fn proud_pack_rhino_shield_mode_puts_shield_counter_on_target_permanent() {
+    let def = proud_pack_rhino_probe_definition();
+    let modal = proud_pack_rhino_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rhino_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_001), "Training Idol")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(rhino_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![0]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_permanent(),
+            range: 0..1,
+        }]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Proud Pack-Rhino shield mode should resolve");
+
+    assert_eq!(
+        game.object(target_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::Named("shield"))
+            .copied()),
+        Some(1),
+        "target permanent should receive exactly one shield counter"
+    );
+}
+
+#[test]
+fn proud_pack_rhino_proliferate_mode_increases_selected_counters() {
+    struct SelectRhinoProliferateTargets {
+        permanent: ObjectId,
+        player: PlayerId,
+    }
+
+    impl crate::decision::DecisionMaker for SelectRhinoProliferateTargets {
+        fn decide_proliferate(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::ProliferateContext,
+        ) -> crate::decisions::specs::ProliferateResponse {
+            crate::decisions::specs::ProliferateResponse {
+                permanents: vec![self.permanent],
+                players: vec![self.player],
+            }
+        }
+    }
+
+    let def = proud_pack_rhino_probe_definition();
+    let modal = proud_pack_rhino_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rhino_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let countered_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_002), "Countered Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    assert!(
+        game.add_counters(countered_id, crate::object::CounterType::PlusOnePlusOne, 1)
+            .is_some(),
+        "countered creature should be on the battlefield"
+    );
+    game.players[1].poison_counters = 1;
+
+    let mut dm = SelectRhinoProliferateTargets {
+        permanent: countered_id,
+        player: bob,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(rhino_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Proud Pack-Rhino proliferate mode should resolve");
+
+    assert_eq!(
+        game.object(countered_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        Some(2),
+        "selected permanent should get another counter of each kind it already has"
+    );
+    assert_eq!(
+        game.players[1].poison_counters, 2,
+        "selected player should get another poison counter"
     );
 }
 

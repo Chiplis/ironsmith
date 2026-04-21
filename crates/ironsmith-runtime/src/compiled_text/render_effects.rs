@@ -14450,8 +14450,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             })
             .collect::<Vec<_>>()
             .join(" • ");
+        let bullet_modes = format!("{header}\n• {}", modes.replace(" • ", "\n• "));
         if choose_mode.disallow_previously_chosen_modes {
-            return format!("{header}\n• {}", modes.replace(" • ", "\n• "));
+            return bullet_modes;
         }
         if choose_mode.allow_repeated_modes {
             let normalized_header = header
@@ -14464,7 +14465,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "{normalized_header}. You may choose the same mode more than once. • {modes}"
             );
         }
-        return format!("{header} {modes}");
+        return bullet_modes;
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         if let Some(compact) = describe_compact_create_token(create_token) {

@@ -116,7 +116,7 @@ pub(super) fn normalize_debug_safe_surface(
     let final_lines = compact_echo_keyword_marker_lines(safe_intrinsics)
         .into_iter()
         .map(|line| {
-            let normalized = normalize_sentence_surface_style(&line);
+            let normalized = normalize_debug_safe_sentence_surface(&line);
             if is_safe_intrinsic_marker_surface(provenance_def, &line) {
                 normalized.trim_end_matches('.').to_string()
             } else {
@@ -134,6 +134,45 @@ pub(super) fn normalize_debug_safe_surface(
         .filter(|line| !line.is_empty())
         .collect();
     normalize_debug_safe_line_sequences(provenance_def, final_lines)
+}
+
+fn normalize_debug_safe_sentence_surface(line: &str) -> String {
+    if !line.contains('\n') {
+        return normalize_sentence_surface_style(line);
+    }
+
+    line.lines()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            if let Some(body) = part.strip_prefix('•') {
+                let body = normalize_sentence_surface_style(body.trim());
+                return format!("• {body}");
+            }
+            if let Some(header) = normalize_modal_header_surface(part) {
+                return header;
+            }
+            normalize_sentence_surface_style(part)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_modal_header_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.').trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.contains("choose ") {
+        return None;
+    }
+    let head = trimmed
+        .strip_suffix('-')
+        .or_else(|| trimmed.strip_suffix('—'))?
+        .trim();
+    if head.is_empty() {
+        None
+    } else {
+        Some(format!("{} —", capitalize_first(head)))
+    }
 }
 
 fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str) -> String {
