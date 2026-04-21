@@ -89,13 +89,25 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
 }
 
 fn is_landwalk_keyword_phrase(lower: &str) -> bool {
-    if lower == "landwalk" || lower == "nonbasic landwalk" || lower == "artifact landwalk" {
+    if matches!(
+        lower,
+        "landwalk" | "nonbasic landwalk" | "artifact landwalk" | "legendary landwalk"
+    ) {
         return true;
     }
 
-    lower.ends_with("walk")
-        && lower.len() > 4
-        && (lower.split_whitespace().count() <= 2 || lower.starts_with("snow "))
+    if let Some(rest) = lower.strip_prefix("snow ") {
+        return is_landwalk_subtype_compound(rest);
+    }
+
+    is_landwalk_subtype_compound(lower)
+}
+
+fn is_landwalk_subtype_compound(lower: &str) -> bool {
+    matches!(
+        lower,
+        "plainswalk" | "islandwalk" | "swampwalk" | "mountainwalk" | "forestwalk" | "desertwalk"
+    )
 }
 
 pub(super) fn split_have_clause(clause: &str) -> Option<(String, String)> {

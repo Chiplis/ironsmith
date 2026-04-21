@@ -23,6 +23,9 @@ fn safe_intrinsic_label_from_ability_source_text(ability: &Ability) -> Option<St
     if let Some(label) = safe_echo_label_from_source_text(text) {
         return Some(label);
     }
+    if let Some(label) = safe_first_time_each_turn_trigger_label_from_source_text(ability, text) {
+        return Some(label);
+    }
     let label = intrinsic_label_from_source_text(Some(text))?;
     if let Some(keyword) = describe_keyword_ability(ability) {
         return intrinsic_label_from_source_text(Some(&keyword));
@@ -42,6 +45,48 @@ fn safe_intrinsic_label_from_ability_source_text(ability: &Ability) -> Option<St
             || lower.starts_with("annihilator ")
             || lower.starts_with("cumulative upkeep")))
     .then_some(label)
+}
+
+fn safe_first_time_each_turn_trigger_label_from_source_text(
+    ability: &Ability,
+    text: &str,
+) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    let max = triggered
+        .intervening_if
+        .as_ref()
+        .and_then(max_times_each_turn_limit)?;
+    if max != 1 {
+        return None;
+    }
+
+    let normalized = normalize_sentence_surface_style(&strip_parenthetical_segments(text.trim()));
+    let lower = normalized.to_ascii_lowercase();
+    let marker = " for the first time each turn";
+    let marker_idx = lower.find(marker)?;
+    let marker_end = marker_idx + marker.len();
+    let source_trigger = normalized[..marker_end].trim();
+    let expected_rendered = source_trigger.replacen(marker, "", 1);
+    expected_rendered
+        .eq_ignore_ascii_case(triggered.trigger.display().trim())
+        .then_some(normalized)
+}
+
+fn max_times_each_turn_limit(condition: &crate::ConditionExpr) -> Option<u32> {
+    match condition {
+        crate::ConditionExpr::MaxTimesEachTurn(limit) => Some(*limit),
+        crate::ConditionExpr::And(left, right) => match (
+            max_times_each_turn_limit(left),
+            max_times_each_turn_limit(right),
+        ) {
+            (Some(left), Some(right)) => Some(left.min(right)),
+            (Some(limit), None) | (None, Some(limit)) => Some(limit),
+            (None, None) => None,
+        },
+        _ => None,
+    }
 }
 
 pub(super) fn normalize_debug_safe_surface(
@@ -1228,6 +1273,7 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
     for cost in &def.optional_costs {
         let label = describe_optional_cost_line(cost);
         push_safe_intrinsic_marker_replacement(
+            def,
             &mut replacements,
             &describe_optional_cost_line(cost),
             &label,
