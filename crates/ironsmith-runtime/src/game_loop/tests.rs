@@ -867,6 +867,130 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn all_hallows_eve_exiles_with_counters_and_returns_graveyard_creatures_after_countdown() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let all_hallows_eve = CardDefinitionBuilder::new(CardId::from_raw(99_300), "All Hallow's Eve")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile All Hallow's Eve with two scream counters on it.\n\
+             At the beginning of your upkeep, if this card is exiled with a scream counter on it, remove a scream counter from it. If there are no more scream counters on it, put it into your graveyard and each player returns all creature cards from their graveyard to the battlefield.",
+        )
+        .expect("All Hallow's Eve text should parse");
+
+    let returned_a = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_301), "Returned Card Alpha")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let returned_a_stable_id = game
+        .object(returned_a)
+        .expect("first return card should exist")
+        .stable_id;
+    let returned_b = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_302), "Returned Card Beta")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let returned_b_stable_id = game
+        .object(returned_b)
+        .expect("second return card should exist")
+        .stable_id;
+
+    let spell_id = game.create_object_from_definition(&all_hallows_eve, alice, Zone::Stack);
+    let (spell_stable_id, spell_name) = game
+        .object(spell_id)
+        .map(|object| (object.stable_id, object.name.clone()))
+        .expect("spell should exist on stack");
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_source_info(spell_stable_id, spell_name),
+    );
+
+    resolve_stack_entry(&mut game).expect("All Hallow's Eve should resolve");
+
+    let exiled_id = game
+        .find_object_by_stable_id(spell_stable_id)
+        .expect("All Hallow's Eve should still be trackable after exile");
+    assert!(
+        game.object(exiled_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "All Hallow's Eve should be in exile after resolving"
+    );
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Named("scream")),
+        2,
+        "All Hallow's Eve should enter exile with two scream counters"
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "All Hallow's Eve should trigger from exile while it has a scream counter"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("All Hallow's Eve upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("first All Hallow's Eve upkeep trigger should resolve");
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Named("scream")),
+        1,
+        "first upkeep trigger should remove one scream counter"
+    );
+    assert!(
+        game.object(exiled_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "All Hallow's Eve should remain exiled with one counter"
+    );
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "All Hallow's Eve should trigger again while it has its last scream counter"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second All Hallow's Eve upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("second All Hallow's Eve upkeep trigger should resolve");
+
+    let final_id = game
+        .find_object_by_stable_id(spell_stable_id)
+        .expect("All Hallow's Eve should still be trackable after moving to graveyard");
+    assert!(
+        game.object(final_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "All Hallow's Eve should go to its owner's graveyard when the last counter is removed"
+    );
+    for stable_id in [returned_a_stable_id, returned_b_stable_id] {
+        let current_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("returned card should still be trackable after zone change");
+        assert!(
+            game.object(current_id)
+                .is_some_and(|object| object.zone == Zone::Battlefield),
+            "creature cards from both graveyards should return to the battlefield"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
     struct AcceptMayDecisionMaker;
 
@@ -3190,6 +3314,18 @@ fn test_extract_target_spec_no_count() {
     let extracted = extract_target_spec(&effect).expect("Should extract target");
     assert_eq!(extracted.min_targets, 1, "should default to min 1");
     assert_eq!(extracted.max_targets, Some(1), "should default to max 1");
+}
+
+#[test]
+fn test_extract_target_spec_attach_to_iterated_does_not_require_choice() {
+    let effect = Effect::attach_objects(
+        ChooseSpec::Tagged(crate::tag::TagKey::from("created")),
+        ChooseSpec::Iterated,
+    );
+    assert!(
+        extract_target_spec(&effect).is_none(),
+        "attaching to an iterated object should resolve automatically without asking for a target"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -12874,6 +13010,20 @@ fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creature() {
     let bob_creature_a = create_creature(&mut game, "First Opponent Creature", bob, 2, 2);
     let bob_creature_b = create_creature(&mut game, "Second Opponent Creature", bob, 3, 3);
     let alice_creature = create_creature(&mut game, "Friendly Creature", alice, 2, 2);
+    let target_requirements = super::targeting::extract_target_requirements(
+        &game,
+        asinine_antics_def
+            .spell_effect
+            .as_ref()
+            .expect("Asinine Antics should have a spell effect")
+            .flattened_default_effects(),
+        alice,
+        Some(asinine_antics_id),
+    );
+    assert!(
+        target_requirements.is_empty(),
+        "Asinine Antics should not ask for attachment targets; each Role attaches to the iterated creature, got {target_requirements:?}"
+    );
 
     let mut state = PriorityLoopState::new(game.players_in_game());
     let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
@@ -12921,6 +13071,18 @@ fn test_asinine_antics_attaches_cursed_roles_to_each_opponent_creature() {
         ))),
         "Asinine Antics should not create a Role for your own creature"
     );
+
+    game.refresh_continuous_state();
+    for creature_id in [bob_creature_a, bob_creature_b] {
+        let characteristics = game
+            .calculated_characteristics(creature_id)
+            .expect("opponent creature should have calculated characteristics");
+        assert_eq!(
+            (characteristics.power, characteristics.toughness),
+            (Some(1), Some(1)),
+            "Cursed Role should set each enchanted opponent creature's base power and toughness to 1/1"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

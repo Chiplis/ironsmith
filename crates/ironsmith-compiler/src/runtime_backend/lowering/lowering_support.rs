@@ -20,6 +20,7 @@ use super::compile_support::{
     trigger_supports_event_value,
 };
 use super::effect_ast_normalization::normalize_effects_ast;
+use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::effect_pipeline::{
     EffectPreludeTag, NormalizedAdditionalCostChoiceOptionAst, NormalizedParsedAbility,
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
@@ -106,6 +107,79 @@ fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
                 .collect(),
         },
         other => other,
+    }
+}
+
+fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
+    matches!(
+        trigger,
+        TriggerSpec::BeginningOfUpkeep(_)
+            | TriggerSpec::BeginningOfDrawStep(_)
+            | TriggerSpec::BeginningOfCombat(_)
+            | TriggerSpec::BeginningOfEndStep(_)
+            | TriggerSpec::BeginningOfPrecombatMain(_)
+            | TriggerSpec::BeginningOfPostcombatMain(_)
+    )
+}
+
+fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str> {
+    if phase_step_trigger_has_no_object_reference(trigger) {
+        return None;
+    }
+    if matches!(
+        trigger,
+        TriggerSpec::ThisDealsDamageTo(_)
+            | TriggerSpec::ThisDealsCombatDamageTo(_)
+            | TriggerSpec::DealsCombatDamageTo { .. }
+    ) {
+        Some("damaged")
+    } else {
+        Some("triggering")
+    }
+}
+
+fn retarget_it_target_to_source(target: &mut TargetAst) {
+    match target {
+        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+            *target = TargetAst::Source(span.clone());
+        }
+        TargetAst::Object(filter, span, _) if *filter == ObjectFilter::tagged(IT_TAG) => {
+            *target = TargetAst::Source(span.clone());
+        }
+        TargetAst::WithCount(inner, _) => retarget_it_target_to_source(inner),
+        _ => {}
+    }
+}
+
+fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
+    match effect {
+        EffectAst::PutCounters { target, .. }
+        | EffectAst::PutOrRemoveCounters { target, .. }
+        | EffectAst::RemoveUpToAnyCounters { target, .. } => {
+            retarget_it_target_to_source(target);
+        }
+        EffectAst::MoveToZone {
+            target,
+            attached_to,
+            ..
+        } => {
+            retarget_it_target_to_source(target);
+            if let Some(attached_to) = attached_to {
+                retarget_it_target_to_source(attached_to);
+            }
+        }
+        _ => {}
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            retarget_bare_it_effect_targets_to_source(effect);
+        }
+    });
+}
+
+fn retarget_phase_step_it_targets_to_source(effects: &mut [EffectAst]) {
+    for effect in effects {
+        retarget_bare_it_effect_targets_to_source(effect);
     }
 }
 
@@ -229,26 +303,21 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
-    let normalized = normalize_effects_ast(effects);
+    let mut normalized = normalize_effects_ast(effects);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
+    if let Some(trigger) = trigger
+        && phase_step_trigger_has_no_object_reference(trigger)
+        && !has_local_target_prelude
+    {
+        retarget_phase_step_it_targets_to_source(&mut normalized);
+    }
     let default_last_object_tag = if imports.last_object_tag.is_none()
         && !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
-        Some(crate::cards::builders::TagKey::from(
-            if matches!(
-                trigger,
-                Some(
-                    TriggerSpec::ThisDealsDamageTo(_)
-                        | TriggerSpec::ThisDealsCombatDamageTo(_)
-                        | TriggerSpec::DealsCombatDamageTo { .. }
-                )
-            ) {
-                "damaged"
-            } else {
-                "triggering"
-            },
-        ))
+        trigger
+            .and_then(default_trigger_last_object_tag)
+            .map(crate::cards::builders::TagKey::from)
     } else {
         None
     };
@@ -329,6 +398,10 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
 
+    if phase_step_trigger_has_no_object_reference(&trigger) && !has_local_target_prelude {
+        retarget_phase_step_it_targets_to_source(&mut body_effects);
+    }
+
     if intervening_if
         .as_ref()
         .is_some_and(predicate_contains_source_match)
@@ -352,22 +425,14 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     let default_last_object_tag = if !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
-        Some(crate::cards::builders::TagKey::from(
-            if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
-                // Exact single-partner attack triggers can bind "that creature"
-                // to the other attacker snapshot captured at trigger time.
-                "other_attacker"
-            } else if matches!(
-                &trigger,
-                TriggerSpec::ThisDealsDamageTo(_)
-                    | TriggerSpec::ThisDealsCombatDamageTo(_)
-                    | TriggerSpec::DealsCombatDamageTo { .. }
-            ) {
-                "damaged"
-            } else {
-                "triggering"
-            },
-        ))
+        let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
+            // Exact single-partner attack triggers can bind "that creature"
+            // to the other attacker snapshot captured at trigger time.
+            Some("other_attacker")
+        } else {
+            default_trigger_last_object_tag(&trigger)
+        };
+        default_tag.map(crate::cards::builders::TagKey::from)
     } else {
         None
     };

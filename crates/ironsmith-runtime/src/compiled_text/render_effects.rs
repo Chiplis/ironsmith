@@ -8457,7 +8457,10 @@ fn describe_no_more_counters_move_then_each_player_return(
     }
     let move_to_zone = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Graveyard
-        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(_))
+        || !matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(_) | ChooseSpec::Source
+        )
     {
         return None;
     }
@@ -13201,10 +13204,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(remove_counters) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>() {
+        let target = if matches!(remove_counters.target, ChooseSpec::Source) {
+            "it".to_string()
+        } else {
+            describe_choose_spec(&remove_counters.target)
+        };
         return format!(
             "Remove {} from {}",
             describe_put_counter_phrase(&remove_counters.count, remove_counters.counter_type),
-            describe_choose_spec(&remove_counters.target)
+            target
         );
     }
     if let Some(remove_counters_among) =

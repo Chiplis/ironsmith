@@ -3,8 +3,11 @@ use crate::cards::builders::CardDefinitionBuilder;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
 use crate::effect::Effect;
+use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::static_abilities::StaticAbility;
+use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -16,6 +19,15 @@ fn role_token(name: &str) -> CardDefinition {
         .subtypes(vec![Subtype::Aura, Subtype::Role])
         .enchants(ObjectFilter::creature().into())
         .build()
+}
+
+fn enchanted_creature_filter() -> ObjectFilter {
+    let mut filter = ObjectFilter::creature();
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("enchanted"),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    filter
 }
 
 pub fn treasure_token_definition() -> CardDefinition {
@@ -191,5 +203,14 @@ pub fn royal_role_token_definition() -> CardDefinition {
     role_token("Royal Role")
 }
 pub fn cursed_role_token_definition() -> CardDefinition {
-    role_token("Cursed Role")
+    CardDefinitionBuilder::new(CardId::new(), "Cursed Role")
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .oracle_text("Enchant creature\nEnchanted creature has base power and toughness 1/1.")
+        .enchants(ObjectFilter::creature().into())
+        .with_ability(crate::ability::Ability::static_ability(
+            StaticAbility::set_base_power_toughness(enchanted_creature_filter(), 1, 1),
+        ))
+        .build()
 }

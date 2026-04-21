@@ -43,7 +43,7 @@ impl EffectExecutor for AttachObjectsEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        self.target.is_target().then_some(&self.target)
     }
 
     fn target_description(&self) -> &'static str {

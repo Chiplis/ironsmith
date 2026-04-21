@@ -15134,6 +15134,7 @@ fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
         debug.contains("ForEachObject")
             && debug.contains("CreateTokenEffect")
             && debug.contains("Cursed Role")
+            && debug.contains("SetBasePowerToughness")
             && debug.contains("AttachObjectsEffect")
             && debug.contains("target: Iterated"),
         "role creation should iterate opponent creatures and attach each token to that iterated creature, got {debug}"
