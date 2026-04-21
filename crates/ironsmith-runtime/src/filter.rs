@@ -609,6 +609,11 @@ fn resolve_filter_comparison_rhs_value(
             resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
                 .map(|value| value * multiplier)
         }
+        Value::Min(left, right) => Some(
+            resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?.min(
+                resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,
+            ),
+        ),
         Value::Count(filter) => {
             let mut count = 0i32;
             for object in game.objects_in_deterministic_order() {
@@ -654,6 +659,22 @@ fn resolve_filter_comparison_rhs_value(
                 }
             }
             Some(colors.count() as i32)
+        }
+        Value::CreatureTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    let subtypes = game
+                        .current_subtypes(object.id)
+                        .unwrap_or_else(|| object.subtypes.clone());
+                    for subtype in subtypes {
+                        if subtype.is_creature_type() {
+                            seen.insert(subtype);
+                        }
+                    }
+                }
+            }
+            Some(seen.len() as i32)
         }
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
@@ -3864,6 +3885,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
+            }
+            Value::CreatureTypesAmong(filter) => {
+                format!(
+                    "the number of creature types among {}",
+                    filter.description()
+                )
             }
             Value::DistinctPowers(filter) => {
                 format!(

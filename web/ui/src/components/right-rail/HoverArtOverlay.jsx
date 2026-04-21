@@ -630,6 +630,18 @@ export default function HoverArtOverlay({
   );
 
   const typeLine = String(details?.type_line || previewTypeLine || hoveredStackObject?.type_line || "").trim() || null;
+  const typeLineDisplay = String(
+    details?.type_line_display
+    || previewTypeLine
+    || hoveredStackObject?.type_line
+    || typeLine
+    || ""
+  ).trim() || null;
+  const typeLineBadges = Array.isArray(details?.type_line_badges)
+    ? details.type_line_badges
+      .map((badge) => String(badge || "").trim())
+      .filter(Boolean)
+    : [];
   const zoneLine = String(details?.zone || previewZoneLine || hoveredStackObject?.zone || "").trim() || null;
   const ownershipMetadataLines = useMemo(() => {
     if (hideOwnershipMetadata) return [];
@@ -742,7 +754,8 @@ export default function HoverArtOverlay({
   }, [compiledRulesLines, debugInspector, oracleRulesLines, shouldPreferStackAbilityRules]);
   const displayRulesText = displayRulesLines.join("\n");
   const displayObjectName = debugInspector ? null : objectName;
-  const displayTypeLine = debugInspector ? null : typeLine;
+  const displayTypeLine = debugInspector ? null : typeLineDisplay;
+  const displayTypeLineBadges = debugInspector ? [] : typeLineBadges;
   const displayZoneLine = debugInspector ? null : zoneLine;
   const displayOwnershipMetadataLines = useMemo(
     () => (debugInspector ? [] : ownershipMetadataLines),
@@ -769,6 +782,7 @@ export default function HoverArtOverlay({
   );
   const metadataText = [
     ...displayTopLeftDetailLines,
+    ...displayTypeLineBadges,
     ...displayTopLeftOwnershipLines,
     ...displayTopRightDetailLines,
     ...displayBottomRightZoneLines,
@@ -810,10 +824,6 @@ export default function HoverArtOverlay({
     ),
     [compact, displayMode, displayObjectName, groupedCardCount, objectIdKey]
   );
-  const inspectorOracleTopPadding = debugInspector
-    ? 52
-    : (INSPECTOR_ORACLE_TOP_PADDING + (transitionTitle ? 28 : 0));
-
   const preferredInlineWidth = null;
   const preferredInspectorWidth = null;
   const activeMeasuredPreferredInspectorWidth = null;
@@ -1285,12 +1295,41 @@ export default function HoverArtOverlay({
   const oracleContainerClass = compact
     ? "relative z-10 flex flex-col items-center px-2.5"
     : "relative z-10 min-h-full flex flex-col items-center justify-end";
+  const hasTopLeftMetadata = Boolean(
+    transitionTitle
+    || displayStatsText
+    || displayTopLeftDetailLines.length > 0
+    || displayTypeLineBadges.length > 0
+    || displayTopLeftOwnershipLines.length > 0
+  );
+  const inspectorTopMetadataReserve = debugInspector
+    ? 52
+    : (
+      16
+      + (transitionTitle ? 28 * inspectorScale : 0)
+      + (displayStatsText ? ((INSPECTOR_STATS_FONT_SIZE * inspectorScale) + 14) : 0)
+      + (displayTopLeftDetailLines.length * ((INSPECTOR_METADATA_FONT_SIZE * inspectorScale * 1.35) + 14))
+      + (displayTypeLineBadges.length > 0 ? ((18 * inspectorScale) + 10) : 0)
+      + (displayTopLeftOwnershipLines.length * ((INSPECTOR_METADATA_FONT_SIZE * inspectorScale * 1.35) + 8))
+      + (hasTopLeftMetadata ? 36 * inspectorScale : 0)
+    );
+  const inspectorOracleTopPadding = debugInspector
+    ? 52
+    : Math.max(
+      INSPECTOR_ORACLE_TOP_PADDING + (transitionTitle ? 28 : 0),
+      inspectorTopMetadataReserve
+    );
   const compactOraclePaddingTop = debugInspector
     ? 52
     : (
       14
       + (transitionTitle ? 24 : 0)
       + (displayManaCost ? 22 : 0)
+      + (displayStatsText ? 22 : 0)
+      + (displayTopLeftDetailLines.length > 0 ? 20 : 0)
+      + (displayTypeLineBadges.length > 0 ? 18 : 0)
+      + (displayTopLeftOwnershipLines.length > 0 ? 16 : 0)
+      + (hasTopLeftMetadata ? 28 : 0)
     );
   const compactOraclePaddingBottom = (
     12
@@ -1348,6 +1387,7 @@ export default function HoverArtOverlay({
     transitionTitle
     || displayObjectName
     || displayTypeLine
+    || displayTypeLineBadges.length > 0
     || displayZoneLine
     || displayTopRightDetailLines.length > 0
     || displayManaCost
@@ -1431,6 +1471,20 @@ export default function HoverArtOverlay({
                 className="inspector-chip inspector-chip--meta max-w-full self-start rounded-none border border-[rgba(174,145,98,0.28)] bg-[rgba(24,18,14,0.76)] px-3 py-2 text-left text-[12px] font-semibold leading-tight text-[#e0d1b2] shadow-[0_0_18px_rgba(185,150,93,0.08)] backdrop-blur-[10px]"
                 style={METADATA_TEXT_STYLE}
               />
+              {displayTypeLineBadges.length > 0 && (
+                <div className="flex max-w-full flex-wrap gap-1">
+                  {displayTypeLineBadges.map((badge) => (
+                    <span
+                      key={badge}
+                      className="inspector-chip inspector-chip--meta rounded-none border border-[rgba(142,181,220,0.42)] bg-[rgba(12,20,31,0.72)] px-2 py-1 text-[10px] font-extrabold uppercase leading-none tracking-[0.12em] text-[#d8ebff] shadow-[0_0_16px_rgba(90,148,211,0.12)] backdrop-blur-[10px]"
+                      style={METADATA_TEXT_STYLE}
+                      title={badge === "All creature types" ? "This object has every creature type." : badge}
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             {(displayTopRightDetailLines.length > 0 || displayManaCost) && (
               <div className="flex shrink-0 flex-col items-end gap-1">
@@ -1533,6 +1587,23 @@ export default function HoverArtOverlay({
               lineClassName="text-left"
               style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
             />
+            {displayTypeLineBadges.length > 0 && (
+              <div className="flex max-w-full flex-wrap gap-1">
+                {displayTypeLineBadges.map((badge) => (
+                  <span
+                    key={badge}
+                    className={cn(
+                      "inspector-banner inspector-banner--meta rounded-none bg-[rgba(8,18,30,0.62)] px-2 py-1 font-extrabold uppercase leading-none tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
+                      compact ? "text-[9px]" : "text-[10px]"
+                    )}
+                    style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                    title={badge === "All creature types" ? "This object has every creature type." : badge}
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            )}
             <InspectorMetadataBlock
               lines={displayTopLeftOwnershipLines}
               className={cn(

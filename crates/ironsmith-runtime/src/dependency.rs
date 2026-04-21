@@ -494,6 +494,32 @@ fn evaluate_value(
                 .count() as i32;
             ValueEval::Scalar(count * *multiplier)
         }
+        Value::Min(left, right) => {
+            let left = evaluate_value(left, source, effect_controller, baseline, objects, game);
+            let right = evaluate_value(right, source, effect_controller, baseline, objects, game);
+            match (left, right) {
+                (ValueEval::Scalar(left), ValueEval::Scalar(right)) => {
+                    ValueEval::Scalar(left.min(right))
+                }
+                _ => ValueEval::Unknown,
+            }
+        }
+        Value::CreatureTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for (id, chars) in baseline {
+                let Some(obj) = objects.get(id) else {
+                    continue;
+                };
+                if object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
+                    for subtype in &chars.subtypes {
+                        if subtype.is_creature_type() {
+                            seen.insert(*subtype);
+                        }
+                    }
+                }
+            }
+            ValueEval::Scalar(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => ValueEval::Scalar(
             game.turn_store
                 .turn_history
@@ -1164,7 +1190,9 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::TotalToughness(_)
         | Value::GreatestPower(_)
         | Value::GreatestToughness(_) => true,
-        Value::Add(left, right) => value_references_pt(left) || value_references_pt(right),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_pt(left) || value_references_pt(right)
+        }
         Value::Scaled(value, _) => value_references_pt(value),
         Value::HalfRoundedDown(value) => value_references_pt(value),
 
@@ -1181,6 +1209,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
         | Value::BasicLandTypesAmong(_)
+        | Value::CreatureTypesAmong(_)
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)
@@ -1491,6 +1520,9 @@ fn value_is_independent_count_or_fixed(value: &Value) -> bool {
             filter_has_no_pt_constraints_for_fast_path(filter)
         }
         Value::Add(left, right) => {
+            value_is_independent_count_or_fixed(left) && value_is_independent_count_or_fixed(right)
+        }
+        Value::Min(left, right) => {
             value_is_independent_count_or_fixed(left) && value_is_independent_count_or_fixed(right)
         }
         Value::HalfRoundedDown(value) => value_is_independent_count_or_fixed(value),

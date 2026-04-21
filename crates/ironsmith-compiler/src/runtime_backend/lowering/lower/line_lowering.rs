@@ -276,6 +276,7 @@ fn compile_static_ability_with_zones(
     ability: crate::static_abilities::StaticAbility,
     info: &LineInfo,
 ) -> Ability {
+    let ability = rewrite_self_spell_cost_modifier(ability, info.raw_line.as_str());
     let mut compiled = Ability::static_ability(ability).with_text(info.raw_line.as_str());
     if let AbilityKind::Static(static_ability) = &compiled.kind
         && super::uses_spell_only_functional_zones(static_ability)
@@ -324,6 +325,51 @@ fn compile_static_ability_with_zones(
         compiled = compiled.in_zones(zones);
     }
     compiled
+}
+
+fn rewrite_self_spell_cost_modifier(
+    ability: crate::static_abilities::StaticAbility,
+    raw_line: &str,
+) -> crate::static_abilities::StaticAbility {
+    let raw_lower = raw_line.trim_start().to_ascii_lowercase();
+    if !(raw_lower.starts_with("this spell costs ") || raw_lower.starts_with("this spell cost ")) {
+        return ability;
+    }
+
+    match &ability.payload {
+        ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
+            let mut amount = reduction.amount.clone();
+            if let Some(cap) = extract_cost_reduction_cap_from_text(raw_line) {
+                amount = crate::effect::Value::Min(
+                    Box::new(amount),
+                    Box::new(crate::effect::Value::Fixed(cap)),
+                );
+            }
+            crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::ThisSpellCostReduction::new(
+                    amount,
+                    crate::static_abilities::ThisSpellCostCondition::Always,
+                ),
+            )
+        }
+        ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => {
+            crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::ThisSpellCostReductionManaCost::new(
+                    reduction.cost.clone(),
+                    crate::static_abilities::ThisSpellCostCondition::Always,
+                ),
+            )
+        }
+        _ => ability,
+    }
+}
+
+fn extract_cost_reduction_cap_from_text(raw_line: &str) -> Option<i32> {
+    let lower = raw_line.to_ascii_lowercase();
+    let cap_start = lower.find("by more than {")?;
+    let digits_start = cap_start + "by more than {".len();
+    let digits_end = lower[digits_start..].find('}')? + digits_start;
+    lower[digits_start..digits_end].parse::<i32>().ok()
 }
 
 fn lower_static_ability_chunk(

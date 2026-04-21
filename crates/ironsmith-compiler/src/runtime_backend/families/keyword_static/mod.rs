@@ -3962,6 +3962,11 @@ pub(crate) fn parse_spells_cost_modifier_line(
         }
         amount_value = replace_unbound_x_with_value(amount_value, &x_value, &clause)?;
     }
+    if direction == CostModifierDirection::Less
+        && let Some(cap) = parse_cost_reduction_cap(remaining_tokens)
+    {
+        amount_value = Value::Min(Box::new(amount_value), Box::new(Value::Fixed(cap)));
+    }
 
     if !is_this_spell {
         parse_trailing_targets_condition_in_cost_modifier(
@@ -4271,6 +4276,26 @@ pub(crate) fn parse_cost_modifier_components(
     (parsed_amount, None)
 }
 
+fn parse_cost_reduction_cap(tokens: &[OwnedLexToken]) -> Option<i32> {
+    for idx in 2..tokens.len().saturating_sub(1) {
+        if !tokens[idx - 2].is_word("by")
+            || !tokens[idx - 1].is_word("more")
+            || !tokens[idx].is_word("than")
+        {
+            continue;
+        }
+        let group = mana_pips_from_token(tokens.get(idx + 1)?)?;
+        if group.len() != 1 {
+            return None;
+        }
+        return match group[0] {
+            ManaSymbol::Generic(amount) => Some(amount as i32),
+            _ => None,
+        };
+    }
+    None
+}
+
 pub(crate) fn parse_dynamic_cost_modifier_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
@@ -4440,6 +4465,25 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         let lands_tokens = &filter_tokens[4..];
         if let Ok(filter) = parse_object_filter(lands_tokens, false) {
             return Ok(Some(Value::BasicLandTypesAmong(filter)));
+        }
+    }
+    if slice_starts_with(&filter_words, &["creature", "type", "among"])
+        || slice_starts_with(&filter_words, &["creature", "types", "among"])
+    {
+        let Some(after_among_token_idx) = token_index_for_word_index(filter_tokens, 3) else {
+            return Ok(None);
+        };
+        let mut end_token_idx = filter_tokens.len();
+        if let Some(period_idx) = filter_tokens[after_among_token_idx..]
+            .iter()
+            .position(|token| token.is_period())
+        {
+            end_token_idx = after_among_token_idx + period_idx;
+        }
+        let creature_scope_tokens =
+            trim_commas(&filter_tokens[after_among_token_idx..end_token_idx]);
+        if let Ok(filter) = parse_object_filter(&creature_scope_tokens, false) {
+            return Ok(Some(Value::CreatureTypesAmong(filter)));
         }
     }
 

@@ -234,10 +234,108 @@ pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
     Ok(Some(effects))
 }
 
+fn parse_choose_objects_clause_for_chain(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
+    if let Some(parsed) = parse_you_choose_objects_clause(tokens)? {
+        return Ok(Some(parsed));
+    }
+    parse_target_player_choose_objects_clause(tokens)
+}
+
+fn choose_clause_trails_from_it(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        [.., "from", "it"] | [.., "from", "them"] | [.., "in", "it"] | [.., "in", "them"]
+    )
+}
+
+fn preserve_choose_clause_it_reference(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
+    if !choose_clause_trails_from_it(tokens) {
+        return;
+    }
+    if filter.zone.is_none() || filter.zone == Some(Zone::Battlefield) {
+        filter.zone = Some(Zone::Hand);
+    }
+    filter.controller = None;
+    filter.owner = None;
+    if !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+}
+
+pub(crate) fn parse_choose_then_choose_objects_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::super::grammar::primitives as grammar;
+
+    let Some((head_slice, tail_slice)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    else {
+        return Ok(None);
+    };
+
+    let head_tokens = trim_commas(head_slice);
+    let tail_tokens = trim_commas(tail_slice);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((first_player, mut first_filter, first_count)) =
+        parse_choose_objects_clause_for_chain(&head_tokens)?
+    else {
+        return Ok(None);
+    };
+    let Some((mut second_player, mut second_filter, second_count)) =
+        parse_choose_objects_clause_for_chain(&tail_tokens)?
+    else {
+        return Ok(None);
+    };
+
+    preserve_choose_clause_it_reference(&head_tokens, &mut first_filter);
+    preserve_choose_clause_it_reference(&tail_tokens, &mut second_filter);
+
+    if second_player == PlayerAst::Implicit {
+        second_player = first_player.clone();
+    }
+
+    let tag = TagKey::from(IT_TAG);
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter: first_filter,
+            count: first_count,
+            count_value: None,
+            player: first_player,
+            tag: tag.clone(),
+        },
+        EffectAst::ChooseObjects {
+            filter: second_filter,
+            count: second_count,
+            count_value: None,
+            player: second_player,
+            tag,
+        },
+    ]))
+}
+
 pub(crate) fn parse_sentence_return_then_do_same_for_subtypes(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_return_then_do_same_for_subtypes_sentence(tokens)
+}
+
+pub(crate) fn parse_sentence_choose_then_choose_objects(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_choose_then_choose_objects_sentence(tokens)
 }
 
 pub(crate) fn parse_sentence_choose_then_do_same_for_filter(

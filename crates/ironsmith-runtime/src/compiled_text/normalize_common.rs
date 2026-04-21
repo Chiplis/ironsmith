@@ -5995,6 +5995,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{factor} times {}", describe_value(value))
             }
         }
+        Value::Min(left, right) => {
+            format!("the lesser of {} and {}", describe_value(left), describe_value(right))
+        }
         Value::HalfRoundedDown(value) => {
             if let Value::Add(left, right) = value.as_ref() {
                 let count_filter = match (left.as_ref(), right.as_ref()) {
@@ -6074,6 +6077,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::BasicLandTypesAmong(filter) => {
             format!("the number of {}", describe_basic_land_types_among(filter))
         }
+        Value::CreatureTypesAmong(filter) => format!(
+            "the number of creature types among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::ColorsAmong(filter) => {
             format!("the number of {}", describe_colors_among(filter))
         }

@@ -17709,6 +17709,70 @@ fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_this_spell_cost_reduction_counts_creature_types_with_cap() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Changeling Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell costs {1} less to cast for each creature type among creatures you control. This effect can't reduce the amount of mana this spell costs by more than {5}.",
+        )
+        .expect("parse capped creature-type cost reduction");
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("expected this-spell cost reduction");
+
+    let crate::effect::Value::Min(amount, cap) = &reduction.reduction else {
+        panic!(
+            "expected capped reduction amount, got {:?}",
+            reduction.reduction
+        );
+    };
+    assert!(matches!(cap.as_ref(), crate::effect::Value::Fixed(5)));
+    let crate::effect::Value::CreatureTypesAmong(filter) = amount.as_ref() else {
+        panic!("expected creature-type count reduction, got {amount:?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Battlefield));
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert!(filter.card_types.contains(&CardType::Creature));
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("for each creature type among creatures you control")
+            && joined.contains("can't reduce the amount of mana this spell costs by more than {5}"),
+        "expected capped creature-type reduction text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debug_safe_keeps_changeling_separate_from_other_keywords() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Changeling Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell costs {1} less to cast for each creature type among creatures you control. This effect can't reduce the amount of mana this spell costs by more than {5}.\nChangeling (This card is every creature type.)\nDouble strike",
+        )
+        .expect("parse changeling with additional keyword");
+
+    let lines = unprocessed_compiled_lines(&def);
+    assert!(
+        lines.iter().any(|line| line == "Changeling"),
+        "expected separate Changeling line, got {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Double strike"),
+        "expected separate double strike line, got {lines:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_imposing_grandeur_tracks_commander_mana_value_in_battlefield_or_command_zone() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imposing Grandeur")
         .card_types(vec![CardType::Sorcery])
@@ -29204,6 +29268,51 @@ fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
     assert!(
         debug.contains("Discard"),
         "expected follow-up discard effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_choose_from_revealed_hand_then_graveyard_exiles_both_choices() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dreams Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent reveals their hand. You choose an artifact or creature card from it, then choose an artifact or creature card from their graveyard. Exile the chosen cards.",
+        )
+        .expect("dual hand/graveyard choice chain should parse");
+
+    let effects = def.spell_effect.as_ref().expect("spell effects");
+    let debug = format!("{effects:#?}");
+    assert!(
+        debug.contains("LookAtHandEffect"),
+        "expected reveal-hand setup, got {debug}"
+    );
+    assert_eq!(
+        debug.matches("ChooseObjectsEffect").count(),
+        2,
+        "expected one hand choice and one graveyard choice, got {debug}"
+    );
+    assert!(
+        debug.contains("Hand") && debug.contains("Graveyard"),
+        "expected choices from hand and graveyard, got {debug}"
+    );
+    assert!(
+        debug.contains("Artifact") && debug.contains("Creature"),
+        "expected artifact-or-creature filters, got {debug}"
+    );
+    assert!(
+        debug.contains("MoveToZoneEffect") && debug.contains("zone: Exile"),
+        "expected chosen cards to be exiled, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you choose an artifact or creature card from it")
+            && rendered.contains("choose an artifact or creature card from their graveyard")
+            && rendered.contains("exile the chosen cards"),
+        "expected compact dual-choice wording, got {rendered}"
     );
 }
 

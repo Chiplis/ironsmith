@@ -1204,6 +1204,60 @@ mod tests {
     }
 
     #[test]
+    fn this_spell_cost_reduction_counts_distinct_creature_types_with_cap() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        for (idx, subtypes) in [
+            vec![Subtype::Elf, Subtype::Druid],
+            vec![Subtype::Goblin, Subtype::Warrior],
+            vec![Subtype::Human, Subtype::Soldier],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let creature = CardBuilder::new(
+                CardId::from_raw(100 + idx as u32),
+                format!("Type Bearer {idx}"),
+            )
+            .card_types(vec![CardType::Creature])
+            .subtypes(subtypes)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+            game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        }
+
+        let spell_card = CardBuilder::new(CardId::from_raw(140), "Capped Type Discount")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(7)],
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::White],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let amount = Value::Min(
+            Box::new(Value::CreatureTypesAmong(
+                ObjectFilter::creature().you_control(),
+            )),
+            Box::new(Value::Fixed(5)),
+        );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            amount,
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{2}{W}{W}");
+    }
+
+    #[test]
     fn conditional_this_spell_mana_cost_reduction_checks_opponent_drawn_cards() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

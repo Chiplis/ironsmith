@@ -10,7 +10,7 @@ use ironsmith::game_state::{
 };
 use ironsmith::ids::{ObjectId, PlayerId};
 use ironsmith::static_abilities::StaticAbilityId;
-use ironsmith::types::CardType;
+use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
 
 use super::{
@@ -496,6 +496,8 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) owner: u8,
     pub(super) controller: u8,
     pub(super) type_line: String,
+    pub(super) type_line_display: String,
+    pub(super) type_line_badges: Vec<String>,
     pub(super) mana_cost: Option<String>,
     pub(super) oracle_text: String,
     pub(super) power: Option<i32>,
@@ -904,6 +906,15 @@ pub(super) fn build_object_details_snapshot(
     let counters = counter_snapshots_for_object(obj);
     let compiled_text = ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition());
 
+    let type_line =
+        format_type_line_parts(&current_supertypes, &current_card_types, &current_subtypes);
+    let (type_line_display, type_line_badges) = format_type_line_display_parts(
+        &current_supertypes,
+        &current_card_types,
+        &current_subtypes,
+        &obj.subtypes,
+    );
+
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
         stable_id: obj.stable_id.0.0,
@@ -912,11 +923,9 @@ pub(super) fn build_object_details_snapshot(
         zone: zone_label(obj.zone),
         owner: obj.owner.0,
         controller: current_controller.0,
-        type_line: format_type_line_parts(
-            &current_supertypes,
-            &current_card_types,
-            &current_subtypes,
-        ),
+        type_line,
+        type_line_display,
+        type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
         oracle_text: obj.oracle_text.clone(),
         power,
@@ -965,6 +974,57 @@ fn format_type_line_parts(
     }
 }
 
+fn format_type_line_display_parts(
+    supertypes: &[ironsmith::types::Supertype],
+    card_types: &[ironsmith::types::CardType],
+    subtypes: &[ironsmith::types::Subtype],
+    printed_subtypes: &[ironsmith::types::Subtype],
+) -> (String, Vec<String>) {
+    if object_has_all_creature_types(card_types, subtypes) {
+        let display_subtypes =
+            compact_all_creature_type_display_subtypes(printed_subtypes, subtypes);
+        return (
+            format_type_line_parts(supertypes, card_types, &display_subtypes),
+            vec!["All creature types".to_string()],
+        );
+    }
+
+    (
+        format_type_line_parts(supertypes, card_types, subtypes),
+        Vec::new(),
+    )
+}
+
+fn object_has_all_creature_types(
+    card_types: &[ironsmith::types::CardType],
+    subtypes: &[ironsmith::types::Subtype],
+) -> bool {
+    let can_have_creature_types = card_types
+        .iter()
+        .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
+    can_have_creature_types
+        && Subtype::all_creature_types()
+            .iter()
+            .all(|subtype| subtypes.contains(subtype))
+}
+
+fn compact_all_creature_type_display_subtypes(
+    printed_subtypes: &[ironsmith::types::Subtype],
+    current_subtypes: &[ironsmith::types::Subtype],
+) -> Vec<ironsmith::types::Subtype> {
+    let mut display_subtypes = Vec::new();
+    for subtype in printed_subtypes.iter().chain(
+        current_subtypes
+            .iter()
+            .filter(|subtype| !subtype.is_creature_type()),
+    ) {
+        if current_subtypes.contains(subtype) && !display_subtypes.contains(subtype) {
+            display_subtypes.push(*subtype);
+        }
+    }
+    display_subtypes
+}
+
 fn zone_label(zone: Zone) -> String {
     match zone {
         Zone::Library => "library",
@@ -976,4 +1036,43 @@ fn zone_label(zone: Zone) -> String {
         Zone::Command => "command",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironsmith::types::Subtype;
+
+    #[test]
+    fn type_line_display_compacts_all_creature_types() {
+        let mut subtypes = vec![Subtype::Shapeshifter];
+        for subtype in Subtype::all_creature_types() {
+            if !subtypes.contains(subtype) {
+                subtypes.push(*subtype);
+            }
+        }
+
+        let (display, badges) = format_type_line_display_parts(
+            &[],
+            &[CardType::Creature],
+            &subtypes,
+            &[Subtype::Shapeshifter],
+        );
+
+        assert_eq!(display, "Creature - Shapeshifter");
+        assert_eq!(badges, vec!["All creature types"]);
+    }
+
+    #[test]
+    fn type_line_display_keeps_normal_subtypes_inline() {
+        let (display, badges) = format_type_line_display_parts(
+            &[],
+            &[CardType::Creature],
+            &[Subtype::Angel, Subtype::Advisor],
+            &[Subtype::Angel],
+        );
+
+        assert_eq!(display, "Creature - Angel Advisor");
+        assert!(badges.is_empty());
+    }
 }

@@ -1110,6 +1110,60 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         )
     }
 
+    fn describe_reveal_hand_choose_graveyard_exile_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [
+            look_effect,
+            hand_choose_effect,
+            graveyard_choose_effect,
+            exile_effect,
+        ] = filtered
+        else {
+            return None;
+        };
+        let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+        let hand_choose =
+            hand_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let graveyard_choose =
+            graveyard_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let exile = downcast_move_to_zone(exile_effect)?;
+
+        if !look.reveal
+            || !matches!(
+                look.target.base(),
+                ChooseSpec::Player(PlayerFilter::Opponent)
+            )
+            || hand_choose.chooser != PlayerFilter::You
+            || graveyard_choose.chooser != PlayerFilter::You
+            || choose_exact_count(hand_choose) != Some(1)
+            || choose_exact_count(graveyard_choose) != Some(1)
+            || choose_primary_zone(hand_choose) != Some(Zone::Hand)
+            || choose_primary_zone(graveyard_choose) != Some(Zone::Graveyard)
+            || hand_choose.filter.owner
+                != Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
+            || graveyard_choose.filter.owner
+                != Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
+            || hand_choose.filter.card_types != graveyard_choose.filter.card_types
+            || !move_to_zone_uses_tag(exile, hand_choose.tag.as_str(), Zone::Exile)
+            || hand_choose.tag != graveyard_choose.tag
+        {
+            return None;
+        }
+
+        let mut display_filter = hand_choose.filter.clone();
+        display_filter.zone = None;
+        display_filter.owner = None;
+        display_filter.controller = None;
+        let mut display_description = display_filter.description();
+        if !display_description.contains("card") {
+            display_description.push_str(" card");
+        }
+        let choice_text = with_indefinite_article(&display_description);
+
+        Some(format!(
+            "Target opponent reveals their hand. You choose {choice_text} from it, then choose {choice_text} from their graveyard. Exile the chosen cards."
+        ))
+    }
+
     fn describe_tempting_offer_creature_return_bundle(filtered: &[&Effect]) -> Option<String> {
         let [choose_self_effect, return_self_effect, for_players_effect] = filtered else {
             return None;
@@ -2102,6 +2156,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_damage_and_die_replacement_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_reveal_hand_choose_graveyard_exile_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_reveal_hand_exile_same_name_search_bundle(&filtered) {
@@ -3506,6 +3563,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 3;
+            continue;
+        }
+        if idx + 3 < filtered.len()
+            && let Some(rendered) =
+                describe_reveal_hand_choose_graveyard_exile_bundle(&filtered[idx..idx + 4])
+        {
+            parts.push(rendered);
+            idx += 4;
             continue;
         }
         if idx + 5 < filtered.len()

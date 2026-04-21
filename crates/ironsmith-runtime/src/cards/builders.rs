@@ -10100,6 +10100,147 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_heroic_trigger_with_short_source_name_preserves_targets() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Anthousa, Setessan Hero")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Heroic — Whenever you cast a spell that targets Anthousa, up to three target lands you control each become 2/2 Warrior creatures until end of turn. They're still lands.",
+            )
+            .expect("parse heroic trigger with short source name");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability from heroic line");
+
+        let spell_cast = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::spell_ability::SpellCastTrigger>()
+            .expect("expected heroic to compile as a spell-cast trigger");
+        let spell_filter = spell_cast
+            .filter
+            .as_ref()
+            .expect("heroic trigger should filter spells that target the source");
+        let target_filter = spell_filter
+            .targets_object
+            .as_deref()
+            .expect("spell filter should target an object");
+        assert!(
+            target_filter.source,
+            "heroic trigger should target the source, got {spell_filter:?}"
+        );
+
+        let animate = triggered.effects.segments[0].default_effects[0]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("expected land-animation continuous effect");
+        assert_eq!(
+            animate
+                .target_spec
+                .as_ref()
+                .map(crate::target::ChooseSpec::count),
+            Some(ChoiceCount::up_to(3)),
+            "land-animation effect should target up to three lands"
+        );
+        let target_spec = animate
+            .target_spec
+            .as_ref()
+            .map(crate::target::ChooseSpec::base);
+        assert!(
+            matches!(target_spec, Some(crate::target::ChooseSpec::Object(filter))
+                if filter.card_types == vec![CardType::Land] && filter.controller == Some(PlayerFilter::You)),
+            "land-animation effect should target lands you control, got {:?}",
+            animate.target_spec
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn anthousa_animation_effect_turns_selected_lands_into_warrior_creatures() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Anthousa, Setessan Hero")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Heroic — Whenever you cast a spell that targets Anthousa, up to three target lands you control each become 2/2 Warrior creatures until end of turn. They're still lands.",
+            )
+            .expect("parse heroic trigger with short source name");
+        let animate_effect = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => {
+                    Some(triggered.effects.segments[0].default_effects[0].clone())
+                }
+                _ => None,
+            })
+            .expect("expected Anthousa animation effect");
+
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let anthousa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let first_land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_forest(),
+            alice,
+            Zone::Battlefield,
+        );
+        let second_land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_mountain(),
+            alice,
+            Zone::Battlefield,
+        );
+        let third_land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_island(),
+            alice,
+            Zone::Battlefield,
+        );
+        let unselected_land = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let mut ctx = crate::effects::ExecutionContext::new_default(anthousa_id, alice)
+            .with_targets(vec![
+                crate::effects::ResolvedTarget::Object(first_land),
+                crate::effects::ResolvedTarget::Object(second_land),
+                crate::effects::ResolvedTarget::Object(third_land),
+            ]);
+        crate::effects::execute_effect(&mut game, &animate_effect, &mut ctx)
+            .expect("Anthousa animation effect should resolve");
+
+        for land in [first_land, second_land, third_land] {
+            assert!(
+                game.current_has_card_type(land, CardType::Land),
+                "animated land should remain a land"
+            );
+            assert!(
+                game.current_has_card_type(land, CardType::Creature),
+                "selected land should become a creature"
+            );
+            assert!(
+                game.current_has_subtype(land, Subtype::Warrior),
+                "selected land should become a Warrior"
+            );
+            assert_eq!(game.current_power(land), Some(2));
+            assert_eq!(game.current_toughness(land), Some(2));
+        }
+        assert!(
+            !game.current_has_card_type(unselected_land, CardType::Creature),
+            "unselected lands should not be animated"
+        );
+        assert!(
+            !game.current_has_subtype(unselected_land, Subtype::Warrior),
+            "unselected lands should not gain Warrior"
+        );
+        assert_eq!(game.current_power(unselected_land), None);
+        assert_eq!(game.current_toughness(unselected_land), None);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_labeled_trigger_line_preserves_once_each_turn_suffix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Reach Label Variant")
             .parse_text(

@@ -106,8 +106,36 @@ fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
     }
 }
 
+fn describe_types_among_scope(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    for (singular, plural) in [("a creature", "creatures"), ("a land", "lands")] {
+        if description == singular {
+            return plural.to_string();
+        }
+        if let Some(rest) = description.strip_prefix(&format!("{singular} ")) {
+            return format!("{plural} {rest}");
+        }
+    }
+    description
+}
+
 fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
     match amount {
+        Value::Min(value, cap) => {
+            let (amount_text, tail) = describe_cost_modifier_amount(value);
+            let cap_text = match cap.as_ref() {
+                Value::Fixed(n) => format!("{{{n}}}"),
+                other => format!("{{{}}}", describe_cost_modifier_amount(other).0),
+            };
+            let cap_sentence = format!(
+                "This effect can't reduce the amount of mana this spell costs by more than {cap_text}"
+            );
+            let tail = match tail {
+                Some(tail) => format!("{tail}. {cap_sentence}"),
+                None => cap_sentence,
+            };
+            (amount_text, Some(tail))
+        }
         Value::Fixed(n) => (format!("{{{n}}}"), None),
         Value::X => ("{X}".to_string(), None),
         Value::Count(filter) => (
@@ -122,7 +150,14 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!(
                 "for each basic land type among {}",
-                filter.description()
+                describe_types_among_scope(filter)
+            )),
+        ),
+        Value::CreatureTypesAmong(filter) => (
+            "{1}".to_string(),
+            Some(format!(
+                "for each creature type among {}",
+                describe_types_among_scope(filter)
             )),
         ),
         Value::Add(_, _) if scaled_basic_land_type_count(amount).is_some() => {
@@ -132,7 +167,7 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 format!("{{{multiplier}}}"),
                 Some(format!(
                     "for each basic land type among {}",
-                    filter.description()
+                    describe_types_among_scope(filter)
                 )),
             )
         }

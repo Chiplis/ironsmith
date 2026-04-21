@@ -405,6 +405,29 @@ fn object_details_reports_calculated_battlefield_power_toughness() {
 }
 
 #[test]
+fn object_details_compacts_changeling_type_line_display() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(70_010), "Valiant Mini")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter])
+        .with_ability(Ability::static_ability(StaticAbility::changeling()).with_text("Changeling"))
+        .build();
+    let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+
+    assert!(
+        details.type_line.matches(' ').count() > Subtype::all_creature_types().len() / 2,
+        "raw effective type line should keep the full subtype expansion for debug, got {}",
+        details.type_line
+    );
+    assert_eq!(details.type_line_display, "Creature - Shapeshifter");
+    assert_eq!(details.type_line_badges, vec!["All creature types"]);
+}
+
+#[test]
 fn object_details_include_compiled_spell_effects_for_spells_with_static_abilities() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);

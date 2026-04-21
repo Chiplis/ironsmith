@@ -3314,6 +3314,8 @@ fn resolve_value_with_context(
         Value::Scaled(value, multiplier) => {
             resolve_value_with_context(value, ctx, source, controller) * *multiplier
         }
+        Value::Min(left, right) => resolve_value_with_context(left, ctx, source, controller)
+            .min(resolve_value_with_context(right, ctx, source, controller)),
         Value::HalfRoundedDown(value) => {
             resolve_value_with_context(value, ctx, source, controller).div_euclid(2)
         }
@@ -3348,6 +3350,23 @@ fn resolve_value_with_context(
                                 | Subtype::Forest
                         ) {
                             seen.insert(subtype.clone());
+                        }
+                    }
+                }
+            });
+            seen.len() as i32
+        }
+        Value::CreatureTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(controller, source);
+
+            let mut seen = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    for subtype in &obj.subtypes {
+                        if subtype.is_creature_type() {
+                            seen.insert(*subtype);
                         }
                     }
                 }

@@ -2190,6 +2190,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
             }
+            Value::CreatureTypesAmong(filter) => {
+                format!(
+                    "the number of creature types among {}",
+                    filter.description()
+                )
+            }
             Value::CountersOnSource(counter_type) => {
                 format!(
                     "the number of {} counters on this",

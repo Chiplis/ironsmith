@@ -1107,27 +1107,47 @@ fn merge_adjacent_intrinsic_keyword_marker_lines(lines: Vec<String>) -> Vec<Stri
             end += 1;
         }
 
-        if end == idx + 1 {
-            merged.push(lines[idx].clone());
-        } else {
-            let mut keywords = Vec::new();
-            for keyword in lines[idx..end]
-                .iter()
-                .map(|line| normalize_intrinsic_keyword_marker_for_bundle(line))
-            {
-                if !keywords
-                    .iter()
-                    .any(|existing: &String| existing.eq_ignore_ascii_case(&keyword))
-                {
-                    keywords.push(keyword);
-                }
-            }
-            merged.push(keywords.join(", "));
-        }
+        merge_intrinsic_keyword_marker_run(&lines[idx..end], &mut merged);
         idx = end;
     }
 
     merged
+}
+
+fn merge_intrinsic_keyword_marker_run(lines: &[String], merged: &mut Vec<String>) {
+    if lines.len() == 1 {
+        merged.push(lines[0].clone());
+        return;
+    }
+
+    let mut keywords = Vec::new();
+    for line in lines {
+        let keyword = normalize_intrinsic_keyword_marker_for_bundle(line);
+        if keyword.eq_ignore_ascii_case("changeling") {
+            push_intrinsic_keyword_bundle(&mut keywords, merged);
+            merged.push(line.clone());
+            continue;
+        }
+        if !keywords
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(&keyword))
+        {
+            keywords.push(keyword);
+        }
+    }
+    push_intrinsic_keyword_bundle(&mut keywords, merged);
+}
+
+fn push_intrinsic_keyword_bundle(keywords: &mut Vec<String>, merged: &mut Vec<String>) {
+    if keywords.is_empty() {
+        return;
+    }
+    if keywords.len() == 1 {
+        merged.push(keywords[0].clone());
+    } else {
+        merged.push(keywords.join(", "));
+    }
+    keywords.clear();
 }
 
 fn is_intrinsic_keyword_marker_line(line: &str) -> bool {

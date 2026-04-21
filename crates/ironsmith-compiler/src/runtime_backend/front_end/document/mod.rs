@@ -858,21 +858,68 @@ fn normalize_named_source_trigger_for_builder(
         "this permanent"
     };
 
-    let name = builder.card_builder.name_ref();
-    if name.is_empty() {
+    let names = source_name_aliases_for_builder(builder);
+    if names.is_empty() {
         return None;
     }
 
     let lower = trimmed.to_ascii_lowercase();
-    let name_lower = name.to_ascii_lowercase();
     for intro in ["whenever", "when", "at"] {
-        let prefix = format!("{intro} {name_lower} ");
-        if let Some(rest) = str_strip_prefix(lower.as_str(), prefix.as_str()) {
-            return Some(format!("{intro} {subject} {rest}"));
+        for name_lower in &names {
+            let prefix = format!("{intro} {name_lower} ");
+            if let Some(rest) = str_strip_prefix(lower.as_str(), prefix.as_str()) {
+                return Some(format!("{intro} {subject} {rest}"));
+            }
+        }
+    }
+
+    for intro in ["whenever", "when", "at"] {
+        let intro_prefix = format!("{intro} ");
+        if !lower.starts_with(&intro_prefix) {
+            continue;
+        }
+        let (trigger_head, effect_tail) = lower
+            .split_once(',')
+            .map_or((lower.as_str(), ""), |(head, tail)| (head, tail));
+        let mut rewritten_head = trigger_head.to_string();
+        for name_lower in &names {
+            for verb in ["targets", "targeting"] {
+                let pattern = format!("{verb} {name_lower}");
+                let replacement = format!("{verb} {subject}");
+                rewritten_head = rewritten_head.replace(&pattern, &replacement);
+            }
+        }
+        if rewritten_head != trigger_head {
+            return Some(if effect_tail.is_empty() {
+                rewritten_head
+            } else {
+                format!("{rewritten_head},{effect_tail}")
+            });
         }
     }
 
     None
+}
+
+fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<String> {
+    let name = builder.card_builder.name_ref().trim();
+    if name.is_empty() {
+        return Vec::new();
+    }
+
+    let mut aliases = Vec::new();
+    let mut push_alias = |alias: &str| {
+        let alias = alias.trim().to_ascii_lowercase();
+        if !alias.is_empty() && !aliases.contains(&alias) {
+            aliases.push(alias);
+        }
+    };
+    push_alias(name);
+    if let Some((short_name, _)) = name.split_once(',') {
+        push_alias(short_name);
+    }
+    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.len()));
+    aliases
 }
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
@@ -2237,6 +2284,14 @@ fn try_parse_triggered_line_dispatch(
         let mut lines = Vec::with_capacity(trigger_chunks.len());
         for chunk_tokens in trigger_chunks {
             let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
+            if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
+                &preprocessed.builder,
+                &chunk_line,
+                chunk_line.info.normalized.normalized.as_str(),
+            )? {
+                lines.push(RewriteLineCst::Triggered(triggered));
+                continue;
+            }
             match parse_triggered_line_cst(&chunk_line) {
                 Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
                 Err(_) => {
@@ -2266,6 +2321,19 @@ fn try_parse_triggered_line_dispatch(
             lines,
             next_idx: idx + 1,
         }));
+    }
+
+    if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
+        &preprocessed.builder,
+        line,
+        &line.info.normalized.normalized,
+    )? {
+        let (triggered, next_idx) =
+            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            next_idx,
+        )));
     }
 
     match parse_triggered_line_cst(line) {

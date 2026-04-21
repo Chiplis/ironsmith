@@ -325,6 +325,16 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_choose_then_do_same_for_filter
     ),
     primitive!(
+        "choose-then-choose-objects",
+        215,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("choose"),
+            LexRuleHeadHint::Pair("you", "choose"),
+        ],
+        parse_sentence_choose_then_choose_objects
+    ),
+    primitive!(
         "return-then-do-same-for-subtypes",
         220,
         PostDiagnostic,

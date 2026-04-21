@@ -99,6 +99,9 @@ pub fn resolve_value(
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string())),
 
         Value::Scaled(value, multiplier) => Ok(resolve_value(game, value, ctx)? * *multiplier),
+        Value::Min(left, right) => {
+            Ok(resolve_value(game, left, ctx)?.min(resolve_value(game, right, ctx)?))
+        }
 
         Value::Count(filter) => {
             let filter_ctx = ctx.filter_context(game);
@@ -337,6 +340,41 @@ pub fn resolve_value(
                             | Subtype::Forest
                     ) {
                         seen.insert(subtype.clone());
+                    }
+                }
+            }
+            Ok(seen.len() as i32)
+        }
+        Value::CreatureTypesAmong(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    for subtype in &snapshot.subtypes {
+                        if subtype.is_creature_type() {
+                            seen.insert(*subtype);
+                        }
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                let subtypes = game
+                    .current_subtypes(obj.id)
+                    .unwrap_or_else(|| obj.subtypes.clone());
+                for subtype in subtypes {
+                    if subtype.is_creature_type() {
+                        seen.insert(subtype);
                     }
                 }
             }
@@ -1719,8 +1757,10 @@ pub fn validate_target(
     let filter_ctx = ctx.filter_context(game);
 
     match (target, spec) {
-        // Target wrapper - unwrap and validate the inner spec
-        (_, ChooseSpec::Target(inner)) => validate_target(game, target, inner, ctx),
+        // Selection wrappers do not change target legality.
+        (_, ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)) => {
+            validate_target(game, target, inner, ctx)
+        }
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
             if let Some(obj) = game.object(*id) {
                 filter.matches(obj, &filter_ctx, game)
