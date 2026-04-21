@@ -4400,9 +4400,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(move_to_zone) =
-                unwrap_tag_wrappers(filtered[idx + 1])
-                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(move_to_zone) = unwrap_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(compact) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
         {
             parts.push(compact);

@@ -42,7 +42,7 @@ use super::for_each_helpers::{
     parse_has_base_power_toughness_clause,
 };
 use super::search_library::parse_restriction_duration;
-use super::sentence_primitives::try_build_unless;
+use super::sentence_primitives::{find_unquoted_token_word, try_build_unless};
 use super::verb_dispatch::parse_effect_with_verb;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
 use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
@@ -160,14 +160,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if let Some((main_slice, _after_unless)) =
-        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("unless").void()
-        })
-    {
-        let unless_idx = main_slice.len();
-        let main_tokens = trim_commas(main_slice);
+    if let Some(unless_idx) = find_unquoted_token_word(tokens, "unless") {
+        let main_tokens = trim_commas(&tokens[..unless_idx]);
         if !main_tokens.is_empty()
             && let Ok(main_effect) = parse_effect_clause(&main_tokens)
             && let Some(unless_effect) = try_build_unless(vec![main_effect], tokens, unless_idx)?

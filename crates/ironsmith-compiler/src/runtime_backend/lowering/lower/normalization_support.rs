@@ -1,5 +1,71 @@
 use super::*;
 
+fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::SourceMatches(_) => true,
+        PredicateAst::And(left, right) => {
+            predicate_contains_source_match(left) || predicate_contains_source_match(right)
+        }
+        PredicateAst::Not(inner) => predicate_contains_source_match(inner),
+        _ => false,
+    }
+}
+
+fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
+    match effect {
+        EffectAst::BecomeBasePtCreature {
+            power,
+            toughness,
+            target,
+            card_types,
+            subtypes,
+            colors,
+            abilities,
+            granted_abilities,
+            duration,
+        } => {
+            let target = match target {
+                TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => TargetAst::Source(span),
+                other => other,
+            };
+            EffectAst::BecomeBasePtCreature {
+                power,
+                toughness,
+                target,
+                card_types,
+                subtypes,
+                colors,
+                abilities,
+                granted_abilities,
+                duration,
+            }
+        }
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } => EffectAst::Conditional {
+            predicate,
+            if_true: if_true
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+            if_false: if_false
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+        },
+        EffectAst::IfResult { predicate, effects } => EffectAst::IfResult {
+            predicate,
+            effects: effects
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+        },
+        other => other,
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(super) struct RewriteNormalizationState {
     latest_spell_exports: ReferenceExports,
@@ -320,6 +386,16 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
             }
         }
         LineAst::Ability(mut parsed) => {
+            if predicate_contains_source_match(&predicate)
+                && let Some(effects_ast) = parsed.effects_ast.take()
+            {
+                parsed.effects_ast = Some(
+                    effects_ast
+                        .into_iter()
+                        .map(retarget_it_animation_to_source)
+                        .collect(),
+                );
+            }
             let compiled_condition = compile_condition_from_predicate_ast_with_env(
                 &predicate,
                 &ReferenceEnv::from_imports(&parsed.reference_imports, false, false, false, None),

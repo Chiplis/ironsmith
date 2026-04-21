@@ -6924,7 +6924,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let mut toughness = None;
     let mut colors = None;
     let mut subtypes = Vec::new();
-    let mut abilities = Vec::new();
+    let mut ability_text = Vec::new();
     for modification in &effect.additional_modifications {
         match modification {
             crate::continuous::Modification::SetPowerToughness {
@@ -6942,7 +6942,10 @@ pub(super) fn describe_apply_continuous_animation_effect(
                 subtypes.extend(candidate_subtypes.iter().copied());
             }
             crate::continuous::Modification::AddAbility(ability) => {
-                abilities.push(ability.clone());
+                ability_text.push(lowercase_first(&ability.display()));
+            }
+            crate::continuous::Modification::AddAbilityGeneric(ability) => {
+                ability_text.push(describe_inline_ability(ability));
             }
             _ => return None,
         }
@@ -7014,15 +7017,13 @@ pub(super) fn describe_apply_continuous_animation_effect(
     } else {
         return None;
     };
-    if !abilities.is_empty() {
-        let ability_text = abilities
-            .iter()
-            .map(|ability| lowercase_first(&ability.display()))
-            .collect::<Vec<_>>();
+    if !ability_text.is_empty() {
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    let render_as_addition_to_other_types = (!preserves_land_types && !abilities.is_empty())
+    let render_as_addition_to_other_types = (!preserves_land_types
+        && !ability_text.is_empty()
+        && !matches!(effect.until, Until::Forever))
         || (preserves_land_types
             && adds_named_types
             && effect

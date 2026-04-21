@@ -11,6 +11,20 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
     }
 }
 
+pub(crate) fn find_unquoted_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
+    let mut inside_quotes = false;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if !inside_quotes && token.is_word(word) {
+            return Some(idx);
+        }
+    }
+    None
+}
+
 fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
     match effect {
         EffectAst::UnlessPays {

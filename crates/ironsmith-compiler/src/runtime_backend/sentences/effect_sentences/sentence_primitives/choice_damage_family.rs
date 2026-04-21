@@ -832,7 +832,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
 pub(crate) fn parse_sentence_unless_pays(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let unless_idx = match find_index(tokens, |t| t.is_word("unless")) {
+    let unless_idx = match find_unquoted_token_word(tokens, "unless") {
         Some(idx) => idx,
         None => return Ok(None),
     };

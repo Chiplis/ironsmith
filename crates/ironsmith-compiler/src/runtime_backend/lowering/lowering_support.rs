@@ -1,8 +1,8 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, LineInfo, ParsedAbility,
-    PredicateAst, StaticAbilityAst, TargetAst, TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, LineInfo,
+    ParsedAbility, PredicateAst, StaticAbilityAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec};
 use crate::filter::ObjectFilter;
@@ -40,6 +40,72 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
         | TargetAst::PlayerOrPlaneswalker(_, _)
         | TargetAst::AttackedPlayerOrPlaneswalker(_)
         | TargetAst::Spell(_) => false,
+    }
+}
+
+fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::SourceMatches(_) => true,
+        PredicateAst::And(left, right) => {
+            predicate_contains_source_match(left) || predicate_contains_source_match(right)
+        }
+        PredicateAst::Not(inner) => predicate_contains_source_match(inner),
+        _ => false,
+    }
+}
+
+fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
+    match effect {
+        EffectAst::BecomeBasePtCreature {
+            power,
+            toughness,
+            target,
+            card_types,
+            subtypes,
+            colors,
+            abilities,
+            granted_abilities,
+            duration,
+        } => {
+            let target = match target {
+                TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => TargetAst::Source(span),
+                other => other,
+            };
+            EffectAst::BecomeBasePtCreature {
+                power,
+                toughness,
+                target,
+                card_types,
+                subtypes,
+                colors,
+                abilities,
+                granted_abilities,
+                duration,
+            }
+        }
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } => EffectAst::Conditional {
+            predicate,
+            if_true: if_true
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+            if_false: if_false
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+        },
+        EffectAst::IfResult { predicate, effects } => EffectAst::IfResult {
+            predicate,
+            effects: effects
+                .into_iter()
+                .map(retarget_it_animation_to_source)
+                .collect(),
+        },
+        other => other,
     }
 }
 
@@ -261,6 +327,16 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     {
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
+    }
+
+    if intervening_if
+        .as_ref()
+        .is_some_and(predicate_contains_source_match)
+    {
+        body_effects = body_effects
+            .into_iter()
+            .map(retarget_it_animation_to_source)
+            .collect();
     }
 
     if matches!(trigger, TriggerSpec::ThisAttacks)

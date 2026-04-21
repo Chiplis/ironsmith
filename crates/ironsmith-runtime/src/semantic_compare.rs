@@ -5514,6 +5514,23 @@ mod tests {
     }
 
     #[test]
+    fn veiled_apparition_animation_granted_trigger_wording_compares() {
+        let oracle = "When an opponent casts a spell, if this permanent is an enchantment, it becomes a 3/3 Illusion creature with flying and \"At the beginning of your upkeep, sacrifice this creature unless you pay {1}{U}.\"";
+        let compiled = vec!["Whenever an opponent casts a spell, if this enchantment is an enchantment, this enchantment becomes a 3/3 illusion creature with flying and at the beginning of your upkeep, sacrifice this creature unless you pay {1}{u}.".to_string()];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                "Veiled Apparition",
+                oracle,
+                &compiled,
+                strict_embedding(),
+            );
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "expected no mismatch for Veiled Apparition animation grant wording"
+        );
+    }
+
+    #[test]
     fn self_sacrifice_name_and_card_type_references_compare_equally() {
         let oracle = "At the beginning of your end step, sacrifice Sothera.";
         let compiled =
