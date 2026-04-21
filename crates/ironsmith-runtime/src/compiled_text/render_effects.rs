@@ -16610,6 +16610,60 @@ fn trigger_surface_with_first_time_each_turn(
     (rendered_trigger.to_string(), false)
 }
 
+fn describe_zone_change_triggering_card_to_your_library(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+        return None;
+    }
+
+    let trigger = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()?;
+    if trigger.from
+        != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || trigger.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+        || trigger.player != crate::triggers::zone_changes::PlayerRelation::Any
+        || trigger.count_mode != crate::triggers::zone_changes::CountMode::Each
+        || trigger.object_filter.owner.as_ref() != Some(&PlayerFilter::You)
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [tag_effect, move_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tag_triggering =
+        tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Library
+        || !move_to_zone.to_top
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_to_zone.enters_tapped
+        || !matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &tag_triggering.tag)
+    {
+        return None;
+    }
+
+    let mut subject_filter = trigger.object_filter.clone();
+    subject_filter.owner = None;
+    let mut subject = subject_filter.description();
+    if subject == "object" {
+        subject = "card".to_string();
+    }
+    subject = ensure_indefinite_article(&subject);
+
+    Some(format!(
+        "Whenever {subject} is put into your graveyard from the battlefield, put that card on top of your library"
+    ))
+}
+
 pub(super) fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -16723,6 +16777,9 @@ pub(super) fn describe_ability(
                 {
                     return vec![format!("Keyword ability {index}: {normalized}")];
                 }
+            }
+            if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
             }
             let (intervening_condition, max_times_each_turn) = triggered
                 .intervening_if
