@@ -23,14 +23,13 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::card::PowerToughness;
-    use crate::cards::CardDefinitionBuilder;
+    use crate::cards::definitions::{giant_spider, grizzly_bears};
     use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::game_loop::{check_and_apply_sbas, execute_combat_damage_step};
-    use crate::ids::{CardId, PlayerId};
+    use crate::ids::PlayerId;
     use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
     use crate::triggers::TriggerQueue;
-    use crate::types::CardType;
     use crate::zone::Zone;
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -86,19 +85,10 @@ mod tests {
 
         let nighthawk_id =
             game.create_object_from_definition(&vampire_nighthawk(), alice, Zone::Battlefield);
-        let ground_blocker = CardDefinitionBuilder::new(CardId::new(), "Ground Blocker")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(3, 3))
-            .build();
         let ground_blocker_id =
-            game.create_object_from_definition(&ground_blocker, bob, Zone::Battlefield);
-        let reach_blocker = CardDefinitionBuilder::new(CardId::new(), "Reach Blocker")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(1, 4))
-            .reach()
-            .build();
+            game.create_object_from_definition(&grizzly_bears(), bob, Zone::Battlefield);
         let reach_blocker_id =
-            game.create_object_from_definition(&reach_blocker, bob, Zone::Battlefield);
+            game.create_object_from_definition(&giant_spider(), bob, Zone::Battlefield);
 
         assert!(
             !crate::rules::combat::can_block(
@@ -154,8 +144,8 @@ mod tests {
                 .graveyard
                 .iter()
                 .filter_map(|id| game.object(*id))
-                .any(|object| object.name == "Reach Blocker"),
-            "deathtouch damage should destroy the 1/4 reach blocker"
+                .any(|object| object.name == "Giant Spider"),
+            "deathtouch damage should destroy the reach blocker"
         );
         assert!(
             game.battlefield
