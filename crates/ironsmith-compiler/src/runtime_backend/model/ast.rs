@@ -452,6 +452,8 @@ pub(crate) enum PredicateAst {
         display: String,
     },
     SourcePowerAtLeast(u32),
+    SourceAttackedThisTurn,
+    SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
     SourceIsInZone(Zone),
     YourTurn,
@@ -487,6 +489,48 @@ pub(crate) enum PredicateAst {
     Unmodeled(String),
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PredicateReferenceAntecedent {
+    SourceObject,
+}
+
+impl PredicateAst {
+    pub(crate) fn reference_antecedent(&self) -> Option<PredicateReferenceAntecedent> {
+        match self {
+            PredicateAst::SourceChosenOption(_)
+            | PredicateAst::SourceIsTapped
+            | PredicateAst::SourceIsSaddled
+            | PredicateAst::SourceMatches(_)
+            | PredicateAst::SourceHasNoCounter(_)
+            | PredicateAst::SourceHasCounterAtLeast { .. }
+            | PredicateAst::SourceHasAttachmentsMatching { .. }
+            | PredicateAst::SourcePowerAtLeast(_)
+            | PredicateAst::SourceAttackedThisTurn
+            | PredicateAst::SourceCameUnderYourControlThisTurn
+            | PredicateAst::SourceAttackedOrBlockedThisTurn
+            | PredicateAst::SourceIsInZone(_)
+            | PredicateAst::SourceWasCast
+            | PredicateAst::ThisSpellWasKicked
+            | PredicateAst::ThisSpellPaidLabel(_)
+            | PredicateAst::ThisSpellWasCastFromZone(_) => {
+                Some(PredicateReferenceAntecedent::SourceObject)
+            }
+            PredicateAst::And(left, right) => left
+                .reference_antecedent()
+                .or_else(|| right.reference_antecedent()),
+            PredicateAst::Not(inner) => inner.reference_antecedent(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn establishes_source_object_antecedent(&self) -> bool {
+        matches!(
+            self.reference_antecedent(),
+            Some(PredicateReferenceAntecedent::SourceObject)
+        )
+    }
 }
 
 #[derive(Debug, Clone)]

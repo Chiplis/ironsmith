@@ -13080,11 +13080,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "Alice's noncreature card should stay in her graveyard"
         );
         assert!(
-            game.player(bob).expect("bob exists").graveyard.iter().any(|&id| {
-                game.object(id)
-                    .map(|obj| obj.name == "Bob Spare Relic")
-                    .unwrap_or(false)
-            }),
+            game.player(bob)
+                .expect("bob exists")
+                .graveyard
+                .iter()
+                .any(|&id| {
+                    game.object(id)
+                        .map(|obj| obj.name == "Bob Spare Relic")
+                        .unwrap_or(false)
+                }),
             "Bob's noncreature card should stay in his graveyard"
         );
         assert!(
@@ -13100,11 +13104,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "Alice's creature should leave the graveyard"
         );
         assert!(
-            game.player(bob).expect("bob exists").graveyard.iter().all(|&id| {
-                game.object(id)
-                    .map(|obj| obj.name != "Bob Revival Bear")
-                    .unwrap_or(true)
-            }),
+            game.player(bob)
+                .expect("bob exists")
+                .graveyard
+                .iter()
+                .all(|&id| {
+                    game.object(id)
+                        .map(|obj| obj.name != "Bob Revival Bear")
+                        .unwrap_or(true)
+                }),
             "Bob's creature should leave the graveyard"
         );
     }

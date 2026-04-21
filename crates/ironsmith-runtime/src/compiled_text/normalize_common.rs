@@ -8543,6 +8543,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             counter.description()
         ),
         Condition::SourceAttackedThisTurn => "this creature attacked this turn".to_string(),
+        Condition::SourceCameUnderYourControlThisTurn => {
+            "this creature came under your control this turn".to_string()
+        }
         Condition::SourceAttackedOrBlockedThisTurn => {
             "this creature attacked or blocked this turn".to_string()
         }
@@ -8615,6 +8618,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::And(left, right) => {
+            if let Some(source_activity_condition) =
+                describe_source_neither_attacked_nor_entered_condition(left, right)
+            {
+                return source_activity_condition;
+            }
             if let Some(exiled_counter_condition) =
                 describe_source_exiled_with_counter_condition(left, right)
             {
@@ -8627,6 +8635,34 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::Or(left, right) => {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
+    }
+}
+
+fn describe_source_neither_attacked_nor_entered_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn is_not_source_attacked(condition: &Condition) -> bool {
+        matches!(condition, Condition::Not(inner) if matches!(inner.as_ref(), Condition::SourceAttackedThisTurn))
+    }
+
+    fn is_not_source_came_under_your_control(condition: &Condition) -> bool {
+        matches!(
+            condition,
+            Condition::Not(inner)
+                if matches!(
+                    inner.as_ref(),
+                    Condition::SourceCameUnderYourControlThisTurn
+                )
+        )
+    }
+
+    if (is_not_source_attacked(left) && is_not_source_came_under_your_control(right))
+        || (is_not_source_attacked(right) && is_not_source_came_under_your_control(left))
+    {
+        Some("this creature didn't attack or come under your control this turn".to_string())
+    } else {
+        None
     }
 }
 

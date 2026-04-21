@@ -288,16 +288,6 @@ pub(crate) fn has_face_down_clause_sentence_lexed(
     !simple_exile_face_down
 }
 
-pub(crate) fn has_copy_spell_legendary_exception_clause_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
-    primitives::contains_word(tokens, "copy")
-        && primitives::contains_word(tokens, "spell")
-        && primitives::contains_word(tokens, "legendary")
-        && (primitives::contains_word(tokens, "except")
-            || primitives::contains_word(tokens, "isnt"))
-}
-
 pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

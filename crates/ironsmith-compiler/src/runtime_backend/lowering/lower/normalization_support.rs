@@ -386,15 +386,16 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
             }
         }
         LineAst::Ability(mut parsed) => {
-            if predicate_contains_source_match(&predicate)
-                && let Some(effects_ast) = parsed.effects_ast.take()
-            {
-                parsed.effects_ast = Some(
-                    effects_ast
+            if let Some(mut effects_ast) = parsed.effects_ast.take() {
+                parsed.reference_imports.source_object_antecedent |=
+                    predicate.establishes_source_object_antecedent();
+                if predicate_contains_source_match(&predicate) {
+                    effects_ast = effects_ast
                         .into_iter()
                         .map(retarget_it_animation_to_source)
-                        .collect(),
-                );
+                        .collect();
+                }
+                parsed.effects_ast = Some(effects_ast);
             }
             let compiled_condition = compile_condition_from_predicate_ast_with_env(
                 &predicate,

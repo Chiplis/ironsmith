@@ -760,7 +760,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
     };
     let subject_tokens = trim_commas(&tokens[..neg_start]);
 
-    let (filter, target, ability_scope) =
+    let (mut filter, mut target, ability_scope) =
         if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {
             (parsed.filter, parsed.target, Some(parsed.scope))
         } else if starts_with_target_indicator(&subject_tokens) {
@@ -808,6 +808,11 @@ pub(crate) fn parse_negated_object_restriction_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+
+    if subject_tokens.is_empty() && is_supported_untap_restriction_tail(&remainder_words) {
+        filter = ObjectFilter::source();
+        target = None;
+    }
 
     if matches!(
         subject_words.as_slice(),

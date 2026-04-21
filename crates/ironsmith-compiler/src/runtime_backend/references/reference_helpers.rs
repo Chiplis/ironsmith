@@ -271,6 +271,13 @@ pub(crate) fn resolve_it_tag(
         });
 
         if saw_it_constraint
+            && refs.has_source_object_antecedent()
+            && resolved == ObjectFilter::default()
+        {
+            resolved.source = true;
+            return Ok(resolved);
+        }
+        if saw_it_constraint
             && matches!(
                 resolved.zone,
                 Some(Zone::Hand | Zone::Library | Zone::Graveyard | Zone::Exile)
@@ -476,6 +483,9 @@ pub(crate) fn resolve_choose_spec_it_tag(
             }
             if let Some(resolved) = refs.known_last_object_tag() {
                 return Ok(ChooseSpec::Tagged(TagKey::from(resolved.as_str())));
+            }
+            if refs.has_source_object_antecedent() {
+                return Ok(ChooseSpec::Source);
             }
             if let Some(player_filter) = refs.known_last_player_filter().cloned() {
                 let filter = ObjectFilter {

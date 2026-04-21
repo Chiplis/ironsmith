@@ -5,8 +5,10 @@ use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::events::ControlChangedEvent;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+use crate::triggers::TriggerEvent;
 
 /// Effect that gains control of a target permanent.
 ///
@@ -68,6 +70,7 @@ impl EffectExecutor for GainControlEffect {
         let _obj = game
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+        let previous_controller = game.current_controller(target_id);
 
         let apply = ApplyContinuousEffect::new(
             EffectTarget::Specific(target_id),
@@ -75,7 +78,16 @@ impl EffectExecutor for GainControlEffect {
             self.duration.clone(),
         );
 
-        execute_effect(game, &Effect::new(apply), ctx)
+        let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
+        if let Some(previous_controller) = previous_controller
+            && previous_controller != ctx.controller
+        {
+            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
+                ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
+                ctx.provenance,
+            ));
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

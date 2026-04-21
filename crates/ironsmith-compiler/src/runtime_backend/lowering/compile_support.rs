@@ -492,6 +492,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
             display: Some(display.clone()),
         },
         PredicateAst::SourcePowerAtLeast(count) => Condition::SourcePowerAtLeast(*count),
+        PredicateAst::SourceAttackedThisTurn => Condition::SourceAttackedThisTurn,
+        PredicateAst::SourceCameUnderYourControlThisTurn => {
+            Condition::SourceCameUnderYourControlThisTurn
+        }
         PredicateAst::SourceAttackedOrBlockedThisTurn => Condition::SourceAttackedOrBlockedThisTurn,
         PredicateAst::SourceIsInZone(zone) => Condition::SourceIsInZone(*zone),
         PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,

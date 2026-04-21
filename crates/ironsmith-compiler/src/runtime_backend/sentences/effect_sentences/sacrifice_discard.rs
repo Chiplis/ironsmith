@@ -154,7 +154,12 @@ pub(crate) fn parse_sacrifice(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
+    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    let mut filter = if matches!(filter_words.as_slice(), ["it"] | ["that", "card"]) {
+        ObjectFilter::tagged(TagKey::from(IT_TAG))
+    } else {
+        parse_object_filter_lexed(filter_tokens, other)?
+    };
     if other {
         filter.other = true;
     }

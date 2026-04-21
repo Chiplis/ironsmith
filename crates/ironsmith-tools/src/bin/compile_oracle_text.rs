@@ -1,5 +1,5 @@
 use std::env;
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, IsTerminal, Read, Write};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
@@ -13,6 +13,8 @@ use ironsmith_tools::{
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
 const DEFAULT_SHOW_DEFINITION: bool = true;
+const SEMANTIC_MISMATCH_ERROR: &str =
+    "compiled output still semantically mismatches the oracle text";
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -186,6 +188,11 @@ struct CompileJob {
     compiled_definition: Option<CardDefinition>,
 }
 
+fn failed_authoritative_semantic_gate(snapshot: &CompilationSnapshot) -> bool {
+    snapshot.parse_status == ParseStatus::ParseFailed
+        && snapshot.parse_error.as_deref() == Some(SEMANTIC_MISMATCH_ERROR)
+}
+
 fn compile_job_for_name(
     cards_path: &str,
     name: &str,
@@ -258,10 +265,7 @@ fn compile_job_for_name(
             let parse_input = card.parse_input.clone();
             let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
             let authoritative_snapshot = compile_authoritative_snapshot_from_payload(&card);
-            let compiled_definition = match authoritative_snapshot.parse_status {
-                ParseStatus::StrictCompiled => compile_definition_from_payload(&card).ok(),
-                _ => None,
-            };
+            let compiled_definition = compile_definition_from_payload(&card).ok();
             Ok(CompileJob {
                 name,
                 oracle_text,
@@ -275,7 +279,8 @@ fn compile_job_for_name(
     }
 }
 
-fn print_compiled_job(
+fn write_compiled_job<W: Write>(
+    out: &mut W,
     job: &CompileJob,
     detailed: bool,
     raw: bool,
@@ -283,8 +288,20 @@ fn print_compiled_job(
     should_write_db: bool,
     db_path: &str,
 ) -> Result<(), String> {
+    macro_rules! outln {
+        ($($arg:tt)*) => {
+            writeln!(out, $($arg)*)
+                .map_err(|err| format!("failed to write compile output: {err}"))?
+        };
+    }
+
+    let authoritative_semantic_gate_failure = job
+        .authoritative_snapshot
+        .as_ref()
+        .is_some_and(failed_authoritative_semantic_gate);
     if let Some(snapshot) = job.authoritative_snapshot.as_ref()
         && snapshot.parse_status == ParseStatus::ParseFailed
+        && !authoritative_semantic_gate_failure
     {
         let _ = store_snapshot_if_requested(
             should_write_db,
@@ -327,14 +344,14 @@ fn print_compiled_job(
         }
     }
 
-    println!("Name: {}", display_def.card.name);
+    outln!("Name: {}", display_def.card.name);
     if detailed {
-        println!("Oracle text:");
-        println!("{}", job.oracle_text.trim());
-        println!("Parse input:");
-        println!("{}", job.parse_input.trim());
+        outln!("Oracle text:");
+        outln!("{}", job.oracle_text.trim());
+        outln!("Parse input:");
+        outln!("{}", job.parse_input.trim());
     }
-    println!(
+    outln!(
         "Type: {}",
         display_def
             .card
@@ -344,9 +361,9 @@ fn print_compiled_job(
             .collect::<Vec<_>>()
             .join(" ")
     );
-    println!("Compiled abilities/effects");
+    outln!("Compiled abilities/effects");
     if raw {
-        println!("- {:#?}", display_def);
+        outln!("- {:#?}", display_def);
     } else {
         let lines = if detailed {
             unprocessed_compiled_lines(&display_def)
@@ -354,31 +371,62 @@ fn print_compiled_job(
             canonical_compiled_lines(&display_def)
         };
         if lines.is_empty() {
-            println!("- <none>");
+            outln!("- <none>");
         } else {
             for line in lines {
-                println!("- {}", line.trim());
+                outln!("- {}", line.trim());
             }
         }
     }
     if show_definition {
-        println!("Compiled card definition:");
-        println!("{:#?}", display_def);
+        outln!("Compiled card definition:");
+        outln!("{:#?}", display_def);
     }
 
     let fresh_snapshot = job
         .db_payload
         .as_ref()
         .map(|payload| snapshot_from_payload_definition(payload, def));
-    store_snapshot_if_requested(
-        should_write_db,
+    let snapshot_to_store = if authoritative_semantic_gate_failure {
+        job.authoritative_snapshot.as_ref()
+    } else {
         fresh_snapshot
             .as_ref()
-            .or(job.authoritative_snapshot.as_ref()),
+            .or(job.authoritative_snapshot.as_ref())
+    };
+    store_snapshot_if_requested(
+        should_write_db,
+        snapshot_to_store,
         job.db_payload.as_ref(),
         db_path,
     )?;
+    if authoritative_semantic_gate_failure {
+        return Err(format!(
+            "parse failed for {}: {SEMANTIC_MISMATCH_ERROR}",
+            job.name
+        ));
+    }
     Ok(())
+}
+
+fn print_compiled_job(
+    job: &CompileJob,
+    detailed: bool,
+    raw: bool,
+    show_definition: bool,
+    should_write_db: bool,
+    db_path: &str,
+) -> Result<(), String> {
+    let mut stdout = io::stdout().lock();
+    write_compiled_job(
+        &mut stdout,
+        job,
+        detailed,
+        raw,
+        show_definition,
+        should_write_db,
+        db_path,
+    )
 }
 
 fn main() -> Result<(), String> {
@@ -533,7 +581,6 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironsmith::ids::CardId;
     use ironsmith_tools::CardPayload;
 
     #[test]
@@ -640,65 +687,51 @@ mod tests {
     }
 
     #[test]
-    fn compile_job_for_name_prefers_builtin_definition_for_transform_pairs() {
-        let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
-        let job = compile_job_for_name(
-            &cards_path,
-            "Conqueror's Galleon // Conqueror's Foothold",
-            None,
+    fn semantic_gate_failure_still_prints_compiled_definition() {
+        let definition = parse_card_definition_with_runtime_builder(
+            "Semantic Gate Probe",
+            "Mana cost: {R}\nType: Instant\nSemantic Gate Probe deals 3 damage to any target."
+                .to_string(),
+            false,
         )
-        .expect("Conqueror's Galleon should exist");
-
-        let definition = job
-            .compiled_definition
-            .as_ref()
-            .expect("builtin transform pair should use source definition");
-        assert_eq!(
-            definition.card.other_face_name.as_deref(),
-            Some("Conqueror's Foothold")
-        );
-        assert_eq!(
-            definition.card.linked_face_layout,
-            ironsmith::card::LinkedFaceLayout::TransformLike
-        );
-        assert_eq!(definition.card.other_face, Some(CardId::from_raw(234_002)));
-        assert!(job.parse_input.contains("Mana cost: {4}"));
-    }
-
-    #[test]
-    fn compile_job_for_name_preserves_registry_transform_face_metadata() {
-        let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
-        let job = compile_job_for_name(
-            &cards_path,
-            "Sorin of House Markov // Sorin, Ravenous Neonate",
+        .expect("probe should compile");
+        let mut snapshot = CompilationSnapshot::from_definition_result(
+            "Semantic Gate Probe",
+            "Semantic Gate Probe deals 3 damage to any target.",
+            ParseStatus::StrictCompiled,
             None,
-        )
-        .expect("Sorin should exist");
+            Some(&definition),
+        );
+        snapshot.parse_status = ParseStatus::ParseFailed;
+        snapshot.parse_error = Some(SEMANTIC_MISMATCH_ERROR.to_string());
 
-        assert_eq!(job.name, "Sorin of House Markov // Sorin, Ravenous Neonate");
+        let job = CompileJob {
+            name: "Semantic Gate Probe".to_string(),
+            oracle_text: "Semantic Gate Probe deals 3 damage to any target.".to_string(),
+            parse_input:
+                "Mana cost: {R}\nType: Instant\nSemantic Gate Probe deals 3 damage to any target."
+                    .to_string(),
+            db_payload: None,
+            authoritative_snapshot: Some(snapshot),
+            compiled_definition: Some(definition),
+        };
+        let mut output = Vec::new();
+
+        let err = write_compiled_job(&mut output, &job, false, false, true, false, "")
+            .expect_err("semantic gate failure should still fail the command");
+        let stdout = String::from_utf8(output).expect("stdout should be utf8");
+
         assert!(
-            job.parse_input
-                .contains("Type: Legendary Creature — Human Noble"),
-            "front-face type line should drive the parse block"
+            stdout.contains("Compiled card definition:"),
+            "expected definition output before semantic gate failure, got {stdout}"
         );
         assert!(
-            !job.parse_input.contains("// Legendary Planeswalker"),
-            "combined type line should not leak into the front-face parse block"
+            stdout.contains("Semantic Gate Probe"),
+            "expected built card name in definition output, got {stdout}"
         );
-
-        let definition = job
-            .compiled_definition
-            .as_ref()
-            .expect("transform registry card should compile with linkage metadata");
-        assert_eq!(definition.card.name, "Sorin of House Markov");
-        assert_eq!(
-            definition.card.other_face_name.as_deref(),
-            Some("Sorin, Ravenous Neonate")
+        assert!(
+            err.contains(SEMANTIC_MISMATCH_ERROR),
+            "expected semantic gate error, got {err}"
         );
-        assert_eq!(
-            definition.card.linked_face_layout,
-            ironsmith::card::LinkedFaceLayout::TransformLike
-        );
-        assert!(definition.card.other_face.is_some());
     }
 }

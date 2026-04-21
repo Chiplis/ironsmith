@@ -38,6 +38,7 @@ pub struct ReferenceFrame<PlayerFilter> {
     pub last_effect_id: Option<EffectId>,
     pub last_object_tag: Option<TagKey>,
     pub last_player_filter: Option<PlayerFilter>,
+    pub source_object_antecedent: bool,
     pub recent_player_choice_tags: Vec<TagKey>,
     pub iterated_player: bool,
     pub auto_tag_object_targets: bool,
@@ -50,6 +51,7 @@ pub struct ReferenceFrame<PlayerFilter> {
 pub struct ReferenceImports<PlayerFilter> {
     pub last_object_tag: Option<TagKey>,
     pub last_player_filter: Option<PlayerFilter>,
+    pub source_object_antecedent: bool,
     pub last_effect_id: Option<EffectId>,
 }
 
@@ -64,6 +66,7 @@ impl<PlayerFilter> ReferenceImports<PlayerFilter> {
         Self {
             last_object_tag: None,
             last_player_filter: None,
+            source_object_antecedent: false,
             last_effect_id: None,
         }
     }
@@ -71,6 +74,7 @@ impl<PlayerFilter> ReferenceImports<PlayerFilter> {
     pub fn is_empty(&self) -> bool {
         self.last_object_tag.is_none()
             && self.last_player_filter.is_none()
+            && !self.source_object_antecedent
             && self.last_effect_id.is_none()
     }
 
@@ -87,6 +91,7 @@ impl<PlayerFilter: Clone> ReferenceImports<PlayerFilter> {
         Self {
             last_object_tag: frame.last_object_tag.clone(),
             last_player_filter: frame.last_player_filter.clone(),
+            source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: frame.last_effect_id,
         }
     }
@@ -96,6 +101,7 @@ impl<PlayerFilter: Clone> ReferenceImports<PlayerFilter> {
 pub struct ReferenceEnv<PlayerFilter> {
     pub last_object_tag: RefState<TagKey>,
     pub last_player_filter: RefState<PlayerFilter>,
+    pub source_object_antecedent: bool,
     pub last_effect_id: RefState<EffectId>,
     pub iterated_player: bool,
     pub allow_life_event_value: bool,
@@ -107,6 +113,7 @@ impl<PlayerFilter> Default for ReferenceEnv<PlayerFilter> {
         Self {
             last_object_tag: RefState::Unknown,
             last_player_filter: RefState::Unknown,
+            source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
             iterated_player: false,
             allow_life_event_value: false,
@@ -126,6 +133,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceEnv<PlayerFilter> {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
             last_player_filter: RefState::from_option(imports.last_player_filter.clone()),
+            source_object_antecedent: imports.source_object_antecedent,
             last_effect_id: RefState::from_option(
                 imports.last_effect_id.or(initial_last_effect_id),
             ),
@@ -139,6 +147,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceEnv<PlayerFilter> {
         Self {
             last_object_tag: RefState::from_option(frame.last_object_tag.clone()),
             last_player_filter: RefState::from_option(frame.last_player_filter.clone()),
+            source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: RefState::from_option(frame.last_effect_id),
             iterated_player: frame.iterated_player,
             allow_life_event_value: frame.allow_life_event_value,
@@ -155,6 +164,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceEnv<PlayerFilter> {
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_object_tag: self.last_object_tag.clone().into_option(),
             last_player_filter: self.last_player_filter.clone().into_option(),
+            source_object_antecedent: self.source_object_antecedent,
             recent_player_choice_tags: Vec::new(),
             iterated_player: self.iterated_player,
             auto_tag_object_targets: auto_tag_object_targets || force_auto_tag_object_targets,
@@ -190,6 +200,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceEnv<PlayerFilter> {
 pub struct ReferenceExports<PlayerFilter> {
     pub last_object_tag: RefState<TagKey>,
     pub last_player_filter: RefState<PlayerFilter>,
+    pub source_object_antecedent: bool,
     pub last_effect_id: RefState<EffectId>,
     pub iterated_player: bool,
 }
@@ -199,6 +210,7 @@ impl<PlayerFilter> Default for ReferenceExports<PlayerFilter> {
         Self {
             last_object_tag: RefState::Unknown,
             last_player_filter: RefState::Unknown,
+            source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
             iterated_player: false,
         }
@@ -210,6 +222,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceExports<PlayerFilter> {
         Self {
             last_object_tag: env.last_object_tag.clone(),
             last_player_filter: env.last_player_filter.clone(),
+            source_object_antecedent: env.source_object_antecedent,
             last_effect_id: env.last_effect_id.clone(),
             iterated_player: env.iterated_player,
         }
@@ -219,6 +232,8 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceExports<PlayerFilter> {
         Self {
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
             last_player_filter: RefState::join(&left.last_player_filter, &right.last_player_filter),
+            source_object_antecedent: left.source_object_antecedent
+                && right.source_object_antecedent,
             last_effect_id: RefState::join(&left.last_effect_id, &right.last_effect_id),
             iterated_player: left.iterated_player && right.iterated_player,
         }
@@ -228,6 +243,7 @@ impl<PlayerFilter: Clone + PartialEq> ReferenceExports<PlayerFilter> {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
             last_player_filter: self.last_player_filter.clone().into_option(),
+            source_object_antecedent: self.source_object_antecedent,
             last_effect_id: self.last_effect_id.clone().into_option(),
         }
     }
@@ -271,12 +287,14 @@ mod tests {
         let left = ReferenceExports {
             last_object_tag: RefState::Known(TagKey::from("it")),
             last_player_filter: RefState::Known("you".to_string()),
+            source_object_antecedent: true,
             last_effect_id: RefState::Known(EffectId(7)),
             iterated_player: true,
         };
         let right = ReferenceExports {
             last_object_tag: RefState::Known(TagKey::from("it")),
             last_player_filter: RefState::Unknown,
+            source_object_antecedent: true,
             last_effect_id: RefState::Known(EffectId(7)),
             iterated_player: false,
         };
@@ -285,6 +303,7 @@ mod tests {
 
         assert!(matches!(joined.last_object_tag, RefState::Known(_)));
         assert!(matches!(joined.last_player_filter, RefState::Unknown));
+        assert!(joined.source_object_antecedent);
         assert_eq!(joined.known_last_effect_id(), Some(EffectId(7)));
         assert!(!joined.iterated_player);
     }
@@ -295,6 +314,7 @@ mod tests {
             last_effect_id: Some(EffectId(9)),
             last_object_tag: Some(TagKey::from("that")),
             last_player_filter: Some("opponent".to_string()),
+            source_object_antecedent: true,
             recent_player_choice_tags: vec![TagKey::from("chosen")],
             iterated_player: true,
             auto_tag_object_targets: false,
@@ -309,6 +329,7 @@ mod tests {
         assert_eq!(env.known_last_effect_id(), Some(EffectId(9)));
         assert_eq!(rebuilt.last_object_tag, Some(TagKey::from("that")));
         assert_eq!(rebuilt.last_player_filter.as_deref(), Some("opponent"));
+        assert!(rebuilt.source_object_antecedent);
         assert!(rebuilt.force_auto_tag_object_targets);
     }
 }

@@ -482,6 +482,26 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if matches!(
+        filtered.as_slice(),
+        [
+            "this", "creature", "didnt", "attack", "or", "come", "under", "your", "control",
+            "this", "turn"
+        ] | [
+            "this", "creature", "didnt", "attack", "or", "came", "under", "your", "control",
+            "this", "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::And(
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceAttackedThisTurn,
+            ))),
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceCameUnderYourControlThisTurn,
+            ))),
+        ));
+    }
+
     if slice_starts_with(&filtered, &["there", "are", "no"])
         && slice_contains(&filtered, &"counters")
         && contains_any_filter_phrase(

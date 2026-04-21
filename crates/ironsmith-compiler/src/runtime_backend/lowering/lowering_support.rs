@@ -170,6 +170,9 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
         }
         _ => {}
     }
+    if matches!(effect, EffectAst::ForEachTagged { .. }) {
+        return;
+    }
     for_each_nested_effects_mut(effect, true, |nested| {
         for effect in nested {
             retarget_bare_it_effect_targets_to_source(effect);
@@ -193,6 +196,17 @@ fn has_local_target_prelude_before_it_reference(effects: &[EffectAst]) -> bool {
         {
             return true;
         }
+    }
+    false
+}
+
+fn has_prior_effect_before_it_reference(effects: &[EffectAst]) -> bool {
+    let mut saw_prior_effect = false;
+    for effect in effects {
+        if effect_references_it_tag(effect) {
+            return saw_prior_effect;
+        }
+        saw_prior_effect = true;
     }
     false
 }
@@ -305,9 +319,11 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     let imports = imports.into();
     let mut normalized = normalize_effects_ast(effects);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
+    let has_phase_step_it_prelude =
+        has_local_target_prelude || has_prior_effect_before_it_reference(&normalized);
     if let Some(trigger) = trigger
         && phase_step_trigger_has_no_object_reference(trigger)
-        && !has_local_target_prelude
+        && !has_phase_step_it_prelude
     {
         retarget_phase_step_it_targets_to_source(&mut normalized);
     }
@@ -374,12 +390,14 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
-    let imports = imports.into();
+    let mut imports = imports.into();
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
 
     let normalized = normalize_effects_ast(effects);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
+    let has_phase_step_it_prelude =
+        has_local_target_prelude || has_prior_effect_before_it_reference(&normalized);
     let mut body_effects = normalized.clone();
     let mut intervening_if = match &trigger {
         TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
@@ -397,8 +415,10 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
-
-    if phase_step_trigger_has_no_object_reference(&trigger) && !has_local_target_prelude {
+    imports.source_object_antecedent |= intervening_if
+        .as_ref()
+        .is_some_and(PredicateAst::establishes_source_object_antecedent);
+    if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
         retarget_phase_step_it_targets_to_source(&mut body_effects);
     }
 
@@ -573,13 +593,14 @@ fn rewrite_lower_parsed_ability_internal(
                 trigger_binds_player_reference_context(&trigger),
                 "triggered ability effects",
             )?;
-            triggered.trigger = compile_trigger_spec(trigger);
-            triggered.effects = lowered.effects;
-            triggered.choices = lowered.choices;
-            triggered.intervening_if = rewrite_merge_intervening_conditions(
+            let intervening_if = rewrite_merge_intervening_conditions(
                 triggered.intervening_if.take(),
                 parsed_intervening_if,
             );
+            triggered.trigger = compile_trigger_spec(trigger);
+            triggered.effects = lowered.effects;
+            triggered.choices = lowered.choices;
+            triggered.intervening_if = intervening_if;
             return Ok(parsed);
         }
         return Ok(parsed);

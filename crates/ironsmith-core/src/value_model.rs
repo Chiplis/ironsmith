@@ -583,6 +583,7 @@ pub enum Condition {
     },
     OwnsCardExiledWithCounter(CounterType),
     SourceAttackedThisTurn,
+    SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
     SourceIsUntapped,
     SourceIsAttacking,

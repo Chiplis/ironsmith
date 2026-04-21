@@ -695,6 +695,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         crate::ConditionExpr::SourceAttackedThisTurn => {
             "as long as this creature attacked this turn".to_string()
         }
+        crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
+            "as long as this creature came under your control this turn".to_string()
+        }
         crate::ConditionExpr::Not(inner)
             if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn) =>
         {

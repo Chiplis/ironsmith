@@ -1299,6 +1299,118 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn aether_rift_returns_randomly_discarded_creature_when_no_player_pays() {
+    struct DeclineUnlessPayment;
+
+    impl DecisionMaker for DeclineUnlessPayment {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let aether_rift = CardDefinitionBuilder::new(CardId::from_raw(99_150), "Aether Rift")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, discard a card at random. If you discard a creature card this way, return it from your graveyard to the battlefield unless any player pays 5 life.",
+        )
+        .expect("Aether Rift should parse for runtime test");
+    let _rift_id = game.create_object_from_definition(&aether_rift, alice, Zone::Battlefield);
+    let _creature_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_151), "Rift Beast")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Aether Rift should trigger");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Aether Rift trigger stacks");
+    let mut dm = DeclineUnlessPayment;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Aether Rift trigger resolves");
+
+    assert!(
+        game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|obj| obj.name == "Rift Beast" && obj.controller == alice)
+        }),
+        "discarded creature should return to the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aether_rift_leaves_randomly_discarded_noncreature_in_graveyard() {
+    struct DeclineUnlessPayment;
+
+    impl DecisionMaker for DeclineUnlessPayment {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let aether_rift = CardDefinitionBuilder::new(CardId::from_raw(99_152), "Aether Rift")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, discard a card at random. If you discard a creature card this way, return it from your graveyard to the battlefield unless any player pays 5 life.",
+        )
+        .expect("Aether Rift should parse for noncreature runtime test");
+    let _rift_id = game.create_object_from_definition(&aether_rift, alice, Zone::Battlefield);
+    let _relic_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(99_153), "Rift Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Aether Rift should trigger");
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Aether Rift trigger stacks");
+    let mut dm = DeclineUnlessPayment;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Aether Rift trigger resolves");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Rift Relic")),
+        "discarded noncreature should stay in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn mind_funeral_mills_until_four_lands_and_moves_every_revealed_card_to_graveyard() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

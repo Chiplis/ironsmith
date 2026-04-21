@@ -107,6 +107,8 @@ pub enum EventKind {
     Converted,
     /// A permanent was turned face up
     TurnedFaceUp,
+    /// A permanent came under a different player's control
+    ControlChanged,
     /// A card was revealed
     CardRevealed,
     /// A state-triggered ability's condition became true

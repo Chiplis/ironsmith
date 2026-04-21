@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::events::EnterBattlefieldEvent;
 use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
 use crate::events::other::{
-    CardsDrawnEvent, KeywordActionEvent, KeywordActionKind, SearchLibraryEvent,
+    CardsDrawnEvent, ControlChangedEvent, KeywordActionEvent, KeywordActionKind, SearchLibraryEvent,
 };
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::SpellCastEvent;
@@ -304,6 +304,30 @@ impl TurnHistory {
                 .as_ref()
                 .filter(|snapshot| snapshot.stable_id == stable_id)
                 .map(|snapshot| snapshot.controller)
+        })
+    }
+
+    pub fn object_came_under_controller_this_turn(
+        &self,
+        stable_id: StableId,
+        player: PlayerId,
+    ) -> bool {
+        if self
+            .object_entered_battlefield_controller_this_turn(stable_id)
+            .is_some_and(|controller| controller == player)
+        {
+            return true;
+        }
+
+        self.projected_records().rev().any(|record| {
+            record
+                .event
+                .downcast::<ControlChangedEvent>()
+                .is_some_and(|event| event.new_controller == player)
+                && record
+                    .object_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
         })
     }
 

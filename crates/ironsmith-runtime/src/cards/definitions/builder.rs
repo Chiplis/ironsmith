@@ -36,10 +36,6 @@ impl CardDefinitionBuilder {
         Self(self.0.subtypes(subtypes))
     }
 
-    pub(crate) fn oracle_text(self, text: impl Into<String>) -> Self {
-        Self(self.0.oracle_text(text))
-    }
-
     pub(crate) fn other_face(self, face: CardId) -> Self {
         Self(self.0.other_face(face))
     }
@@ -74,13 +70,6 @@ impl CardDefinitionBuilder {
         text: impl Into<String>,
     ) -> Result<CardDefinition, CardTextError> {
         self.0.parse_text(text)
-    }
-
-    pub(crate) fn parse_text_allow_unsupported(
-        self,
-        text: impl Into<String>,
-    ) -> Result<CardDefinition, CardTextError> {
-        self.0.parse_text_allow_unsupported(text)
     }
 
     pub(crate) fn build(self) -> CardDefinition {

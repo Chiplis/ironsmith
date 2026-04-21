@@ -44,6 +44,7 @@ pub(crate) struct LoweringFrame {
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_revealed_tag: Option<String>,
     pub(crate) last_player_filter: Option<PlayerFilter>,
+    pub(crate) source_object_antecedent: bool,
     pub(crate) recent_player_choice_tags: Vec<String>,
     pub(crate) iterated_player: bool,
     pub(crate) auto_tag_object_targets: bool,
@@ -162,6 +163,7 @@ impl EffectLoweringContext {
         self.last_object_tag = frame.last_object_tag;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
         self.last_player_filter = frame.last_player_filter;
+        self.source_object_antecedent = frame.source_object_antecedent;
         self.iterated_player = frame.iterated_player;
         self.allow_life_event_value = frame.allow_life_event_value;
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;

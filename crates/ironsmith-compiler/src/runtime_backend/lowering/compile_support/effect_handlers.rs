@@ -1006,10 +1006,15 @@ pub(super) fn try_compile_stack_and_condition_effect(
             if_false,
         } => {
             let saved_last_tag = ctx.last_object_tag.clone();
+            let saved_source_object_antecedent = ctx.source_object_antecedent;
+            ctx.source_object_antecedent |= predicate.establishes_source_object_antecedent();
             let (true_effects, true_choices) = compile_effects(if_true, ctx)?;
             let true_last_tag = ctx.last_object_tag.clone();
             ctx.last_object_tag = saved_last_tag.clone();
+            ctx.source_object_antecedent =
+                saved_source_object_antecedent || predicate.establishes_source_object_antecedent();
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
+            ctx.source_object_antecedent = saved_source_object_antecedent;
             let predicate_references_it = matches!(
                 predicate,
                 PredicateAst::ItIsLandCard

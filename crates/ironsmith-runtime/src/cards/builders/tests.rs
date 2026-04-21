@@ -18401,7 +18401,8 @@ fn parse_exile_self_and_target_unless_controller_pays() {
         joined.contains("unless that creature's controller pays {2}")
             || joined.contains("unless that creatures controller pays {2}")
             || joined.contains("unless that object's controller pays {2}")
-            || joined.contains("unless that objects controller pays {2}"),
+            || joined.contains("unless that objects controller pays {2}")
+            || joined.contains("unless its controller pays {2}"),
         "expected unless-payment tail in rendered text, got {joined}"
     );
 }
@@ -23009,9 +23010,237 @@ fn reveka_activation_keeps_self_skip_next_untap_text() {
     let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
     assert!(
         debug.contains("controllersnextuntapstep")
-            && debug.contains("tagkey(\"triggering\")")
+            && debug.contains("source: true")
             && debug.contains("dealdamageeffect"),
         "expected Reveka to keep its damage plus next-untap restriction structure, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reveka_activation_runtime_keeps_source_tapped_for_next_untap() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Reveka Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dwarf, Subtype::Wizard])
+        .supertypes(vec![Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(0, 1))
+        .parse_text(
+            "{T}: Reveka deals 2 damage to any target and doesn't untap during your next untap step.",
+        )
+        .expect("Reveka should parse");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Reveka should have an activated ability");
+    let cant_effect = activated.effects.segments[0]
+        .default_effects
+        .iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::CantEffect>()
+                .is_some()
+        })
+        .expect("Reveka activation should include a next-untap restriction");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let reveka_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.tap(reveka_id);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(reveka_id, alice);
+    cant_effect
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Reveka next-untap restriction should resolve");
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    assert!(
+        game.is_tapped(reveka_id),
+        "Reveka should remain tapped during its controller's next untap step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mad_dog_trigger_checks_attack_or_entered_this_turn_before_sacrificing() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mad Dog Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "At the beginning of your end step, if this creature didn't attack or come under your control this turn, sacrifice it.",
+        )
+        .expect("Mad Dog should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if this creature didn't attack or come under your control this turn")
+            && (rendered.contains("sacrifice it") || rendered.contains("sacrifice this creature")),
+        "expected Mad Dog to preserve its conditional self-sacrifice wording, got {rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Mad Dog should have a triggered ability");
+    let condition = triggered
+        .intervening_if
+        .as_ref()
+        .expect("Mad Dog trigger should have an intervening condition");
+    let effects_debug = format!("{:?}", triggered.effects);
+    assert!(
+        effects_debug.contains("SacrificeTargetEffect") && effects_debug.contains("Source"),
+        "expected Mad Dog to sacrifice itself without chooser scaffolding, got {effects_debug}"
+    );
+    assert!(
+        triggered.choices.is_empty(),
+        "Mad Dog should not leave any chooser scaffolding, got {:?}",
+        triggered.choices
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let old_mad_dog = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.turn_store.turn_history.clear_for_new_turn();
+    let ctx = crate::effects::ExecutionContext::new_default(old_mad_dog, alice);
+    assert!(
+        crate::condition_eval::evaluate_condition_resolution(&game, condition, &ctx)
+            .expect("Mad Dog condition should evaluate"),
+        "Mad Dog should sacrifice when it neither attacked nor entered this turn"
+    );
+
+    game.mark_creature_attacked_this_turn(old_mad_dog);
+    assert!(
+        !crate::condition_eval::evaluate_condition_resolution(&game, condition, &ctx)
+            .expect("Mad Dog attacked condition should evaluate"),
+        "Mad Dog should not sacrifice after it attacked this turn"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    let new_mad_dog = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let new_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(new_mad_dog)
+            .expect("new Mad Dog should exist on the battlefield"),
+        &game,
+    );
+    let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            new_mad_dog,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(new_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&entry_event);
+    let new_ctx = crate::effects::ExecutionContext::new_default(new_mad_dog, alice);
+    assert!(
+        !crate::condition_eval::evaluate_condition_resolution(&game, condition, &new_ctx)
+            .expect("Mad Dog entered condition should evaluate"),
+        "Mad Dog should not sacrifice if it came under your control this turn"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    let stolen_mad_dog = game.create_object_from_definition(&def, bob, Zone::Battlefield);
+    let mut control_ctx = crate::effects::ExecutionContext::new_default(old_mad_dog, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(stolen_mad_dog)]);
+    let control_outcome =
+        crate::effects::control::GainControlEffect::until_end_of_turn(ChooseSpec::creature())
+            .execute(&mut game, &mut control_ctx)
+            .expect("gain-control effect should resolve");
+    for event in &control_outcome.events {
+        game.record_turn_history_event(event);
+    }
+    assert_eq!(
+        game.current_controller(stolen_mad_dog),
+        Some(alice),
+        "Alice should control the stolen Mad Dog after the control-change effect"
+    );
+    let stolen_ctx = crate::effects::ExecutionContext::new_default(stolen_mad_dog, alice);
+    assert!(
+        !crate::condition_eval::evaluate_condition_resolution(&game, condition, &stolen_ctx)
+            .expect("Mad Dog control-change condition should evaluate"),
+        "Mad Dog should not sacrifice if it came under your control through a control-change effect this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn source_scoped_intervening_if_binds_bare_it_sacrifice_to_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Self Sacrifice Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("At the beginning of your upkeep, if this creature is tapped, sacrifice it.")
+        .expect("source-scoped self-sacrifice trigger should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("variant should have a triggered ability");
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("SacrificeTargetEffect") && debug.contains("Source"),
+        "expected bare it under source-scoped condition to sacrifice the source, got {debug}"
+    );
+    assert!(
+        triggered.choices.is_empty(),
+        "source-scoped self-sacrifice should not require a chooser, got {:?}",
+        triggered.choices
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn source_scoped_choose_then_sacrifice_it_keeps_chosen_object() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chosen Sacrifice Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "At the beginning of your upkeep, if this creature is tapped, choose a creature you control. Sacrifice it.",
+        )
+        .expect("source-scoped choose/sacrifice trigger should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("variant should have a triggered ability");
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("SacrificeTargetEffect")
+            && debug.contains("Tagged"),
+        "expected choose/sacrifice sequence to stay object-scoped, got {debug}"
+    );
+    assert!(
+        !(debug.contains("SacrificeTargetEffect") && debug.contains("Source")),
+        "source-scoped choose/sacrifice should not collapse to sacrificing the source, got {debug}"
     );
 }
 

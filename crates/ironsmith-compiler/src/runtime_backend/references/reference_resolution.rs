@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::{Comparison, TaggedOpbjectRelation};
@@ -10,9 +10,7 @@ use crate::{ObjectFilter, PlayerFilter, Value};
 #[cfg(test)]
 use crate::TagKey;
 #[cfg(test)]
-use crate::cards::builders::{
-    ObjectRefAst, PredicateAst, PreventNextTimeDamageSourceAst, RetargetModeAst,
-};
+use crate::cards::builders::{ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst};
 #[cfg(test)]
 use crate::types::Subtype;
 
@@ -1289,19 +1287,30 @@ fn advance_reference_env_for_effect(
 ) -> Result<ReferenceEnv, CardTextError> {
     match effect {
         EffectAst::Conditional {
-            if_true, if_false, ..
+            predicate,
+            if_true,
+            if_false,
         }
         | EffectAst::SelfReplacement {
-            if_true, if_false, ..
+            predicate,
+            if_true,
+            if_false,
+            ..
         } => {
-            let true_sequence =
-                annotate_effect_sequence_with_env_internal(if_true, env.clone(), config, id_gen)?;
+            let mut branch_env = env.clone();
+            branch_env.source_object_antecedent |= predicate.establishes_source_object_antecedent();
+            let true_sequence = annotate_effect_sequence_with_env_internal(
+                if_true,
+                branch_env.clone(),
+                config,
+                id_gen,
+            )?;
             if if_false.is_empty() {
                 return Ok(true_sequence.final_env);
             }
 
             let false_sequence =
-                annotate_effect_sequence_with_env_internal(if_false, env.clone(), config, id_gen)?;
+                annotate_effect_sequence_with_env_internal(if_false, branch_env, config, id_gen)?;
             Ok(ReferenceEnv {
                 last_object_tag: RefState::join(
                     &true_sequence.final_env.last_object_tag,
@@ -1313,6 +1322,8 @@ fn advance_reference_env_for_effect(
                     &true_sequence.final_env.last_player_filter,
                     &false_sequence.final_env.last_player_filter,
                 ),
+                source_object_antecedent: true_sequence.final_env.source_object_antecedent
+                    && false_sequence.final_env.source_object_antecedent,
                 last_effect_id: env.last_effect_id.clone(),
                 iterated_player: env.iterated_player,
                 allow_life_event_value: env.allow_life_event_value,

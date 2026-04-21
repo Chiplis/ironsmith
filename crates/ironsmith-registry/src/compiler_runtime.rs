@@ -431,7 +431,7 @@ fn runtime_definition_from_core_model(
 pub fn into_runtime_definition(
     definition: compiler::CardDefinition,
 ) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
-    Ok(runtime_definition_from_core_model(definition)?)
+    runtime_definition_from_core_model(definition)
 }
 
 pub fn into_runtime_compiled_card_text(

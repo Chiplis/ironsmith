@@ -741,6 +741,9 @@ impl CantAttackUnlessCondition {
             crate::ConditionExpr::SourceAttackedThisTurn => {
                 "this creature attacked this turn".to_string()
             }
+            crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
+                "this creature came under your control this turn".to_string()
+            }
             crate::ConditionExpr::Not(inner)
                 if matches!(&**inner, crate::ConditionExpr::SourceAttackedThisTurn) =>
             {

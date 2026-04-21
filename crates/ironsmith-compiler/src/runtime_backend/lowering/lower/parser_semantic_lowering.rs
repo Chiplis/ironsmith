@@ -519,6 +519,55 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
     }
 
     if normalized
+        == "at the beginning of your upkeep, discard a card at random. if you discard a creature card this way, return it from your graveyard to the battlefield unless any player pays 5 life"
+    {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of your upkeep",
+            line.info.line_index,
+        )?;
+        let discarded_tag = TagKey::from("discarded_this_way");
+        let mut creature_card_filter = ObjectFilter::creature();
+        creature_card_filter.zone = Some(Zone::Graveyard);
+        creature_card_filter.owner = Some(PlayerFilter::You);
+        let effects = vec![
+            EffectAst::Discard {
+                count: crate::effect::Value::Fixed(1),
+                player: PlayerAst::You,
+                random: true,
+                filter: None,
+                tag: Some(discarded_tag.clone()),
+            },
+            EffectAst::Conditional {
+                predicate: PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: discarded_tag.clone(),
+                    filter: creature_card_filter,
+                },
+                if_true: vec![EffectAst::UnlessPays {
+                    effects: vec![EffectAst::ReturnToBattlefield {
+                        target: TargetAst::Tagged(discarded_tag, None),
+                        tapped: false,
+                        transformed: false,
+                        converted: false,
+                        controller: ReturnControllerAst::Preserve,
+                    }],
+                    player: PlayerAst::Any,
+                    cost: TotalCost::from_cost(Cost::life(5)),
+                }],
+                if_false: Vec::new(),
+            },
+        ];
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            effects,
+            infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
+            Some(line.info.raw_line.clone()),
+            None,
+            ReferenceImports::default(),
+        ))));
+    }
+
+    if normalized
         == "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn"
     {
         let trigger = if trigger_parse_tokens.is_empty() {

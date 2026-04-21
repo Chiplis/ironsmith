@@ -408,6 +408,13 @@ fn evaluate_condition_shared_core(
                     .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
             )
         }
+        Condition::SourceCameUnderYourControlThisTurn => {
+            Some(game.object(ctx.source).is_some_and(|obj| {
+                game.turn_store
+                    .turn_history
+                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
+            }))
+        }
         Condition::SourceIsInZone(zone) => Some(
             game.object(ctx.source)
                 .map(|obj| obj.zone == *zone)
@@ -531,6 +538,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CountComparison { .. } => {}
         Condition::OwnsCardExiledWithCounter(..) => {}
         Condition::SourceAttackedThisTurn => {}
+        Condition::SourceCameUnderYourControlThisTurn => {}
         Condition::SourceIsUntapped => {}
         Condition::SourceIsAttacking => {}
         Condition::SourceIsBlocking => {}
@@ -1235,6 +1243,13 @@ pub fn evaluate_condition_external(
         }),
 
         Condition::SourceAttackedThisTurn => game.creature_attacked_this_turn(ctx.source),
+        Condition::SourceCameUnderYourControlThisTurn => {
+            game.object(ctx.source).is_some_and(|obj| {
+                game.turn_store
+                    .turn_history
+                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
+            })
+        }
         Condition::SourceAttackedOrBlockedThisTurn => {
             game.creature_attacked_this_turn(ctx.source)
                 || game.creature_blocked_this_turn(ctx.source)
@@ -1919,6 +1934,7 @@ fn evaluate_condition_simple(
         | Condition::CountComparison { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
+        | Condition::SourceCameUnderYourControlThisTurn
         | Condition::SourceAttackedOrBlockedThisTurn
         | Condition::SourceIsUntapped
         | Condition::SourceIsAttacking
@@ -2908,6 +2924,13 @@ fn evaluate_condition(
             })
         })),
         Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
+        Condition::SourceCameUnderYourControlThisTurn => {
+            Ok(game.object(ctx.source).is_some_and(|obj| {
+                game.turn_store
+                    .turn_history
+                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
+            }))
+        }
         Condition::SourceIsUntapped => Ok(!game.is_tapped(ctx.source)),
         Condition::SourceIsAttacking => Ok(game
             .combat

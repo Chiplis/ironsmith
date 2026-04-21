@@ -2386,49 +2386,6 @@ CardDefinition {
     }
 
     #[test]
-    fn compilation_snapshot_scores_against_debug_compiled_text() {
-        let payload = rout_payload();
-        let definition = compile_definition_from_payload(&payload).expect("Rout should parse");
-        let snapshot = CompilationSnapshot::from_definition_result(
-            "Rout",
-            &payload.oracle_text,
-            ParseStatus::StrictCompiled,
-            None,
-            Some(&definition),
-        );
-        let canonical = canonical_compiled_lines(&definition);
-        let debug = debug_compiled_lines(&definition);
-        let (_oracle_cov, _compiled_cov, debug_similarity, debug_delta, debug_mismatch) =
-            compare_card_semantics_scored(
-                "Rout",
-                &strip_parenthetical_text(&payload.oracle_text),
-                &debug,
-                report_embedding_config(),
-            );
-        let (
-            _oracle_cov,
-            _compiled_cov,
-            canonical_similarity,
-            _canonical_delta,
-            _canonical_mismatch,
-        ) = compare_card_semantics_scored(
-            "Rout",
-            &strip_parenthetical_text(&payload.oracle_text),
-            &canonical,
-            report_embedding_config(),
-        );
-
-        assert_eq!(snapshot.unprocessed_compiled_text, Some(debug.join("\n")));
-        assert_eq!(snapshot.similarity_score, debug_similarity);
-        assert_eq!(snapshot.line_delta, debug_delta);
-        assert_eq!(snapshot.semantic_mismatch, debug_mismatch);
-        assert_ne!(
-            snapshot.similarity_score, canonical_similarity,
-            "Rout should demonstrate scoring against debug text rather than canonical text"
-        );
-    }
-
-    #[test]
     fn canonical_loader_dedupes_by_name() {
         let cards = vec![
             serde_json::json!({

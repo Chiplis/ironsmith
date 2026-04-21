@@ -4894,6 +4894,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_put_counters_then_untap_them(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(deal) = filtered[idx].downcast_ref::<crate::effects::DealDamageEffect>()
             && let Some(tagged) = filtered[idx + 1].downcast_ref::<crate::effects::TaggedEffect>()
@@ -4902,6 +4910,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(deal) = filtered[idx].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
+            && let Some(compact) = describe_damage_then_source_skip_next_untap(deal, cant)
+        {
+            parts.push(compact);
+            idx += 2;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -6435,6 +6452,66 @@ pub(super) fn describe_for_each_put_counters_then_untap(
     ))
 }
 
+fn put_counters_each_filter_text(effect: &Effect) -> Option<String> {
+    if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        if put.distributed || put.target_count.is_some() {
+            return None;
+        }
+        let ChooseSpec::All(filter) = put.target.base() else {
+            return None;
+        };
+        let description = filter.description();
+        let filter_text = strip_indefinite_article(&description);
+        return Some(format!(
+            "Put {} on each {filter_text}",
+            describe_put_counter_phrase(&put.amount, put.counter_type)
+        ));
+    }
+
+    let for_each = effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    if for_each.effects.len() != 1 {
+        return None;
+    }
+    let put = for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.distributed || put.target_count.is_some() || !matches!(put.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let description = for_each.filter.description();
+    let filter_text = strip_indefinite_article(&description);
+    Some(format!(
+        "Put {} on each {filter_text}",
+        describe_put_counter_phrase(&put.amount, put.counter_type)
+    ))
+}
+
+fn untap_target_is_implicit_previous_group(untap: &crate::effects::UntapEffect) -> bool {
+    match untap.target.base() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == "__it__" => true,
+        ChooseSpec::All(filter) => {
+            !filter.source
+                && filter.zone == Some(Zone::Hand)
+                && filter.controller.is_none()
+                && filter.owner == Some(PlayerFilter::IteratedPlayer)
+                && filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+                && filter.supertypes.is_empty()
+                && filter.tagged_constraints.is_empty()
+        }
+        _ => false,
+    }
+}
+
+fn describe_put_counters_then_untap_them(first: &Effect, second: &Effect) -> Option<String> {
+    let put_text = put_counters_each_filter_text(first)?;
+    let untap = second.downcast_ref::<crate::effects::UntapEffect>()?;
+    if !untap_target_is_implicit_previous_group(untap) {
+        return None;
+    }
+    Some(format!("{put_text}. Untap them"))
+}
+
 pub(super) fn describe_for_each_tagged_this_way_subject(filter: &ObjectFilter) -> Option<String> {
     let action = filter.tagged_constraints.iter().find_map(|constraint| {
         if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
@@ -7487,6 +7564,24 @@ pub(super) fn describe_damage_then_self_skip_next_untap(
     ))
 }
 
+pub(super) fn describe_damage_then_source_skip_next_untap(
+    deal: &crate::effects::DealDamageEffect,
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
+    let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != crate::effect::Until::ControllersNextUntapStep || !filter.source {
+        return None;
+    }
+
+    let target_text = describe_choose_spec(&deal.target);
+    Some(format!(
+        "This creature deals {} damage to {target_text} and doesn't untap during your next untap step",
+        describe_value(&deal.amount)
+    ))
+}
+
 pub(super) fn tap_uses_chosen_tag(spec: &ChooseSpec, tag: &str) -> bool {
     matches!(spec.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
 }
@@ -8459,7 +8554,7 @@ fn describe_each_player_return_all_from_their_graveyard_with_counters(
         return None;
     }
 
-    let put_counters = for_players.effects[1].downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let put_counters = tagged_put_counters_effect(&for_players.effects[1])?;
     if put_counters.distributed
         || put_counters.target_count.is_some()
         || !matches!(
@@ -8473,6 +8568,14 @@ fn describe_each_player_return_all_from_their_graveyard_with_counters(
 
     let target_text =
         describe_choose_spec_without_graveyard_zone(&ChooseSpec::All(return_all.filter.clone()));
+    let target_text = target_text
+        .strip_prefix("all ")
+        .map(|rest| {
+            rest.strip_suffix(" cards")
+                .map(|singular| format!("each {singular} card"))
+                .unwrap_or_else(|| format!("each {rest}"))
+        })
+        .unwrap_or(target_text);
     Some(format!(
         "Each player returns {target_text} from their graveyard to the battlefield with an additional {} counter on it",
         describe_counter_type(put_counters.counter_type),
@@ -8494,6 +8597,16 @@ fn tagged_return_all_from_graveyard(
         .effect
         .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
     Some((Some(&tagged.tag), return_all))
+}
+
+fn tagged_put_counters_effect(effect: &Effect) -> Option<&crate::effects::PutCountersEffect> {
+    if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        return Some(put_counters);
+    }
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()?
+        .effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()
 }
 
 fn describe_no_more_counters_move_then_each_player_return(
