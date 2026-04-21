@@ -19,7 +19,7 @@ use crate::cards::builders::{
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
-use crate::effect::Value;
+use crate::effect::{EventValueSpec, Value};
 use crate::runtime_backend::effect_sentences;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::Subtype;
@@ -138,7 +138,9 @@ fn parse_choose_type_then_phase_out_bundle(
     }
 
     let second_words = crate::runtime_backend::token_word_refs(second_sentence);
-    if !second_words.iter().any(|word| matches!(*word, "that" | "chosen"))
+    if !second_words
+        .iter()
+        .any(|word| matches!(*word, "that" | "chosen"))
         || !second_words.iter().any(|word| *word == "type")
     {
         return Ok(None);
@@ -159,17 +161,13 @@ fn parse_choose_type_then_phase_out_bundle(
     if choose_filter
         .card_types
         .contains(&crate::types::CardType::Enchantment)
-        && choose_filter
-            .excluded_subtypes
-            .contains(&Subtype::Aura)
+        && choose_filter.excluded_subtypes.contains(&Subtype::Aura)
         && !phase_out_filter.excluded_subtypes.contains(&Subtype::Aura)
     {
         phase_out_filter.excluded_subtypes.push(Subtype::Aura);
     }
-    phase_out_filter = phase_out_filter.match_tagged(
-        TagKey::from(IT_TAG),
-        TaggedOpbjectRelation::SharesCardType,
-    );
+    phase_out_filter =
+        phase_out_filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::SharesCardType);
 
     let mut choose_filter = choose_filter;
     if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
@@ -192,6 +190,48 @@ fn parse_choose_type_then_phase_out_bundle(
             filter: phase_out_filter,
         },
     ]))
+}
+
+fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let words = if clause_words.first().copied() == Some("you") {
+        &clause_words[1..]
+    } else {
+        clause_words.as_slice()
+    };
+    if words
+        != [
+            "draw", "that", "many", "cards", "create", "that", "many", "tapped", "treasure",
+            "tokens", "then", "lose", "that", "much", "life",
+        ]
+    {
+        return None;
+    }
+
+    let amount = Value::EventValue(EventValueSpec::Amount);
+    Some(vec![
+        EffectAst::Draw {
+            count: amount.clone(),
+            player: PlayerAst::You,
+        },
+        EffectAst::CreateTokenWithMods {
+            name: "Treasure".to_string(),
+            count: amount.clone(),
+            dynamic_power_toughness: None,
+            player: PlayerAst::You,
+            attached_to: None,
+            tapped: true,
+            attacking: false,
+            exile_at_end_of_combat: false,
+            sacrifice_at_end_of_combat: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
+        },
+        EffectAst::LoseLife {
+            amount,
+            player: PlayerAst::You,
+        },
+    ])
 }
 
 fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -1071,6 +1111,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_nissas_encouragement_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);

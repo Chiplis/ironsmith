@@ -368,6 +368,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    if filtered.len() == 2
+        && let Some(compact) =
+            describe_damaged_player_gain_control_then_rewards(filtered[0], filtered[1])
+    {
+        return compact;
+    }
 
     let visible_effects = filtered
         .iter()
@@ -11216,6 +11222,68 @@ fn describe_choose_type_then_phase_out(
     ))
 }
 
+fn describe_damaged_player_gain_control_then_rewards(
+    control_effect: &Effect,
+    reward_effect: &Effect,
+) -> Option<String> {
+    let with_id = control_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let apply = with_id
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !matches!(apply.target, crate::continuous::EffectTarget::Source)
+        || !matches!(apply.until, Until::Forever)
+        || !apply.additional_modifications.is_empty()
+        || apply.modification.is_some()
+        || !matches!(
+            apply.runtime_modifications.as_slice(),
+            [
+                crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                    PlayerFilter::DamagedPlayer
+                )
+            ]
+        )
+    {
+        return None;
+    }
+
+    let if_effect = reward_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+
+    let [draw_effect, create_effect, lose_life_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You
+        || !matches!(draw.count, Value::EventValue(EventValueSpec::Amount))
+    {
+        return None;
+    }
+    let create = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if create.controller != PlayerFilter::You
+        || !create.enters_tapped
+        || create.token.card.name != "Treasure"
+        || !matches!(create.count, Value::EventValue(EventValueSpec::Amount))
+    {
+        return None;
+    }
+    let lose_life = lose_life_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if lose_life.player != ChooseSpec::Player(PlayerFilter::You)
+        || !matches!(lose_life.amount, Value::EventValue(EventValueSpec::Amount))
+    {
+        return None;
+    }
+
+    Some(
+        "that player gains control of this creature. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life"
+            .to_string(),
+    )
+}
+
 pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
@@ -16449,6 +16517,13 @@ pub(super) fn describe_ability(
             && matches!(ability.kind, AbilityKind::Triggered(_))
     }) {
         return vec![format!("Keyword ability {index}: Soulbond")];
+    }
+    if let Some(text) = ability.text.as_deref() {
+        let raw_trimmed = text.trim();
+        let raw_lower = raw_trimmed.to_ascii_lowercase();
+        if raw_lower.starts_with("jump ") || raw_lower.starts_with("jump —") {
+            return vec![format!("Keyword ability {index}: {raw_trimmed}")];
+        }
     }
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];

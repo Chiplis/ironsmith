@@ -21068,19 +21068,18 @@ fn render_source_surface_for_hard_triggered_and_static_clauses() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn kain_variant_keeps_control_change_if_do_and_life_loss() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
-        .card_types(vec![CardType::Creature])
-        .parse_text(
-            "Jump — During your turn, Kain has flying.\nWhenever Kain deals combat damage to a player, that player gains control of Kain. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life.",
-        )
-        .expect("Kain text should parse");
+    let def = parse_oracle_card_definition("Kain, Traitorous Dragoon");
 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        (rendered.contains("gain control of this creature")
-            || rendered.contains("gain control of kain"))
+        rendered.contains("during your turn")
+            && rendered.contains("kain has flying")
+            && (rendered.contains("gains control of this creature")
+                || rendered.contains("gain control of this creature")
+                || rendered.contains("gains control of kain")
+                || rendered.contains("gain control of kain"))
             && rendered.contains("if they do")
             && rendered.contains("draw that many cards")
             && rendered.contains("create that many tapped treasure tokens")
@@ -21090,11 +21089,11 @@ fn kain_variant_keeps_control_change_if_do_and_life_loss() {
 
     let debug = format!("{:#?}", def.abilities);
     assert!(
-        debug.contains("GainControl") && debug.contains("LoseLife"),
+        debug.contains("ChangeControllerToPlayer") && debug.contains("LoseLife"),
         "expected Kain's lowered ability to keep gain-control and life-loss effects, got {debug}"
     );
     assert!(
-        debug.contains("IfResult") || debug.contains("Conditional"),
+        debug.contains("IfEffect") || debug.contains("IfResult") || debug.contains("Conditional"),
         "expected Kain's lowered ability to keep the If they do clause, got {debug}"
     );
 }
@@ -21131,8 +21130,7 @@ fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("gain 1 life")
-            && rendered.contains("3/3 angel creature with flying"),
+        rendered.contains("gain 1 life") && rendered.contains("3/3 angel creature with flying"),
         "expected oracle-like rendered text for Answered Prayers, got {rendered}"
     );
     assert!(
@@ -21190,7 +21188,9 @@ fn answered_prayers_trigger_gains_life_when_a_creature_enters() {
 
     let triggered = crate::triggers::check_triggers(&game, &event);
     assert!(
-        triggered.iter().any(|entry| entry.source == answered_prayers_id),
+        triggered
+            .iter()
+            .any(|entry| entry.source == answered_prayers_id),
         "Answered Prayers should trigger when a creature you control enters"
     );
 

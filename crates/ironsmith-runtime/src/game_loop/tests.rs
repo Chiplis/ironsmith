@@ -6538,8 +6538,8 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
 #[test]
 fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     use crate::decision::LegalAction;
-    use crate::game_state::Phase;
     use crate::game_loop::{PriorityLoopState, apply_priority_response, resolve_stack_entry};
+    use crate::game_state::Phase;
     use crate::mana::ManaSymbol;
     use crate::triggers::TriggerQueue;
     use crate::zone::Zone;
@@ -6547,8 +6547,7 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let mut trigger_queue = TriggerQueue::new();
-    let spoils_text =
-        "Create an X/X black Horror creature token, where X is the number of creatures that died this turn.";
+    let spoils_text = "Create an X/X black Horror creature token, where X is the number of creatures that died this turn.";
 
     game.turn.active_player = alice;
     game.turn.phase = Phase::FirstMain;
@@ -6582,7 +6581,9 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     game.move_object_by_effect(doomed_id_1, Zone::Graveyard);
     game.move_object_by_effect(doomed_id_2, Zone::Graveyard);
     assert_eq!(
-        game.turn_store.turn_history.total_creatures_died_this_turn(),
+        game.turn_store
+            .turn_history
+            .total_creatures_died_this_turn(),
         2,
         "the setup should leave exactly two creatures dead this turn"
     );
@@ -6600,7 +6601,11 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     });
     apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
         .expect("Spoils of Blood cast should succeed");
-    assert_eq!(game.stack.len(), 1, "Spoils of Blood should be on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Spoils of Blood should be on the stack"
+    );
 
     resolve_stack_entry(&mut game).expect("Spoils of Blood should resolve");
 
@@ -6611,7 +6616,11 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
         .find(|obj| obj.controller == alice && obj.name == "Horror")
         .expect("Spoils of Blood should create a Horror token");
 
-    assert_eq!(horror.kind, ObjectKind::Token, "expected a token on resolution");
+    assert_eq!(
+        horror.kind,
+        ObjectKind::Token,
+        "expected a token on resolution"
+    );
     assert_eq!(horror.power(), Some(2), "Horror token should be 2/2");
     assert_eq!(horror.toughness(), Some(2), "Horror token should be 2/2");
 }

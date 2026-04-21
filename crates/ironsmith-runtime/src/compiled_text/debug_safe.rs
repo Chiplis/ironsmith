@@ -98,6 +98,18 @@ fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str)
         .replace("This source", &capitalize_first(subject))
         .replace("this permanent", subject)
         .replace("This permanent", &capitalize_first(subject));
+    if let Some(keyword) = source_keyword_during_your_turn(&normalized, subject) {
+        let source_name = def
+            .card
+            .name
+            .split(',')
+            .next()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| capitalize_first(subject));
+        normalized = format!("During your turn, {source_name} has {keyword}");
+    }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "This enters ") {
         normalized = format!("{} enters {rest}", capitalize_first(subject));
     }
@@ -122,7 +134,53 @@ fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str)
             .replace("Exile this spell", &format!("Exile {}", def.card.name))
             .replace("exile this spell", &format!("exile {}", def.card.name));
     }
+    if def.card.card_types.contains(&CardType::Creature)
+        && !def.card.name.trim().is_empty()
+        && normalized
+            .to_ascii_lowercase()
+            .contains("gains control of this creature")
+    {
+        let source_name = def
+            .card
+            .name
+            .split(',')
+            .next()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(def.card.name.as_str());
+        normalized = normalized
+            .replace(
+                "Whenever this creature deals combat damage",
+                &format!("Whenever {source_name} deals combat damage"),
+            )
+            .replace(
+                "whenever this creature deals combat damage",
+                &format!("whenever {source_name} deals combat damage"),
+            )
+            .replace(
+                "gains control of this creature",
+                &format!("gains control of {source_name}"),
+            );
+    }
     normalized
+}
+
+fn source_keyword_during_your_turn(line: &str, subject: &str) -> Option<String> {
+    let line = line.trim().trim_end_matches('.');
+    for candidate_subject in [capitalize_first(subject), subject.to_string()] {
+        let prefix = format!("{candidate_subject} has ");
+        let Some(rest) = strip_prefix_ascii_ci(line, &prefix) else {
+            continue;
+        };
+        let Some(keyword) = rest.strip_suffix(" as long as it's your turn") else {
+            continue;
+        };
+        let keyword = keyword.trim();
+        if is_keyword_phrase(keyword) {
+            return Some(keyword.to_ascii_lowercase());
+        }
+    }
+    None
 }
 
 fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {

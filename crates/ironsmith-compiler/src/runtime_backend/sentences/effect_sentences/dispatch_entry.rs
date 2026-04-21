@@ -58,7 +58,7 @@ use crate::cards::builders::{
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
     TargetAst, TextSpan, TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
 };
-use crate::effect::{ChoiceCount, Until, Value};
+use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
 use crate::target::{
@@ -423,6 +423,35 @@ fn try_merge_otherwise_into_previous_conditional(
     true
 }
 
+fn maybe_append_trailing_that_much_life_loss(
+    sentence_effects: &mut Vec<EffectAst>,
+    sentence_tokens: &[OwnedLexToken],
+) {
+    if !grammar::contains_phrase(sentence_tokens, &["then", "lose", "that", "much", "life"]) {
+        return;
+    }
+
+    let life_loss = EffectAst::LoseLife {
+        amount: Value::EventValue(EventValueSpec::Amount),
+        player: PlayerAst::You,
+    };
+    if let [EffectAst::IfResult { effects, .. }] = sentence_effects.as_mut_slice() {
+        if !effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::LoseLife { .. }))
+        {
+            effects.push(life_loss);
+        }
+        return;
+    }
+    if !sentence_effects
+        .iter()
+        .any(|effect| matches!(effect, EffectAst::LoseLife { .. }))
+    {
+        sentence_effects.push(life_loss);
+    }
+}
+
 pub(super) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, Value, bool)> {
@@ -615,6 +644,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             }];
             carried_context = None;
         }
+        maybe_append_trailing_that_much_life_loss(&mut sentence_effects, &parse_plan.tokens);
         if crate::runtime_backend::token_word_refs(&parse_plan.tokens)
             .first()
             .copied()

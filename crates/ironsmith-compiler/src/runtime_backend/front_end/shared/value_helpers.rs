@@ -320,15 +320,14 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
     let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
     let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
-    let base_value =
-        if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
-            value
-        } else if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens)
-        {
-            value
-        } else {
-            Value::Count(parse_object_filter(&filter_tokens, false).ok()?)
-        };
+    let base_value = if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens)
+    {
+        value
+    } else if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
+        value
+    } else {
+        Value::Count(parse_object_filter(&filter_tokens, false).ok()?)
+    };
 
     let offset_start_token_idx = token_index_for_word_index(tokens, operator_word_idx + 1)?;
     let offset_tokens = trim_commas(&tokens[offset_start_token_idx..]);

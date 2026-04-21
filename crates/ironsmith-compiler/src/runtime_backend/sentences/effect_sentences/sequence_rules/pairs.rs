@@ -101,9 +101,7 @@ fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
             duration,
         } => {
             let target = match target {
-                TargetAst::Tagged(tag, span)
-                    if tag.as_str() == crate::cards::builders::IT_TAG =>
-                {
+                TargetAst::Tagged(tag, span) if tag.as_str() == crate::cards::builders::IT_TAG => {
                     TargetAst::Source(span)
                 }
                 target => target,
@@ -164,9 +162,7 @@ fn contains_triggered_life_gain_effect(effect: &EffectAst) -> bool {
 fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::BecomeBasePtCreature {
-            target,
-            duration,
-            ..
+            target, duration, ..
         } => {
             let self_animate_target = matches!(
                 target,
@@ -180,9 +176,7 @@ fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
             if_true.iter().any(contains_tagged_source_animation)
                 || if_false.iter().any(contains_tagged_source_animation)
         }
-        EffectAst::IfResult { effects, .. } => {
-            effects.iter().any(contains_tagged_source_animation)
-        }
+        EffectAst::IfResult { effects, .. } => effects.iter().any(contains_tagged_source_animation),
         _ => false,
     }
 }
@@ -232,7 +226,10 @@ pub(super) fn parse_whenever_gain_life_then_self_animate_source(
     let second = sentences[sentence_idx + 1].lowered();
 
     let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
-    if !first_effects.iter().any(contains_triggered_life_gain_effect) {
+    if !first_effects
+        .iter()
+        .any(contains_triggered_life_gain_effect)
+    {
         return Ok(None);
     }
 
@@ -257,7 +254,10 @@ pub(super) fn parse_gain_life_then_self_animate_source(
     let second = sentences[sentence_idx + 1].lowered();
 
     let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
-    if !first_effects.iter().any(contains_triggered_life_gain_effect) {
+    if !first_effects
+        .iter()
+        .any(contains_triggered_life_gain_effect)
+    {
         return Ok(None);
     }
 

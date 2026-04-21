@@ -45,20 +45,12 @@ fn split_trailing_except_tokens(
 
 fn strip_trailing_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let words = TokenWordView::new(tokens).to_word_refs();
-    let Some(addition_tail_len) = (word_slice_ends_with(
-        &words,
-        &["in", "addition", "to", "its", "other", "types"],
-    ) || word_slice_ends_with(
-        &words,
-        &["in", "addition", "to", "their", "other", "types"],
-    ) || word_slice_ends_with(
-        &words,
-        &["in", "addition", "to", "its", "other", "type"],
-    ) || word_slice_ends_with(
-        &words,
-        &["in", "addition", "to", "their", "other", "type"],
-    ))
-    .then_some(6usize)
+    let Some(addition_tail_len) =
+        (word_slice_ends_with(&words, &["in", "addition", "to", "its", "other", "types"])
+            || word_slice_ends_with(&words, &["in", "addition", "to", "their", "other", "types"])
+            || word_slice_ends_with(&words, &["in", "addition", "to", "its", "other", "type"])
+            || word_slice_ends_with(&words, &["in", "addition", "to", "their", "other", "type"]))
+        .then_some(6usize)
     else {
         return tokens;
     };
@@ -287,8 +279,7 @@ pub(crate) fn parse_become_clause(
                 .is_some_and(|token| token.is_word("with"))
             {
                 let trimmed_suffix_tokens = trim_commas(&suffix_tokens[1..]);
-                let trimmed_suffix =
-                    strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
+                let trimmed_suffix = strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
                 parse_ability_line(trimmed_suffix)
                     .map(|actions| {
                         abilities = actions
