@@ -8167,10 +8167,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("this permanent is {}", ensure_indefinite_article(&desc))
             }
         }
-        Condition::SourceHasNoCounter(counter_type) => format!(
-            "there are no {} counters on this source",
-            counter_type.description()
-        ),
+        Condition::SourceHasNoCounter(counter_type) => {
+            format!("there are no {} counters on it", counter_type.description())
+        }
         Condition::SourceHasCounterAtLeast { counter_type, count } => format!(
             "there are {count} or more {} counters on this source",
             counter_type.description()
@@ -8616,6 +8615,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::And(left, right) => {
+            if let Some(exiled_counter_condition) =
+                describe_source_exiled_with_counter_condition(left, right)
+            {
+                return exiled_counter_condition;
+            }
             // Avoid parentheses here: the semantic comparison pipeline strips parentheticals,
             // and these are just internal grouping markers, not oracle reminder text.
             format!("{} and {}", describe_condition(left), describe_condition(right))
@@ -8624,6 +8628,31 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_source_exiled_with_counter_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn parts<'a>(first: &'a Condition, second: &'a Condition) -> Option<(&'a CounterType, u32)> {
+        if !matches!(first, Condition::SourceIsInZone(Zone::Exile)) {
+            return None;
+        }
+        let Condition::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+        } = second
+        else {
+            return None;
+        };
+        Some((counter_type, *count))
+    }
+
+    let (counter_type, count) = parts(left, right).or_else(|| parts(right, left))?;
+    Some(format!(
+        "this card is exiled with {} on it",
+        describe_put_counter_phrase(&Value::Fixed(count as i32), *counter_type)
+    ))
 }
 
 #[cfg(test)]

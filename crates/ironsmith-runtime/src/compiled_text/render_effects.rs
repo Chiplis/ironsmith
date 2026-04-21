@@ -34,6 +34,26 @@ fn prevention_put_counters_follow_up(
     Some(put)
 }
 
+fn describe_source_exile_with_counters_pair(first: &Effect, second: &Effect) -> Option<String> {
+    let exile = first.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if exile.zone != Zone::Exile || !matches!(exile.target, ChooseSpec::Source) {
+        return None;
+    }
+    let put_counters = second.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put_counters.distributed
+        || put_counters.target_count.is_some()
+        || !matches!(put_counters.target, ChooseSpec::Source)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Exile {} with {} on it",
+        describe_choose_spec(&exile.target),
+        describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type),
+    ))
+}
+
 fn describe_prevention_follow_up_target(target: &ChooseSpec) -> &'static str {
     let described = describe_choose_spec(target);
     if described.contains("creature") {
@@ -338,6 +358,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         })
         .collect::<Vec<_>>();
 
+    if filtered.len() == 2
+        && let Some(compact) = describe_source_exile_with_counters_pair(filtered[0], filtered[1])
+    {
+        return compact;
+    }
     if filtered.len() == 2
         && let Some(compact) = describe_phase_in_out_pair(filtered[0], filtered[1])
     {
@@ -12236,6 +12261,30 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if let Some(compact) = describe_for_players_target_return_unless_draw(for_players) {
             return compact;
+        }
+        if for_players.filter == PlayerFilter::Any
+            && for_players.effects.len() == 1
+            && let Some(return_to_battlefield) =
+                for_players.effects[0]
+                    .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+            && graveyard_owner_from_spec(&return_to_battlefield.target)
+                == Some(Some(PlayerFilter::IteratedPlayer))
+        {
+            let mut target_text =
+                describe_choose_spec_without_graveyard_zone(&return_to_battlefield.target);
+            if target_text.starts_with("all ")
+                && let Some(base) = target_text.strip_suffix(" card")
+            {
+                target_text = format!("{base} cards");
+            }
+            return format!(
+                "Each player returns {target_text} from their graveyard to the battlefield{}",
+                if return_to_battlefield.tapped {
+                    " tapped"
+                } else {
+                    ""
+                }
+            );
         }
         if for_players.effects.len() == 1
             && let Some(conditional) =

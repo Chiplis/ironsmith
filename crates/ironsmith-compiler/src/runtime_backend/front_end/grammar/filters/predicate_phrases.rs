@@ -68,6 +68,41 @@ fn parse_attachment_quantity_prefix(
     ))
 }
 
+fn parse_source_exiled_with_counter_predicate(
+    raw_words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let with_idx = if slice_starts_with(raw_words, &["this", "card", "is", "exiled", "with"])
+        || slice_starts_with(raw_words, &["this", "source", "is", "exiled", "with"])
+    {
+        4
+    } else {
+        return None;
+    };
+    let counter_idx = find_index(&raw_words[with_idx + 1..], |word| {
+        *word == "counter" || *word == "counters"
+    })? + with_idx
+        + 1;
+    if !matches!(
+        raw_words.get(counter_idx + 1..),
+        Some(["on", "it"] | ["on", "this"] | ["on", "them"])
+    ) {
+        return None;
+    }
+
+    let counter_type = parse_counter_type_from_tokens(&tokens[with_idx + 1..=counter_idx])?;
+    let count = parse_number(&tokens[with_idx + 1..counter_idx])
+        .map(|(count, _)| count)
+        .unwrap_or(1);
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::SourceIsInZone(Zone::Exile)),
+        Box::new(PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+        }),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -108,6 +143,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if filtered.as_slice() == phrase {
             return Ok(PredicateAst::SourceIsInZone(zone));
         }
+    }
+
+    if let Some(predicate) = parse_source_exiled_with_counter_predicate(&raw_words, tokens) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
@@ -445,10 +484,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if slice_starts_with(&filtered, &["there", "are", "no"])
         && slice_contains(&filtered, &"counters")
-        && contains_any_filter_phrase(&filtered, &[&["on", "this"]])
-        && let Some(counters_idx) = find_index(&filtered, |word| *word == "counters")
+        && contains_any_filter_phrase(
+            &filtered,
+            &[&["on", "this"], &["on", "it"], &["on", "them"]],
+        )
+        && let Some(counters_idx) =
+            find_index(&raw_words, |word| *word == "counter" || *word == "counters")
         && counters_idx >= 4
-        && let Some(counter_type) = parse_counter_type_word(filtered[counters_idx - 1])
+        && let Some(counter_type) = parse_counter_type_from_tokens(&tokens[..=counters_idx])
     {
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
