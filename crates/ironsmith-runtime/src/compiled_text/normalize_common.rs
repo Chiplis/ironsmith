@@ -6861,12 +6861,16 @@ pub(super) fn describe_doesnt_untap_apply_continuous_effect(
 
 fn choose_spec_land_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
     match spec.base() {
-        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
-            .card_types
-            .contains(&CardType::Land)
-            .then_some(filter),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            object_filter_is_land_kind(filter).then_some(filter)
+        }
         _ => None,
     }
+}
+
+fn object_filter_is_land_kind(filter: &ObjectFilter) -> bool {
+    filter.card_types.contains(&CardType::Land)
+        || filter.subtypes.iter().any(Subtype::is_land_subtype)
 }
 
 fn plural_non_target_land_animation_target(
@@ -6878,7 +6882,7 @@ fn plural_non_target_land_animation_target(
     let Some(ChooseSpec::Object(filter)) = &effect.target_spec else {
         return None;
     };
-    if !filter.card_types.contains(&CardType::Land) {
+    if !object_filter_is_land_kind(filter) {
         return None;
     }
 

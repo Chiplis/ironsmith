@@ -22299,6 +22299,46 @@ fn living_plane_oracle_like_text_merges_animation_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn thelonite_druid_forest_animation_renders_still_lands() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thelonite Druid")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Cleric, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{1}{G}, {T}, Sacrifice a creature: Forests you control become 2/3 creatures until end of turn. They're still lands.",
+        )
+        .expect("Thelonite Druid should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Thelonite Druid should have an activated ability");
+    let score_path =
+        crate::compiled_text::compile_effect_list(&activated.effects.segments[0].default_effects);
+    assert!(
+        score_path.contains("Forests you control become 2/3 creatures until end of turn")
+            && score_path.contains("They're still lands"),
+        "expected Forest animation to preserve land-ness in effect rendering, got {score_path}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Forests you control become 2/3 creatures until end of turn")
+            && rendered.contains("They're still lands"),
+        "expected Thelonite Druid compiled text to render Forests as still lands, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn swordsworn_cavalier_keeps_entered_this_turn_knight_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Swordsworn Cavalier Variant")
         .card_types(vec![CardType::Creature])
