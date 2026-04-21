@@ -21,7 +21,7 @@ use crate::cards::builders::{
 };
 use crate::effect::Value;
 use crate::runtime_backend::effect_sentences;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::Subtype;
 use crate::zone::Zone;
 
@@ -122,6 +122,76 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     Ok(Some(vec![exile_effect, permission_effect]))
+}
+
+fn parse_choose_type_then_phase_out_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((chooser, choose_filter, choose_count)) =
+        parse_target_player_choose_objects_clause(first_sentence)?
+    else {
+        return Ok(None);
+    };
+    if !choose_count.is_single() {
+        return Ok(None);
+    }
+
+    let second_words = crate::runtime_backend::token_word_refs(second_sentence);
+    if !second_words.iter().any(|word| matches!(*word, "that" | "chosen"))
+        || !second_words.iter().any(|word| *word == "type")
+    {
+        return Ok(None);
+    }
+
+    let mut effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
+    let [EffectAst::PhaseOutAll { filter }] = effects.as_mut_slice() else {
+        return Ok(None);
+    };
+
+    if choose_filter.card_types.is_empty() {
+        return Ok(None);
+    }
+
+    let mut phase_out_filter = (*filter).clone();
+    phase_out_filter.card_types = choose_filter.card_types.clone();
+    phase_out_filter.excluded_subtypes = choose_filter.excluded_subtypes.clone();
+    if choose_filter
+        .card_types
+        .contains(&crate::types::CardType::Enchantment)
+        && choose_filter
+            .excluded_subtypes
+            .contains(&Subtype::Aura)
+        && !phase_out_filter.excluded_subtypes.contains(&Subtype::Aura)
+    {
+        phase_out_filter.excluded_subtypes.push(Subtype::Aura);
+    }
+    phase_out_filter = phase_out_filter.match_tagged(
+        TagKey::from(IT_TAG),
+        TaggedOpbjectRelation::SharesCardType,
+    );
+
+    let mut choose_filter = choose_filter;
+    if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
+        choose_filter.controller = Some(match chooser {
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            _ => PlayerFilter::target_player(),
+        });
+    }
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: choose_count,
+            count_value: None,
+            player: chooser,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::PhaseOutAll {
+            filter: phase_out_filter,
+        },
+    ]))
 }
 
 fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -1013,6 +1083,12 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_type_then_phase_out_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }
