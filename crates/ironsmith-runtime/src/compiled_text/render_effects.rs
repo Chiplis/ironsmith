@@ -892,10 +892,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
     }
 
-    fn is_all_cards_in_player_graveyard(
-        filter: &ObjectFilter,
-        player: &PlayerFilter,
-    ) -> bool {
+    fn is_all_cards_in_player_graveyard(filter: &ObjectFilter, player: &PlayerFilter) -> bool {
         let mut expected = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .owned_by(player.clone());
@@ -2282,8 +2279,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_graveyard_creature_pile_exile_return_bundle(&filtered) {
         return compact;
     }
-    if let Some(compact) =
-        describe_player_exile_controlled_creature_and_graveyard_bundle(&filtered)
+    if let Some(compact) = describe_player_exile_controlled_creature_and_graveyard_bundle(&filtered)
     {
         return compact;
     }
@@ -16732,8 +16728,7 @@ fn describe_zone_change_triggering_card_to_your_library(
     let trigger = triggered
         .trigger
         .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()?;
-    if trigger.from
-        != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+    if trigger.from != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
         || trigger.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
         || trigger.player != crate::triggers::zone_changes::PlayerRelation::Any
         || trigger.count_mode != crate::triggers::zone_changes::CountMode::Each
@@ -16751,8 +16746,7 @@ fn describe_zone_change_triggering_card_to_your_library(
     let [tag_effect, move_effect] = segment.default_effects.as_slice() else {
         return None;
     };
-    let tag_triggering =
-        tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let tag_triggering = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
     let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Library
         || !move_to_zone.to_top
@@ -16890,7 +16884,8 @@ pub(super) fn describe_ability(
                     return vec![format!("Keyword ability {index}: {normalized}")];
                 }
             }
-            if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered) {
+            if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered)
+            {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             let (intervening_condition, max_times_each_turn) = triggered

@@ -6960,6 +6960,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
                 .join(" "),
         );
     }
+    let adds_named_types = !subtypes.is_empty();
     let extra_card_types = card_types
         .iter()
         .copied()
@@ -6969,6 +6970,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
     if !extra_card_types.is_empty() {
         descriptor.push(extra_card_types.join(" "));
     }
+    let adds_named_types = adds_named_types || !extra_card_types.is_empty();
     descriptor.push(if plural_target {
         "creatures".to_string()
     } else {
@@ -7007,7 +7009,9 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push_str(" with ");
         text.push_str(&join_with_and(&ability_text));
     }
-    if !preserves_land_types && !abilities.is_empty() {
+    let render_as_addition_to_other_types = (!preserves_land_types && !abilities.is_empty())
+        || (preserves_land_types && adds_named_types);
+    if render_as_addition_to_other_types {
         if plural_target {
             text.push_str(" in addition to their other types");
         } else {
@@ -7018,7 +7022,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
         text.push(' ');
         text.push_str(&tail);
     }
-    if preserves_land_types {
+    if preserves_land_types && !render_as_addition_to_other_types {
         if plural_target {
             text.push_str(". They're still lands");
         } else {

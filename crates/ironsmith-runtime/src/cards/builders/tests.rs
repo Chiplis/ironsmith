@@ -22408,9 +22408,10 @@ fn fendeep_summoner_land_animation_keeps_subtypes_with_addition_tail() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("3/5 treefolk warrior creatures")
-            || rendered.contains("3/5 Treefolk Warrior creatures"),
-        "expected Fendeep Summoner compiled text to render Treefolk Warrior animation, got {rendered}"
+        rendered.contains(
+            "up to two target Swamps become 3/5 treefolk warrior creatures in addition to their other types until end of turn"
+        ) && !rendered.contains("They're still lands"),
+        "expected Fendeep Summoner compiled text to render Treefolk Warrior animation as type addition, got {rendered}"
     );
 }
 

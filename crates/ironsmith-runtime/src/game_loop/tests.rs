@@ -2675,7 +2675,8 @@ fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_library_top() {
 
     game.create_object_from_definition(&mortuary, alice, Zone::Battlefield);
 
-    let alice_owned_creature = create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
+    let alice_owned_creature =
+        create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
     game.object_mut(alice_owned_creature)
         .expect("alice creature exists")
         .controller = bob;
