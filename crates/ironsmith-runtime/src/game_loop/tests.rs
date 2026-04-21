@@ -2645,6 +2645,65 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
     );
 }
 
+#[test]
+fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_library_top() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mortuary = CardDefinitionBuilder::new(CardId::from_raw(257_401), "Mortuary")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature is put into your graveyard from the battlefield, put that card on top of your library.",
+        )
+        .expect("Mortuary should parse");
+    let ability_debug = format!("{:#?}", mortuary.abilities);
+    assert!(
+        ability_debug.contains("ZoneChangeTrigger")
+            && ability_debug.contains("owner: Some(You)")
+            && ability_debug.contains("MoveToZoneEffect")
+            && ability_debug.contains("zone: Library")
+            && ability_debug.contains("to_top: true"),
+        "expected parsed Mortuary to build the owned-creature graveyard trigger, got {ability_debug}"
+    );
+
+    game.create_object_from_card(&mortuary, alice, Zone::Battlefield);
+
+    let alice_owned_creature = create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
+    game.object_mut(alice_owned_creature)
+        .expect("alice creature exists")
+        .controller = bob;
+
+    let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
+    assert!(moved.is_some(), "owned creature should move to graveyard");
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "parsed Mortuary should trigger for a creature you own even when another player controlled it"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Mortuary trigger should stack");
+    resolve_stack_entry(&mut game).expect("Mortuary trigger should resolve");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .last()
+            .and_then(|id| game.object(*id))
+            .map(|object| object.name.as_str()),
+        Some("Borrowed Mortuary Creature"),
+        "parsed Mortuary should put the owned creature card on top of your library"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {

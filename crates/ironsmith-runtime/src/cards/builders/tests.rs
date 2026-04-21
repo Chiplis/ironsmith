@@ -30374,6 +30374,44 @@ fn render_stunted_growth_keeps_random_hand_reveal_and_top_of_library_link() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn render_mortuary_preserves_graveyard_origin_and_your_library_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mortuary")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever a creature is put into your graveyard from the battlefield, put that card on top of your library.",
+        )
+        .expect("Mortuary text should parse");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ZoneChangeTrigger")
+            && ability_debug.contains("from: Specific(Battlefield)")
+            && ability_debug.contains("to: Specific(Graveyard)")
+            && ability_debug.contains("owner: Some(You)")
+            && ability_debug.contains("card_types: [Creature]")
+            && ability_debug.contains("MoveToZoneEffect")
+            && ability_debug.contains("zone: Library")
+            && ability_debug.contains("to_top: true"),
+        "expected Mortuary to lower to an owned-creature battlefield-to-graveyard trigger that moves the triggering card to library top, got {ability_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "Whenever a creature is put into your graveyard from the battlefield, put that card on top of your library"
+        ) && !rendered_lower.contains("creature you own dies")
+            && !rendered_lower.contains("its owner's library"),
+        "expected Mortuary to preserve the graveyard origin and your-library destination, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_return_x_target_creatures_of_creature_type_of_choice_targets_not_all() {
     // Selective Snare pattern: "Return X target creatures of the creature type
     // of your choice to their owner's hand."
