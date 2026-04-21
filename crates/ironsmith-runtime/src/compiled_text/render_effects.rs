@@ -1406,6 +1406,51 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_create_token_then_set_base_pt_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [create_effect, set_pt_effect] = filtered else {
+            return None;
+        };
+        let create = downcast_create_token(create_effect)?;
+        let set_pt = downcast_set_base_power_toughness(set_pt_effect)?;
+        let created_tag = wrapped_effect_tag(create_effect)?;
+        if create.count != Value::Fixed(1)
+            || create.enters_tapped
+            || create.enters_attacking
+            || create.exile_at_end_of_combat
+            || create.sacrifice_at_end_of_combat
+            || create.sacrifice_at_next_end_step
+            || create.exile_at_next_end_step
+            || set_pt.duration != Until::Forever
+            || set_pt.power != set_pt.toughness
+            || matches!(set_pt.power, Value::Fixed(_))
+        {
+            return None;
+        }
+        if !matches!(&set_pt.target, ChooseSpec::Tagged(tag) if tag == created_tag) {
+            return None;
+        }
+        let token_blueprint = describe_token_blueprint(&create.token);
+        let token_phrase = token_blueprint.replacen("0/0 ", "X/X ", 1);
+        if token_phrase == token_blueprint {
+            return None;
+        }
+        let controller_suffix = if matches!(create.controller, PlayerFilter::You) {
+            String::new()
+        } else {
+            format!(
+                " under {} control",
+                describe_possessive_player_filter(&create.controller)
+            )
+        };
+
+        Some(format!(
+            "Create {}{}, where X is {}",
+            with_indefinite_article(&token_phrase),
+            controller_suffix,
+            describe_value(&set_pt.power)
+        ))
+    }
+
     fn describe_reveal_power_cards_for_mana_bundle(filtered: &[&Effect]) -> Option<String> {
         let [choose_effect, reveal_effect, mana_effect] = filtered else {
             return None;
@@ -3610,6 +3655,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(rendered) =
+                describe_create_token_then_set_base_pt_bundle(&filtered[idx..idx + 2])
+        {
+            parts.push(rendered);
+            idx += 2;
             continue;
         }
         if idx + 2 < filtered.len()

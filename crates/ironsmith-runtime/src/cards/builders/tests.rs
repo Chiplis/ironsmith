@@ -2882,8 +2882,10 @@ fn test_parse_spoils_of_blood_uses_creatures_died_this_turn_count() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("creatures that died this turn"),
-        "expected compiled Spoils of Blood text to preserve the died-this-turn count, got {rendered}"
+        rendered.contains(
+            "create an x/x black horror creature token, where x is the number of creatures that died this turn"
+        ),
+        "expected compiled Spoils of Blood text to compact the token PT rendering, got {rendered}"
     );
 }
 
