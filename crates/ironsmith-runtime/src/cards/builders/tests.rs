@@ -30463,14 +30463,55 @@ fn parse_vengeful_warchief_keeps_first_life_loss_trigger_shape() {
         )
         .expect("Vengeful Warchief should parse");
 
-    let debug = format!("{:#?}", def.abilities);
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(ability.kind, AbilityKind::Triggered(_)))
+        .expect("Vengeful Warchief should have a triggered ability");
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        unreachable!("ability was filtered to triggered");
+    };
+    let life_loss_trigger = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::PlayerLosesLifeTrigger>()
+        .expect("expected a player loses life trigger");
+    assert_eq!(
+        life_loss_trigger.player,
+        crate::target::PlayerFilter::You,
+        "expected Vengeful Warchief to watch you losing life"
+    );
     assert!(
-        debug.contains("PlayerLosesLifeTrigger")
-            && debug.contains("player: You")
-            && debug.contains("MaxTimesEachTurn(1)")
-            && debug.contains("PutCountersEffect")
-            && debug.contains("target: Source"),
-        "expected Vengeful Warchief to lower into a self-countering life-loss trigger, got {debug}"
+        life_loss_trigger.during_turn.is_none(),
+        "expected Vengeful Warchief to trigger any turn"
+    );
+    assert_eq!(
+        triggered.intervening_if,
+        Some(crate::ConditionExpr::MaxTimesEachTurn(1)),
+        "expected Vengeful Warchief to be capped at once per turn"
+    );
+    let [segment] = triggered.effects.segments.as_slice() else {
+        panic!("expected one resolution segment");
+    };
+    let [effect] = segment.default_effects.as_slice() else {
+        panic!("expected one default effect");
+    };
+    let put_counters = effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .expect("expected the trigger to put counters");
+    assert_eq!(
+        put_counters.counter_type,
+        crate::object::CounterType::PlusOnePlusOne,
+        "expected the trigger to place +1/+1 counters"
+    );
+    assert_eq!(
+        put_counters.amount,
+        crate::effect::Value::Fixed(1),
+        "expected the trigger to add exactly one counter"
+    );
+    assert_eq!(
+        put_counters.target,
+        crate::target::ChooseSpec::Source,
+        "expected the trigger to counter this creature"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
