@@ -179,7 +179,7 @@ function HorizontalStackEntry({
       <button
         type="button"
         className={cn(
-          "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full items-start gap-x-1.5 gap-y-0 overflow-hidden border border-[rgba(224,191,127,0.78)] px-2 text-left transition-[background,box-shadow,transform] duration-150",
+          "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full items-start gap-x-1.5 gap-y-0 overflow-hidden border border-[rgba(224,191,127,0.78)] px-2 text-left transition-transform duration-150",
           compact
             ? "grid-cols-[20px_minmax(0,1fr)] py-1"
             : "grid-cols-[24px_minmax(0,1fr)] py-[5px]",

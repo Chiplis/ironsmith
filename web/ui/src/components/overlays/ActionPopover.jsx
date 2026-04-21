@@ -220,7 +220,7 @@ export default function ActionPopover({
           borderRight: `${tailSize}px solid transparent`,
           borderTop: placeAbove ? `${tailSize + 1}px solid ${tailColor}` : "none",
           borderBottom: placeAbove ? "none" : `${tailSize + 1}px solid ${tailColor}`,
-          transition: "border-color 200ms ease",
+          transition: "transform 200ms ease, opacity 200ms ease",
         }}
       />
     </div>

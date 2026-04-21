@@ -39,7 +39,7 @@ export default function DragOverlay() {
   const dragState = useDragState();
   if (!dragState) return null;
 
-  const { cardName, glowKind, currentX, currentY, startX, startY } = dragState;
+  const { cardName, glowKind, currentX, currentY, startX } = dragState;
   const dx = currentX - startX;
   const rotation = Math.max(-8, Math.min(8, dx * 0.05));
   const { t } = computeProximity(currentX, currentY);
@@ -71,8 +71,8 @@ export default function DragOverlay() {
         style={{
           transform: `translate(-50%, -60%) rotate(${rotation}deg) scale(${scale})`,
           filter: `brightness(${brightness})`,
-          transition: "transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 220ms ease-out",
-          willChange: "transform, filter",
+          transition: "transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+          willChange: "transform",
         }}
       >
         <div
@@ -81,7 +81,7 @@ export default function DragOverlay() {
             background: "linear-gradient(180deg, rgba(13,20,30,0.92), rgba(7,12,18,0.95))",
             border: `1.5px solid ${colors.border}`,
             boxShadow: `0 0 ${shadowBlur}px ${shadowSpread}px ${shadowColor}, 0 12px 32px rgba(0,0,0,0.5)`,
-            transition: "box-shadow 220ms ease-out, border-color 220ms ease-out",
+            transition: "transform 220ms ease-out, opacity 220ms ease-out",
           }}
         >
           {artUrl && (

@@ -853,18 +853,11 @@ export default function GameCard({
     || (variant === "battlefield" && battlefieldCircuitActive)
   );
   const usesTopOnlyHandCircuit = variant === "hand" && handCircuitMode === "top";
-  const circuitViewBox = usesTopOnlyHandCircuit ? "0 0 100 46" : "0 0 100 140";
-  const circuitPath = usesTopOnlyHandCircuit
-    ? "M2.5 1.5H97.5"
-    : "M5.5 2.5H94.5C97.26 2.5 99.5 4.74 99.5 7.5V132.5C99.5 135.26 97.26 137.5 94.5 137.5H5.5C2.74 137.5 0.5 135.26 0.5 132.5V7.5C0.5 4.74 2.74 2.5 5.5 2.5Z";
+  const circuitEdges = usesTopOnlyHandCircuit ? ["top"] : ["top", "right", "bottom", "left"];
   const rootRef = useRef(null);
   const entryMotionRef = useRef(null);
   const bumpMotionRef = useRef(null);
   const stackMotionRef = useRef(null);
-  const circuitMotionRefs = useRef([]);
-  const circuitGlowRef = useRef(null);
-  const circuitCoreRef = useRef(null);
-  const circuitAccentRef = useRef(null);
   const stackCleanupTimersRef = useRef([]);
   const previousGroupSizeRef = useRef(groupSize);
   const counterBadges = variant === "battlefield"
@@ -991,43 +984,6 @@ export default function GameCard({
       enteringLayer.remove();
     }
   };
-
-  useLayoutEffect(() => {
-    circuitMotionRefs.current.forEach(cancelMotion);
-    circuitMotionRefs.current = [];
-
-    if (!showCircuitAnimation) return undefined;
-
-    const startOffset = -((glowPhase % 1000) + 100);
-    const primaryNodes = [circuitGlowRef.current, circuitCoreRef.current].filter(Boolean);
-
-    if (primaryNodes.length > 0) {
-      circuitMotionRefs.current.push(
-        animate(primaryNodes, {
-          strokeDashoffset: [startOffset, startOffset - 1000],
-          ease: "linear",
-          duration: 2400 + (glowPhase % 900),
-          loop: true,
-        })
-      );
-    }
-
-    if (circuitAccentRef.current) {
-      circuitMotionRefs.current.push(
-        animate(circuitAccentRef.current, {
-          strokeDashoffset: [startOffset - 460, startOffset - 1460],
-          ease: "linear",
-          duration: 4200 + (glowPhase % 1400),
-          loop: true,
-        })
-      );
-    }
-
-    return () => {
-      circuitMotionRefs.current.forEach(cancelMotion);
-      circuitMotionRefs.current = [];
-    };
-  }, [glowPhase, showCircuitAnimation]);
 
   useLayoutEffect(() => {
     const node = rootRef.current;
@@ -1219,8 +1175,6 @@ export default function GameCard({
     bumpMotionRef.current = null;
     cancelMotion(stackMotionRef.current);
     stackMotionRef.current = null;
-    circuitMotionRefs.current.forEach(cancelMotion);
-    circuitMotionRefs.current = [];
     clearStackAnimation();
   }, []);
 
@@ -1319,6 +1273,9 @@ export default function GameCard({
         "--aura-rot-1-neg": auraRot1Neg,
         "--aura-rot-2-pos": auraRot2Pos,
         "--aura-rot-2-neg": auraRot2Neg,
+        "--circuit-delay": `-${((glowPhase % 3200) / 1000).toFixed(3)}s`,
+        "--circuit-duration": `${(3.1 + ((glowPhase % 900) / 1000)).toFixed(3)}s`,
+        "--circuit-accent-delay": `-${(((glowPhase * 17) % 4100) / 1000).toFixed(3)}s`,
         ...(isBumped ? { "--bump-x": `${bumpDirection * 4}px` } : undefined),
       }}
     >
@@ -1365,39 +1322,21 @@ export default function GameCard({
           <span className="battlefield-frame" aria-hidden="true" />
         )}
         {showCircuitAnimation && (
-          <div className="card-circuit-overlay" aria-hidden="true">
-            <svg
-              className={cn(
-                "card-circuit-svg",
-                usesTopOnlyHandCircuit && "card-circuit-svg-top",
-              )}
-              viewBox={circuitViewBox}
-              preserveAspectRatio="none"
-            >
-              <path
-                className="card-circuit-track"
-                d={circuitPath}
-                pathLength="1000"
-              />
-              <path
-                ref={circuitGlowRef}
-                className="card-circuit-glow"
-                d={circuitPath}
-                pathLength="1000"
-              />
-              <path
-                ref={circuitCoreRef}
-                className="card-circuit-core"
-                d={circuitPath}
-                pathLength="1000"
-              />
-              <path
-                ref={circuitAccentRef}
-                className="card-circuit-accent"
-                d={circuitPath}
-                pathLength="1000"
-              />
-            </svg>
+          <div
+            className={cn(
+              "card-circuit-overlay",
+              usesTopOnlyHandCircuit && "card-circuit-overlay-top-only",
+            )}
+            aria-hidden="true"
+          >
+            <div className="card-circuit-strip-set">
+              {circuitEdges.map((edge) => (
+                <span key={edge} className={`card-circuit-edge card-circuit-edge-${edge}`}>
+                  <span className="card-circuit-stream card-circuit-stream-a" />
+                  <span className="card-circuit-stream card-circuit-stream-b" />
+                </span>
+              ))}
+            </div>
           </div>
         )}
         {useTokenBattlefield ? (
