@@ -61,6 +61,11 @@ path = "src/bin/export_compiled_oracle_csv.rs"
 test = false
 
 [[bin]]
+name = "export_oracle_grammar_tree"
+path = "src/bin/export_oracle_grammar_tree.rs"
+test = false
+
+[[bin]]
 name = "parse_card_text"
 path = "src/bin/parse_card_text.rs"
 test = false

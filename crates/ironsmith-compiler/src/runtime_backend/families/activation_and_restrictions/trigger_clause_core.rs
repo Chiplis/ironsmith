@@ -1684,6 +1684,16 @@ pub(crate) fn parse_trigger_clause_lexed(
             {
                 return Ok(TriggerSpec::ThisBecomesTargeted);
             }
+            if tail_words == ["an", "ability", "that", "targets", "only", "it"]
+                || tail_words == ["ability", "that", "targets", "only", "it"]
+            {
+                let mut ability_filter = ObjectFilter::ability();
+                ability_filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+                ability_filter.targets_only_object = Some(Box::new(ObjectFilter::source()));
+                return Ok(TriggerSpec::ThisBecomesTargetedByStackObject(
+                    ability_filter,
+                ));
+            }
             if tail_words
                 .last()
                 .is_some_and(|word| *word == "spell" || *word == "spells")

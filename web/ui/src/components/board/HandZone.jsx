@@ -299,7 +299,6 @@ export default function HandZone({
     delay: stagger(24),
     duration: 360,
     bounce: 0.14,
-    enterFrom: { opacity: 0, x: 22, scale: 0.95 },
     leaveTo: { opacity: 0, x: -20, scale: 0.94 },
   });
 

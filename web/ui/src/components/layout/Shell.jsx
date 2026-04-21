@@ -429,7 +429,6 @@ export default function Shell() {
         startingLife={startingLife}
         setStartingLife={setStartingLife}
         onReset={handleReset}
-        onChangePerspective={handleChangePerspective}
         onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
         onToggleLog={() => setLogOpen((o) => !o)}
         onEnterDeckLoading={() => {
@@ -458,6 +457,7 @@ export default function Shell() {
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
           onAddCardNotice={pushNotice}
+          onChangePerspective={handleChangePerspective}
           onEnterDeckLoading={() => {
             setPuzzleSetupMode(false);
             setDeckLoadingMode((mode) => !mode);

@@ -186,6 +186,13 @@ function preferredInlinePlacement(location) {
   };
 }
 
+function fixedInlinePlacementForVariant(inspectorVariant) {
+  if (inspectorVariant === "debug") {
+    return { dock: "bottom", side: "right" };
+  }
+  return { dock: "top", side: "right" };
+}
+
 function linkedInspectorLocationPriority(location) {
   if (!location) return -1;
   if (location.viewVisibility === "public") return 6;
@@ -372,16 +379,17 @@ export default function RightRail({
     transientPreviewObjectId,
     validSelectedObjectId,
   ]);
+  const forcedInlinePlacement = inline ? fixedInlinePlacementForVariant(inspectorVariant) : null;
   const preferredPlacement = useMemo(
-    () => preferredInlinePlacement(selectedObjectLocation),
-    [selectedObjectLocation]
+    () => forcedInlinePlacement ?? preferredInlinePlacement(selectedObjectLocation),
+    [forcedInlinePlacement, selectedObjectLocation]
   );
   const resolvedInlineDockPlacement = (
     preferredPlacement.dock === "top" && !allowTopInlinePlacement
       ? "bottom"
       : preferredPlacement.dock
   );
-  const activeDockPlacement = dockRole === "opposite"
+  const activeDockPlacement = !forcedInlinePlacement && dockRole === "opposite"
     ? (resolvedInlineDockPlacement === "top" ? "bottom" : "top")
     : resolvedInlineDockPlacement;
   const suppressDirectResolvingCastInspector =
@@ -615,7 +623,7 @@ export default function RightRail({
             inline
               ? "rounded-none"
               : "rounded-none",
-            shouldShowRail ? "pointer-events-auto" : "pointer-events-none"
+            shouldShowRail && !useExpandedInlineInspector ? "pointer-events-auto" : "pointer-events-none"
           )}
           style={inspectorBorderStyle(inspectorAccent)}
         >
@@ -641,7 +649,7 @@ export default function RightRail({
             ref={expandedInspectorRef}
             className={cn(
               "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute bottom-0 overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
-              useExpandedInlineInspector ? "is-open" : "is-closed"
+              useExpandedInlineInspector ? "is-open pointer-events-auto z-[60]" : "is-closed pointer-events-none z-0"
             )}
             style={{
               width: "100%",

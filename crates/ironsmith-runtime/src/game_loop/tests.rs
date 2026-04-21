@@ -5434,11 +5434,53 @@ fn beamsplitter_mage_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn zada_hedron_grinder_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(82_202), "Zada, Hedron Grinder")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Goblin, crate::types::Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Whenever you cast an instant or sorcery spell that targets only Zada, copy that spell for each other creature you control that the spell could target. Each copy targets a different one of those creatures.",
+        )
+        .expect("Zada, Hedron Grinder should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn feather_radiant_arbiter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(82_203), "Feather, Radiant Arbiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "Flying, lifelink\nWhenever you cast a noncreature spell that targets only Feather, you may choose any number of other creatures that spell could target and pay {2} for each of those creatures. If you do, for each of those creatures, copy that spell. The copy targets that creature.",
+        )
+        .expect("Feather, Radiant Arbiter should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn nonartifact_creature_spell_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(82_201), "Friendly Calibration")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
         .card_types(vec![CardType::Instant])
         .parse_text("Target nonartifact creature you control.")
+        .expect("single-target spell should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn any_nonartifact_creature_spell_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(82_204), "Open Calibration")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target nonartifact creature.")
         .expect("single-target spell should parse")
 }
 
@@ -5457,6 +5499,20 @@ fn stack_beamsplitter_probe_spell(
     target: ObjectId,
 ) -> ObjectId {
     let spell_def = nonartifact_creature_spell_definition();
+    let spell_id = game.create_object_from_definition(&spell_def, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller).with_targets(vec![Target::Object(target)]),
+    );
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stack_any_nonartifact_creature_probe_spell(
+    game: &mut GameState,
+    controller: PlayerId,
+    target: ObjectId,
+) -> ObjectId {
+    let spell_def = any_nonartifact_creature_spell_definition();
     let spell_id = game.create_object_from_definition(&spell_def, controller, Zone::Stack);
     game.push_to_stack(
         StackEntry::new(spell_id, controller).with_targets(vec![Target::Object(target)]),
@@ -5672,6 +5728,262 @@ fn beamsplitter_mage_does_not_trigger_without_another_legal_creature() {
         triggers.is_empty(),
         "Beamsplitter should not trigger when no other creature could be targeted by the spell"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn zada_copies_spell_for_each_other_legal_creature_with_distinct_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let zada = zada_hedron_grinder_definition();
+    let zada_id = game.create_object_from_definition(&zada, alice, Zone::Battlefield);
+    let legal_ally = create_creature(&mut game, "Legal Ally", alice, 2, 2);
+    let second_ally = create_creature(&mut game, "Second Legal Ally", alice, 2, 2);
+    let artifact_ally = game.create_object_from_card(
+        &artifact_creature_card("Alloy Ally"),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+
+    let spell_id = stack_beamsplitter_probe_spell(&mut game, alice, zada_id);
+    let event = spell_cast_event_for_stack_object(&game, spell_id, alice);
+    let triggers = check_triggers(&game, &event);
+    assert_eq!(
+        triggers.len(),
+        1,
+        "Zada should trigger for an instant targeting only itself"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Zada trigger should stack");
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Zada trigger should resolve");
+    assert_eq!(
+        game.stack.len(),
+        3,
+        "Zada trigger should leave the original spell plus one copy per legal other creature"
+    );
+
+    let original_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == spell_id)
+        .expect("original spell should remain on the stack");
+    assert_eq!(original_entry.targets, vec![Target::Object(zada_id)]);
+
+    let copy_targets: std::collections::HashSet<Target> = game
+        .stack
+        .iter()
+        .filter(|entry| entry.object_id != spell_id)
+        .map(|entry| entry.targets[0])
+        .collect();
+    assert_eq!(
+        copy_targets,
+        std::collections::HashSet::from([Target::Object(legal_ally), Target::Object(second_ally)])
+    );
+    assert!(!copy_targets.contains(&Target::Object(zada_id)));
+    assert!(!copy_targets.contains(&Target::Object(artifact_ally)));
+    assert!(!copy_targets.contains(&Target::Object(bob_creature)));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct ChooseAllDecisionMaker {
+    object_choice_candidates: Vec<Vec<ObjectId>>,
+    object_choices: Vec<Vec<ObjectId>>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseAllDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.object_choice_candidates.push(
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect(),
+        );
+        let mut legal: Vec<ObjectId> = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect();
+        if let Some(max) = ctx.max {
+            legal.truncate(max);
+        }
+        self.object_choices.push(legal.clone());
+        legal
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feather_radiant_arbiter_copies_spell_for_each_paid_chosen_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let feather = feather_radiant_arbiter_definition();
+    let feather_id = game.create_object_from_definition(&feather, alice, Zone::Battlefield);
+    let legal_ally = create_creature(&mut game, "Legal Ally", alice, 2, 2);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let artifact_ally = game.create_object_from_card(
+        &artifact_creature_card("Alloy Ally"),
+        alice,
+        Zone::Battlefield,
+    );
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+
+    let spell_id = stack_any_nonartifact_creature_probe_spell(&mut game, alice, feather_id);
+    let event = spell_cast_event_for_stack_object(&game, spell_id, alice);
+    let triggers = check_triggers(&game, &event);
+    assert_eq!(
+        triggers.len(),
+        1,
+        "Feather should trigger for a noncreature spell targeting only itself"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Feather trigger should stack");
+
+    let mut dm = ChooseAllDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Feather trigger should resolve");
+    assert!(
+        dm.object_choice_candidates
+            .iter()
+            .any(|candidates| candidates.contains(&legal_ally)
+                && candidates.contains(&bob_creature)
+                && !candidates.contains(&feather_id)
+                && !candidates.contains(&artifact_ally)),
+        "Feather should offer the other legal nonartifact-creature targets somewhere in its choices, got {:?}",
+        dm.object_choice_candidates
+    );
+    assert!(
+        dm.object_choices
+            .iter()
+            .any(|choices| choices.contains(&legal_ally) && choices.contains(&bob_creature)),
+        "Feather choose-all helper should select both legal choices, got {:?}",
+        dm.object_choices
+    );
+    assert_eq!(
+        game.stack.len(),
+        3,
+        "Feather should leave the original spell plus one copy per paid chosen creature"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "Feather should pay {{2}} once for each chosen creature"
+    );
+
+    let original_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == spell_id)
+        .expect("original spell should remain on the stack");
+    assert_eq!(original_entry.targets, vec![Target::Object(feather_id)]);
+
+    let copy_targets: std::collections::HashSet<Target> = game
+        .stack
+        .iter()
+        .filter(|entry| entry.object_id != spell_id)
+        .map(|entry| entry.targets[0])
+        .collect();
+    assert_eq!(
+        copy_targets,
+        std::collections::HashSet::from([Target::Object(legal_ally), Target::Object(bob_creature)])
+    );
+    assert!(!copy_targets.contains(&Target::Object(feather_id)));
+    assert!(!copy_targets.contains(&Target::Object(artifact_ally)));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feather_radiant_arbiter_creates_no_copy_when_no_other_legal_creature_exists() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let feather = feather_radiant_arbiter_definition();
+    let feather_id = game.create_object_from_definition(&feather, alice, Zone::Battlefield);
+    let artifact_ally = game.create_object_from_card(
+        &artifact_creature_card("Alloy Ally"),
+        alice,
+        Zone::Battlefield,
+    );
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+
+    let spell_id = stack_any_nonartifact_creature_probe_spell(&mut game, alice, feather_id);
+    let event = spell_cast_event_for_stack_object(&game, spell_id, alice);
+    let triggers = check_triggers(&game, &event);
+    assert_eq!(
+        triggers.len(),
+        1,
+        "Feather should still trigger before discovering there are no other legal choices"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Feather trigger should stack");
+
+    let mut dm = ChooseAllDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Feather trigger should resolve");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Feather should not create a copy when there are no other legal targets"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .total(),
+        4,
+        "Feather should not pay mana when no objects were chosen"
+    );
+
+    let original_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == spell_id)
+        .expect("original spell should remain on the stack");
+    assert_eq!(original_entry.targets, vec![Target::Object(feather_id)]);
+    assert!(!game.stack.iter().any(|entry| {
+        entry.object_id != spell_id && entry.targets.contains(&Target::Object(artifact_ally))
+    }));
 }
 
 fn record_battlefield_entry_this_turn(game: &mut GameState, object_id: ObjectId) {

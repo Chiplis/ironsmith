@@ -2578,6 +2578,63 @@ impl CopySpellEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CopySpellForEachTargetEffect {
+    pub target: ChooseSpec,
+    pub object_filter: Option<ObjectFilter>,
+    pub player_filter: Option<PlayerFilter>,
+    pub copier: PlayerFilter,
+    pub exclude_current_targets: bool,
+    pub removed_supertypes: Vec<Supertype>,
+}
+
+impl CopySpellForEachTargetEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            object_filter: None,
+            player_filter: None,
+            copier: PlayerFilter::You,
+            exclude_current_targets: false,
+            removed_supertypes: Vec::new(),
+        }
+    }
+
+    pub fn with_object_filter(mut self, filter: ObjectFilter) -> Self {
+        self.object_filter = Some(filter);
+        self
+    }
+
+    pub fn with_player_filter(mut self, filter: PlayerFilter) -> Self {
+        self.player_filter = Some(filter);
+        self
+    }
+
+    pub fn with_copier(mut self, copier: PlayerFilter) -> Self {
+        self.copier = copier;
+        self
+    }
+
+    pub fn exclude_current_targets(mut self, exclude: bool) -> Self {
+        self.exclude_current_targets = exclude;
+        self
+    }
+
+    pub fn removed_supertype(mut self, supertype: Supertype) -> Self {
+        if !self.removed_supertypes.contains(&supertype) {
+            self.removed_supertypes.push(supertype);
+        }
+        self
+    }
+
+    pub fn with_removed_supertypes(mut self, supertypes: Vec<Supertype>) -> Self {
+        for supertype in supertypes {
+            self = self.removed_supertype(supertype);
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct VoteOption<E> {
     pub name: String,
     pub effects_per_vote: Vec<E>,

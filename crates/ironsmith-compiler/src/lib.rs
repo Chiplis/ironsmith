@@ -26,6 +26,7 @@ pub mod ids;
 pub mod mana;
 pub mod model;
 pub mod object;
+pub mod oracle_grammar;
 pub mod payload;
 pub mod pipeline;
 pub mod resolution;
@@ -96,6 +97,10 @@ pub use model::{
     SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
 pub use object::{AuraAttachmentFilter, CounterType};
+pub use oracle_grammar::{
+    OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,
+    OracleGrammarMode, parse_oracle_grammar_document,
+};
 pub use payload::{IfResultPredicate, KeywordAction};
 pub use pipeline::{LoweringPipeline, PostpassProcessor};
 pub use tag::TagKey;

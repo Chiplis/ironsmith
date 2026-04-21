@@ -1051,6 +1051,38 @@ pub(super) fn try_compile_stack_and_condition_effect(
             }
             (compiled, choices)
         }
+        EffectAst::CopySpellForEachTarget {
+            target,
+            object_filter,
+            player_filter,
+            player,
+            exclude_current_targets,
+            removed_supertypes,
+        } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let player_filter_for_copies =
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            if !matches!(*player, PlayerAst::Implicit) {
+                ctx.last_player_filter = Some(player_filter_for_copies.clone());
+            }
+            let mut copy_effect = crate::effects::CopySpellForEachTargetEffect::new(spec.clone())
+                .with_copier(player_filter_for_copies)
+                .exclude_current_targets(*exclude_current_targets)
+                .with_removed_supertypes(removed_supertypes.clone());
+            if let Some(filter) = object_filter {
+                copy_effect = copy_effect
+                    .with_object_filter(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
+            if let Some(filter) = player_filter {
+                copy_effect = copy_effect.with_player_filter(filter.clone());
+            }
+            let id = ctx.next_effect_id();
+            ctx.last_effect_id = Some(id);
+            let effect =
+                Effect::with_id(id.0, Effect::new(copy_effect)).tag(COPIED_STACK_OBJECT_TAG);
+            (vec![effect], choices)
+        }
         EffectAst::RetargetStackObject {
             target,
             mode,

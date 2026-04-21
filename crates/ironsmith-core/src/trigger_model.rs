@@ -85,6 +85,9 @@ pub enum TriggerKind {
     BecomesTargetedBySpell {
         filter: ObjectFilter,
     },
+    BecomesTargetedByStackObject {
+        filter: ObjectFilter,
+    },
     BecomesTargetedBySourceController {
         target: ObjectFilter,
         controller: PlayerFilter,
@@ -446,6 +449,12 @@ impl Trigger {
         Self::typed(
             "becomes_targeted_by_spell",
             TriggerKind::BecomesTargetedBySpell { filter },
+        )
+    }
+    pub fn becomes_targeted_by_stack_object(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "becomes_targeted_by_stack_object",
+            TriggerKind::BecomesTargetedByStackObject { filter },
         )
     }
     pub fn becomes_targeted_by_source_controller(

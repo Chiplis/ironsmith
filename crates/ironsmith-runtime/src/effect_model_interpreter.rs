@@ -1371,6 +1371,7 @@ where
         crate::effects::ChooseSpellCastHistoryEffect,
         crate::effects::ClashEffect,
         crate::effects::CopySpellEffect,
+        crate::effects::CopySpellForEachTargetEffect,
         crate::effects::CounterEffect,
         crate::effects::CrewCostEffect,
         crate::effects::DealDamageEffect,

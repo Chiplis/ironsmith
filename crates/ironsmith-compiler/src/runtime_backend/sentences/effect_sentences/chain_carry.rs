@@ -2099,6 +2099,10 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             player: effect_player,
             ..
         }
+        | EffectAst::CopySpellForEachTarget {
+            player: effect_player,
+            ..
+        }
         | EffectAst::SkipTurn {
             player: effect_player,
         }

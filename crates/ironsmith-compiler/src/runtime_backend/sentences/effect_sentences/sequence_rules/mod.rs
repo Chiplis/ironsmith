@@ -144,6 +144,19 @@ fn tainted_pact_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool
         && sentence_head_word_is(sentences, sentence_idx + 2, "repeat")
 }
 
+fn copy_for_each_target_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(
+        sentences,
+        sentence_idx,
+        &["copy", "that", "you", "for", "if"],
+    ) && sentence_head_word_is(sentences, sentence_idx + 1, "each")
+}
+
+fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["if", "for"])
+        && sentence_head_word_is(sentences, sentence_idx + 1, "the")
+}
+
 fn parse_damage_prevention_rule(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -329,6 +342,22 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: tainted_pact_window,
         parser: triples::parse_tainted_pact_sequence,
+    },
+    SequenceRuleDef {
+        name: "copy-for-each-target-each-copy-different",
+        feature_tag: Some("copy-target-assignment"),
+        priority: 242,
+        consumed_sentences: 2,
+        predicate: copy_for_each_target_window,
+        parser: pairs::parse_copy_for_each_target_then_each_copy_targets_different,
+    },
+    SequenceRuleDef {
+        name: "for-each-tagged-copy-then-copy-targets-it",
+        feature_tag: Some("copy-target-assignment"),
+        priority: 242,
+        consumed_sentences: 2,
+        predicate: for_each_tagged_copy_window,
+        parser: pairs::parse_for_each_tagged_copy_then_copy_targets_it,
     },
     SequenceRuleDef {
         name: "whenever-gain-life-then-self-animate-source",

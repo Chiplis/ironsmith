@@ -9,6 +9,7 @@ use ironsmith::game_state::{
     GameState, Target, UiBattlefieldTransition, UiBattlefieldTransitionKind,
 };
 use ironsmith::ids::{ObjectId, PlayerId};
+use ironsmith::object::AttachmentTarget;
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
@@ -48,29 +49,33 @@ struct BattlefieldGroupKey {
     lane: BattlefieldLane,
     name: String,
     tapped: bool,
+    characteristic_signature: String,
     counter_signature: String,
-    power_toughness_signature: String,
     token: bool,
     force_single_object: Option<u64>,
 }
 
 pub(super) fn battlefield_lane_for_object(obj: &ironsmith::object::Object) -> BattlefieldLane {
-    if obj.has_card_type(CardType::Enchantment) {
+    battlefield_lane_for_card_types(&obj.card_types)
+}
+
+fn battlefield_lane_for_card_types(card_types: &[CardType]) -> BattlefieldLane {
+    if card_types.contains(&CardType::Enchantment) {
         return BattlefieldLane::Enchantments;
     }
-    if obj.has_card_type(CardType::Creature) {
+    if card_types.contains(&CardType::Creature) {
         return BattlefieldLane::Creatures;
     }
-    if obj.has_card_type(CardType::Artifact) {
+    if card_types.contains(&CardType::Artifact) {
         return BattlefieldLane::Artifacts;
     }
-    if obj.has_card_type(CardType::Land) {
+    if card_types.contains(&CardType::Land) {
         return BattlefieldLane::Lands;
     }
-    if obj.has_card_type(CardType::Planeswalker) {
+    if card_types.contains(&CardType::Planeswalker) {
         return BattlefieldLane::Planeswalkers;
     }
-    if obj.has_card_type(CardType::Battle) {
+    if card_types.contains(&CardType::Battle) {
         return BattlefieldLane::Battles;
     }
     BattlefieldLane::Other
@@ -93,11 +98,192 @@ fn counter_signature_for_group(obj: &ironsmith::object::Object) -> String {
         .join("|")
 }
 
-fn power_toughness_signature_for_group(obj: &ironsmith::object::Object) -> String {
-    match (obj.power(), obj.toughness()) {
-        (Some(power), Some(toughness)) => format!("{power}/{toughness}"),
-        _ => "-".to_string(),
+fn sorted_name_signature<T, F>(items: &[T], mut name: F) -> String
+where
+    F: FnMut(&T) -> String,
+{
+    let mut parts = items.iter().map(&mut name).collect::<Vec<_>>();
+    parts.sort_unstable();
+    parts.join(",")
+}
+
+fn color_signature(colors: ironsmith::color::ColorSet) -> String {
+    let mut parts = Vec::new();
+    for color in ironsmith::color::Color::ALL {
+        if colors.contains(color) {
+            parts.push(color.name());
+        }
     }
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join(",")
+    }
+}
+
+fn ability_signature(abilities: &[ironsmith::ability::Ability]) -> String {
+    let mut parts = abilities
+        .iter()
+        .map(|ability| {
+            ability
+                .text
+                .clone()
+                .unwrap_or_else(|| format!("{:?}", ability.kind))
+        })
+        .collect::<Vec<_>>();
+    parts.sort_unstable();
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join("|")
+    }
+}
+
+fn static_ability_signature(
+    static_abilities: &[ironsmith::static_abilities::StaticAbility],
+) -> String {
+    let mut parts = static_abilities
+        .iter()
+        .map(|ability| format!("{ability:?}"))
+        .collect::<Vec<_>>();
+    parts.sort_unstable();
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join("|")
+    }
+}
+
+fn attached_to_signature(game: &GameState, obj: &ironsmith::object::Object) -> String {
+    match obj.attached_to {
+        Some(AttachmentTarget::Object(id)) => game
+            .object(id)
+            .map(|target| object_characteristic_signature(game, target, false))
+            .unwrap_or_else(|| "object:missing".to_string()),
+        Some(AttachmentTarget::Player(id)) => format!("player:{}", id.0),
+        None => "-".to_string(),
+    }
+}
+
+fn attachment_signature(game: &GameState, obj: &ironsmith::object::Object) -> String {
+    let mut parts = obj
+        .attachments
+        .iter()
+        .filter_map(|attachment_id| game.object(*attachment_id))
+        .map(|attachment| object_characteristic_signature(game, attachment, false))
+        .collect::<Vec<_>>();
+    parts.sort_unstable();
+    if parts.is_empty() {
+        "-".to_string()
+    } else {
+        parts.join("||")
+    }
+}
+
+fn object_characteristic_signature(
+    game: &GameState,
+    obj: &ironsmith::object::Object,
+    include_attachments: bool,
+) -> String {
+    let current = game.current_characteristics(obj.id);
+    let (
+        name,
+        oracle_text,
+        power,
+        toughness,
+        card_types,
+        subtypes,
+        supertypes,
+        colors,
+        abilities,
+        static_abilities,
+        controller,
+    ) = if let Some(chars) = current {
+        (
+            chars.name,
+            chars.oracle_text,
+            chars.power,
+            chars.toughness,
+            chars.card_types,
+            chars.subtypes,
+            chars.supertypes,
+            chars.colors,
+            chars.abilities,
+            chars.static_abilities,
+            chars.controller,
+        )
+    } else {
+        (
+            obj.name.clone(),
+            obj.oracle_text.clone(),
+            obj.power(),
+            obj.toughness(),
+            obj.card_types.clone(),
+            obj.subtypes.clone(),
+            obj.supertypes.clone(),
+            obj.colors(),
+            obj.abilities.clone(),
+            obj.abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    ironsmith::ability::AbilityKind::Static(static_ability) => {
+                        Some(static_ability.clone())
+                    }
+                    _ => None,
+                })
+                .collect(),
+            obj.controller,
+        )
+    };
+
+    let card_type_signature =
+        sorted_name_signature(&card_types, |card_type| card_type.name().to_string());
+    let subtype_signature = sorted_name_signature(&subtypes, |subtype| subtype.display_name());
+    let supertype_signature =
+        sorted_name_signature(&supertypes, |supertype| supertype.name().to_string());
+    let attachment_part = include_attachments
+        .then(|| attachment_signature(game, obj))
+        .unwrap_or_else(|| "-".to_string());
+
+    [
+        format!("owner:{}", obj.owner.0),
+        format!("controller:{}", controller.0),
+        format!("kind:{}", obj.kind.name()),
+        format!("name:{name}"),
+        format!(
+            "mana:{}",
+            obj.mana_cost
+                .as_ref()
+                .map(|mana_cost| mana_cost.to_oracle())
+                .unwrap_or_else(|| "-".to_string())
+        ),
+        format!("colors:{}", color_signature(colors)),
+        format!("supertypes:{supertype_signature}"),
+        format!("types:{card_type_signature}"),
+        format!("subtypes:{subtype_signature}"),
+        format!("oracle:{oracle_text}"),
+        format!(
+            "pt:{}/{}",
+            power.map_or("-".to_string(), |p| p.to_string()),
+            toughness.map_or("-".to_string(), |t| t.to_string())
+        ),
+        format!(
+            "loyalty:{}",
+            obj.loyalty()
+                .map_or_else(|| "-".to_string(), |loyalty| loyalty.to_string())
+        ),
+        format!(
+            "defense:{}",
+            obj.defense()
+                .map_or_else(|| "-".to_string(), |defense| defense.to_string())
+        ),
+        format!("counters:{}", counter_signature_for_group(obj)),
+        format!("abilities:{}", ability_signature(&abilities)),
+        format!("static:{}", static_ability_signature(&static_abilities)),
+        format!("attached_to:{}", attached_to_signature(game, obj)),
+        format!("attachments:{attachment_part}"),
+    ]
+    .join("\n")
 }
 
 pub(super) fn counter_snapshots_for_object(
@@ -203,12 +389,21 @@ pub(super) fn grouped_battlefield_for_player(
         total += 1;
 
         let force_single = protected_ids.contains(&obj.id).then_some(obj.id.0);
+        let current = game.current_characteristics(obj.id);
+        let current_card_types = current
+            .as_ref()
+            .map(|chars| chars.card_types.as_slice())
+            .unwrap_or(&obj.card_types);
+        let current_name = current
+            .as_ref()
+            .map(|chars| chars.name.clone())
+            .unwrap_or_else(|| obj.name.clone());
         let key = BattlefieldGroupKey {
-            lane: battlefield_lane_for_object(obj),
-            name: obj.name.clone(),
+            lane: battlefield_lane_for_card_types(current_card_types),
+            name: current_name,
             tapped: game.is_tapped(obj.id),
+            characteristic_signature: object_characteristic_signature(game, obj, true),
             counter_signature: counter_signature_for_group(obj),
-            power_toughness_signature: power_toughness_signature_for_group(obj),
             token: matches!(obj.kind, ironsmith::object::ObjectKind::Token),
             force_single_object: force_single,
         };
@@ -244,19 +439,32 @@ pub(super) fn grouped_battlefield_for_player(
                 .map(|obj| obj.stable_id.0.0)
                 .unwrap_or_default();
             let name = representative
-                .map(|obj| obj.name.clone())
+                .map(|obj| {
+                    game.current_characteristics(obj.id)
+                        .map(|chars| chars.name)
+                        .unwrap_or_else(|| obj.name.clone())
+                })
                 .unwrap_or_else(|| key.name.clone());
             let power_toughness = representative.and_then(|obj| {
-                let p = game.calculated_power(obj.id).or_else(|| obj.power())?;
-                let t = game
-                    .calculated_toughness(obj.id)
+                let current = game.current_characteristics(obj.id);
+                let p = current
+                    .as_ref()
+                    .and_then(|chars| chars.power)
+                    .or_else(|| obj.power())?;
+                let t = current
+                    .as_ref()
+                    .and_then(|chars| chars.toughness)
                     .or_else(|| obj.toughness())?;
                 Some(format!("{p}/{t}"))
             });
             let mana_cost =
                 representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
             let oracle_text = representative
-                .map(|obj| obj.oracle_text.clone())
+                .map(|obj| {
+                    game.current_characteristics(obj.id)
+                        .map(|chars| chars.oracle_text)
+                        .unwrap_or_else(|| obj.oracle_text.clone())
+                })
                 .unwrap_or_default();
             let counters = representative
                 .map(counter_snapshots_for_object)
@@ -1041,7 +1249,117 @@ fn zone_label(zone: Zone) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith::card::{Card, CardBuilder, PowerToughness};
+    use ironsmith::cards::tokens::cursed_role_token_definition;
+    use ironsmith::game_state::GameState;
+    use ironsmith::ids::{CardId, PlayerId};
+    use ironsmith::object::AttachmentTarget;
     use ironsmith::types::Subtype;
+
+    fn test_bears_card() -> Card {
+        CardBuilder::new(CardId::from_raw(90_001), "Grizzly Bears")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    #[test]
+    fn battlefield_grouping_uses_calculated_characteristics_and_matching_attachments() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let protected_ids = std::collections::HashSet::new();
+        let bears_card = test_bears_card();
+        let role_def = cursed_role_token_definition();
+
+        let unenchanted_bear = game.create_object_from_card(&bears_card, alice, Zone::Battlefield);
+        let enchanted_bears: Vec<_> = (0..3)
+            .map(|_| {
+                let bear = game.create_object_from_card(&bears_card, alice, Zone::Battlefield);
+                let role = game.create_object_from_definition(&role_def, alice, Zone::Battlefield);
+                assert!(
+                    game.attach_object_to_target(role, AttachmentTarget::Object(bear)),
+                    "role should attach to bear"
+                );
+                bear
+            })
+            .collect();
+
+        assert_eq!(
+            game.current_power(unenchanted_bear),
+            Some(2),
+            "control bear should keep printed power"
+        );
+        assert_eq!(
+            battlefield_lane_for_object(game.object(unenchanted_bear).expect("bear should exist")),
+            BattlefieldLane::Creatures
+        );
+        assert!(
+            enchanted_bears
+                .iter()
+                .all(|bear| game.current_power(*bear) == Some(1)),
+            "cursed roles should set each attached bear to 1/1"
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+        let bear_groups: Vec<_> = battlefield
+            .iter()
+            .filter(|permanent| permanent.name == "Grizzly Bears")
+            .collect();
+
+        assert_eq!(
+            bear_groups.len(),
+            2,
+            "unenchanted and cursed bears should not collapse together"
+        );
+        assert!(
+            bear_groups
+                .iter()
+                .any(|group| group.count == 1 && group.power_toughness.as_deref() == Some("2/2")),
+            "single unenchanted bear should stay in its own group: {bear_groups:?}"
+        );
+        assert!(
+            bear_groups
+                .iter()
+                .any(|group| group.count == 3 && group.power_toughness.as_deref() == Some("1/1")),
+            "matching cursed bears should group together: {bear_groups:?}"
+        );
+    }
+
+    #[test]
+    fn battlefield_grouping_splits_each_protected_legal_target() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bears_card = test_bears_card();
+        let role_def = cursed_role_token_definition();
+        let mut protected_ids = std::collections::HashSet::new();
+
+        for _ in 0..3 {
+            let bear = game.create_object_from_card(&bears_card, alice, Zone::Battlefield);
+            let role = game.create_object_from_definition(&role_def, alice, Zone::Battlefield);
+            assert!(
+                game.attach_object_to_target(role, AttachmentTarget::Object(bear)),
+                "role should attach to bear"
+            );
+            protected_ids.insert(bear);
+        }
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+        let bear_groups: Vec<_> = battlefield
+            .iter()
+            .filter(|permanent| permanent.name == "Grizzly Bears")
+            .collect();
+
+        assert_eq!(
+            bear_groups.len(),
+            3,
+            "every legal target should stay individually clickable"
+        );
+        assert!(
+            bear_groups.iter().all(|group| group.count == 1),
+            "protected legal targets should not be grouped: {bear_groups:?}"
+        );
+    }
 
     #[test]
     fn type_line_display_compacts_all_creature_types() {

@@ -135,6 +135,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::BecomesTargetedBySpell { filter } => {
             crate::triggers::Trigger::becomes_targeted_by_spell(filter)
         }
+        TriggerKind::BecomesTargetedByStackObject { filter } => {
+            crate::triggers::Trigger::becomes_targeted_by_stack_object(filter)
+        }
         TriggerKind::BecomesTargetedBySourceController { target, controller } => {
             crate::triggers::Trigger::becomes_targeted_by_source_controller(target, controller)
         }

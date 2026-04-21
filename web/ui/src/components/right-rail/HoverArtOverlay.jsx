@@ -171,14 +171,17 @@ function InspectorMetadataBlock({
   );
 }
 
-function handleInspectorChevronPointerDown(event) {
+function handleInspectorChevronPointerDown(callback, event) {
+  if (event.button != null && event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
+  callback?.();
 }
 
 function handleInspectorChevronClick(callback, event) {
   event.preventDefault();
   event.stopPropagation();
+  if (event.detail !== 0) return;
   callback?.();
 }
 
@@ -663,9 +666,25 @@ export default function HoverArtOverlay({
     [normalizedCounters]
   );
   const inspectorAccent = useMemo(() => {
-    const controllerId = details?.controller ?? previewCard?.controller ?? hoveredStackObject?.controller ?? null;
-    return controllerId == null ? null : getPlayerAccent(state?.players || [], controllerId);
-  }, [details?.controller, hoveredStackObject?.controller, previewCard?.controller, state?.players]);
+    const ownerId = details?.owner
+      ?? previewCard?.owner
+      ?? hoveredStackObject?.owner
+      ?? hoveredStackObject?.source_owner
+      ?? details?.controller
+      ?? previewCard?.controller
+      ?? hoveredStackObject?.controller
+      ?? null;
+    return ownerId == null ? null : getPlayerAccent(state?.players || [], ownerId);
+  }, [
+    details?.controller,
+    details?.owner,
+    hoveredStackObject?.controller,
+    hoveredStackObject?.owner,
+    hoveredStackObject?.source_owner,
+    previewCard?.controller,
+    previewCard?.owner,
+    state?.players,
+  ]);
   const artObjectName = stableLinkedObjectName || objectName;
   const imageUrl = artObjectName ? scryfallImageUrl(artObjectName, "art_crop") : "";
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
@@ -1432,7 +1451,7 @@ export default function HoverArtOverlay({
                     <button
                       type="button"
                       className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={handleInspectorChevronPointerDown}
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
                       aria-label="Show previous moved card"
                     >
@@ -1449,7 +1468,7 @@ export default function HoverArtOverlay({
                     <button
                       type="button"
                       className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={handleInspectorChevronPointerDown}
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
                       aria-label="Show next moved card"
                     >
@@ -1510,7 +1529,7 @@ export default function HoverArtOverlay({
     <div
       className={cn(
         "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden",
-        compact ? "pointer-events-auto" : "pointer-events-none"
+        (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none"
       )}
     >
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
@@ -1528,7 +1547,7 @@ export default function HoverArtOverlay({
         <div className="absolute inset-0 overflow-hidden">
           <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[34%] bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.52)_46%,rgba(0,0,0,0.74)_100%)]" />
         {(transitionTitle || displayStatsText || displayTopLeftDetailLines.length > 0 || displayTopLeftOwnershipLines.length > 0) && (
-          <div ref={topHeaderRef} className="pointer-events-auto absolute top-0 left-0 z-10 flex max-w-[72%] flex-col items-start gap-1">
+          <div ref={topHeaderRef} className="pointer-events-auto absolute top-0 left-0 z-[60] flex max-w-[72%] flex-col items-start gap-1">
             {transitionTitle && (
               <div
                 className={cn(
@@ -1541,7 +1560,7 @@ export default function HoverArtOverlay({
                   <button
                     type="button"
                     className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                    onPointerDown={handleInspectorChevronPointerDown}
+                    onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
                     onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
                     aria-label="Show previous moved card"
                   >
@@ -1558,7 +1577,7 @@ export default function HoverArtOverlay({
                   <button
                     type="button"
                     className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                    onPointerDown={handleInspectorChevronPointerDown}
+                    onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
                     onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
                     aria-label="Show next moved card"
                   >
@@ -1620,7 +1639,7 @@ export default function HoverArtOverlay({
           </div>
         )}
         {(displayManaCost || displayTopRightDetailLines.length > 0) && (
-          <div ref={topMetadataRef} className="absolute top-0 right-0 z-10 flex max-w-[40%] flex-col items-end gap-0">
+          <div ref={topMetadataRef} className="absolute top-0 right-0 z-[50] flex max-w-[40%] flex-col items-end gap-0">
             {displayManaCost && (
               <div className="flex items-center justify-end gap-1.5">
                 <div className="inspector-banner inspector-banner--mana rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1" style={inspectorManaStyle}>
@@ -1642,7 +1661,7 @@ export default function HoverArtOverlay({
         <div
           key={rulesRenderKey}
           ref={oracleScrollRef}
-          className="inspector-oracle-scroll absolute inset-x-0 top-0 overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
+          className="inspector-oracle-scroll absolute inset-x-0 top-0 z-20 overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
           style={{ bottom: `${Math.max(0, stackTimelineHeight - 4)}px` }}
         >
           <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>

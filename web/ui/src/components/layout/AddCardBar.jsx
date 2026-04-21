@@ -16,6 +16,7 @@ export default function AddCardBar({
   zoneViews = ["battlefield"],
   setZoneViews,
   onAddCardNotice,
+  onChangePerspective,
   onEnterDeckLoading,
   onOpenPuzzleSetup,
   onOpenLobby,
@@ -162,6 +163,22 @@ export default function AddCardBar({
             className="h-3.5 w-3.5"
           />
           Auto-pass
+        </label>
+        <label className="add-card-toolbar-perspective add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
+          <span>Playing as</span>
+          <select
+            className={`${selectPill} add-card-toolbar-perspective-select`}
+            value={perspective}
+            disabled={matchLocked}
+            onChange={(event) => onChangePerspective?.(Number(event.target.value))}
+            aria-label="Playing as"
+          >
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {player.name}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       <div className="add-card-toolbar-right">

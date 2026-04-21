@@ -43,7 +43,11 @@ pub(crate) fn parse_target_player_choose_objects_clause(
     }
 
     let mut count = ChoiceCount::exactly(1);
-    if choose_object_tokens
+    let choose_object_words = crate::runtime_backend::token_word_refs(&choose_object_tokens);
+    if slice_starts_with(&choose_object_words, &["any", "number", "of"]) {
+        count = ChoiceCount::any_number();
+        choose_object_tokens = trim_commas(&choose_object_tokens[3..]);
+    } else if choose_object_tokens
         .first()
         .is_some_and(|token| token.is_word("up"))
         && choose_object_tokens
@@ -204,7 +208,10 @@ pub(crate) fn parse_you_choose_objects_clause(
         break;
     }
     let mut count = ChoiceCount::exactly(1);
-    if slice_starts_with(&choose_words, &["up", "to"]) {
+    if slice_starts_with(&choose_words, &["any", "number", "of"]) {
+        count = ChoiceCount::any_number();
+        choose_words = choose_words[3..].to_vec();
+    } else if slice_starts_with(&choose_words, &["up", "to"]) {
         if choose_words
             .get(2)
             .is_some_and(|word| word.eq_ignore_ascii_case("x"))
@@ -312,6 +319,7 @@ pub(crate) fn parse_you_choose_objects_clause(
     } else if chooser == PlayerAst::You
         && choose_filter.controller.is_none()
         && choose_filter.owner.is_none()
+        && choose_filter.could_be_targeted_by.is_none()
     {
         choose_filter.controller = Some(PlayerFilter::You);
     }

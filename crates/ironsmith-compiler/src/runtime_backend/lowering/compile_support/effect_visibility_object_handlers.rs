@@ -932,6 +932,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if choice_zone == Zone::Battlefield
                 && resolved_filter.controller.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
+                && resolved_filter.could_be_targeted_by.is_none()
             {
                 resolved_filter.controller = Some(chooser.clone());
             }

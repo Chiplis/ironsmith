@@ -591,6 +591,37 @@ pub(crate) fn parse_pay(
             player,
         });
     }
+    let has_for_each = clause_words
+        .windows(2)
+        .any(|window| window == ["for", "each"]);
+    let references_tagged_choice = clause_words
+        .iter()
+        .any(|word| matches!(*word, "those" | "them"))
+        || clause_words
+            .windows(3)
+            .any(|window| window == ["chosen", "this", "way"]);
+    let repeats_for_tagged_choice = has_for_each && references_tagged_choice;
+
+    if repeats_for_tagged_choice {
+        let repeated_pips = {
+            use winnow::prelude::*;
+            let mut stream = LexStream::new(tokens);
+            grammar::collect_mana_pip_groups
+                .parse_next(&mut stream)
+                .ok()
+                .unwrap_or_default()
+        };
+        if !repeated_pips.is_empty() {
+            return Ok(EffectAst::ForEachTagged {
+                tag: TagKey::from(IT_TAG),
+                effects: vec![EffectAst::PayMana {
+                    cost: ManaCost::from_pips(repeated_pips),
+                    player,
+                }],
+            });
+        }
+    }
+
     if clause_words.len() >= 4
         && grammar::contains_word(tokens, "for")
         && grammar::contains_word(tokens, "each")

@@ -429,7 +429,8 @@ fn advance_reference_frame_for_effect(
             frame.last_player_filter = Some(player.clone());
         }
         EffectAst::ControlCombatChoicesThisTurn { .. } => {}
-        EffectAst::CopySpell { player, .. } => {
+        EffectAst::CopySpell { player, .. }
+        | EffectAst::CopySpellForEachTarget { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::LookAtHand { target }
@@ -1893,6 +1894,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         EffectAst::CopySpell { target, count, .. } => {
             bind_unresolved_it_in_target(target, seed_tag)
                 + bind_unresolved_it_in_value(count, seed_tag)
+        }
+        EffectAst::CopySpellForEachTarget {
+            target,
+            object_filter,
+            ..
+        } => {
+            let mut replacements = bind_unresolved_it_in_target(target, seed_tag);
+            if let Some(filter) = object_filter {
+                replacements += bind_unresolved_it_in_filter(filter, seed_tag);
+            }
+            replacements
         }
         EffectAst::RetargetStackObject { target, mode, .. } => {
             let mut replacements = bind_unresolved_it_in_target(target, seed_tag);

@@ -43,6 +43,42 @@ impl TriggerMatcher for BecomesTargetedBySpellTrigger {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BecomesTargetedByStackObjectTrigger {
+    pub filter: ObjectFilter,
+}
+
+impl BecomesTargetedByStackObjectTrigger {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl TriggerMatcher for BecomesTargetedByStackObjectTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::BecomesTargeted {
+            return false;
+        }
+        let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
+            return false;
+        };
+        if e.target != ctx.source_id {
+            return false;
+        }
+        let Some(source) = ctx.game.object(e.source) else {
+            return false;
+        };
+        self.filter.matches(source, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Whenever this permanent becomes the target of {}",
+            self.filter.description()
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +161,34 @@ mod tests {
         );
 
         assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn stack_object_trigger_matches_ability_targeting_only_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let target = create_creature(&mut game, "Target", alice);
+        let ability_source = create_creature(&mut game, "Ability Source", bob);
+        game.push_to_stack(
+            StackEntry::ability(
+                ability_source,
+                bob,
+                crate::resolution::ResolutionProgram::from_effects(Vec::new()),
+            )
+            .with_targets(vec![crate::game_state::Target::Object(target)]),
+        );
+
+        let mut filter = ObjectFilter::ability();
+        filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+        filter.targets_only_object = Some(Box::new(ObjectFilter::source()));
+        let trigger = BecomesTargetedByStackObjectTrigger::new(filter);
+        let ctx = TriggerContext::for_source(target, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            BecomesTargetedEvent::new(target, ability_source, bob, true),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
     }
 }

@@ -5,23 +5,336 @@ use super::super::dispatch_entry::{
     parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
 };
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
-    ReturnControllerAst, TagKey, TargetAst,
+    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectFilter, OwnedLexToken,
+    PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::contains_word_sequence;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::lexer::TokenWordView;
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::token_index_for_word_index;
 use crate::runtime_backend::token_primitives::{
     find_index, parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
     word_view_has_any_prefix,
 };
 use crate::runtime_backend::util::trim_commas;
-use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
-use crate::target::{ChooseSpec, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::runtime_backend::util::{helper_tag_for_tokens, is_article, parse_subject};
+use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
+
+fn find_word_sequence(words: &[&str], pattern: &[&str]) -> Option<usize> {
+    if pattern.is_empty() {
+        return Some(0);
+    }
+    words
+        .windows(pattern.len())
+        .position(|window| window == pattern)
+}
+
+fn sentence_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    TokenWordView::new(tokens).word_refs()
+}
+
+fn token_index_for_word(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
+    TokenWordView::new(tokens).token_index_for_word_index(word_idx)
+}
+
+fn previous_sentence_chose_stack_object(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    if sentence_idx == 0 {
+        return false;
+    }
+    let words = sentence_words(sentences[sentence_idx - 1].lowered());
+    words.iter().enumerate().any(|(idx, word)| {
+        *word == "target"
+            && words[idx + 1..words.len().min(idx + 6)]
+                .iter()
+                .any(|tail| matches!(*tail, "spell" | "ability"))
+    })
+}
+
+fn target_for_referenced_stack_object(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    words: &[&str],
+) -> TargetAst {
+    if words == ["this", "spell"] || words == ["this", "ability"] {
+        return TargetAst::Source(None);
+    }
+    if previous_sentence_chose_stack_object(sentences, sentence_idx) {
+        return TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+    }
+    TargetAst::Tagged(TagKey::from("triggering"), None)
+}
+
+fn strip_could_target_suffix(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let words = sentence_words(tokens);
+    for phrase in [
+        ["that", "spell", "could", "target"].as_slice(),
+        ["that", "ability", "could", "target"].as_slice(),
+        ["that", "spell", "or", "ability", "could", "target"].as_slice(),
+        ["the", "spell", "could", "target"].as_slice(),
+        ["the", "ability", "could", "target"].as_slice(),
+        ["it", "could", "target"].as_slice(),
+    ] {
+        if let Some(word_idx) = find_word_sequence(&words, phrase) {
+            let start_word_idx = if word_idx > 0 && words[word_idx - 1] == "that" {
+                word_idx - 1
+            } else {
+                word_idx
+            };
+            if let Some(token_idx) = token_index_for_word(tokens, start_word_idx) {
+                return trim_commas(&tokens[..token_idx]);
+            }
+        }
+    }
+    trim_commas(tokens)
+}
+
+fn strip_leading_other(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+    let trimmed = trim_commas(tokens);
+    if let Some(first) = trimmed.first()
+        && (first.is_word("other") || first.is_word("another"))
+    {
+        return (trim_commas(&trimmed[1..]), true);
+    }
+    (trimmed, false)
+}
+
+fn parse_copy_for_each_candidate_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<(Option<ObjectFilter>, Option<PlayerFilter>, bool), CardTextError> {
+    let stripped = strip_could_target_suffix(tokens);
+    let (candidate_tokens, exclude_current_targets) = strip_leading_other(&stripped);
+    let candidate_words = sentence_words(&candidate_tokens);
+    let has_player = candidate_words
+        .iter()
+        .any(|word| matches!(*word, "player" | "players"));
+    let has_permanent = candidate_words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"));
+
+    if has_player && has_permanent {
+        return Ok((
+            Some(ObjectFilter::permanent()),
+            Some(PlayerFilter::Any),
+            exclude_current_targets,
+        ));
+    }
+    if has_player && !candidate_words.iter().any(|word| *word == "creature") {
+        return Ok((None, Some(PlayerFilter::Any), exclude_current_targets));
+    }
+
+    let mut filter = parse_object_filter_lexed(&candidate_tokens, false)?;
+    filter.other = false;
+    filter.could_be_targeted_by = None;
+    Ok((Some(filter), None, exclude_current_targets))
+}
+
+fn parse_copy_for_each_target_sentence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let words = sentence_words(&tokens);
+    let wrap_if_result = words.starts_with(&["if", "you", "do"]);
+    let Some(for_each_word_idx) = find_word_sequence(&words, &["for", "each"]) else {
+        return Ok(None);
+    };
+    let Some(copy_word_idx) = words
+        .iter()
+        .position(|word| *word == "copy" || *word == "copies")
+    else {
+        return Ok(None);
+    };
+    if copy_word_idx < for_each_word_idx {
+        let Some(copy_token_idx) = token_index_for_word(&tokens, copy_word_idx) else {
+            return Ok(None);
+        };
+        let Some(for_each_token_idx) = token_index_for_word(&tokens, for_each_word_idx) else {
+            return Ok(None);
+        };
+        let subject = parse_subject(&tokens[..copy_token_idx]);
+        let player = match subject {
+            SubjectAst::Player(player) => player,
+            SubjectAst::This => PlayerAst::Implicit,
+        };
+        let target_tokens = trim_commas(&tokens[copy_token_idx + 1..for_each_token_idx]);
+        let target_words = sentence_words(&target_tokens);
+        let target = target_for_referenced_stack_object(sentences, sentence_idx, &target_words);
+        let candidate_tokens = trim_commas(&tokens[for_each_token_idx + 2..]);
+        let (object_filter, player_filter, exclude_current_targets) =
+            parse_copy_for_each_candidate_filter(&candidate_tokens)?;
+        let effect = EffectAst::CopySpellForEachTarget {
+            target,
+            object_filter,
+            player_filter,
+            player,
+            exclude_current_targets,
+            removed_supertypes: Vec::new(),
+        };
+        return Ok(Some(if wrap_if_result {
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![effect],
+            }
+        } else {
+            effect
+        }));
+    }
+
+    let Some(for_each_token_idx) = token_index_for_word(&tokens, for_each_word_idx) else {
+        return Ok(None);
+    };
+    let Some(put_copy_word_idx) = find_word_sequence(&words, &["put", "a", "copy"]) else {
+        return Ok(None);
+    };
+    let Some(put_copy_token_idx) = token_index_for_word(&tokens, put_copy_word_idx) else {
+        return Ok(None);
+    };
+    let candidate_tokens = trim_commas(&tokens[for_each_token_idx + 2..put_copy_token_idx]);
+    let after_copy_words = &words[put_copy_word_idx + 3..];
+    let of_offset = after_copy_words.iter().position(|word| *word == "of");
+    let target_start_word_idx = of_offset
+        .map(|offset| put_copy_word_idx + 3 + offset + 1)
+        .unwrap_or(put_copy_word_idx + 3);
+    let onto_rel = find_word_sequence(&words[target_start_word_idx..], &["onto", "the", "stack"])
+        .unwrap_or(words.len().saturating_sub(target_start_word_idx));
+    let target_end_word_idx = target_start_word_idx + onto_rel;
+    let Some(target_start_token_idx) = token_index_for_word(&tokens, target_start_word_idx) else {
+        return Ok(None);
+    };
+    let target_end_token_idx =
+        token_index_for_word(&tokens, target_end_word_idx).unwrap_or_else(|| tokens.len());
+    let target_tokens = trim_commas(&tokens[target_start_token_idx..target_end_token_idx]);
+    let target_words = sentence_words(&target_tokens);
+    let target = target_for_referenced_stack_object(sentences, sentence_idx, &target_words);
+    let (object_filter, player_filter, exclude_current_targets) =
+        parse_copy_for_each_candidate_filter(&candidate_tokens)?;
+    let effect = EffectAst::CopySpellForEachTarget {
+        target,
+        object_filter,
+        player_filter,
+        player: PlayerAst::Implicit,
+        exclude_current_targets,
+        removed_supertypes: Vec::new(),
+    };
+    Ok(Some(if wrap_if_result {
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![effect],
+        }
+    } else {
+        effect
+    }))
+}
+
+fn each_copy_targets_different_one_of_those(tokens: &[OwnedLexToken]) -> bool {
+    let words = sentence_words(tokens);
+    find_word_sequence(
+        &words,
+        &[
+            "each",
+            "copy",
+            "targets",
+            "a",
+            "different",
+            "one",
+            "of",
+            "those",
+        ],
+    )
+    .is_some()
+}
+
+pub(super) fn parse_copy_for_each_target_then_each_copy_targets_different(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !each_copy_targets_different_one_of_those(sentences[sentence_idx + 1].lowered()) {
+        return Ok(None);
+    }
+    let Some(effect) = parse_copy_for_each_target_sentence(
+        sentences,
+        sentence_idx,
+        sentences[sentence_idx].lowered(),
+    )?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![effect]))
+}
+
+fn first_sentence_copies_for_each_tagged_object(tokens: &[OwnedLexToken]) -> bool {
+    let words = sentence_words(tokens);
+    (find_word_sequence(&words, &["for", "each", "of", "those"]).is_some()
+        || find_word_sequence(&words, &["for", "each", "of", "them"]).is_some()
+        || (find_word_sequence(&words, &["for", "each"]).is_some()
+            && find_word_sequence(&words, &["chosen", "this", "way"]).is_some()))
+        && words
+            .iter()
+            .any(|word| *word == "copy" || *word == "copies")
+}
+
+fn second_sentence_copy_targets_iterated_object(tokens: &[OwnedLexToken]) -> bool {
+    let words = sentence_words(tokens);
+    words.starts_with(&["the", "copy", "targets", "that"])
+        || words.starts_with(&["the", "copy", "targets", "the", "chosen"])
+}
+
+pub(super) fn parse_for_each_tagged_copy_then_copy_targets_it(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first_words = sentence_words(&first_tokens);
+    if !first_sentence_copies_for_each_tagged_object(&first_tokens)
+        || !second_sentence_copy_targets_iterated_object(sentences[sentence_idx + 1].lowered())
+    {
+        return Ok(None);
+    }
+
+    let wrap_if_result = first_words.starts_with(&["if", "you", "do"]);
+    let Some(copy_word_idx) = first_words
+        .iter()
+        .position(|word| *word == "copy" || *word == "copies")
+    else {
+        return Ok(None);
+    };
+    let Some(copy_token_idx) = token_index_for_word(&first_tokens, copy_word_idx) else {
+        return Ok(None);
+    };
+    let copy_target_tokens = trim_commas(&first_tokens[copy_token_idx + 1..]);
+    let copy_target_words = sentence_words(&copy_target_tokens);
+    let copy_effect = EffectAst::CopySpell {
+        target: target_for_referenced_stack_object(sentences, sentence_idx, &copy_target_words),
+        count: Value::Fixed(1),
+        player: PlayerAst::You,
+        may_choose_new_targets: false,
+        removed_supertypes: Vec::new(),
+    };
+
+    let second_effects =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 1].lowered())?;
+    let [retarget @ EffectAst::RetargetStackObject { .. }] = second_effects.as_slice() else {
+        return Ok(None);
+    };
+    let for_each = EffectAst::ForEachTagged {
+        tag: TagKey::from(crate::cards::builders::IT_TAG),
+        effects: vec![copy_effect, retarget.clone()],
+    };
+
+    Ok(Some(vec![if wrap_if_result {
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![for_each],
+        }
+    } else {
+        for_each
+    }]))
+}
 
 fn looks_like_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_commas(tokens);

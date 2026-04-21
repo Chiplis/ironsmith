@@ -129,6 +129,7 @@ pub(crate) enum TriggerSpec {
     ThisBecomesTargeted,
     BecomesTargeted(ObjectFilter),
     ThisBecomesTargetedBySpell(ObjectFilter),
+    ThisBecomesTargetedByStackObject(ObjectFilter),
     BecomesTargetedBySourceController {
         target: ObjectFilter,
         source_controller: PlayerFilter,
@@ -1025,6 +1026,14 @@ pub(crate) enum EffectAst {
         count: Value,
         player: PlayerAst,
         may_choose_new_targets: bool,
+        removed_supertypes: Vec<crate::types::Supertype>,
+    },
+    CopySpellForEachTarget {
+        target: TargetAst,
+        object_filter: Option<ObjectFilter>,
+        player_filter: Option<PlayerFilter>,
+        player: PlayerAst,
+        exclude_current_targets: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
     },
     FlipCoin {

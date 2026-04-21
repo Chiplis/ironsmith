@@ -38,7 +38,7 @@ fn target_from_resolved_target(target: &ResolvedTarget) -> Target {
     }
 }
 
-fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
+pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
     let mut entry = StackEntry::new(ctx.source, ctx.controller);
     entry.provenance = ctx.provenance;
     entry.targets = ctx
@@ -59,6 +59,85 @@ fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
     entry
 }
 
+pub(crate) fn stack_entry_for_copy_target(
+    game: &GameState,
+    target_id: crate::ids::ObjectId,
+    ctx: &ExecutionContext,
+) -> Result<Option<StackEntry>, ExecutionError> {
+    if let Some(entry) = game
+        .stack
+        .iter()
+        .find(|e| e.object_id == target_id)
+        .cloned()
+    {
+        if game
+            .object(target_id)
+            .is_none_or(|obj| obj.zone != Zone::Stack && !entry.is_ability)
+        {
+            return Ok(None);
+        }
+        return Ok(Some(entry));
+    }
+
+    let target_obj = game
+        .object(target_id)
+        .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+    if target_id == ctx.source && target_obj.zone == Zone::Stack {
+        return Ok(Some(resolving_source_stack_entry(ctx)));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn create_stack_copy(
+    game: &mut GameState,
+    target_id: crate::ids::ObjectId,
+    original_entry: &StackEntry,
+    copier: crate::ids::PlayerId,
+    removed_supertypes: &[crate::types::Supertype],
+    targets_override: Option<Vec<Target>>,
+) -> Result<crate::ids::ObjectId, ExecutionError> {
+    let copy_id = game.new_object_id();
+    let target = game
+        .object(target_id)
+        .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+    let mut copy_obj = Object::token_copy_of(target, copy_id, copier);
+    if !removed_supertypes.is_empty() {
+        copy_obj
+            .supertypes
+            .retain(|supertype| !removed_supertypes.contains(supertype));
+    }
+    copy_obj.zone = Zone::Stack;
+    game.add_object(copy_obj);
+
+    let mut copy_entry = StackEntry::new(copy_id, copier);
+    copy_entry.provenance = original_entry.provenance;
+    copy_entry.targets = targets_override.unwrap_or_else(|| original_entry.targets.clone());
+    copy_entry.target_assignments = original_entry.target_assignments.clone();
+    copy_entry.x_value = original_entry.x_value;
+    copy_entry.ability_effects = original_entry.ability_effects.clone();
+    copy_entry.is_ability = original_entry.is_ability;
+    copy_entry.casting_method = original_entry.casting_method.clone();
+    copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
+    copy_entry.defending_player = original_entry.defending_player;
+    copy_entry.chosen_player = original_entry.chosen_player;
+    copy_entry.source_snapshot = original_entry.source_snapshot.clone();
+    copy_entry.source_name = original_entry.source_name.clone();
+    copy_entry.source_stable_id = original_entry.source_stable_id;
+    copy_entry.chosen_modes = original_entry.chosen_modes.clone();
+    copy_entry.keyword_payment_contributions = original_entry.keyword_payment_contributions.clone();
+    copy_entry.crew_contributors = original_entry.crew_contributors.clone();
+    copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
+    copy_entry.tagged_objects = original_entry.tagged_objects.clone();
+
+    if let Some(chosen_player) = copy_entry.chosen_player {
+        game.set_chosen_player(copy_id, chosen_player);
+    }
+
+    game.stack.push(copy_entry);
+    Ok(copy_id)
+}
+
 impl EffectExecutor for CopySpellEffect {
     fn execute(
         &self,
@@ -72,27 +151,7 @@ impl EffectExecutor for CopySpellEffect {
             .first()
             .ok_or(ExecutionError::InvalidTarget)?;
 
-        // Verify target is on the stack
-        let target_obj = game
-            .object(target_id)
-            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-
-        if target_obj.zone != Zone::Stack {
-            return Ok(EffectOutcome::target_invalid());
-        }
-
-        // Find the corresponding stack entry for this spell
-        let stack_entry_opt = game
-            .stack
-            .iter()
-            .find(|e| e.object_id == target_id)
-            .cloned();
-
-        let original_entry = if let Some(entry) = stack_entry_opt {
-            entry
-        } else if target_id == ctx.source {
-            resolving_source_stack_entry(ctx)
-        } else {
+        let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
             return Ok(EffectOutcome::target_invalid());
         };
 
@@ -100,46 +159,14 @@ impl EffectExecutor for CopySpellEffect {
         let mut created_ids = Vec::with_capacity(copy_count);
 
         for _ in 0..copy_count {
-            // Create a new object ID for the copy
-            let copy_id = game.new_object_id();
-
-            // Get fresh reference to target and create copy
-            let target = game
-                .object(target_id)
-                .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-            let mut copy_obj = Object::token_copy_of(target, copy_id, copier);
-            if !self.removed_supertypes.is_empty() {
-                copy_obj
-                    .supertypes
-                    .retain(|supertype| !self.removed_supertypes.contains(supertype));
-            }
-            copy_obj.zone = Zone::Stack;
-            // token_copy_of already sets kind to Token
-
-            // Add the copy object
-            game.add_object(copy_obj);
-
-            // Create a new stack entry for the copy
-            // The copy has the same targets, X value, etc. but is controlled by the copier
-            let mut copy_entry = StackEntry::new(copy_id, copier);
-            copy_entry.targets = original_entry.targets.clone();
-            copy_entry.target_assignments = original_entry.target_assignments.clone();
-            copy_entry.x_value = original_entry.x_value;
-            copy_entry.ability_effects = original_entry.ability_effects.clone();
-            copy_entry.is_ability = original_entry.is_ability;
-            copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
-            copy_entry.chosen_player = original_entry.chosen_player;
-            copy_entry.chosen_modes = original_entry.chosen_modes.clone();
-            copy_entry.keyword_payment_contributions =
-                original_entry.keyword_payment_contributions.clone();
-            copy_entry.tagged_objects = original_entry.tagged_objects.clone();
-
-            if let Some(chosen_player) = copy_entry.chosen_player {
-                game.set_chosen_player(copy_id, chosen_player);
-            }
-
-            // Put the copy on top of the stack
-            game.stack.push(copy_entry);
+            let copy_id = create_stack_copy(
+                game,
+                target_id,
+                &original_entry,
+                copier,
+                &self.removed_supertypes,
+                None,
+            )?;
             created_ids.push(copy_id);
 
             // Copying a spell can trigger magecraft-like abilities.

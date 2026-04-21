@@ -718,6 +718,11 @@ impl Trigger {
         Self::new(BecomesTargetedBySpellTrigger::new(filter))
     }
 
+    /// Create a "when this permanent becomes the target of [stack-object filter]" trigger.
+    pub fn becomes_targeted_by_stack_object(filter: ObjectFilter) -> Self {
+        Self::new(BecomesTargetedByStackObjectTrigger::new(filter))
+    }
+
     /// Create a "when [target] becomes the target of a spell or ability [player] controls" trigger.
     pub fn becomes_targeted_by_source_controller(
         target_filter: ObjectFilter,

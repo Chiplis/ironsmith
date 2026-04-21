@@ -228,6 +228,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         } => {}
         EffectAst::PutRestOnBottomOfLibrary => {}
         EffectAst::CopySpell { .. } => {}
+        EffectAst::CopySpellForEachTarget { .. } => {}
         EffectAst::RetargetStackObject { .. } => {}
         EffectAst::Conditional { .. } => {}
         EffectAst::SelfReplacement { .. } => {}

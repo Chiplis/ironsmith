@@ -50,7 +50,6 @@ export default function TopbarMenuSheet({
   startingLife,
   setStartingLife,
   onReset,
-  onChangePerspective,
   onRefresh,
   onToggleLog,
   onEnterDeckLoading,
@@ -339,28 +338,6 @@ export default function TopbarMenuSheet({
                 Refresh View
               </Button>
             </div>
-          </MenuSection>
-
-          <MenuSection
-            eyebrow="View"
-            title="Perspective"
-            description="UI-side controls that affect what you are inspecting, not the game rules themselves."
-          >
-            <label className={labelClass}>
-              Playing As
-              <select
-                className={inputClass}
-                value={perspective ?? ""}
-                disabled={matchLocked}
-                onChange={(event) => onChangePerspective(Number(event.target.value))}
-              >
-                {players.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </label>
           </MenuSection>
 
           <MenuSection

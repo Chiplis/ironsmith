@@ -171,8 +171,8 @@ pub use replacement::{
 };
 pub use restrictions::CantEffect;
 pub use stack::{
-    ChooseNewTargetsEffect, CopySpellEffect, CounterEffect, NewTargetRestriction, RetargetMode,
-    RetargetStackObjectEffect,
+    ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
+    NewTargetRestriction, RetargetMode, RetargetStackObjectEffect,
 };
 pub use tokens::{
     AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,

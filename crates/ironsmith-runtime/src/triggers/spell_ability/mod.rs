@@ -13,7 +13,9 @@ mod you_cast_this_spell;
 pub use ability_activated::AbilityActivatedTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
 pub use becomes_targeted_by_source_controller::BecomesTargetedBySourceControllerTrigger;
-pub use becomes_targeted_by_spell::BecomesTargetedBySpellTrigger;
+pub use becomes_targeted_by_spell::{
+    BecomesTargetedBySpellTrigger, BecomesTargetedByStackObjectTrigger,
+};
 pub use becomes_targeted_object::BecomesTargetedObjectTrigger;
 pub use spell_cast::SpellCastTrigger;
 pub use spell_copied::SpellCopiedTrigger;

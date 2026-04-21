@@ -213,6 +213,10 @@ macro_rules! direct_target_effect_variants {
                 target: $target,
                 ..
             }
+            | EffectAst::CopySpellForEachTarget {
+                target: $target,
+                ..
+            }
             | EffectAst::MoveToLibraryNthFromTop {
                 target: $target,
                 ..
@@ -401,6 +405,9 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             filter,
             ..
         } => effect_tag.as_str() == tag || filter_references_tag(filter, tag),
+        EffectAst::CopySpellForEachTarget { object_filter, .. } => object_filter
+            .as_ref()
+            .is_some_and(|filter| filter_references_tag(filter, tag)),
         EffectAst::RetargetStackObject { .. } => false,
         EffectAst::PutIntoHand { object, .. } => match object {
             ObjectRefAst::Tagged(found) => found.as_str() == tag,
@@ -682,6 +689,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }
         | EffectAst::CopySpell { player, .. }
+        | EffectAst::CopySpellForEachTarget { player, .. }
         | EffectAst::RetargetStackObject {
             chooser: player, ..
         }
@@ -827,6 +835,9 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         } => true,
         EffectAst::PutRestOnBottomOfLibrary => true,
         EffectAst::RetargetStackObject { .. } => false,
+        EffectAst::CopySpellForEachTarget { object_filter, .. } => object_filter
+            .as_ref()
+            .is_some_and(|filter| filter_references_tag(filter, IT_TAG)),
         EffectAst::CreateTokenCopy { object, .. } => {
             matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
         }

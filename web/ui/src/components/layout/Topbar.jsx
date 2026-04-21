@@ -30,7 +30,6 @@ export default function Topbar({
   startingLife,
   setStartingLife,
   onReset,
-  onChangePerspective,
   onRefresh,
   onToggleLog,
   onEnterDeckLoading,
@@ -209,7 +208,6 @@ export default function Topbar({
             startingLife={startingLife}
             setStartingLife={setStartingLife}
             onReset={onReset}
-            onChangePerspective={onChangePerspective}
              onRefresh={onRefresh}
              onToggleLog={onToggleLog}
              onEnterDeckLoading={onEnterDeckLoading}
@@ -359,7 +357,6 @@ export default function Topbar({
             startingLife={startingLife}
             setStartingLife={setStartingLife}
             onReset={onReset}
-            onChangePerspective={onChangePerspective}
             onRefresh={onRefresh}
             onToggleLog={onToggleLog}
             onEnterDeckLoading={onEnterDeckLoading}

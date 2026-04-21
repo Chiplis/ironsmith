@@ -2481,6 +2481,119 @@ fn beamsplitter_mage_parses_typed_spell_and_copy_references() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn copy_assignment_card_definition(name: &str, text: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(text)
+        .unwrap_or_else(|err| panic!("{name} should parse copy-assignment text: {err:?}"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn copy_assignment_family_parses_to_multi_copy_primitive() {
+    let cases = [
+        (
+            "Zada, Hedron Grinder",
+            "Whenever you cast an instant or sorcery spell that targets only Zada, copy that spell for each other creature you control that the spell could target. Each copy targets a different one of those creatures.",
+        ),
+        (
+            "Ink-Treader Nephilim",
+            "Whenever a player casts an instant or sorcery spell, if that spell targets only this creature, copy the spell for each other creature that spell could target. Each copy targets a different one of those creatures.",
+        ),
+        (
+            "Mirrorwing Dragon",
+            "Flying\nWhenever a player casts an instant or sorcery spell that targets only this creature, that player copies that spell for each other creature they control that the spell could target. Each copy targets a different one of those creatures.",
+        ),
+        (
+            "Precursor Golem",
+            "When this creature enters, create two 3/3 colorless Golem artifact creature tokens.\nWhenever a player casts an instant or sorcery spell that targets only a single Golem, that player copies that spell for each other Golem that spell could target. Each copy targets a different one of those Golems.",
+        ),
+        (
+            "Radiant Performer",
+            "Flash\nWhen this creature enters, if you cast it from your hand, choose target spell or ability that targets only a single permanent or player. Copy that spell or ability for each other permanent or player the spell or ability could target. Each copy targets a different one of those permanents and players.",
+        ),
+        (
+            "Agrus Kos, Eternal Soldier",
+            "Vigilance\nWhenever Agrus Kos becomes the target of an ability that targets only it, you may pay {1}{R/W}. If you do, copy that ability for each other creature you control that ability could target. Each copy targets a different one of those creatures.",
+        ),
+    ];
+
+    for (name, text) in cases {
+        let def = copy_assignment_card_definition(name, text);
+        let debug = format!("{:#?}", def.abilities);
+        assert!(
+            debug.contains("CopySpellForEachTargetEffect"),
+            "expected {name} to lower through CopySpellForEachTargetEffect, got {debug}"
+        );
+        assert!(
+            debug.contains("exclude_current_targets: true"),
+            "expected {name} to interpret 'other' as excluding current targets, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiate_parses_chosen_spell_reference_to_multi_copy_primitive() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Radiate")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose target instant or sorcery spell that targets only a single permanent or player. Copy that spell for each other permanent or player the spell could target. Each copy targets a different one of those permanents and players.",
+        )
+        .expect("Radiate should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("TargetOnlyEffect") && debug.contains("CopySpellForEachTargetEffect"),
+        "expected Radiate to choose a stack object and use copy-for-each target assignment, got {debug}"
+    );
+    assert!(
+        debug.contains("Tagged(") && debug.contains("targeted_0"),
+        "expected Radiate's 'that spell' to reference the chosen target spell, got {debug}"
+    );
+    assert!(
+        debug.contains("player_filter: Some")
+            && debug.contains("Any")
+            && debug.contains("zone: Some")
+            && debug.contains("Battlefield"),
+        "expected Radiate candidates to include permanents and players, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feather_radiant_arbiter_parses_plural_paid_copy_assignment() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Feather, Radiant Arbiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "Flying, lifelink\nWhenever you cast a noncreature spell that targets only Feather, you may choose any number of other creatures that spell could target and pay {2} for each of those creatures. If you do, for each of those creatures, copy that spell. The copy targets that creature.",
+        )
+        .expect("Feather should parse plural paid copy assignment");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ChooseObjectsEffect") && debug.contains("max: None"),
+        "expected Feather to choose any number of creatures, got {debug}"
+    );
+    assert!(
+        debug.matches("ForEachTaggedEffect").count() >= 2 && debug.contains("PayManaEffect"),
+        "expected Feather to pay once for each chosen creature, got {debug}"
+    );
+    assert!(
+        debug.contains("CopySpellEffect") && debug.contains("RetargetStackObjectEffect"),
+        "expected Feather to copy the triggering spell once per chosen creature and retarget each copy, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Krark, the Thumbless")

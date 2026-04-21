@@ -5445,6 +5445,9 @@ textarea,
   border-color: transparent !important;
   background: transparent !important;
   box-shadow: none !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .add-card-toolbar::before {
@@ -5475,14 +5478,7 @@ textarea,
   filter: none !important;
 }
 
-.add-card-toolbar--compact {
-  overflow-x: auto;
-  overflow-y: visible;
-  -webkit-overflow-scrolling: touch;
-}
-
 .add-card-toolbar--compact .add-card-toolbar-left {
-  flex-wrap: nowrap;
   gap: 6px;
 }
 
@@ -6744,6 +6740,23 @@ textarea,
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24) !important;
 }
 
+.ironsmith-inspector-shell {
+  border-color: rgba(var(--player-accent-rgb, 216, 191, 106), 0.82) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--player-accent-rgb, 216, 191, 106), 0.62),
+    0 0 0 1px rgba(var(--player-accent-rgb, 216, 191, 106), 0.58),
+    0 0 22px rgba(var(--player-accent-rgb, 216, 191, 106), 0.26),
+    0 18px 42px rgba(0, 0, 0, 0.32) !important;
+}
+
+.hand-inspector-inline-shell.ironsmith-inspector-shell--expanded::after {
+  content: none;
+}
+
+.ironsmith-inspector-shell--expanded .hover-art-stage::before {
+  content: none;
+}
+
 .stone-pill,
 .stone-select,
 .stone-input,
@@ -7345,7 +7358,7 @@ textarea,
   align-items: center;
   gap: 10px;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   flex: 1 1 auto;
 }
 
@@ -7368,6 +7381,11 @@ textarea,
   font-size: 11px;
   letter-spacing: 0.16em;
   color: #d5c29b;
+  flex: 0 0 auto;
+}
+
+.add-card-toolbar-perspective-select {
+  max-width: 8.25rem;
 }
 
 .stone-pill,

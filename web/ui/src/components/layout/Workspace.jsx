@@ -149,6 +149,32 @@ function getTrackedZoneCards(player, zone) {
   }
 }
 
+function stackObjectTransitionCard(stackObject) {
+  if (!stackObject || stackObject.ability_kind) return null;
+
+  const id = Number(stackObject.inspect_object_id ?? stackObject.id);
+  const stableId = Number(stackObject.stable_id ?? stackObject.source_stable_id);
+  if (!Number.isFinite(id) && !Number.isFinite(stableId)) return null;
+
+  return {
+    id: Number.isFinite(id) ? id : stableId,
+    stable_id: Number.isFinite(stableId) ? stableId : id,
+    name: stackObject.name || "",
+    mana_cost: stackObject.mana_cost ?? null,
+    card_types: [],
+  };
+}
+
+function getTrackedStackCardsForPlayer(stackObjects, playerId) {
+  const normalizedPlayerId = Number(playerId);
+  if (!Number.isFinite(normalizedPlayerId)) return [];
+
+  return (Array.isArray(stackObjects) ? stackObjects : [])
+    .filter((stackObject) => Number(stackObject?.controller) === normalizedPlayerId)
+    .map(stackObjectTransitionCard)
+    .filter(Boolean);
+}
+
 function cloneZoneCardSnapshot(card) {
   if (!card || typeof card !== "object") return null;
   return {
@@ -194,7 +220,7 @@ function shouldShowTransitionPreviewForZones(fromZone, toZone) {
   return true;
 }
 
-function buildZoneTransitionSnapshot(players) {
+function buildZoneTransitionSnapshot(players, stackObjects = []) {
   const snapshot = {};
   for (const player of players || []) {
     const playerKey = String(player?.id ?? player?.index ?? "");
@@ -205,6 +231,9 @@ function buildZoneTransitionSnapshot(players) {
         .map((card) => cloneZoneCardSnapshot(card))
         .filter(Boolean);
     }
+    snapshot[playerKey].hand.push(
+      ...getTrackedStackCardsForPlayer(stackObjects, player?.id ?? player?.index)
+    );
   }
   return snapshot;
 }
@@ -620,7 +649,7 @@ export default function Workspace({
   }, [focusedStackObjectId, state]);
 
   useEffect(() => {
-    const currentSnapshot = buildZoneTransitionSnapshot(players);
+    const currentSnapshot = buildZoneTransitionSnapshot(players, state?.stack_objects || []);
     const previousSnapshot = previousZoneTransitionSnapshotRef.current;
     previousZoneTransitionSnapshotRef.current = currentSnapshot;
 
@@ -655,7 +684,7 @@ export default function Workspace({
         showTransitionInspectorPreviews(nextPreviews);
       });
     });
-  }, [deckLoadingMode, players, puzzleSetupMode, showTransitionInspectorPreviews]);
+  }, [deckLoadingMode, players, puzzleSetupMode, showTransitionInspectorPreviews, state?.stack_objects]);
 
   useEffect(() => {
     if (!combatDeclarationActive) return;
