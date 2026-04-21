@@ -115,36 +115,44 @@ pub(super) fn try_compile_continuous_and_modifier_effect(
             subtypes,
             colors,
             abilities,
+            granted_abilities,
             duration,
-        } => compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
-            let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
-                spec,
-                crate::continuous::Modification::AddCardTypes(card_types.clone()),
-                duration.clone(),
-            )
-            .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-                power: power.clone(),
-                toughness: toughness.clone(),
-                sublayer: crate::continuous::PtSublayer::Setting,
-            })
-            .resolve_set_pt_values_at_resolution();
-            if let Some(colors) = colors {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::SetColors(*colors),
-                );
-            }
-            if !subtypes.is_empty() {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::AddSubtypes(subtypes.clone()),
-                );
-            }
-            for ability in abilities {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::AddAbility(ability.clone()),
-                );
-            }
-            Effect::new(apply)
-        })?,
+        } => {
+            let granted_modifications =
+                lower_granted_ability_grant_modifications(granted_abilities)?;
+            compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
+                let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::AddCardTypes(card_types.clone()),
+                    duration.clone(),
+                )
+                .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+                    power: power.clone(),
+                    toughness: toughness.clone(),
+                    sublayer: crate::continuous::PtSublayer::Setting,
+                })
+                .resolve_set_pt_values_at_resolution();
+                if let Some(colors) = colors {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::SetColors(*colors),
+                    );
+                }
+                if !subtypes.is_empty() {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                    );
+                }
+                for ability in abilities {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::AddAbility(ability.clone()),
+                    );
+                }
+                for modification in granted_modifications {
+                    apply = apply.with_additional_modification(modification);
+                }
+                Effect::new(apply)
+            })?
+        }
         EffectAst::AddCardTypes {
             target,
             card_types,

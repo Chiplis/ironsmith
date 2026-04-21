@@ -299,6 +299,7 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
                 || should_keep_and_for_put_rest_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_steps_and_phases_end(&current, &tokens[idx + 1..])
                 || should_keep_and_for_exchange_zones(&current, &tokens[idx + 1..])
+                || should_keep_and_for_become_with_quoted_ability(&current, &tokens[idx + 1..])
             {
                 current.push(token.clone());
                 continue;
@@ -633,6 +634,22 @@ fn should_keep_and_for_power_toughness_axis_lexed(
         && remaining_words.first().copied() == Some("toughness")
 }
 
+fn should_keep_and_for_become_with_quoted_ability(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = token_word_refs(current);
+    if !word_slice_contains(&current_words, "becomes")
+        || !word_slice_contains(&current_words, "with")
+    {
+        return false;
+    }
+    remaining
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+        || starts_with_inline_token_rules_tail(remaining)
+}
+
 pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut start = 0usize;
@@ -656,6 +673,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
             || should_keep_and_for_exchange_zones_lexed(current, remaining)
             || should_keep_and_for_power_toughness_axis_lexed(current, remaining)
+            || should_keep_and_for_become_with_quoted_ability(current, remaining)
         {
             continue;
         }

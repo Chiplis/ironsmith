@@ -391,6 +391,59 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    let source_filter_predicate = {
+        let predicate_idx = find_index(&filtered, |word| {
+            matches!(*word, "is" | "are" | "isnt" | "isn't" | "arent" | "aren't")
+        });
+        predicate_idx.and_then(|idx| {
+            let subject_words = &filtered[..idx];
+            let is_source_subject =
+                is_source_reference_words(subject_words) || matches!(subject_words, ["it"]);
+            if !is_source_subject {
+                return None;
+            }
+
+            let mut negative = matches!(filtered[idx], "isnt" | "isn't" | "arent" | "aren't");
+            let mut tail_start = idx + 1;
+            if filtered.get(tail_start).copied() == Some("not") {
+                negative = true;
+                tail_start += 1;
+            }
+            let descriptor_words = &filtered[tail_start..];
+            if descriptor_words.is_empty()
+                || descriptor_words
+                    .iter()
+                    .any(|word| matches!(*word, "attached" | "tapped" | "untapped" | "saddled"))
+            {
+                return None;
+            }
+
+            let descriptor_tokens = descriptor_words
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            let Ok(filter) = parse_object_filter(&descriptor_tokens, false) else {
+                return None;
+            };
+            let has_identity = !filter.card_types.is_empty()
+                || !filter.all_card_types.is_empty()
+                || !filter.subtypes.is_empty()
+                || !filter.supertypes.is_empty()
+                || filter.colors.is_some()
+                || !filter.excluded_card_types.is_empty()
+                || !filter.excluded_subtypes.is_empty();
+            has_identity.then_some((filter, negative))
+        })
+    };
+    if let Some((filter, negative)) = source_filter_predicate {
+        let predicate = PredicateAst::SourceMatches(filter);
+        return Ok(if negative {
+            PredicateAst::Not(Box::new(predicate))
+        } else {
+            predicate
+        });
+    }
+
     if slice_starts_with(&filtered, &["there", "are", "no"])
         && slice_contains(&filtered, &"counters")
         && contains_any_filter_phrase(&filtered, &[&["on", "this"]])

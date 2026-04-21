@@ -401,6 +401,13 @@ fn evaluate_condition_shared_core(
                 .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
                 .is_some_and(|power| power >= *min_power as i32),
         ),
+        Condition::SourceMatches(filter) => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            Some(
+                game.object(ctx.source)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+            )
+        }
         Condition::SourceIsInZone(zone) => Some(
             game.object(ctx.source)
                 .map(|obj| obj.zone == *zone)
@@ -485,6 +492,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsSaddled => {}
         Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
+        Condition::SourceMatches(..) => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourcePowerAtLeast(..) => {}
@@ -1235,6 +1243,11 @@ pub fn evaluate_condition_external(
         Condition::SourceIsSaddled => game.is_saddled(ctx.source),
         Condition::SourceIsMonstrous => game.is_monstrous(ctx.source),
         Condition::SourceIsFaceDown => game.is_face_down(ctx.source),
+        Condition::SourceMatches(filter) => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.object(ctx.source)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        }
         Condition::SourcePowerAtLeast(min_power) => game
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
@@ -1936,6 +1949,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsSaddled
         | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
+        | Condition::SourceMatches(_)
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
         | Condition::Unmodeled(_)
@@ -2632,6 +2646,12 @@ fn evaluate_condition(
         Condition::SourceIsSaddled => Ok(game.is_saddled(ctx.source)),
         Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
         Condition::SourceIsFaceDown => Ok(game.is_face_down(ctx.source)),
+        Condition::SourceMatches(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            Ok(game
+                .object(ctx.source)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
+        }
         Condition::SourcePowerAtLeast(min_power) => Ok(game
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
