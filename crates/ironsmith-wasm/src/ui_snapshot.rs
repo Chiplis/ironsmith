@@ -55,10 +55,6 @@ struct BattlefieldGroupKey {
     force_single_object: Option<u64>,
 }
 
-pub(super) fn battlefield_lane_for_object(obj: &ironsmith::object::Object) -> BattlefieldLane {
-    battlefield_lane_for_card_types(&obj.card_types)
-}
-
 fn battlefield_lane_for_card_types(card_types: &[CardType]) -> BattlefieldLane {
     if card_types.contains(&CardType::Enchantment) {
         return BattlefieldLane::Enchantments;
@@ -1291,7 +1287,12 @@ mod tests {
             "control bear should keep printed power"
         );
         assert_eq!(
-            battlefield_lane_for_object(game.object(unenchanted_bear).expect("bear should exist")),
+            battlefield_lane_for_card_types(
+                &game
+                    .object(unenchanted_bear)
+                    .expect("bear should exist")
+                    .card_types
+            ),
             BattlefieldLane::Creatures
         );
         assert!(

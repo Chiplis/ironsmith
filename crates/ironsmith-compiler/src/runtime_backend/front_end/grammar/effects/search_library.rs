@@ -804,6 +804,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         ],
     ) {
         player = PlayerAst::That;
+        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
     } else if word_slice_starts_with_any(
         search_body_words,
         &[

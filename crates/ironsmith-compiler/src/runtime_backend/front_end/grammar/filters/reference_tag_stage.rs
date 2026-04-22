@@ -315,6 +315,8 @@ pub(super) fn parse_object_filter_inner(
     );
 
     try_apply_attached_exclusion_phrases(&mut filter, &mut all_words);
+    let exclude_basic_land_cards =
+        strip_other_than_basic_land_cards_clause(&mut all_words, &mut segment_tokens);
 
     let _ = try_apply_pt_literal_prefix(&mut filter, &mut all_words);
 
@@ -1331,6 +1333,10 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
+    if exclude_basic_land_cards {
+        apply_basic_land_exception(&mut filter);
+    }
+
     let has_constraints = !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()
         || !filter.supertypes.is_empty()
@@ -1545,6 +1551,75 @@ pub(super) fn parse_object_filter_inner(
     }
 
     Ok(filter)
+}
+
+fn strip_other_than_basic_land_cards_clause(
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let mut idx = 0usize;
+    while idx + 3 < all_words.len() {
+        if all_words[idx] != "other"
+            || all_words[idx + 1] != "than"
+            || all_words[idx + 2] != "basic"
+            || all_words[idx + 3] != "land"
+        {
+            idx += 1;
+            continue;
+        }
+
+        let mut end = idx + 4;
+        if all_words
+            .get(end)
+            .is_some_and(|word| matches!(*word, "card" | "cards"))
+        {
+            end += 1;
+        }
+        all_words.drain(idx..end);
+        strip_other_than_basic_land_cards_tokens(segment_tokens);
+        return true;
+    }
+
+    false
+}
+
+fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<OwnedLexToken>) {
+    let mut idx = 0usize;
+    while idx + 3 < segment_tokens.len() {
+        if !segment_tokens[idx].is_word("other")
+            || !segment_tokens[idx + 1].is_word("than")
+            || !segment_tokens[idx + 2].is_word("basic")
+            || !segment_tokens[idx + 3].is_word("land")
+        {
+            idx += 1;
+            continue;
+        }
+
+        let mut end = idx + 4;
+        if segment_tokens
+            .get(end)
+            .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            end += 1;
+        }
+        segment_tokens.drain(idx..end);
+        return;
+    }
+}
+
+fn apply_basic_land_exception(filter: &mut ObjectFilter) {
+    let mut nonland_branch = filter.clone();
+    nonland_branch.any_of.clear();
+    push_unique(&mut nonland_branch.excluded_card_types, CardType::Land);
+
+    let mut nonbasic_branch = filter.clone();
+    nonbasic_branch.any_of.clear();
+    push_unique(&mut nonbasic_branch.excluded_supertypes, Supertype::Basic);
+
+    *filter = ObjectFilter {
+        any_of: vec![nonland_branch, nonbasic_branch],
+        ..Default::default()
+    };
 }
 
 fn try_apply_could_be_targeted_by_that_spell_clause(

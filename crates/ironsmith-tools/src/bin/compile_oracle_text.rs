@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read, Write};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
+use ironsmith_compiler::parse_trace as card_parse_trace;
 use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
@@ -264,8 +265,14 @@ fn compile_job_for_name(
             let oracle_text = card.oracle_text.clone();
             let parse_input = card.parse_input.clone();
             let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
-            let authoritative_snapshot = compile_authoritative_snapshot_from_payload(&card);
-            let compiled_definition = compile_definition_from_payload(&card).ok();
+            let authoritative_snapshot = {
+                let _scope = card_parse_trace::scope("authoritative snapshot");
+                compile_authoritative_snapshot_from_payload(&card)
+            };
+            let compiled_definition = {
+                let _scope = card_parse_trace::scope("display definition");
+                compile_definition_from_payload(&card).ok()
+            };
             Ok(CompileJob {
                 name,
                 oracle_text,
@@ -323,17 +330,19 @@ fn write_compiled_job<W: Write>(
     let def = if let Some(definition) = job.compiled_definition.as_ref() {
         definition
     } else {
-        parsed_definition =
+        parsed_definition = {
+            let _scope = card_parse_trace::scope("display definition");
             parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
-                .map_err(|err| {
-                let _ = store_snapshot_if_requested(
-                    should_write_db,
-                    job.authoritative_snapshot.as_ref(),
-                    job.db_payload.as_ref(),
-                    db_path,
-                );
-                format!("parse failed for {}: {err:?}", job.name)
-            })?;
+        }
+        .map_err(|err| {
+            let _ = store_snapshot_if_requested(
+                should_write_db,
+                job.authoritative_snapshot.as_ref(),
+                job.db_payload.as_ref(),
+                db_path,
+            );
+            format!("parse failed for {}: {err:?}", job.name)
+        })?;
         &parsed_definition
     };
     let mut display_def = def.clone();
@@ -407,26 +416,6 @@ fn write_compiled_job<W: Write>(
         ));
     }
     Ok(())
-}
-
-fn print_compiled_job(
-    job: &CompileJob,
-    detailed: bool,
-    raw: bool,
-    show_definition: bool,
-    should_write_db: bool,
-    db_path: &str,
-) -> Result<(), String> {
-    let mut stdout = io::stdout().lock();
-    write_compiled_job(
-        &mut stdout,
-        job,
-        detailed,
-        raw,
-        show_definition,
-        should_write_db,
-        db_path,
-    )
 }
 
 fn main() -> Result<(), String> {
@@ -510,12 +499,6 @@ fn main() -> Result<(), String> {
         }
     }
 
-    if trace {
-        unsafe {
-            env::set_var("IRONSMITH_PARSER_TRACE", "1");
-        }
-    }
-
     if stacktrace {
         unsafe {
             env::set_var("IRONSMITH_PARSER_STACKTRACE", "1");
@@ -555,24 +538,41 @@ fn main() -> Result<(), String> {
         names.push(DEFAULT_PROBE_NAME.to_string());
     }
 
-    let jobs = names
-        .iter()
-        .map(|name| compile_job_for_name(&cards_path, name, input_text.as_deref()))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut stdout = io::stdout().lock();
+    for (idx, name) in names.iter().enumerate() {
+        let compile_one = || -> Result<Vec<u8>, String> {
+            card_parse_trace::event(format!("Trace: {name}"));
+            let job = compile_job_for_name(&cards_path, name, input_text.as_deref())?;
+            let should_write_db = !no_db && job.db_payload.is_some();
+            let mut output = Vec::new();
+            write_compiled_job(
+                &mut output,
+                &job,
+                detailed,
+                raw,
+                show_definition,
+                should_write_db,
+                &db_path,
+            )?;
+            Ok(output)
+        };
 
-    for (idx, job) in jobs.iter().enumerate() {
+        let output = if trace {
+            let (result, report) = card_parse_trace::capture(compile_one);
+            if !report.is_empty() {
+                eprint!("{}", report.render());
+            }
+            result?
+        } else {
+            compile_one()?
+        };
+
         if idx > 0 {
-            println!();
+            writeln!(stdout).map_err(|err| format!("failed to write compile output: {err}"))?;
         }
-        let should_write_db = !no_db && job.db_payload.is_some();
-        print_compiled_job(
-            job,
-            detailed,
-            raw,
-            show_definition,
-            should_write_db,
-            &db_path,
-        )?;
+        stdout
+            .write_all(&output)
+            .map_err(|err| format!("failed to write compile output: {err}"))?;
     }
 
     Ok(())

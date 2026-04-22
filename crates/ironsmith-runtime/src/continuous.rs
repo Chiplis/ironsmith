@@ -3660,6 +3660,21 @@ fn resolve_value_with_context(
             }
             total
         }
+        Value::LandsEnteredBattlefieldThisTurn(player_filter) => {
+            let filter_ctx = continuous_filter_context(controller, source);
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| {
+                    ctx.game
+                        .turn_store
+                        .turn_history
+                        .lands_entered_under_controller(player.id) as i32
+                })
+                .sum()
+        }
 
         Value::SourcePower => ctx
             .objects

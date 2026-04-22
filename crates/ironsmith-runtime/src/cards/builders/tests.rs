@@ -3136,6 +3136,96 @@ fn test_parse_spoils_of_blood_uses_creatures_died_this_turn_count() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_corpseweft_scaled_exiled_this_way_token_power_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Corpseweft Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{1}{B}, Exile one or more creature cards from your graveyard: Create a tapped X/X black Zombie Horror creature token, where X is twice the number of cards exiled this way.",
+        )
+        .expect("Corpseweft-style activated ability should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated ability");
+    let set_base_pt = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>())
+        .expect("expected dynamic token base power/toughness setter");
+
+    match (&set_base_pt.power, &set_base_pt.toughness) {
+        (
+            Value::CountScaled(power_filter, power_multiplier),
+            Value::CountScaled(toughness_filter, toughness_multiplier),
+        ) => {
+            assert_eq!((*power_multiplier, *toughness_multiplier), (2, 2));
+            assert_eq!(power_filter.zone, Some(Zone::Exile));
+            assert_eq!(toughness_filter.zone, Some(Zone::Exile));
+            assert!(
+                !power_filter.tagged_constraints.is_empty()
+                    && !toughness_filter.tagged_constraints.is_empty(),
+                "expected exiled-this-way tag constraints, got {set_base_pt:#?}"
+            );
+        }
+        other => panic!("expected scaled exiled-count P/T values, got {other:#?}"),
+    }
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "create a tapped x/x black zombie horror creature token, where x is twice the number of cards exiled this way"
+        ),
+        "expected rendered text to compact the tapped dynamic token wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("0/0"),
+        "dynamic token rendering should hide the temporary 0/0 shell, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_smugglers_share_counts_each_qualifying_opponent() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Smuggler's Share Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("At the beginning of each end step, draw a card for each opponent who drew two or more cards this turn, then create a Treasure token for each opponent who had two or more lands enter the battlefield under their control this turn.")
+        .expect("Smuggler's Share text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeginningOfEndStepTrigger { player: Any }")
+            && debug.contains("ForPlayersEffect")
+            && debug.contains("filter: Opponent")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("MaxCardsDrawnThisTurn")
+            && debug.contains("IteratedPlayer")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("LandsEnteredBattlefieldThisTurn"),
+        "expected Smuggler's Share to iterate qualifying opponents for both rewards, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains("At the beginning of each end step")
+            && compiled
+                .contains("draw a card for each opponent who drew two or more cards this turn")
+            && compiled.contains(
+                "create a Treasure token for each opponent who had two or more lands enter the battlefield under their control this turn"
+            ),
+        "expected Smuggler's Share compiled text to preserve both qualifying-opponent clauses, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
         .card_types(vec![CardType::Enchantment])
@@ -22319,6 +22409,78 @@ fn render_source_surface_for_hard_spell_effect_clauses() {
             );
         });
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_haunting_echoes_exception_and_target_library_search() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Haunting Echoes Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.",
+        )
+        .expect("Haunting Echoes text should parse");
+
+    let rendered = debug_compiled_lines(&def).join(" ");
+    assert!(
+        rendered
+            .contains("Exile all cards from target player's graveyard other than basic land cards"),
+        "expected basic-land exception to render from structure, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "search that player's library for all cards with the same name as that card and exile them"
+        ),
+        "expected same-name target-library search to render, got {rendered}"
+    );
+
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    let effects = &program.segments[0].default_effects;
+    let tagged_exile = effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .expect("initial exile should tag cards exiled this way");
+    let exile = tagged_exile
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .expect("first effect should exile a graveyard subset");
+    let ChooseSpec::All(exile_filter) = &exile.spec else {
+        panic!("initial exile should use an all-object filter");
+    };
+    assert_eq!(
+        exile_filter.any_of.len(),
+        2,
+        "basic land exception should lower as not-land or not-basic, got {exile_filter:#?}"
+    );
+    assert!(
+        exile_filter
+            .any_of
+            .iter()
+            .any(|branch| branch.excluded_card_types.contains(&CardType::Land))
+            && exile_filter
+                .any_of
+                .iter()
+                .any(|branch| branch.excluded_supertypes.contains(&Supertype::Basic)),
+        "expected structural non-basic-land exclusion, got {exile_filter:#?}"
+    );
+
+    let for_each = effects[1]
+        .downcast_ref::<crate::effects::ForEachObject>()
+        .expect("second effect should iterate cards exiled this way");
+    let search = for_each.effects[0]
+        .downcast_ref::<ChooseObjectsEffect>()
+        .expect("iterated effect should search the target player's library");
+    assert_eq!(search.filter.owner, Some(PlayerFilter::target_player()));
+    assert_eq!(
+        search.search_mode,
+        crate::effect::SearchSelectionMode::AllMatching
+    );
+    assert!(
+        search.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                && constraint.tag.as_str() == "__it__"
+        }),
+        "expected search filter to compare each library card name to the iterated exiled card"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

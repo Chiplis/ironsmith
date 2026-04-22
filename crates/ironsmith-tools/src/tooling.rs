@@ -20,7 +20,7 @@ use ironsmith::cards::{
 use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
-use ironsmith_compiler::CardDefinitionBuilder as CompilerCardDefinitionBuilder;
+use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder, parse_trace};
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
@@ -1904,6 +1904,12 @@ fn card_is_legal_in_supported_paper_format(card: &Value) -> bool {
 
 fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAttempt {
     with_allow_unsupported(allow_unsupported, || {
+        parse_trace::event(format!(
+            "tool snapshot parse: card=\"{}\" allow_unsupported={} lines={}",
+            name,
+            allow_unsupported,
+            parse_input.lines().count()
+        ));
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
             ironsmith_registry::compile_builder_to_runtime_definition(
                 CompilerCardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name),
@@ -2099,20 +2105,30 @@ fn definition_from_payload(
 ) -> Result<CardDefinition, String> {
     let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
     let builder = CompilerCardDefinitionBuilder::new(card_id, parse_name);
+    parse_trace::event(format!(
+        "payload compile: card=\"{}\" input=parse_input lines={}",
+        payload.name,
+        payload.parse_input.lines().count()
+    ));
     let mut definition = match ironsmith_registry::compile_builder_to_runtime_definition(
         builder.clone(),
         payload.parse_input.clone(),
         false,
     ) {
         Ok(definition) => definition,
-        Err(parse_input_err) => ironsmith_registry::compile_builder_to_runtime_definition(
-            builder,
-            payload.oracle_text.clone(),
-            false,
-        )
-        .map_err(|oracle_err| {
-            format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
-        })?,
+        Err(parse_input_err) => {
+            parse_trace::event(format!(
+                "payload compile: parse_input failed: {parse_input_err}; trying oracle text"
+            ));
+            ironsmith_registry::compile_builder_to_runtime_definition(
+                builder,
+                payload.oracle_text.clone(),
+                false,
+            )
+            .map_err(|oracle_err| {
+                format!("{parse_input_err}; oracle-only fallback also failed: {oracle_err}")
+            })?
+        }
     };
     decorate_definition_from_payload(&mut definition, payload);
     Ok(definition)

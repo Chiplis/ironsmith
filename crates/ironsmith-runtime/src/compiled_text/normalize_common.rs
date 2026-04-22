@@ -3121,38 +3121,45 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Exile target player's graveyard. {rest}");
     }
-    normalized = normalized.replace(
-        "Exile all cards from target opponent's graveyard",
-        "Exile target opponent's graveyard",
-    );
-    normalized = normalized.replace(
-        "exile all cards from target opponent's graveyard",
-        "exile target opponent's graveyard",
-    );
-    normalized = normalized.replace(
-        "Exile all cards from target opponent's graveyards",
-        "Exile target opponent's graveyard",
-    );
-    normalized = normalized.replace(
-        "exile all cards from target opponent's graveyards",
-        "exile target opponent's graveyard",
-    );
-    normalized = normalized.replace(
-        "Exile all cards from target player's graveyard",
-        "Exile target player's graveyard",
-    );
-    normalized = normalized.replace(
-        "exile all cards from target player's graveyard",
-        "exile target player's graveyard",
-    );
-    normalized = normalized.replace(
-        "Exile all cards from target player's graveyards",
-        "Exile target player's graveyard",
-    );
-    normalized = normalized.replace(
-        "exile all cards from target player's graveyards",
-        "exile target player's graveyard",
-    );
+    let preserves_target_graveyard_exception = normalized
+        .contains("target opponent's graveyard other than")
+        || normalized.contains("target opponent's graveyards other than")
+        || normalized.contains("target player's graveyard other than")
+        || normalized.contains("target player's graveyards other than");
+    if !preserves_target_graveyard_exception {
+        normalized = normalized.replace(
+            "Exile all cards from target opponent's graveyard",
+            "Exile target opponent's graveyard",
+        );
+        normalized = normalized.replace(
+            "exile all cards from target opponent's graveyard",
+            "exile target opponent's graveyard",
+        );
+        normalized = normalized.replace(
+            "Exile all cards from target opponent's graveyards",
+            "Exile target opponent's graveyard",
+        );
+        normalized = normalized.replace(
+            "exile all cards from target opponent's graveyards",
+            "exile target opponent's graveyard",
+        );
+        normalized = normalized.replace(
+            "Exile all cards from target player's graveyard",
+            "Exile target player's graveyard",
+        );
+        normalized = normalized.replace(
+            "exile all cards from target player's graveyard",
+            "exile target player's graveyard",
+        );
+        normalized = normalized.replace(
+            "Exile all cards from target player's graveyards",
+            "Exile target player's graveyard",
+        );
+        normalized = normalized.replace(
+            "exile all cards from target player's graveyards",
+            "exile target player's graveyard",
+        );
+    }
     if lower_normalized == "permanents enter the battlefield tapped"
         || lower_normalized == "permanents enter the battlefield tapped."
     {
@@ -6019,6 +6026,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_value(value)
             } else if *factor == -1 {
                 format!("-{}", describe_value(value))
+            } else if *factor == 2 {
+                format!("twice {}", describe_value(value))
             } else {
                 format!("{factor} times {}", describe_value(value))
             }
@@ -6061,10 +6070,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             )
         }
         Value::CountScaled(filter, multiplier) => {
-            format!(
-                "{multiplier} times the number of {}",
-                describe_count_filter_value_subject(filter)
-            )
+            let subject = describe_count_filter_value_subject(filter);
+            if *multiplier == 2 {
+                format!("twice the number of {subject}")
+            } else {
+                format!("{multiplier} times the number of {subject}")
+            }
         }
         Value::TotalPower(filter) => {
             format!(
@@ -6227,6 +6238,24 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Any => "the greatest number of cards a player has drawn this turn".to_string(),
             _ => format!(
                 "the greatest number of cards {} has drawn this turn",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::LandsEnteredBattlefieldThisTurn(filter) => match filter {
+            PlayerFilter::You => {
+                "the number of lands that entered the battlefield under your control this turn"
+                    .to_string()
+            }
+            PlayerFilter::Opponent => {
+                "the number of lands that entered the battlefield under opponents' control this turn"
+                    .to_string()
+            }
+            PlayerFilter::Any => {
+                "the number of lands that entered the battlefield under players' control this turn"
+                    .to_string()
+            }
+            _ => format!(
+                "the number of lands that entered the battlefield under {}'s control this turn",
                 describe_player_filter(filter)
             ),
         },
@@ -7663,6 +7692,28 @@ pub(super) fn describe_player_relative_condition(condition: &Condition) -> Optio
                 return None;
             }
             Some("had a land enter the battlefield under their control this turn".to_string())
+        }
+        Condition::ValueComparison {
+            left: Value::MaxCardsDrawnThisTurn(PlayerFilter::IteratedPlayer),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
+        } => {
+            let count_text = small_number_word(*count as u32)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            Some(format!("drew {count_text} or more cards this turn"))
+        }
+        Condition::ValueComparison {
+            left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
+        } => {
+            let count_text = small_number_word(*count as u32)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "had {count_text} or more lands enter the battlefield under their control this turn"
+            ))
         }
         Condition::PlayerTaggedObjectMatches {
             player,

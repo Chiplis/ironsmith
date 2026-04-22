@@ -4,6 +4,7 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
     PredicateAst, TextSpan,
 };
+use crate::parse_trace;
 use winnow::Parser;
 use winnow::error::ModalResult as WResult;
 use winnow::stream::Stream;
@@ -80,6 +81,25 @@ use statement_cst_support::{
     parse_statement_line_cst,
 };
 use unsupported::diagnose_known_unsupported_rewrite_line;
+
+fn rewrite_line_cst_kind(line: &RewriteLineCst) -> &'static str {
+    match line {
+        RewriteLineCst::Metadata(_) => "metadata",
+        RewriteLineCst::Keyword(_) => "keyword",
+        RewriteLineCst::Static(_) => "static",
+        RewriteLineCst::Activated(_) => "activated",
+        RewriteLineCst::Triggered(_) => "triggered",
+        RewriteLineCst::Statement(_) => "statement",
+        RewriteLineCst::LevelHeader(_) => "level-header",
+        RewriteLineCst::SagaChapter(_) => "saga-chapter",
+        RewriteLineCst::Modal(_) => "modal",
+        RewriteLineCst::Unsupported(_) => "unsupported",
+    }
+}
+
+fn trace_cst_line(line: &RewriteLineCst) {
+    parse_trace::event(format!("classified as {}", rewrite_line_cst_kind(line)));
+}
 
 fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
     lex_line(text, line_index)
@@ -2441,6 +2461,13 @@ pub(crate) fn parse_text_to_semantic_document(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    let card_name = builder.card_builder.name_ref().to_string();
+    let _trace_scope = parse_trace::scope(format!(
+        "card parse: \"{}\" allow_unsupported={} source_lines={}",
+        card_name,
+        allow_unsupported,
+        text.lines().count()
+    ));
     if parser_trace_enabled() {
         eprintln!(
             "[parser-flow] stage=parse_text_to_semantic_document:start card={:?} allow_unsupported={} lines={}",
@@ -2456,6 +2483,37 @@ pub(crate) fn parse_text_to_semantic_document(
         return Err(err);
     }
     let preprocessed = preprocess_document(builder, text.as_str())?;
+    parse_trace::event(format!(
+        "preprocessed document: {} item(s)",
+        preprocessed.items.len()
+    ));
+    for item in &preprocessed.items {
+        match item {
+            PreprocessedItem::Metadata(meta) => parse_trace::event(format!(
+                "line {} metadata: {:?}",
+                meta.info.display_line_index + 1,
+                meta.value
+            )),
+            PreprocessedItem::Line(line) => {
+                let raw = line.info.raw_line.trim();
+                let normalized = line.info.normalized.normalized.trim();
+                if raw == normalized {
+                    parse_trace::event(format!(
+                        "line {} text: \"{}\"",
+                        line.info.display_line_index + 1,
+                        normalized
+                    ));
+                } else {
+                    parse_trace::event(format!(
+                        "line {} text: \"{}\" -> \"{}\"",
+                        line.info.display_line_index + 1,
+                        raw,
+                        normalized
+                    ));
+                }
+            }
+        }
+    }
     if parser_trace_enabled() {
         eprintln!(
             "[parser-flow] stage=parse_text_to_semantic_document:preprocessed items={}",
@@ -2463,6 +2521,7 @@ pub(crate) fn parse_text_to_semantic_document(
         );
     }
     let cst = parse_document_cst(&preprocessed, allow_unsupported)?;
+    parse_trace::event(format!("cst lines: {}", cst.lines.len()));
     if parser_trace_enabled() {
         eprintln!(
             "[parser-flow] stage=parse_text_to_semantic_document:cst lines={}",
@@ -2471,6 +2530,7 @@ pub(crate) fn parse_text_to_semantic_document(
     }
     let semantic = lower_document_cst(preprocessed, cst, allow_unsupported)?;
     let annotations = semantic.annotations.clone();
+    parse_trace::event(format!("semantic items: {}", semantic.items.len()));
     if parser_trace_enabled() {
         eprintln!(
             "[parser-flow] stage=parse_text_to_semantic_document:done items={}",
@@ -2490,17 +2550,25 @@ pub(crate) fn parse_document_cst(
         let item = &preprocessed.items[idx];
         match item {
             PreprocessedItem::Metadata(meta) => {
-                lines.push(RewriteLineCst::Metadata(metadata_line_cst(
+                let cst = RewriteLineCst::Metadata(metadata_line_cst(
                     meta.info.clone(),
                     meta.value.clone(),
-                )?));
+                )?);
+                trace_cst_line(&cst);
+                lines.push(cst);
                 idx += 1;
             }
             PreprocessedItem::Line(line) => {
+                let _line_scope = parse_trace::scope(format!(
+                    "line {} parse: \"{}\"",
+                    line.info.display_line_index + 1,
+                    line.info.raw_line
+                ));
                 parser_trace("parse_document_cst:line", &line.tokens);
                 if let Some((level_block, next_idx)) =
                     try_parse_level_header_block(preprocessed, idx, line, allow_unsupported)?
                 {
+                    trace_cst_line(&level_block);
                     lines.push(level_block);
                     idx = next_idx;
                     continue;
@@ -2509,9 +2577,11 @@ pub(crate) fn parse_document_cst(
                 if let Some((chapters, text)) =
                     parse_saga_chapter_prefix(&line.info.normalized.normalized)
                 {
-                    lines.push(RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
+                    let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
                         line, chapters, text,
-                    )?));
+                    )?);
+                    trace_cst_line(&cst);
+                    lines.push(cst);
                     idx += 1;
                     continue;
                 }
@@ -2519,6 +2589,7 @@ pub(crate) fn parse_document_cst(
                 if let Some((modal_block, next_idx)) =
                     try_parse_modal_bullet_block(preprocessed, idx, line)?
                 {
+                    trace_cst_line(&modal_block);
                     lines.push(modal_block);
                     idx = next_idx;
                     continue;
@@ -2533,12 +2604,16 @@ pub(crate) fn parse_document_cst(
                                 split_trigger_sentence_chunks_rewrite_lexed(&chunk_line.tokens)
                             {
                                 let trigger_line = rewrite_line_tokens(&chunk_line, &trigger_chunk);
-                                lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
+                                let cst = RewriteLineCst::Triggered(parse_triggered_line_cst(
                                     &trigger_line,
-                                )?));
+                                )?);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
                             }
                         } else if let Some(static_line) = parse_static_line_cst(&chunk_line)? {
-                            lines.push(RewriteLineCst::Static(static_line));
+                            let cst = RewriteLineCst::Static(static_line);
+                            trace_cst_line(&cst);
+                            lines.push(cst);
                         } else {
                             return Err(CardTextError::ParseError(format!(
                                 "parser could not split reveal-first-draw line family: '{}'",
@@ -2550,7 +2625,9 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
                 if let Some(unsupported) = parse_former_section9_unsupported_line_cst(line) {
-                    lines.push(RewriteLineCst::Unsupported(unsupported));
+                    let cst = RewriteLineCst::Unsupported(unsupported);
+                    trace_cst_line(&cst);
+                    lines.push(cst);
                     idx += 1;
                     continue;
                 }
@@ -2559,7 +2636,9 @@ pub(crate) fn parse_document_cst(
                 {
                     let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
                     if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
-                        lines.push(RewriteLineCst::Statement(statement_line));
+                        let cst = RewriteLineCst::Statement(statement_line);
+                        trace_cst_line(&cst);
+                        lines.push(cst);
                     } else if let Some(rewritten_prefix) =
                         normalize_named_source_sentence_for_builder(
                             &preprocessed.builder,
@@ -2571,11 +2650,15 @@ pub(crate) fn parse_document_cst(
                         if let Some(statement_line) =
                             parse_statement_line_cst(&rewritten_prefix_line)?
                         {
-                            lines.push(RewriteLineCst::Statement(statement_line));
+                            let cst = RewriteLineCst::Statement(statement_line);
+                            trace_cst_line(&cst);
+                            lines.push(cst);
                         } else if let Some(static_line) =
                             parse_static_line_cst(&rewritten_prefix_line)?
                         {
-                            lines.push(RewriteLineCst::Static(static_line));
+                            let cst = RewriteLineCst::Static(static_line);
+                            trace_cst_line(&cst);
+                            lines.push(cst);
                         } else {
                             return Err(CardTextError::ParseError(format!(
                                 "parser could not split leading sentence before keyword ability: '{}'",
@@ -2583,7 +2666,9 @@ pub(crate) fn parse_document_cst(
                             )));
                         }
                     } else if let Some(static_line) = parse_static_line_cst(&prefix_line)? {
-                        lines.push(RewriteLineCst::Static(static_line));
+                        let cst = RewriteLineCst::Static(static_line);
+                        trace_cst_line(&cst);
+                        lines.push(cst);
                     } else {
                         return Err(CardTextError::ParseError(format!(
                             "parser could not split leading sentence before keyword ability: '{}'",
@@ -2609,14 +2694,16 @@ pub(crate) fn parse_document_cst(
                     };
                     let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
                     let cost = parse_activation_cost_tokens_rewrite(&cost_tokens)?;
-                    lines.push(RewriteLineCst::Activated(ActivatedLineCst {
+                    let cst = RewriteLineCst::Activated(ActivatedLineCst {
                         info: suffix_line.info.clone(),
                         cost,
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
                         chosen_option_label: None,
-                    }));
+                    });
+                    trace_cst_line(&cst);
+                    lines.push(cst);
                     idx += 1;
                     continue;
                 }
@@ -2633,6 +2720,9 @@ pub(crate) fn parse_document_cst(
                 }
                 let dispatch =
                     dispatch_standard_line_cst(preprocessed, idx, line, allow_unsupported)?;
+                for cst in &dispatch.lines {
+                    trace_cst_line(cst);
+                }
                 lines.extend(dispatch.lines);
                 idx = dispatch.next_idx;
                 continue;

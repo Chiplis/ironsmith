@@ -137,6 +137,26 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
     ))
 }
 
+fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
+    match player {
+        PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+        PlayerAst::Any => Some(PlayerFilter::Any),
+        PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
+        PlayerAst::Defending => Some(PlayerFilter::Defending),
+        PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
+        PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
+        PlayerAst::Target => Some(PlayerFilter::target_player()),
+        PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+        PlayerAst::ThatPlayerOrTargetController => {
+            Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        }
+        PlayerAst::ItsController | PlayerAst::ItsOwner => None,
+    }
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -1009,6 +1029,73 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             PredicateAst::PlayerCardsInHandOrMore { player, count }
         } else {
             PredicateAst::PlayerCardsInHandOrFewer { player, count }
+        });
+    }
+
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered) {
+        let draw_count_idx = if matches!(filtered.get(subject_len).copied(), Some("drew")) {
+            Some(subject_len + 1)
+        } else if matches!(
+            filtered.get(subject_len..subject_len + 2),
+            Some(["has", "drawn"] | ["have", "drawn"])
+        ) {
+            Some(subject_len + 2)
+        } else {
+            None
+        };
+        if let Some(count_idx) = draw_count_idx
+            && let Some(count_word) = filtered.get(count_idx).copied()
+            && let Some(count) = count_word
+                .parse::<i32>()
+                .ok()
+                .or_else(|| parse_named_number(count_word).map(|n| n as i32))
+            && filtered.get(count_idx + 1).copied() == Some("or")
+            && filtered.get(count_idx + 2).copied() == Some("more")
+            && matches!(filtered.get(count_idx + 3).copied(), Some("card" | "cards"))
+            && filtered.get(count_idx + 4..count_idx + 6) == Some(&["this", "turn"][..])
+            && filtered.len() == count_idx + 6
+            && let Some(player_filter) = player_filter_for_turn_value(player)
+        {
+            return Ok(PredicateAst::ValueComparison {
+                left: Value::MaxCardsDrawnThisTurn(player_filter),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(count),
+            });
+        }
+    }
+
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && filtered.get(subject_len).copied() == Some("had")
+        && let Some(count_word) = filtered.get(subject_len + 1).copied()
+        && let Some(count) = count_word
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(count_word).map(|n| n as i32))
+        && filtered.get(subject_len + 2).copied() == Some("or")
+        && filtered.get(subject_len + 3).copied() == Some("more")
+        && matches!(
+            filtered.get(subject_len + 4).copied(),
+            Some("land" | "lands")
+        )
+        && matches!(
+            filtered.get(subject_len + 5).copied(),
+            Some("enter" | "entered")
+        )
+        && filtered.get(subject_len + 6).copied() == Some("battlefield")
+        && filtered.get(subject_len + 7).copied() == Some("under")
+        && matches!(
+            filtered.get(subject_len + 8).copied(),
+            Some("your" | "their" | "that" | "its")
+        )
+        && filtered.get(subject_len + 9).copied() == Some("control")
+        && filtered.get(subject_len + 10..subject_len + 12) == Some(&["this", "turn"][..])
+        && filtered.len() == subject_len + 12
+        && let Some(player_filter) = player_filter_for_turn_value(player)
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::LandsEnteredBattlefieldThisTurn(player_filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
         });
     }
 

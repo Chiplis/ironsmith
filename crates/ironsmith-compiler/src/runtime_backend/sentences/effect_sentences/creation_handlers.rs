@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
-    TargetAst,
+    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst,
+    SubjectAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -10,6 +10,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::super::grammar::primitives as grammar;
+use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::lexer::{render_token_slice, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -658,6 +659,7 @@ pub(crate) fn parse_create(
     });
     let mut for_each_dynamic_count: Option<Value> = None;
     let mut for_each_object_filter: Option<ObjectFilter> = None;
+    let mut for_each_player_condition: Option<(PlayerFilter, PredicateAst)> = None;
     if let Some(for_each_idx) = for_each_idx {
         let filter_tokens = &tail_tokens[for_each_idx + 2..];
         if filter_tokens.is_empty() {
@@ -666,7 +668,13 @@ pub(crate) fn parse_create(
                 clause_words.join(" ")
             )));
         }
-        if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
+        if let Some(parsed) = parse_create_for_each_player_condition(filter_tokens, &clause_words)?
+        {
+            for_each_player_condition = Some(parsed);
+            if player == PlayerAst::Implicit {
+                player = PlayerAst::You;
+            }
+        } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
             for_each_dynamic_count = Some(dynamic);
         } else {
             let filter = parse_object_filter(filter_tokens, false)?;
@@ -690,6 +698,25 @@ pub(crate) fn parse_create(
             EffectAst::ForEachObject {
                 filter,
                 effects: vec![effect],
+            }
+        } else {
+            effect
+        }
+    };
+    let wrap_for_each_player_condition = |effect: EffectAst| {
+        if let Some((filter, predicate)) = &for_each_player_condition {
+            let effects = vec![EffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: vec![effect],
+                if_false: Vec::new(),
+            }];
+            match filter {
+                PlayerFilter::Opponent => EffectAst::ForEachOpponent { effects },
+                PlayerFilter::Any => EffectAst::ForEachPlayer { effects },
+                other => EffectAst::ForEachPlayersFiltered {
+                    filter: other.clone(),
+                    effects,
+                },
             }
         } else {
             effect
@@ -813,9 +840,8 @@ pub(crate) fn parse_create(
                         set_base_power_toughness,
                         granted_abilities,
                     };
-                    return Ok(wrap_delayed_create(wrap_for_each_when_needed(
-                        create,
-                        references_iterated_object,
+                    return Ok(wrap_for_each_player_condition(wrap_delayed_create(
+                        wrap_for_each_when_needed(create, references_iterated_object),
                     )));
                 }
             }
@@ -841,9 +867,8 @@ pub(crate) fn parse_create(
                 set_base_power_toughness,
                 granted_abilities,
             };
-            return Ok(wrap_delayed_create(wrap_for_each_when_needed(
-                create,
-                references_iterated_object,
+            return Ok(wrap_for_each_player_condition(wrap_delayed_create(
+                wrap_for_each_when_needed(create, references_iterated_object),
             )));
         }
         return Err(CardTextError::ParseError(
@@ -997,10 +1022,38 @@ pub(crate) fn parse_create(
         sacrifice_at_next_end_step,
         exile_at_next_end_step,
     };
-    Ok(wrap_delayed_create(wrap_for_each_when_needed(
-        create,
-        references_iterated_object,
+    Ok(wrap_for_each_player_condition(wrap_delayed_create(
+        wrap_for_each_when_needed(create, references_iterated_object),
     )))
+}
+
+fn parse_create_for_each_player_condition(
+    tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<(PlayerFilter, PredicateAst)>, CardTextError> {
+    let (filter, who_tokens) = if let Some(rest) =
+        grammar::words_match_prefix(tokens, &["opponent", "who"])
+            .or_else(|| grammar::words_match_prefix(tokens, &["opponents", "who"]))
+    {
+        (
+            PlayerFilter::Opponent,
+            &tokens[tokens.len() - rest.len() - 1..],
+        )
+    } else if let Some(rest) = grammar::words_match_prefix(tokens, &["player", "who"])
+        .or_else(|| grammar::words_match_prefix(tokens, &["players", "who"]))
+    {
+        (PlayerFilter::Any, &tokens[tokens.len() - rest.len() - 1..])
+    } else {
+        return Ok(None);
+    };
+
+    let predicate = parse_who_player_predicate_lexed(who_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported player predicate after create for-each clause (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    Ok(Some((filter, predicate)))
 }
 
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {

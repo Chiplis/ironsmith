@@ -62,23 +62,6 @@ pub fn effect_depends_on(a: &ContinuousEffect, b: &ContinuousEffect) -> bool {
     check_dependency_relationship(&a.modification, &b.modification, a.source, b.source)
 }
 
-fn effect_depends_on_with_baseline(
-    a: &ContinuousEffect,
-    b: &ContinuousEffect,
-    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
-    game: &GameState,
-) -> bool {
-    effect_depends_on_with_baseline_and_started_groups(
-        a,
-        b,
-        baseline,
-        objects,
-        game,
-        &HashSet::new(),
-    )
-}
-
 fn effect_depends_on_with_baseline_and_started_groups(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
@@ -564,6 +547,37 @@ fn evaluate_value(
                     .turn_store
                     .turn_history
                     .creatures_died_under_controller(player.id) as i32;
+            }
+            ValueEval::Scalar(total)
+        }
+        Value::LandsEnteredBattlefieldThisTurn(player_filter) => {
+            let filter_ctx = crate::filter::FilterContext {
+                you: Some(effect_controller),
+                source: Some(source),
+                caster: None,
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                x_value: None,
+                chosen_player: None,
+                target_players: Vec::new(),
+                target_objects: Vec::new(),
+                tagged_objects: std::collections::HashMap::new(),
+                tagged_players: std::collections::HashMap::new(),
+            };
+            let mut total = 0i32;
+            for player in game.players.iter().filter(|p| p.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                total += game
+                    .turn_store
+                    .turn_history
+                    .lands_entered_under_controller(player.id) as i32;
             }
             ValueEval::Scalar(total)
         }
@@ -1244,6 +1258,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::LifeLostThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::MaxCardsDrawnThisTurn(_)
+        | Value::LandsEnteredBattlefieldThisTurn(_)
         | Value::MaxCardsInHand(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
@@ -1950,8 +1965,13 @@ mod tests {
         )]);
         let game = GameState::new(vec!["Alice".to_string()], 20);
 
-        assert!(effect_depends_on_with_baseline(
-            &a, &b, &baseline, &objects, &game
+        assert!(effect_depends_on_with_baseline_and_started_groups(
+            &a,
+            &b,
+            &baseline,
+            &objects,
+            &game,
+            &HashSet::new()
         ));
     }
 
@@ -2035,12 +2055,13 @@ mod tests {
             originating_static_ability: None,
         };
 
-        assert!(effect_depends_on_with_baseline(
+        assert!(effect_depends_on_with_baseline_and_started_groups(
             &copy_effect,
             &grant_effect,
             &baseline,
             &objects,
-            &game
+            &game,
+            &HashSet::new()
         ));
     }
 
@@ -2135,12 +2156,13 @@ mod tests {
             originating_static_ability: None,
         };
 
-        assert!(effect_depends_on_with_baseline(
+        assert!(effect_depends_on_with_baseline_and_started_groups(
             &copy_effect,
             &remove_effect,
             &baseline,
             &objects,
-            &game
+            &game,
+            &HashSet::new()
         ));
     }
 

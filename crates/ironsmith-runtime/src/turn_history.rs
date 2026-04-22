@@ -276,16 +276,30 @@ impl TurnHistory {
     }
 
     pub fn player_had_land_enter_battlefield_this_turn(&self, player: PlayerId) -> bool {
-        self.projected_records().any(|record| {
-            (record.event.downcast::<EnterBattlefieldEvent>().is_some()
-                || record
-                    .event
-                    .downcast::<ZoneChangeEvent>()
-                    .is_some_and(|event| event.is_etb()))
-                && record.object_snapshot.as_ref().is_some_and(|snapshot| {
-                    snapshot.controller == player && snapshot.card_types.contains(&CardType::Land)
-                })
-        })
+        self.lands_entered_under_controller(player) > 0
+    }
+
+    pub fn lands_entered_under_controller(&self, player: PlayerId) -> u32 {
+        self.projected_records()
+            .filter(|record| {
+                (record.event.downcast::<EnterBattlefieldEvent>().is_some()
+                    || record
+                        .event
+                        .downcast::<ZoneChangeEvent>()
+                        .is_some_and(|event| event.is_etb()))
+                    && record.object_snapshot.as_ref().is_some_and(|snapshot| {
+                        snapshot.controller == player
+                            && snapshot.card_types.contains(&CardType::Land)
+                    })
+            })
+            .count() as u32
+    }
+
+    pub fn total_lands_entered_for_players(&self, players: &[PlayerId]) -> u32 {
+        players
+            .iter()
+            .map(|player| self.lands_entered_under_controller(*player))
+            .sum()
     }
 
     pub fn object_entered_battlefield_controller_this_turn(

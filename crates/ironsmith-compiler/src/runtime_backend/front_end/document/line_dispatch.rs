@@ -6,6 +6,7 @@ use super::line_family_handlers::{
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
 };
 use super::*;
+use crate::parse_trace;
 
 pub(super) struct LineDispatchResult {
     pub(super) lines: Vec<RewriteLineCst>,
@@ -119,6 +120,15 @@ static LINE_FAMILY_RULE_INDEX: LazyLock<LexRuleHintIndex> = LazyLock::new(|| {
     })
 });
 
+fn dispatch_kind_summary(dispatch: &LineDispatchResult) -> String {
+    dispatch
+        .lines
+        .iter()
+        .map(rewrite_line_cst_kind)
+        .collect::<Vec<_>>()
+        .join(" + ")
+}
+
 fn dispatch_line_family_registry(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<LineDispatchResult, CardTextError> {
@@ -138,21 +148,45 @@ fn dispatch_line_family_registry(
     candidate_indices.sort_by_key(|idx| LINE_FAMILY_RULES[*idx].priority);
 
     for idx in candidate_indices {
-        if let Some(dispatch) = (LINE_FAMILY_RULES[idx].run)(ctx)? {
-            return Ok(dispatch);
+        let rule = &LINE_FAMILY_RULES[idx];
+        match (rule.run)(ctx) {
+            Ok(Some(dispatch)) => {
+                parse_trace::event(format!(
+                    "line-family: {} -> {}",
+                    rule.id,
+                    dispatch_kind_summary(&dispatch)
+                ));
+                return Ok(dispatch);
+            }
+            Ok(None) => {}
+            Err(err) => {
+                parse_trace::event(format!("line-family: {} errored: {err:?}", rule.id));
+                return Err(err);
+            }
         }
     }
 
-    run_unsupported_line_family(ctx)?.ok_or_else(|| {
-        CardTextError::InvariantViolation(format!(
+    match run_unsupported_line_family(ctx) {
+        Ok(Some(dispatch)) => {
+            parse_trace::event(format!(
+                "line-family: unsupported -> {}",
+                dispatch_kind_summary(&dispatch)
+            ));
+            Ok(dispatch)
+        }
+        Ok(None) => Err(CardTextError::InvariantViolation(format!(
             "line-family registry exhausted without handling line: '{}' [last_rule={}]",
             ctx.line.info.raw_line,
             LINE_FAMILY_RULES
                 .last()
                 .map(|rule| rule.id)
                 .unwrap_or("none")
-        ))
-    })
+        ))),
+        Err(err) => {
+            parse_trace::event(format!("line-family: unsupported errored: {err:?}"));
+            Err(err)
+        }
+    }
 }
 
 pub(super) fn dispatch_standard_line_cst(

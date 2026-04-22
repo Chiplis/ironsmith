@@ -785,6 +785,15 @@ pub fn resolve_value(
                 .max_cards_drawn_for_players(&player_ids) as i32)
         }
 
+        Value::LandsEnteredBattlefieldThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .total_lands_entered_for_players(&player_ids) as i32)
+        }
+
         Value::CardsInGraveyard(player_spec) => {
             let player_id = resolve_player_filter(game, player_spec, ctx)?;
             let player = game
@@ -2746,6 +2755,60 @@ mod tests {
 
         let value = Value::XTimes(2);
         assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_resolve_lands_entered_battlefield_this_turn_counts_historical_entries() {
+        use crate::events::EnterBattlefieldEvent;
+        use crate::filter::ObjectFilter;
+        use crate::provenance::ProvNodeId;
+        use crate::triggers::TriggerEvent;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+
+        let bob_land_a =
+            add_battlefield_permanent(&mut game, 5901, "Bob Land A", bob, vec![CardType::Land]);
+        let bob_land_b =
+            add_battlefield_permanent(&mut game, 5902, "Bob Land B", bob, vec![CardType::Land]);
+        let alice_land =
+            add_battlefield_permanent(&mut game, 5903, "Alice Land", alice, vec![CardType::Land]);
+
+        for land_id in [bob_land_a, bob_land_b, alice_land] {
+            let event = TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(land_id, Zone::Hand),
+                ProvNodeId::default(),
+            );
+            game.record_turn_history_event(&event);
+        }
+        game.move_object_by_effect(bob_land_a, Zone::Graveyard);
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.iteration.iterated_player = Some(bob);
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer),
+                &ctx
+            )
+            .unwrap(),
+            2,
+            "historical land-entry counts should include lands that have left the battlefield"
+        );
+
+        let mut current_battlefield_filter = ObjectFilter::land();
+        current_battlefield_filter.zone = Some(Zone::Battlefield);
+        current_battlefield_filter.entered_battlefield_this_turn = true;
+        current_battlefield_filter.entered_battlefield_controller =
+            Some(PlayerFilter::IteratedPlayer);
+        assert_eq!(
+            resolve_value(&game, &Value::Count(current_battlefield_filter), &ctx).unwrap(),
+            1,
+            "the older object filter shape only counts matching lands still on the battlefield"
+        );
     }
 
     #[test]

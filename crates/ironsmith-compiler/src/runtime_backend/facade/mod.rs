@@ -3,6 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::cards::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
+use crate::parse_trace;
 
 use super::model::SemanticDocument;
 use super::postpasses;
@@ -72,7 +73,15 @@ impl CardTextCompiler {
         policy: CompilePolicy,
     ) -> CachedParseResult {
         let cache_key = ParseCacheKey::new(&builder, &text, policy.allow_unsupported);
-        if let Some(cached) = lookup_cached_parse(&cache_key) {
+        let tracing = parse_trace::is_enabled();
+        if tracing {
+            parse_trace::event(format!(
+                "compile attempt: card=\"{}\" allow_unsupported={} source_lines={}",
+                builder.card_builder.name_ref(),
+                policy.allow_unsupported,
+                text.lines().count()
+            ));
+        } else if let Some(cached) = lookup_cached_parse(&cache_key) {
             return cached;
         }
 
@@ -88,7 +97,19 @@ impl CardTextCompiler {
                     })
                 });
 
-        store_cached_parse(cache_key, result)
+        if tracing {
+            match &result {
+                Ok(compiled) => parse_trace::event(format!(
+                    "compile result: ok abilities={} spell_effect={}",
+                    compiled.definition.abilities.len(),
+                    compiled.definition.spell_effect.is_some()
+                )),
+                Err(err) => parse_trace::event(format!("compile result: error {err:?}")),
+            }
+            result
+        } else {
+            store_cached_parse(cache_key, result)
+        }
     }
 
     #[allow(dead_code)]

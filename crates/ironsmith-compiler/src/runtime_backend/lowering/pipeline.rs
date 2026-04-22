@@ -1,5 +1,6 @@
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{CardDefinition, CardDefinitionBuilder, CardTextError};
+use crate::parse_trace;
 
 use super::document_parser;
 use super::effect_pipeline::{NormalizedCardAst, ParsedCardAst};
@@ -54,9 +55,19 @@ pub(crate) fn parse_text_with_annotations_lowered(
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
     let (doc, _) = parse_text_to_semantic_document(builder, text, allow_unsupported)?;
-    let parsed = parse_semantic_document(doc)?;
-    let prepared = prepare_parsed_document(parsed)?;
-    lower_prepared_document(prepared)
+    let parsed = {
+        let _scope = parse_trace::scope("semantic parse");
+        parse_semantic_document(doc)?
+    };
+    let prepared = {
+        let _scope = parse_trace::scope("prepare lowering input");
+        prepare_parsed_document(parsed)?
+    };
+    let lowered = {
+        let _scope = parse_trace::scope("lower runtime definition");
+        lower_prepared_document(prepared)?
+    };
+    Ok(lowered)
 }
 
 pub(crate) fn parse_text_with_annotations(

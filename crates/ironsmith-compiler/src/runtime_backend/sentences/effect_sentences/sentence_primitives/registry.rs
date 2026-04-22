@@ -1,4 +1,5 @@
 use super::*;
+use crate::parse_trace;
 
 pub(super) const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
     &["for", "each", "player"],
@@ -75,6 +76,21 @@ pub(super) fn parse_pluralized_subtype_word(word: &str) -> Option<Subtype> {
     parse_subtype_word(word).or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
 }
 
+fn summarize_effects(effects: &[EffectAst]) -> String {
+    effects
+        .iter()
+        .map(|effect| {
+            let debug = format!("{effect:?}");
+            debug
+                .split(|ch: char| ch == ' ' || ch == '{' || ch == '(')
+                .next()
+                .unwrap_or("Effect")
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn run_sentence_primitive(
     primitive: &SentencePrimitive,
     tokens: &[OwnedLexToken],
@@ -83,6 +99,11 @@ fn run_sentence_primitive(
         Ok(Some(effects)) => {
             let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.id);
             parser_trace(&stage, tokens);
+            parse_trace::event(format!(
+                "effect primitive: {} -> {}",
+                primitive.id,
+                summarize_effects(&effects)
+            ));
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "primitive '{}' produced empty effects (clause: '{}')",
@@ -101,6 +122,10 @@ fn run_sentence_primitive(
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
                 );
             }
+            parse_trace::event(format!(
+                "effect primitive: {} errored: {err:?}",
+                primitive.id
+            ));
             Err(err)
         }
     }

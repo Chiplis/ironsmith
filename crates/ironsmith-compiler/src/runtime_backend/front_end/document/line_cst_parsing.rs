@@ -1,5 +1,6 @@
 use super::super::grammar::structure;
 use super::*;
+use crate::parse_trace;
 
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
@@ -54,6 +55,10 @@ pub(super) fn parse_triggered_line_cst(
         );
         if let Some(mut parsed) = probe.supported_cst(line, tokens_without_cap) {
             parsed.full_text = normalized.clone();
+            parse_trace::event(format!(
+                "trigger split: conditional trigger=\"{}\" effects=\"{}\"",
+                parsed.trigger_text, parsed.effect_text
+            ));
             return Ok(parsed);
         }
         if best_probe_error.is_none() {
@@ -68,6 +73,10 @@ pub(super) fn parse_triggered_line_cst(
             let probe =
                 probe_triggered_split(&leading_tokens[1..], effect_tokens, None, trailing_cap);
             if let Some(parsed) = probe.supported_cst(line, tokens_without_cap) {
+                parse_trace::event(format!(
+                    "trigger split: comma trigger=\"{}\" effects=\"{}\"",
+                    parsed.trigger_text, parsed.effect_text
+                ));
                 return Ok(parsed);
             }
             if best_probe_error.is_none() {
@@ -137,6 +146,10 @@ pub(super) fn parse_triggered_line_cst(
                 line.info.raw_line
             )));
         }
+        parse_trace::event(format!(
+            "trigger split: selected trigger=\"{}\" effects=\"{}\"",
+            split.trigger_text, split.effect_text
+        ));
         return Ok(split);
     }
 
@@ -168,6 +181,7 @@ pub(super) fn parse_triggered_line_cst(
                     line.info.raw_line
                 )));
             }
+            parse_trace::event("trigger parse: whole-line parser matched");
             Ok(TriggeredLineCst {
                 info: line.info.clone(),
                 full_text: normalized.to_string(),

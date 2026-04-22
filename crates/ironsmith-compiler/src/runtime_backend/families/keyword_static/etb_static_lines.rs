@@ -1436,6 +1436,12 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
 
     let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
+    let multiplier = match clause_words.get(3..number_idx) {
+        Some([]) | Some(["the"]) => 1,
+        Some(["twice"]) | Some(["twice", "the"]) | Some(["two", "times"])
+        | Some(["two", "times", "the"]) => 2,
+        _ => return None,
+    };
     if clause_words.get(number_idx + 1).copied() != Some("of") {
         return None;
     }
@@ -1470,7 +1476,10 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
             scope_tokens = &scope_tokens[1..];
         }
         let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
-        return Some(Value::BasicLandTypesAmong(scope_filter));
+        return Some(scale_where_x_number_value(
+            Value::BasicLandTypesAmong(scope_filter),
+            multiplier,
+        ));
     }
     if etb_word_slice_starts_with(&filter_words, &["color", "among"])
         || etb_word_slice_starts_with(&filter_words, &["colors", "among"])
@@ -1483,7 +1492,10 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
             scope_tokens = &scope_tokens[1..];
         }
         let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
-        return Some(Value::ColorsAmong(scope_filter));
+        return Some(scale_where_x_number_value(
+            Value::ColorsAmong(scope_filter),
+            multiplier,
+        ));
     }
     if (etb_word_slice_starts_with(&filter_words, &["card", "type", "among", "cards"])
         || etb_word_slice_starts_with(&filter_words, &["card", "types", "among", "cards"]))
@@ -1498,17 +1510,34 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         } else {
             PlayerFilter::You
         };
-        return Some(Value::CardTypesInGraveyard(player));
+        return Some(scale_where_x_number_value(
+            Value::CardTypesInGraveyard(player),
+            multiplier,
+        ));
     }
     if matches!(
         filter_words.as_slice(),
         ["creature", "that", "died", "this", "turn"]
             | ["creatures", "that", "died", "this", "turn"]
     ) {
-        return Some(Value::CreaturesDiedThisTurn);
+        return Some(scale_where_x_number_value(
+            Value::CreaturesDiedThisTurn,
+            multiplier,
+        ));
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
-    Some(Value::Count(filter))
+    Some(scale_where_x_number_value(Value::Count(filter), multiplier))
+}
+
+fn scale_where_x_number_value(value: Value, multiplier: i32) -> Value {
+    if multiplier == 1 {
+        return value;
+    }
+    match value {
+        Value::Count(filter) => Value::CountScaled(filter, multiplier),
+        Value::CountScaled(filter, factor) => Value::CountScaled(filter, factor * multiplier),
+        other => Value::Scaled(Box::new(other), multiplier),
+    }
 }
 
 fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Value> {

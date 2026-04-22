@@ -1,6 +1,4 @@
-use super::ui_snapshot::{
-    BattlefieldLane, battlefield_lane_for_object, grouped_battlefield_for_player,
-};
+use super::ui_snapshot::grouped_battlefield_for_player;
 use super::{
     CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot, MatchFormatInput,
     MatchSetupInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
@@ -239,13 +237,15 @@ fn battlefield_lane_prefers_artifact_over_land() {
         .build();
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
+    let protected_ids = std::collections::HashSet::new();
     let object_id = game.create_object_from_card(&artifact_land, alice, Zone::Battlefield);
-    let object = game.object(object_id).expect("artifact land should exist");
+    let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+    let permanent = battlefield
+        .iter()
+        .find(|permanent| permanent.id == object_id.0)
+        .expect("artifact land should exist in battlefield snapshot");
 
-    assert_eq!(
-        battlefield_lane_for_object(object),
-        BattlefieldLane::Artifacts
-    );
+    assert_eq!(permanent.lane, "artifacts");
 }
 
 #[test]
@@ -256,15 +256,15 @@ fn battlefield_lane_prefers_creature_over_artifact() {
         .build();
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
+    let protected_ids = std::collections::HashSet::new();
     let object_id = game.create_object_from_card(&artifact_creature, alice, Zone::Battlefield);
-    let object = game
-        .object(object_id)
-        .expect("artifact creature should exist");
+    let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+    let permanent = battlefield
+        .iter()
+        .find(|permanent| permanent.id == object_id.0)
+        .expect("artifact creature should exist in battlefield snapshot");
 
-    assert_eq!(
-        battlefield_lane_for_object(object),
-        BattlefieldLane::Creatures
-    );
+    assert_eq!(permanent.lane, "creatures");
 }
 
 #[test]
@@ -284,17 +284,14 @@ fn battlefield_lane_prefers_enchantment_over_creature_and_sorts_after_creatures(
     let enchantment_creature_id =
         game.create_object_from_card(&enchantment_creature, alice, Zone::Battlefield);
 
-    let enchantment_creature_object = game
-        .object(enchantment_creature_id)
-        .expect("enchantment creature should exist");
-    assert_eq!(
-        battlefield_lane_for_object(enchantment_creature_object),
-        BattlefieldLane::Enchantments
-    );
-
     let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+    let enchantment_permanent = battlefield
+        .iter()
+        .find(|permanent| permanent.id == enchantment_creature_id.0)
+        .expect("enchantment creature should exist in battlefield snapshot");
     let ordered_ids: Vec<u64> = battlefield.iter().map(|permanent| permanent.id).collect();
 
+    assert_eq!(enchantment_permanent.lane, "enchantments");
     assert_eq!(
         ordered_ids,
         vec![creature_id.0, enchantment_creature_id.0],

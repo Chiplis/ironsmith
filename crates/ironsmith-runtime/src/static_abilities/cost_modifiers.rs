@@ -267,6 +267,23 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             };
             ("{X}".to_string(), Some(format!("where X is {phrase}")))
         }
+        Value::LandsEnteredBattlefieldThisTurn(player) => {
+            let phrase = match player {
+                PlayerFilter::You => {
+                    "the number of lands that entered the battlefield under your control this turn"
+                        .to_string()
+                }
+                PlayerFilter::Opponent => {
+                    "the number of lands that entered the battlefield under opponents' control this turn"
+                        .to_string()
+                }
+                _ => format!(
+                    "the number of lands that entered the battlefield under {}'s control this turn",
+                    describe_player_filter_for_spell_target(player)
+                ),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
         Value::CountersOnSource(counter_type) => (
             "{1}".to_string(),
             Some(format!(

@@ -48,6 +48,7 @@ pub enum Value {
     LifeLostThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
     MaxCardsDrawnThisTurn(PlayerFilter),
+    LandsEnteredBattlefieldThisTurn(PlayerFilter),
     MaxCardsInHand(PlayerFilter),
     CardsInGraveyard(PlayerFilter),
     SpellsCastThisTurn(PlayerFilter),

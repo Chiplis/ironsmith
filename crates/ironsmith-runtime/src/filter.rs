@@ -3975,6 +3975,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
+            Value::LandsEnteredBattlefieldThisTurn(player) => {
+                format!(
+                    "the number of lands that entered the battlefield under {:?}'s control this turn",
+                    player
+                )
+            }
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
             }

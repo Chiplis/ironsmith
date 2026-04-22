@@ -61,6 +61,7 @@ use crate::cards::builders::{
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
+use crate::parse_trace;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -68,6 +69,21 @@ use crate::zone::Zone;
 use std::cell::OnceCell;
 
 mod sentence_followups;
+
+fn summarize_effects(effects: &[EffectAst]) -> String {
+    effects
+        .iter()
+        .map(|effect| {
+            let debug = format!("{effect:?}");
+            debug
+                .split(|ch: char| ch == ' ' || ch == '{' || ch == '(')
+                .next()
+                .unwrap_or("Effect")
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 pub(super) fn leading_may_actor_to_player(
     actor: LeadingMayActor,
@@ -602,6 +618,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
+        let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
         if let Some(mut matched) = try_parse_registered_sequence_rule(&sentences, sentence_idx)? {
             let stage = if let Some(feature_tag) = matched.feature_tag {
@@ -613,6 +631,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 format!("parse_effect_sentences:registry-hit:{}", matched.name)
             };
             parser_trace(stage.as_str(), sentence);
+            parse_trace::event(format!(
+                "sequence rule: {} -> {}",
+                matched.name,
+                summarize_effects(&matched.effects)
+            ));
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
             continue;
@@ -647,6 +670,9 @@ fn parse_effect_sentences_from_sentence_inputs(
                 &sentence_tokens,
             )? {
                 Some(PreParseFollowupResult::Handled { consumed_sentences }) => {
+                    parse_trace::event(format!(
+                        "pre-parse followup handled sentence(s): {consumed_sentences}"
+                    ));
                     sentence_idx += consumed_sentences;
                     continue;
                 }
@@ -657,6 +683,10 @@ fn parse_effect_sentences_from_sentence_inputs(
         parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
 
         let mut sentence_effects = if let Some(direct_effects) = parse_plan.direct_effects.take() {
+            parse_trace::event(format!(
+                "pre-parse plan supplied effects: {}",
+                summarize_effects(&direct_effects)
+            ));
             direct_effects
         } else if parse_plan.tokens.as_slice() == sentences[sentence_idx].lexed() {
             parse_effect_sentence_lexed(sentences[sentence_idx].lexed())?
@@ -729,6 +759,9 @@ fn parse_effect_sentences_from_sentence_inputs(
                     &mut sentence_effects,
                 )?
             {
+                parse_trace::event(format!(
+                    "post-parse followup handled sentence(s): {consumed_sentences}"
+                ));
                 sentence_idx += consumed_sentences;
                 continue;
             }
@@ -739,6 +772,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        parse_trace::event(format!("effects: {}", summarize_effects(&sentence_effects)));
         effects.extend(sentence_effects);
         sentence_idx += parse_plan.consumed_sentences;
     }
@@ -754,6 +788,10 @@ pub(crate) fn parse_effect_sentences_lexed(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
+        parse_trace::event(format!(
+            "exact effect bundle -> {}",
+            summarize_effects(&effects)
+        ));
         return Ok(effects);
     }
 

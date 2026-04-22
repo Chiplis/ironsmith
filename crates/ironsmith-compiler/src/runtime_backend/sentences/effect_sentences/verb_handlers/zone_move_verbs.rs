@@ -342,6 +342,13 @@ fn parse_draw_for_each_player_condition(
         })?,
     );
 
+    let mut draw_effect = draw_effect;
+    if let EffectAst::Draw { player, .. } = &mut draw_effect
+        && *player == PlayerAst::Implicit
+    {
+        *player = PlayerAst::You;
+    }
+
     let effects = vec![EffectAst::Conditional {
         predicate,
         if_true: vec![draw_effect],

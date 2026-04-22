@@ -628,6 +628,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    if let Some(compact) = describe_exile_graveyard_then_same_name_library_exile_bundle(&filtered) {
+        return compact;
+    }
 
     if visible_effects.len() == 2
         && let Some(for_players) =
@@ -952,6 +955,130 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             .downcast_ref::<crate::effects::WithIdEffect>()?
             .effect
             .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    }
+
+    fn basic_land_exception_graveyard_owner(filter: &ObjectFilter) -> Option<PlayerFilter> {
+        let [first, second] = filter.any_of.as_slice() else {
+            return None;
+        };
+        let branch_owner = |branch: &ObjectFilter| -> Option<PlayerFilter> {
+            if branch.zone != Some(Zone::Graveyard)
+                || !branch.any_of.is_empty()
+                || !branch.card_types.is_empty()
+                || !branch.all_card_types.is_empty()
+                || !branch.subtypes.is_empty()
+                || !branch.supertypes.is_empty()
+            {
+                return None;
+            }
+            branch.owner.clone()
+        };
+        let first_owner = branch_owner(first)?;
+        let second_owner = branch_owner(second)?;
+        if first_owner != second_owner {
+            return None;
+        }
+
+        let first_excludes_land =
+            first.excluded_card_types == [CardType::Land] && first.excluded_supertypes.is_empty();
+        let second_excludes_land =
+            second.excluded_card_types == [CardType::Land] && second.excluded_supertypes.is_empty();
+        let first_excludes_basic =
+            first.excluded_card_types.is_empty() && first.excluded_supertypes == [Supertype::Basic];
+        let second_excludes_basic = second.excluded_card_types.is_empty()
+            && second.excluded_supertypes == [Supertype::Basic];
+        if !((first_excludes_land && second_excludes_basic)
+            || (first_excludes_basic && second_excludes_land))
+        {
+            return None;
+        }
+
+        Some(first_owner)
+    }
+
+    fn describes_same_name_as_iterated(filter: &ObjectFilter) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                && constraint.tag.as_str() == "__it__"
+        })
+    }
+
+    fn describe_exile_graveyard_then_same_name_library_exile_bundle(
+        filtered: &[&Effect],
+    ) -> Option<String> {
+        let [
+            exile_effect,
+            for_each_search_effect,
+            for_each_move_effect,
+            shuffle_effect,
+        ] = filtered
+        else {
+            return None;
+        };
+
+        let tagged_exile = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let exile = tagged_exile
+            .effect
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        let ChooseSpec::All(exile_filter) = &exile.spec else {
+            return None;
+        };
+        let graveyard_owner = basic_land_exception_graveyard_owner(exile_filter)?;
+
+        let for_each = for_each_search_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+        if for_each.filter.zone != Some(Zone::Exile)
+            || !filter_is_tagged_as(&for_each.filter, tagged_exile.tag.as_str())
+        {
+            return None;
+        }
+
+        let [search_effect] = for_each.effects.as_slice() else {
+            return None;
+        };
+        let search = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        if !search.is_search
+            || choose_search_zones(search)? != vec![Zone::Library]
+            || search.chooser != PlayerFilter::You
+            || search.filter.owner.as_ref() != Some(&graveyard_owner)
+            || search.filter.zone != Some(Zone::Library)
+            || !describes_same_name_as_iterated(&search.filter)
+            || search.count.min != 0
+            || search.count.max.is_some()
+            || search.search_mode != SearchSelectionMode::AllMatching
+        {
+            return None;
+        }
+
+        let for_each_tagged =
+            for_each_move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        if for_each_tagged.tag != search.tag {
+            return None;
+        }
+        let [move_effect] = for_each_tagged.effects.as_slice() else {
+            return None;
+        };
+        let move_to_exile = downcast_move_to_zone(move_effect)?;
+        if !move_to_zone_uses_tag(move_to_exile, search.tag.as_str(), Zone::Exile) {
+            return None;
+        }
+
+        let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        if shuffle.player != graveyard_owner {
+            return None;
+        }
+
+        let graveyard = format!(
+            "{} graveyard",
+            describe_possessive_player_filter(&graveyard_owner)
+        );
+        let followup_possessive = if matches!(graveyard_owner, PlayerFilter::Target(_)) {
+            "that player's".to_string()
+        } else {
+            describe_possessive_player_filter(&graveyard_owner)
+        };
+        Some(format!(
+            "Exile all cards from {graveyard} other than basic land cards. For each card exiled this way, search {followup_possessive} library for all cards with the same name as that card and exile them. Then that player shuffles"
+        ))
     }
 
     fn downcast_create_token<'a>(
@@ -1733,7 +1860,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let set_pt = downcast_set_base_power_toughness(set_pt_effect)?;
         let created_tag = wrapped_effect_tag(create_effect)?;
         if create.count != Value::Fixed(1)
-            || create.enters_tapped
             || create.enters_attacking
             || create.exile_at_end_of_combat
             || create.sacrifice_at_end_of_combat
@@ -1749,7 +1875,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         }
         let token_blueprint = describe_token_blueprint(&create.token);
-        let token_phrase = token_blueprint.replacen("0/0 ", "X/X ", 1);
+        let dynamic_pt_prefix = if create.enters_tapped {
+            "tapped X/X "
+        } else {
+            "X/X "
+        };
+        let token_phrase = token_blueprint.replacen("0/0 ", dynamic_pt_prefix, 1);
         if token_phrase == token_blueprint {
             return None;
         }
@@ -1766,8 +1897,70 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             "Create {}{}, where X is {}",
             with_indefinite_article(&token_phrase),
             controller_suffix,
-            describe_value(&set_pt.power)
+            describe_dynamic_token_pt_value(&set_pt.power)
         ))
+    }
+
+    fn describe_dynamic_token_pt_value(value: &Value) -> String {
+        match value {
+            Value::Count(filter) => describe_dynamic_token_count_value(filter, 1)
+                .unwrap_or_else(|| describe_value(value)),
+            Value::CountScaled(filter, multiplier) => {
+                describe_dynamic_token_count_value(filter, *multiplier)
+                    .unwrap_or_else(|| describe_value(value))
+            }
+            _ => describe_value(value),
+        }
+    }
+
+    fn describe_dynamic_token_count_value(
+        filter: &ObjectFilter,
+        multiplier: i32,
+    ) -> Option<String> {
+        let subject = describe_filter_subject_this_way(filter)?;
+        Some(if multiplier == 1 {
+            format!("the number of {subject}")
+        } else if multiplier == 2 {
+            format!("twice the number of {subject}")
+        } else {
+            format!("{multiplier} times the number of {subject}")
+        })
+    }
+
+    fn describe_filter_subject_this_way(filter: &ObjectFilter) -> Option<String> {
+        let action = filter.tagged_constraints.iter().find_map(|constraint| {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                return None;
+            }
+            tagged_this_way_action(constraint.tag.as_str())
+        })?;
+        let mut subject = describe_count_filter_value_subject(filter);
+        for suffix in [
+            " in exile",
+            " in all graveyards",
+            " in a graveyard",
+            " in graveyard",
+            " on the battlefield",
+        ] {
+            if let Some(stripped) = subject.strip_suffix(suffix) {
+                subject = stripped.to_string();
+                break;
+            }
+        }
+        Some(format!("{subject} {action} this way"))
+    }
+
+    fn tagged_this_way_action(tag: &str) -> Option<&'static str> {
+        if let Some(action) = tag_action_from_name(tag) {
+            return Some(action);
+        }
+        let base = tag.split('_').next().unwrap_or(tag);
+        match base {
+            "exile" => Some("exiled"),
+            "discard" => Some("discarded"),
+            "sacrifice" => Some("sacrificed"),
+            _ => None,
+        }
     }
 
     fn describe_reveal_power_cards_for_mana_bundle(filtered: &[&Effect]) -> Option<String> {
@@ -12815,6 +13008,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             let player_filter_text = describe_player_filter(&for_players.filter);
             let each_player = strip_leading_article(&player_filter_text);
+            if conditional.if_true.len() == 1
+                && let Some(draw) =
+                    conditional.if_true[0].downcast_ref::<crate::effects::DrawCardsEffect>()
+                && draw.player == PlayerFilter::You
+                && draw.count == Value::Fixed(1)
+            {
+                return format!("you draw a card for each {each_player} who {relative}");
+            }
+            if conditional.if_true.len() == 1
+                && let Some(create) =
+                    conditional.if_true[0].downcast_ref::<crate::effects::CreateTokenEffect>()
+                && create.controller == PlayerFilter::You
+                && create.count == Value::Fixed(1)
+            {
+                let token_text = describe_effect(&conditional.if_true[0]);
+                return format!("{token_text} for each {each_player} who {relative}");
+            }
             if conditional.if_true.len() == 1
                 && let Some(damage) =
                     conditional.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()

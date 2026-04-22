@@ -786,6 +786,60 @@ fn compile_oracle_text_uses_builtin_linked_face_metadata_for_transform_pairs() {
 }
 
 #[test]
+fn compile_oracle_text_trace_is_card_aware_instead_of_parser_firehose() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    write_cards_json(&cards_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Lightning Bolt")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--trace")
+        .arg("--no-db")
+        .output()
+        .expect("run compile_oracle_text --trace");
+    assert!(
+        output.status.success(),
+        "compile_oracle_text --trace should succeed"
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    let stderr =
+        String::from_utf8(output.stderr).expect("compile_oracle_text stderr should be utf8");
+
+    assert!(
+        stdout.contains("Compiled abilities/effects"),
+        "expected normal compile output on stdout, got {stdout}"
+    );
+    assert!(
+        stderr.contains("Trace: Lightning Bolt"),
+        "expected trace heading in stderr, got {stderr}"
+    );
+    assert!(
+        stderr.contains("line 3 parse"),
+        "expected line-level parse trace in stderr, got {stderr}"
+    );
+    assert!(
+        stderr.contains("effect sentence"),
+        "expected effect sentence trace in stderr, got {stderr}"
+    );
+    assert!(
+        !stderr.contains("OwnedLexToken")
+            && !stderr.contains("backtrack")
+            && !stderr.contains("> punct"),
+        "trace should not expose the low-level parser firehose, got {stderr}"
+    );
+    assert!(
+        stderr.lines().count() < 160,
+        "trace should stay compact for a simple card, got {} lines:\n{stderr}",
+        stderr.lines().count()
+    );
+}
+
+#[test]
 fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
