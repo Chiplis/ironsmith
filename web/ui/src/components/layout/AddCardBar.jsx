@@ -143,7 +143,6 @@ export default function AddCardBar({
         <select
           className={selectPill}
           value={holdRule}
-          disabled={matchLocked}
           onChange={(event) => setHoldRule(event.target.value)}
           aria-label="Auto-pass hold rule"
         >
@@ -158,7 +157,6 @@ export default function AddCardBar({
         <label className="toolbar-checkbox add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer uppercase">
           <Checkbox
             checked={autoPassEnabled}
-            disabled={matchLocked}
             onCheckedChange={(value) => setAutoPassEnabled(!!value)}
             className="h-3.5 w-3.5"
           />

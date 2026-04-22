@@ -7721,6 +7721,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 }
                 return format!("there is {}", described_filter.description());
             }
+            if described_filter.could_be_targeted_by.is_some() {
+                let described =
+                    strip_indefinite_article(&described_filter.description()).to_string();
+                let noun = pluralize_noun_phrase(&described);
+                return format!(
+                    "{} {} one or more {}",
+                    subject,
+                    player_verb(&subject, "control", "controls"),
+                    noun
+                );
+            }
             let described = with_indefinite_article(strip_indefinite_article(&described_filter.description()));
             format!(
                 "{} {} {}",

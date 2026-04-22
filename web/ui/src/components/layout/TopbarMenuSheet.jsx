@@ -83,7 +83,6 @@ export default function TopbarMenuSheet({
   const perspective = state?.perspective;
   const me = players.find((player) => player.id === perspective) || players[0];
   const lobbyBusy = multiplayer.mode !== "idle";
-  const matchLocked = multiplayer.matchStarted;
   const addLocked = multiplayer.mode !== "idle";
   const compiledLabel = useMemo(() => {
     if (!Number.isFinite(wasmRegistryCount) || wasmRegistryCount < 0) return "-";
@@ -391,7 +390,6 @@ export default function TopbarMenuSheet({
                 <select
                   className={inputClass}
                   value={holdRule}
-                  disabled={matchLocked}
                   onChange={(event) => setHoldRule(event.target.value)}
                 >
                   <option value="never">Never</option>
@@ -407,7 +405,6 @@ export default function TopbarMenuSheet({
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
                     checked={autoPassEnabled}
-                    disabled={matchLocked}
                     onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
                   />
                   Auto-pass

@@ -355,6 +355,114 @@ fn describe_copy_spell_for_each_target(
     text
 }
 
+fn copy_spell_from_effect(effect: &Effect) -> Option<&crate::effects::CopySpellEffect> {
+    if let Some(copy_spell) = effect.downcast_ref::<crate::effects::CopySpellEffect>() {
+        return Some(copy_spell);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return copy_spell_from_effect(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return copy_spell_from_effect(&tagged.effect);
+    }
+    None
+}
+
+fn tagged_copy_spell_from_effect(
+    effect: &Effect,
+) -> Option<(&crate::TagKey, &crate::effects::CopySpellEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let copy_spell = copy_spell_from_effect(&tagged.effect)?;
+    Some((&tagged.tag, copy_spell))
+}
+
+fn retarget_fixed_spec_uses_chosen_tag(spec: &ChooseSpec, chosen_tag: &crate::TagKey) -> bool {
+    match spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag == *chosen_tag
+            })
+        }
+        ChooseSpec::Tagged(tag) => tag == chosen_tag,
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            retarget_fixed_spec_uses_chosen_tag(inner, chosen_tag)
+        }
+        _ => false,
+    }
+}
+
+fn copy_retarget_reference_noun(filter: &ObjectFilter) -> &'static str {
+    if filter.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if filter.card_types.contains(&CardType::Artifact) {
+        "artifact"
+    } else if filter.card_types.contains(&CardType::Enchantment) {
+        "enchantment"
+    } else if filter.card_types.contains(&CardType::Land) {
+        "land"
+    } else if filter.zone == Some(Zone::Battlefield) {
+        "permanent"
+    } else {
+        "object"
+    }
+}
+
+fn describe_choose_copy_spell_and_retarget_copy_to_chosen(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, copy_effect, retarget_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.is_search || !choose.count.is_single() {
+        return None;
+    }
+
+    let (copied_tag, copy_spell) = tagged_copy_spell_from_effect(copy_effect)?;
+    if copy_spell.count != Value::Fixed(1)
+        || !copy_spell.removed_supertypes.is_empty()
+        || copy_spell.copier != choose.chooser
+    {
+        return None;
+    }
+    let copied_spell_text = describe_stack_object_copy_target(&copy_spell.target);
+    if copied_spell_text != "that spell" && copied_spell_text != "this spell" {
+        return None;
+    }
+
+    let retarget = retarget_effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
+    if retarget.chooser != choose.chooser
+        || retarget.require_change
+        || retarget.new_target_restriction.is_some()
+        || !matches!(&retarget.target, ChooseSpec::Tagged(tag) if tag == copied_tag)
+    {
+        return None;
+    }
+    let crate::effects::RetargetMode::OneToFixed(fixed_spec) = &retarget.mode else {
+        return None;
+    };
+    if !retarget_fixed_spec_uses_chosen_tag(fixed_spec, &choose.tag) {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    let choose_verb = player_verb(&chooser, "choose", "chooses");
+    let noun = copy_retarget_reference_noun(&choose.filter);
+    let plural_noun = pluralize_noun_phrase(noun);
+    let copy_verb = if copy_spell.copier == PlayerFilter::You {
+        "Copy".to_string()
+    } else {
+        let copier = describe_player_filter(&copy_spell.copier);
+        format!(
+            "{} {}",
+            capitalize_first(&copier),
+            player_verb(&copier, "copy", "copies")
+        )
+    };
+    Some(format!(
+        "{chooser} {choose_verb} one of those {plural_noun}. {copy_verb} {copied_spell_text}. The copy targets the chosen {noun}"
+    ))
+}
+
 fn describe_phase_in_out_pair(first: &Effect, second: &Effect) -> Option<String> {
     let phase_in = first.downcast_ref::<crate::effects::PhaseInEffect>()?;
     let phase_out = second.downcast_ref::<crate::effects::PhaseOutEffect>()?;
@@ -514,6 +622,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         .collect::<Vec<_>>();
 
     if let Some(compact) = describe_sacrifice_source_then_return_with_counters(&visible_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_choose_copy_spell_and_retarget_copy_to_chosen(&visible_effects)
+    {
         return compact;
     }
 

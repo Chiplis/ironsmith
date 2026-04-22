@@ -3,7 +3,10 @@ import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
-import { priorityHoldReason } from "@/lib/priority-automation";
+import {
+  buildMultiplayerSmartAutoPass,
+  priorityHoldReason,
+} from "@/lib/priority-automation";
 import { createWasmInteractionGate } from "@/lib/wasmInteractionGate";
 import {
   buildTriggerOrderingKey,
@@ -468,6 +471,7 @@ export function GameProvider({ children }) {
   const semanticThresholdRef = useRef(semanticThreshold);
   const stateRef = useRef(state);
   const multiplayerActiveRef = useRef(false);
+  const multiplayerAutoPassAttemptRef = useRef("");
   const stickyViewedCardsRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
   const recentTargetSubmitRef = useRef({
@@ -1280,6 +1284,67 @@ export function GameProvider({ children }) {
       .setAutoCleanupDiscard(autoPassEnabled && !multiplayer.matchStarted)
       .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
   }, [autoPassEnabled, game, multiplayer.matchStarted]);
+
+  useEffect(() => {
+    if (!multiplayer.matchStarted) {
+      multiplayerAutoPassAttemptRef.current = "";
+      return;
+    }
+    if (multiplayer.submittingAction) return;
+
+    const currentState = state;
+    const result = buildMultiplayerSmartAutoPass({
+      autoPassEnabled,
+      holdRule,
+      decision: currentState?.decision || null,
+      currentState,
+    });
+
+    if (!result.command) {
+      multiplayerAutoPassAttemptRef.current = "";
+      return;
+    }
+
+    const decision = currentState?.decision || null;
+    const passKey = [
+      currentState?.snapshot_id ?? "",
+      currentState?.turn_number ?? "",
+      currentState?.phase ?? "",
+      currentState?.step ?? "",
+      currentState?.priority_player ?? "",
+      currentState?.stack_size ?? "",
+      decision?.player ?? "",
+      result.command.action_index,
+    ].join("|");
+
+    if (multiplayerAutoPassAttemptRef.current === passKey) return;
+    multiplayerAutoPassAttemptRef.current = passKey;
+
+    let syncedCommand;
+    try {
+      syncedCommand = serializeMultiplayerCommand(result.command, currentState);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      queueMicrotask(() => setStatus(`Auto-pass failed: ${message}`, true));
+      console.error(err);
+      return;
+    }
+
+    submitMultiplayerCommand(syncedCommand, "Auto-passed priority").catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      emitSyncFailureNotice("Auto-pass failed", message);
+      setStatus(`Auto-pass failed: ${message}`, true);
+      console.error(err);
+    });
+  }, [
+    autoPassEnabled,
+    holdRule,
+    multiplayer.matchStarted,
+    multiplayer.submittingAction,
+    setStatus,
+    state,
+    submitMultiplayerCommand,
+  ]);
 
   const refresh = useCallback(
     async (message) => {

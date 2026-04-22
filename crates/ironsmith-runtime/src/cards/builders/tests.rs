@@ -2478,6 +2478,22 @@ fn beamsplitter_mage_parses_typed_spell_and_copy_references() {
             && effects_debug.contains("RetargetStackObjectEffect"),
         "expected tagged copy plus retarget effect, got {effects_debug}"
     );
+
+    let rendered = debug_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("if you control one or more other creatures that spell could target"),
+        "expected targetability condition to render with one-or-more wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you choose one of those creatures")
+            && rendered.contains("Copy that spell")
+            && rendered.contains("The copy targets the chosen creature"),
+        "expected choose/copy/retarget sequence to render oracle-like text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tags it as") && !rendered.contains("Change a target of the copy"),
+        "expected internal tags and retarget scaffolding to stay out of rendered text, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
