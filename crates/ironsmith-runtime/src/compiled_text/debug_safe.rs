@@ -323,6 +323,20 @@ fn compact_debug_safe_ast_scaffold_line(line: &str) -> Option<String> {
 }
 
 fn compact_debug_safe_this_or_another_enters(line: &str) -> Option<String> {
+    if let Some(rest) = strip_prefix_ascii_ci(line, "When this creature enters or ") {
+        for article in ["a ", "an "] {
+            if let Some(rest) = strip_prefix_ascii_ci(rest, article)
+                && let Some((kind, tail)) =
+                    split_once_ascii_ci(rest, " you control other than this enters")
+            {
+                return Some(format!(
+                    "Whenever this creature or another {} you control enters{}",
+                    kind.trim(),
+                    tail
+                ));
+            }
+        }
+    }
     let Some(rest) = strip_prefix_ascii_ci(line, "When this creature enters or another ") else {
         return None;
     };
@@ -480,6 +494,9 @@ fn normalize_debug_safe_generic_surface(line: &str) -> String {
         .replace("All auras or equipment ", "All Auras and Equipment ");
     normalized = normalize_debug_safe_mana_symbol_case(&normalized);
     if let Some(compact) = compact_debug_safe_generic_sentence_patterns(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_debug_safe_this_or_another_enters(&normalized) {
         normalized = compact;
     }
     let compact_lower = compact_whitespace(&normalized).to_ascii_lowercase();

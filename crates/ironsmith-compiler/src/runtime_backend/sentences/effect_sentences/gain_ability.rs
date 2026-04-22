@@ -814,6 +814,12 @@ pub(crate) fn parse_gain_ability_sentence(
     let Some(gain_token_idx) = token_index_for_word_index(tokens, gain_idx) else {
         return Ok(None);
     };
+    if let Some((Verb::Create, create_idx)) = find_verb(tokens)
+        && create_idx < gain_token_idx
+        && word_slice_contains(&word_list, "token")
+    {
+        return Ok(None);
+    }
     let losing = matches!(word_list[gain_idx], "lose" | "loses");
 
     let after_gain = &word_list[gain_idx + 1..];
@@ -968,10 +974,12 @@ pub(crate) fn parse_gain_ability_sentence(
         if become_subject_tokens.is_empty() || become_tail_tokens.is_empty() {
             None
         } else {
-            Some(parse_become_clause(
-                &become_subject_tokens,
-                &become_tail_tokens,
-            )?)
+            let mut become_effect =
+                parse_become_clause(&become_subject_tokens, &become_tail_tokens)?;
+            if has_explicit_duration {
+                apply_gain_clause_duration_to_leading_effect(&mut become_effect, &duration);
+            }
+            Some(become_effect)
         }
     } else {
         None
@@ -1257,6 +1265,66 @@ pub(crate) fn parse_gain_ability_sentence(
     effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
 
     Ok(Some(effects))
+}
+
+fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration: &Until) {
+    match effect {
+        EffectAst::BecomeBasicLandTypeChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeCreatureTypeChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeColorChoice {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeCopy {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetBasePowerToughness {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeBasePtCreature {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::AddCardTypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::RemoveCardTypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::AddSubtypes {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::BecomeBasicLandType {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetColors {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::MakeColorless {
+            duration: effect_duration,
+            ..
+        }
+        | EffectAst::SetBasePower {
+            duration: effect_duration,
+            ..
+        } => {
+            *effect_duration = duration.clone();
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(

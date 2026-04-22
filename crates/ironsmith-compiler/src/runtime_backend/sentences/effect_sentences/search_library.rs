@@ -699,6 +699,21 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             target_words.as_slice(),
             ["it"] | ["them"] | ["that"] | ["that", "object"] | ["that", "card"]
         ) {
+            if !trailing_tokens.is_empty() {
+                return append_trailing(vec![
+                    EffectAst::MoveToZone {
+                        target,
+                        zone: Zone::Library,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    },
+                    EffectAst::ShuffleLibrary {
+                        player: PlayerAst::ItsOwner,
+                    },
+                ]);
+            }
             return append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
                 target,
                 player: PlayerAst::ItsOwner,

@@ -519,15 +519,23 @@ fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> boo
 }
 
 fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
-    tokens
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, token)| {
-            let is_separator = token.kind == TokenKind::Comma
-                || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
-            is_separator.then_some(idx)
-        })
-        .collect()
+    let mut inside_quotes = false;
+    let mut indices = Vec::new();
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes {
+            continue;
+        }
+        let is_separator = token.kind == TokenKind::Comma
+            || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
+        if is_separator {
+            indices.push(idx);
+        }
+    }
+    indices
 }
 
 fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -1447,8 +1455,13 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
 fn split_on_comma_or_semicolon_lexed(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut start = 0usize;
+    let mut inside_quotes = false;
     for (idx, token) in tokens.iter().enumerate() {
-        if !matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon) {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes || !matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon) {
             continue;
         }
         let current = trim_lexed_commas(&tokens[start..idx]);

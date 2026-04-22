@@ -732,8 +732,18 @@ where
     P: Parser<LexStream<'a>, (), ErrMode<ContextError>>,
 {
     let segment = (move |input: &mut LexStream<'a>| {
+        let mut inside_quotes = false;
         while input.peek_token().is_some() {
-            if peek(make_separator()).parse_next(input).is_ok() {
+            if input
+                .peek_token()
+                .is_some_and(|token| token.kind == TokenKind::Quote)
+            {
+                inside_quotes = !inside_quotes;
+                any.parse_next(input)?;
+                continue;
+            }
+
+            if !inside_quotes && peek(make_separator()).parse_next(input).is_ok() {
                 return Ok(());
             }
 

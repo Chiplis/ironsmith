@@ -1437,7 +1437,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
 
     let number_idx = etb_word_offset(&clause_words, |word| word == "number")?;
     let multiplier = match clause_words.get(3..number_idx) {
-        Some([]) | Some(["the"]) => 1,
+        Some([]) | Some(["the"]) | Some(["the", "total"]) => 1,
         Some(["twice"]) | Some(["twice", "the"]) | Some(["two", "times"])
         | Some(["two", "times", "the"]) => 2,
         _ => return None,

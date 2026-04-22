@@ -795,8 +795,14 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     for segment in segments {
         let starts_with_for_each_player_or_opponent = starts_with_each_player_or_opponent(segment);
         let mut split_point = None;
+        let mut inside_quotes = false;
         for i in 0..segment.len().saturating_sub(1) {
-            if matches!(segment[i].kind, TokenKind::Comma)
+            if segment[i].kind == TokenKind::Quote {
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+            if !inside_quotes
+                && matches!(segment[i].kind, TokenKind::Comma)
                 && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
             {
                 let before_then = trim_lexed_commas(&segment[..i]);
@@ -914,9 +920,14 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
     for segment in segments {
         let mut start = 0usize;
         let mut split_any = false;
+        let mut inside_quotes = false;
 
         for idx in 0..segment.len() {
-            if !matches!(segment[idx].kind, TokenKind::Comma) {
+            if segment[idx].kind == TokenKind::Quote {
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+            if inside_quotes || !matches!(segment[idx].kind, TokenKind::Comma) {
                 continue;
             }
             let before = trim_lexed_commas(&segment[start..idx]);

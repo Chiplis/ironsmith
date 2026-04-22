@@ -13813,10 +13813,23 @@ fn unwrap_for_each_attachment_wrappers(effect: &Effect) -> &Effect {
 fn tagged_create_token_effect(
     effect: &Effect,
 ) -> Option<(&TagKey, &crate::effects::CreateTokenEffect)> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return tagged_create_token_effect(&with_id.effect);
+    }
     let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
     let create_token = unwrap_for_each_attachment_wrappers(&tagged.effect)
         .downcast_ref::<crate::effects::CreateTokenEffect>()?;
     Some((&tagged.tag, create_token))
+}
+
+fn created_token_effect(effect: &Effect) -> Option<&crate::effects::CreateTokenEffect> {
+    if let Some((_, create_token)) = tagged_create_token_effect(effect) {
+        return Some(create_token);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return created_token_effect(&with_id.effect);
+    }
+    unwrap_for_each_attachment_wrappers(effect).downcast_ref::<crate::effects::CreateTokenEffect>()
 }
 
 fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) -> bool {
@@ -13827,6 +13840,25 @@ fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) -> bool {
         }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_references_exact_tag(inner, tag)
+        }
+        _ => false,
+    }
+}
+
+fn choose_spec_references_created_object(spec: &ChooseSpec, tag: Option<&TagKey>) -> bool {
+    if let Some(tag) = tag {
+        return choose_spec_references_exact_tag(spec, tag);
+    }
+    match spec {
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
+            filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_references_created_object(inner, tag)
         }
         _ => false,
     }
@@ -13864,10 +13896,12 @@ fn describe_for_each_created_token_attachment(
     let [create_effect, attach_effect] = for_each.effects.as_slice() else {
         return None;
     };
-    let (created_tag, create_token) = tagged_create_token_effect(create_effect)?;
-    let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    let created_tag = tagged_create_token_effect(create_effect).map(|(tag, _)| tag);
+    let create_token = created_token_effect(create_effect)?;
+    let attach = unwrap_for_each_attachment_wrappers(attach_effect)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
     if !matches!(attach.target, ChooseSpec::Iterated)
-        || !choose_spec_references_exact_tag(&attach.objects, created_tag)
+        || !choose_spec_references_created_object(&attach.objects, created_tag)
         || create_token.count != Value::Fixed(1)
         || !matches!(&create_token.controller, PlayerFilter::You)
         || create_token.controller_target.is_some()

@@ -11,6 +11,7 @@ use crate::zone::Zone;
 
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
+use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{render_token_slice, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -1223,7 +1224,7 @@ pub(crate) fn parse_investigate(
         return Ok(EffectAst::Investigate { count, player });
     }
 
-    let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
+    let (mut count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
         match first {
             "once" => (Value::Fixed(1), 1),
             "twice" => (Value::Fixed(2), 1),
@@ -1243,6 +1244,18 @@ pub(crate) fn parse_investigate(
 
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = token_word_refs(&trailing);
+    if matches!(count, Value::X)
+        && trailing_words
+            .first()
+            .is_some_and(|word| *word == "time" || *word == "times")
+        && let Some(where_idx) = trailing_words.iter().position(|word| *word == "where")
+    {
+        let where_token_idx = token_index_for_word_index(&trailing, where_idx).unwrap_or(0);
+        if let Some(where_count) = parse_where_x_value_clause(&trailing[where_token_idx..]) {
+            count = where_count;
+            return Ok(EffectAst::Investigate { count, player });
+        }
+    }
     let trailing_ok = trailing_words.is_empty()
         || trailing_words.as_slice() == ["time"]
         || trailing_words.as_slice() == ["times"];

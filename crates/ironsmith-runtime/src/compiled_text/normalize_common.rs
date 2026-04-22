@@ -3577,6 +3577,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Whenever this creature or another Ally you control enters, you may put a +1/+1 counter on this creature".to_string();
     }
+    for article in ["a", "an"] {
+        let marker = format!(
+            "When this creature enters or {article} Ally you control other than this enters, "
+        );
+        if let Some(rest) = normalized.strip_prefix(&marker) {
+            return format!("Whenever this creature or another Ally you control enters, {rest}");
+        }
+    }
     if normalized == "When this creature enters or When this creature dies, Surveil 1" {
         return "When this creature enters or dies, surveil 1".to_string();
     }
@@ -6859,7 +6867,12 @@ pub(super) fn describe_apply_continuous_clauses(
             ) {
                 let ability_text = capitalize_first(&describe_inline_ability(ability))
                     .replace(". otherwise,", ". Otherwise,");
-                clauses.push(format!("{has} \"{ability_text}\""));
+                let grant_verb = if plural_target && effect.until == crate::effect::Until::Forever {
+                    has
+                } else {
+                    gains
+                };
+                clauses.push(format!("{grant_verb} \"{ability_text}\""));
             } else {
                 clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
             }

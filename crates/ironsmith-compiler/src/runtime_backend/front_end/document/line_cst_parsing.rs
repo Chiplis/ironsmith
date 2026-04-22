@@ -88,9 +88,14 @@ pub(super) fn parse_triggered_line_cst(
     let whole_line_parse = parse_triggered_line_lexed(tokens_without_cap);
     let mut best_supported_split = None;
     let mut best_fallback_split = None;
+    let mut inside_quotes = false;
 
     for (separator_idx, separator) in tokens_without_cap.iter().enumerate() {
-        if separator.kind != TokenKind::Comma || separator_idx <= 1 {
+        if separator.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes || separator.kind != TokenKind::Comma || separator_idx <= 1 {
             continue;
         }
 

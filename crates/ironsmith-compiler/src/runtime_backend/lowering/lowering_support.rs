@@ -465,6 +465,17 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         }
     }
 
+    fn predicate_can_promote_to_intervening_if(predicate: &PredicateAst) -> bool {
+        match predicate {
+            PredicateAst::TargetMatches(_) => false,
+            PredicateAst::And(left, right) => {
+                predicate_can_promote_to_intervening_if(left)
+                    && predicate_can_promote_to_intervening_if(right)
+            }
+            _ => true,
+        }
+    }
+
     fn extract_exact_other_attack_predicate(
         predicate: PredicateAst,
     ) -> (Option<u32>, Option<PredicateAst>) {
@@ -505,6 +516,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         } = &normalized[0]
         && if_false.is_empty()
         && !if_true.is_empty()
+        && predicate_can_promote_to_intervening_if(predicate)
     {
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));

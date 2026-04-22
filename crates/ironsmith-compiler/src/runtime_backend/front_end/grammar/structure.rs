@@ -1431,13 +1431,32 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     let after_first_comma = trim_lexed_commas(after_first_comma);
     let (_, after_if) = primitives::parse_prefix(after_first_comma, primitives::kw("if"))?;
 
-    for comma_idx in (0..after_if.len())
-        .rev()
-        .filter(|idx| after_if[*idx].is_comma())
-    {
+    let mut comma_indices = Vec::new();
+    let mut inside_quotes = false;
+    for (comma_idx, token) in after_if.iter().enumerate() {
+        if is_sentence_quote(token) {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes || !token.is_comma() {
+            continue;
+        }
+        comma_indices.push(comma_idx);
+    }
+
+    for comma_idx in comma_indices.into_iter().rev() {
         let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
         let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
         if predicate_tokens.is_empty() || effects_tokens.is_empty() {
+            continue;
+        }
+        if predicate_tokens.iter().any(|token| token.is_period()) {
+            continue;
+        }
+        if effects_tokens
+            .first()
+            .is_some_and(|token| token.is_word("and") || token.is_word("then"))
+        {
             continue;
         }
         if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
