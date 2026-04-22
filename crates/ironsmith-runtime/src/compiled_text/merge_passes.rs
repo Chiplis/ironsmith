@@ -260,6 +260,13 @@ fn subtype_addition_predicate(predicate: &str) -> Option<String> {
     None
 }
 
+fn indefinite_article_for_phrase(phrase: &str) -> &'static str {
+    match phrase.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    }
+}
+
 fn singularize_terminal_subject_word(phrase: &str) -> String {
     if let Some((head, tail)) = phrase.rsplit_once(' ') {
         let singular = singularize_subject_word(tail);
@@ -1035,6 +1042,24 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                 let subject = each_subject
                     .as_deref()
                     .unwrap_or_else(|| start.subject.as_str());
+                if !plural_subject {
+                    let mut combined = format!(
+                        "{condition}, {subject} is {} {replacement_subtypes}",
+                        indefinite_article_for_phrase(&replacement_subtypes)
+                    );
+                    if let Some(pt) = base_pt {
+                        combined.push_str(" with base power and toughness ");
+                        combined.push_str(&pt);
+                    }
+                    if !granted_predicates.is_empty() {
+                        combined.push_str(" and has ");
+                        combined.push_str(&join_with_and(&granted_predicates));
+                    }
+                    merged.push(combined);
+                    idx += consumed;
+                    continue;
+                }
+
                 let mut descriptor = String::new();
                 if let Some(pt) = base_pt {
                     descriptor.push_str(&pt);

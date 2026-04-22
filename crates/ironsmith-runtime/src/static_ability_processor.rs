@@ -274,12 +274,6 @@ pub fn generate_continuous_effects_from_static_abilities(
                             effect.originating_static_ability = Some(static_ability.clone());
                         }
                     }
-                    if ability_effects.len() > 1 {
-                        let group = next_static_effect_group_id(&mut next_group_id);
-                        for effect in &mut ability_effects {
-                            effect.group = Some(group);
-                        }
-                    }
                     object_effects.extend(ability_effects.into_iter().map(|effect| {
                         GeneratedStaticEffect {
                             effect,

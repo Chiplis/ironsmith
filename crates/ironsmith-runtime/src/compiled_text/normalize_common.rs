@@ -2730,6 +2730,24 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Creatures your opponents control get -1/-0".to_string();
     }
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "an opponent's ")
+        && let Some((objects, predicate)) = split_once_ascii_ci(rest, " get ")
+    {
+        return format!(
+            "{} your opponents control get {}",
+            capitalize_first(objects.trim()),
+            predicate.trim()
+        );
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "an opponent's ")
+        && let Some((objects, predicate)) = split_once_ascii_ci(rest, " gets ")
+    {
+        return format!(
+            "{} your opponents control get {}",
+            capitalize_first(objects.trim()),
+            predicate.trim()
+        );
+    }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "opponent's ")
         && let Some((objects, predicate)) = split_once_ascii_ci(rest, " get ")
     {
@@ -2743,7 +2761,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         && let Some((objects, predicate)) = split_once_ascii_ci(rest, " gets ")
     {
         return format!(
-            "{} your opponents control gets {}",
+            "{} your opponents control get {}",
             capitalize_first(objects.trim()),
             predicate.trim()
         );
