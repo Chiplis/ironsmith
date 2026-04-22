@@ -242,6 +242,175 @@ fn is_creature_addition_predicate(predicate: &str) -> bool {
         || lower == "creatures in addition to their other types"
 }
 
+fn subtype_addition_predicate(predicate: &str) -> Option<String> {
+    let trimmed = predicate.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for suffix in [
+        " in addition to its other types",
+        " in addition to their other types",
+    ] {
+        if lower.ends_with(suffix) {
+            let subtype = trimmed[..trimmed.len() - suffix.len()].trim();
+            if subtype.is_empty() || is_creature_addition_predicate(trimmed) {
+                return None;
+            }
+            return Some(singularize_terminal_subject_word(subtype));
+        }
+    }
+    None
+}
+
+fn singularize_terminal_subject_word(phrase: &str) -> String {
+    if let Some((head, tail)) = phrase.rsplit_once(' ') {
+        let singular = singularize_subject_word(tail);
+        if head.trim().is_empty() {
+            singular
+        } else {
+            format!("{head} {singular}")
+        }
+    } else {
+        singularize_subject_word(phrase)
+    }
+}
+
+fn singularize_subject_word(word: &str) -> String {
+    let lower = word.to_ascii_lowercase();
+    let preserve_cap = word
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase());
+    let make_case = |singular: &str| {
+        if preserve_cap {
+            capitalize_first(singular)
+        } else {
+            singular.to_string()
+        }
+    };
+
+    if lower == "mice" {
+        return make_case("mouse");
+    }
+    if lower == "elves" {
+        return make_case("elf");
+    }
+    if lower == "dwarves" {
+        return make_case("dwarf");
+    }
+    if lower.ends_with("ies") && word.len() > 3 {
+        return format!("{}y", &word[..word.len() - 3]);
+    }
+    if lower.ends_with('s') && !lower.ends_with("ss") && word.len() > 1 {
+        return word[..word.len() - 1].to_string();
+    }
+    word.to_string()
+}
+
+fn singularize_filter_subject(subject: &str) -> String {
+    let mut singular = subject.trim().to_string();
+    for (plural, singular_word) in [
+        ("permanents", "permanent"),
+        ("creatures", "creature"),
+        ("artifacts", "artifact"),
+        ("enchantments", "enchantment"),
+        ("lands", "land"),
+        ("planeswalkers", "planeswalker"),
+        ("battles", "battle"),
+        ("spells", "spell"),
+        ("cards", "card"),
+        ("tokens", "token"),
+        ("abilities", "ability"),
+        ("sources", "source"),
+    ] {
+        singular = replace_ascii_word_ci(&singular, plural, singular_word);
+    }
+    compact_repeated_mana_value_or_subject(&singular)
+}
+
+fn compact_repeated_mana_value_or_subject(subject: &str) -> String {
+    let lower = subject.to_ascii_lowercase();
+    for suffix in [
+        " you control",
+        " you don't control",
+        " that player controls",
+        " you own",
+        " you don't own",
+        " an opponent owns",
+        " a player owns",
+        " target player owns",
+        " target opponent owns",
+    ] {
+        if !lower.ends_with(suffix) {
+            continue;
+        }
+        let separator = format!("{suffix} or ");
+        let Some(separator_idx) = lower.find(&separator) else {
+            continue;
+        };
+        let left = &subject[..separator_idx + suffix.len()];
+        let right = &subject[separator_idx + separator.len()..];
+        let Some((left_base, left_value)) = split_mana_value_clause_with_suffix(left, suffix)
+        else {
+            continue;
+        };
+        let Some((right_base, right_value)) = split_mana_value_clause_with_suffix(right, suffix)
+        else {
+            continue;
+        };
+        if !left_value.eq_ignore_ascii_case(right_value) {
+            continue;
+        }
+        return format!(
+            "{} and {} {} with mana value {}",
+            left_base.trim(),
+            right_base.trim(),
+            suffix.trim(),
+            left_value.trim()
+        );
+    }
+    subject.to_string()
+}
+
+fn split_mana_value_clause_with_suffix<'a>(
+    clause: &'a str,
+    suffix: &str,
+) -> Option<(&'a str, &'a str)> {
+    let (base, value_with_suffix) = clause.split_once(" with mana value ")?;
+    let value = value_with_suffix.strip_suffix(suffix)?;
+    Some((base.trim(), value.trim()))
+}
+
+fn replace_ascii_word_ci(input: &str, from: &str, to: &str) -> String {
+    let lower = input.to_ascii_lowercase();
+    let mut output = String::with_capacity(input.len());
+    let mut search_start = 0usize;
+    let mut copy_start = 0usize;
+
+    while let Some(relative_idx) = lower[search_start..].find(from) {
+        let idx = search_start + relative_idx;
+        let end = idx + from.len();
+        let before_ok = idx == 0
+            || !input[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '\'');
+        let after_ok = end >= input.len()
+            || !input[end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '\'');
+
+        if before_ok && after_ok {
+            output.push_str(&input[copy_start..idx]);
+            output.push_str(to);
+            copy_start = end;
+        }
+        search_start = end;
+    }
+
+    output.push_str(&input[copy_start..]);
+    output
+}
+
 fn can_merge_conditional_state_bundle(
     left: &ConditionalSubjectPredicate,
     right: &ConditionalSubjectPredicate,
@@ -807,6 +976,14 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                             consumed += 1;
                             continue;
                         }
+                        if let Some(subtypes) = subtype_addition_predicate(&next.predicate) {
+                            if replacement_subtypes.is_none() {
+                                replacement_subtypes = Some(subtypes);
+                                consumed += 1;
+                                continue;
+                            }
+                            break;
+                        }
                         if next
                             .predicate
                             .to_ascii_lowercase()
@@ -838,21 +1015,38 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
             if let Some(replacement_subtypes) = replacement_subtypes
                 && (base_pt.is_some() || !granted_predicates.is_empty())
             {
-                let mut payloads = Vec::new();
+                let plural_subject = start.verb == "are"
+                    || start.verb == "have"
+                    || subject_is_plural(&start.subject);
+                let condition = if start
+                    .condition
+                    .eq_ignore_ascii_case("As long as it's your turn")
+                {
+                    "During your turn".to_string()
+                } else {
+                    start.condition.clone()
+                };
+                let each_subject = plural_subject.then(|| {
+                    format!(
+                        "each {}",
+                        lowercase_first(&singularize_filter_subject(&start.subject))
+                    )
+                });
+                let subject = each_subject
+                    .as_deref()
+                    .unwrap_or_else(|| start.subject.as_str());
+                let mut descriptor = String::new();
                 if let Some(pt) = base_pt {
-                    payloads.push(format!("base power and toughness {pt}"));
+                    descriptor.push_str(&pt);
+                    descriptor.push(' ');
                 }
-                payloads.extend(granted_predicates);
+                descriptor.push_str(&replacement_subtypes);
 
-                let mut combined = format!(
-                    "{}, {} is {}",
-                    start.condition,
-                    start.subject,
-                    with_indefinite_article(&replacement_subtypes)
-                );
-                if !payloads.is_empty() {
-                    combined.push_str(" with ");
-                    combined.push_str(&join_with_and(&payloads));
+                let mut combined = format!("{condition}, {subject} is a {descriptor} creature");
+                combined.push_str(" in addition to its other types");
+                if !granted_predicates.is_empty() {
+                    combined.push_str(" and has ");
+                    combined.push_str(&join_with_and(&granted_predicates));
                 }
                 if start.subject.trim().eq_ignore_ascii_case("This creature") {
                     combined.push_str(". (It loses all other creature types.)");

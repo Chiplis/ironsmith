@@ -18,14 +18,13 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ability::Ability;
 use crate::continuous::{
-    CalculatedCharacteristics, ContinuousEffect, EffectSourceType, EffectTarget, Layer,
-    Modification, PtSublayer,
+    CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
+    EffectTarget, Layer, Modification, PtSublayer,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 
 /// Check if effect A depends on effect B.
@@ -70,9 +69,30 @@ fn effect_depends_on_with_baseline(
     objects: &HashMap<ObjectId, crate::object::Object>,
     game: &GameState,
 ) -> bool {
+    effect_depends_on_with_baseline_and_started_groups(
+        a,
+        b,
+        baseline,
+        objects,
+        game,
+        &HashSet::new(),
+    )
+}
+
+fn effect_depends_on_with_baseline_and_started_groups(
+    a: &ContinuousEffect,
+    b: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &HashMap<ObjectId, crate::object::Object>,
+    game: &GameState,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+) -> bool {
     // Static ability effects depend on any effect that would remove the
-    // originating static ability from their source.
-    if source_ability_presence_changed(a, b, baseline, objects, game) {
+    // originating static ability from their source, unless this effect already
+    // began applying in an earlier layer (CR 613.6).
+    if !effect_group_has_started(a, started_groups)
+        && source_ability_presence_changed(a, b, baseline, objects, game)
+    {
         return true;
     }
 
@@ -90,6 +110,15 @@ fn effect_depends_on_with_baseline(
     check_dependency_relationship(&a.modification, &b.modification, a.source, b.source)
 }
 
+fn effect_group_has_started(
+    effect: &ContinuousEffect,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+) -> bool {
+    effect
+        .group
+        .is_some_and(|group| started_groups.contains(&group))
+}
+
 /// Check if applying modification B would affect how modification A works.
 fn check_dependency_relationship(
     a: &Modification,
@@ -102,9 +131,10 @@ fn check_dependency_relationship(
         // Layer 6 (Abilities) dependencies
         // ========================================
 
-        // Removing all abilities depends on any effect that adds abilities.
-        // This matches the rule that the remover should apply after the adders
-        // when they are in the same layer.
+        // Ability grants and ability removals do not automatically depend on
+        // each other. CR 613.8's flying/loses flying example uses timestamp
+        // order unless one effect changes the other's applicability, source
+        // ability existence, or output.
         (Modification::RemoveAllAbilities, Modification::AddAbility(_))
         | (Modification::RemoveAllAbilities, Modification::AddAbilityGeneric(_))
         | (Modification::RemoveAllAbilities, Modification::CopyActivatedAbilities { .. })
@@ -119,12 +149,8 @@ fn check_dependency_relationship(
             Modification::RemoveAllAbilitiesExceptMana,
             Modification::CopyActivatedAbilities { .. },
         )
-        | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddCombatDamageDrawAbility) => {
-            true
-        }
-
-        // Granting abilities does not depend on a later removal.
-        (Modification::AddAbility(_), Modification::RemoveAllAbilities)
+        | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddCombatDamageDrawAbility)
+        | (Modification::AddAbility(_), Modification::RemoveAllAbilities)
         | (Modification::AddAbilityGeneric(_), Modification::RemoveAllAbilities)
         | (Modification::CopyActivatedAbilities { .. }, Modification::RemoveAllAbilities)
         | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilities)
@@ -138,18 +164,9 @@ fn check_dependency_relationship(
             Modification::CopyActivatedAbilities { .. },
             Modification::RemoveAllAbilitiesExceptMana,
         )
-        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilitiesExceptMana) => {
-            false
-        }
-
-        // If B removes specific abilities and A grants that ability
-        (Modification::AddAbility(ability_a), Modification::RemoveAbility(ability_b)) => {
-            // Check if they're the same ability
-            static_abilities_match(ability_a, ability_b)
-        }
-
-        // Removing a specific static ability does not affect this granted trigger.
-        (Modification::AddCombatDamageDrawAbility, Modification::RemoveAbility(_)) => false,
+        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilitiesExceptMana)
+        | (Modification::AddAbility(_), Modification::RemoveAbility(_))
+        | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAbility(_)) => false,
 
         // ========================================
         // Layer 7 (P/T) dependencies
@@ -289,12 +306,6 @@ fn check_dependency_relationship(
         // Default: no dependency
         _ => false,
     }
-}
-
-/// Check if two static abilities are functionally the same.
-fn static_abilities_match(a: &StaticAbility, b: &StaticAbility) -> bool {
-    // Simple equality check - could be more sophisticated
-    a == b
 }
 
 fn effect_applicability_changed(
@@ -1543,6 +1554,22 @@ pub fn sort_layer_effects_with_baseline<'a>(
     objects: &HashMap<ObjectId, crate::object::Object>,
     game: &GameState,
 ) -> Vec<&'a ContinuousEffect> {
+    sort_layer_effects_with_baseline_and_started_groups(
+        effects,
+        baseline,
+        objects,
+        game,
+        &HashSet::new(),
+    )
+}
+
+pub fn sort_layer_effects_with_baseline_and_started_groups<'a>(
+    effects: &[&'a ContinuousEffect],
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &HashMap<ObjectId, crate::object::Object>,
+    game: &GameState,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+) -> Vec<&'a ContinuousEffect> {
     if effects.is_empty() {
         return Vec::new();
     }
@@ -1564,22 +1591,34 @@ pub fn sort_layer_effects_with_baseline<'a>(
         let mut result = Vec::with_capacity(effects.len());
         for sublayer in sublayers {
             let sublayer_effects = &by_sublayer[&sublayer];
-            let sorted =
-                sort_with_dependencies_with_baseline(sublayer_effects, baseline, objects, game);
+            let sorted = sort_with_dependencies_with_baseline_and_started_groups(
+                sublayer_effects,
+                baseline,
+                objects,
+                game,
+                started_groups,
+            );
             result.extend(sorted);
         }
 
         result
     } else {
-        sort_with_dependencies_with_baseline(effects, baseline, objects, game)
+        sort_with_dependencies_with_baseline_and_started_groups(
+            effects,
+            baseline,
+            objects,
+            game,
+            started_groups,
+        )
     }
 }
 
-fn sort_with_dependencies_with_baseline<'a>(
+fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     effects: &[&'a ContinuousEffect],
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
     objects: &HashMap<ObjectId, crate::object::Object>,
     game: &GameState,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
 ) -> Vec<&'a ContinuousEffect> {
     if effects.len() <= 1 {
         return effects.to_vec();
@@ -1594,7 +1633,14 @@ fn sort_with_dependencies_with_baseline<'a>(
     for i in 0..effects.len() {
         for j in 0..effects.len() {
             if i != j
-                && effect_depends_on_with_baseline(effects[i], effects[j], baseline, objects, game)
+                && effect_depends_on_with_baseline_and_started_groups(
+                    effects[i],
+                    effects[j],
+                    baseline,
+                    objects,
+                    game,
+                    started_groups,
+                )
             {
                 depends_on.get_mut(&i).unwrap().insert(j);
                 has_any_dependency = true;
@@ -1732,6 +1778,7 @@ mod tests {
     use crate::effect::Effect;
     use crate::ids::PlayerId;
     use crate::mana::ManaSymbol;
+    use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
     use crate::types::{CardType, Subtype};
 
@@ -1743,6 +1790,7 @@ mod tests {
             applies_to: EffectTarget::AllPermanents,
             modification,
             timestamp,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -1769,13 +1817,12 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_all_abilities_depends_on_add_ability() {
+    fn test_remove_all_abilities_and_add_ability_use_timestamp_order() {
         let anthem = create_test_effect(1, 100, Modification::AddAbility(StaticAbility::flying()));
         let humility = create_test_effect(2, 50, Modification::RemoveAllAbilities);
 
-        // Removing all abilities depends on the ability-adder.
-        assert!(effect_depends_on(&humility, &anthem));
-        // But not the other way around.
+        // Ability gains and losses do not depend on each other by themselves.
+        assert!(!effect_depends_on(&humility, &anthem));
         assert!(!effect_depends_on(&anthem, &humility));
     }
 
@@ -1817,7 +1864,8 @@ mod tests {
 
     #[test]
     fn test_dependency_ordering() {
-        // Create a scenario: humility depends on anthem
+        // Gain/remove ability effects without a source/applicability change
+        // apply in timestamp order.
         let anthem = create_test_effect(
             1,
             100, // Newer timestamp
@@ -1832,9 +1880,8 @@ mod tests {
         let effects: Vec<&ContinuousEffect> = vec![&anthem, &humility];
         let sorted = sort_with_dependencies(&effects);
 
-        // Anthem should come first because humility depends on it
-        assert_eq!(sorted[0].id.0, 1); // anthem
-        assert_eq!(sorted[1].id.0, 2); // humility
+        assert_eq!(sorted[0].id.0, 2); // humility, older timestamp
+        assert_eq!(sorted[1].id.0, 1); // anthem, newer timestamp
     }
 
     #[test]
@@ -1852,6 +1899,7 @@ mod tests {
             applies_to: EffectTarget::Filter(ObjectFilter::creature()),
             modification: Modification::SetSubtypes(vec![Subtype::Goblin]),
             timestamp: 50,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -1866,6 +1914,7 @@ mod tests {
             applies_to: EffectTarget::AllPermanents,
             modification: Modification::AddCardTypes(vec![CardType::Creature]),
             timestamp: 100,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -1957,6 +2006,7 @@ mod tests {
                 exclude_source_id: false,
             },
             timestamp: 1,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -1977,6 +2027,7 @@ mod tests {
             applies_to: EffectTarget::Specific(land.id),
             modification: Modification::AddAbilityGeneric(granted_ability),
             timestamp: 2,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -2061,6 +2112,7 @@ mod tests {
                 exclude_source_id: false,
             },
             timestamp: 1,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -2075,6 +2127,7 @@ mod tests {
             applies_to: EffectTarget::Specific(land.id),
             modification: Modification::RemoveAllAbilities,
             timestamp: 2,
+            group: None,
             duration: crate::effect::Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -2093,8 +2146,8 @@ mod tests {
 
     #[test]
     fn test_topo_ready_queue_uses_oldest_timestamp_first() {
-        // e3 depends on e1, while e2 is independent.
-        // Initial ready set is {e1, e2}; oldest (e1) should be applied first.
+        // With no dependencies, the same ready-queue machinery should keep
+        // timestamp order.
         let e1 = create_test_effect(1, 5, Modification::AddAbility(StaticAbility::flying()));
         let e2 = create_test_effect(2, 10, Modification::AddAbility(StaticAbility::haste()));
         let e3 = create_test_effect(3, 20, Modification::RemoveAllAbilities);
@@ -2102,9 +2155,9 @@ mod tests {
         let effects: Vec<&ContinuousEffect> = vec![&e1, &e2, &e3];
         let sorted = sort_with_dependencies(&effects);
 
-        assert_eq!(sorted[0].id.0, 1); // oldest ready effect
-        assert_eq!(sorted[1].id.0, 2); // next oldest ready effect
-        assert_eq!(sorted[2].id.0, 3); // dependent effect
+        assert_eq!(sorted[0].id.0, 1);
+        assert_eq!(sorted[1].id.0, 2);
+        assert_eq!(sorted[2].id.0, 3);
     }
 
     #[test]

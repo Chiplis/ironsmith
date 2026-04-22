@@ -23965,6 +23965,48 @@ fn goddric_cloaked_reveler_keeps_conditional_dragon_animation() {
     );
 }
 
+#[test]
+fn bello_bard_of_the_brambles_compacts_conditional_animation_bundle() {
+    let def = parse_oracle_card_definition("Bello, Bard of the Brambles");
+    let lines = unprocessed_compiled_lines(&def);
+    let rendered = lines.join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("non-auran"),
+        "non-Aura should not be corrupted by article cleanup, got {rendered}"
+    );
+    assert!(
+        lower.contains("during your turn")
+            && lower
+                .contains("each non-equipment artifact and non-aura enchantment you control with mana value 4 or greater"),
+        "expected Bello's filtered turn condition in one rendered surface, got {rendered}"
+    );
+    assert!(
+        lower.contains("4/4 elemental creature")
+            && lower.contains("indestructible")
+            && lower.contains("haste")
+            && lower
+                .contains("whenever this creature deals combat damage to a player, draw a card"),
+        "expected Bello's animation payload and granted abilities to stay bundled, got {rendered}"
+    );
+
+    let animation_lines = lines
+        .iter()
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("4/4 elemental creature")
+                && lower.contains("indestructible")
+                && lower.contains("haste")
+                && lower.contains("combat damage to a player")
+        })
+        .count();
+    assert_eq!(
+        animation_lines, 1,
+        "expected one compact Bello animation line, got {lines:#?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_gideon_planeswalker_predicate_keeps_subtype_constraint() {

@@ -234,6 +234,8 @@ impl EffectExecutor for ApplyContinuousEffect {
                 runtime_modification,
             )?);
         }
+        let effect_group =
+            (mods.len() > 1).then(|| game.effect_store.continuous_effects.next_effect_group_id());
 
         if self.require_creature_target {
             for id in target_object_ids(&target, &source_type) {
@@ -269,6 +271,9 @@ impl EffectExecutor for ApplyContinuousEffect {
             }
             if let Some(condition) = &self.condition {
                 effect = effect.with_condition(condition.clone());
+            }
+            if let Some(group) = effect_group {
+                effect = effect.with_group(group);
             }
 
             game.effect_store.continuous_effects.add_effect(effect);

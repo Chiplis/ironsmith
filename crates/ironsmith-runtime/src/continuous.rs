@@ -180,6 +180,13 @@ pub struct ContinuousEffect {
     /// When this effect was created (for timestamp ordering)
     pub timestamp: u64,
 
+    /// Shared identity for multiple layer-parts of one continuous effect.
+    ///
+    /// CR 613.6 says that once an effect begins to apply in an earlier layer,
+    /// later parts of that same effect keep applying to that same object even
+    /// if the ability that generated the effect has since been removed.
+    pub group: Option<ContinuousEffectGroupId>,
+
     /// How long this effect lasts
     pub duration: Until,
 
@@ -207,6 +214,22 @@ pub struct ContinuousEffectId(pub u64);
 impl ContinuousEffectId {
     pub fn new(id: u64) -> Self {
         Self(id)
+    }
+}
+
+/// Shared identifier for the layer-parts of a single continuous effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ContinuousEffectGroupId(pub u64);
+
+impl ContinuousEffectGroupId {
+    const STATIC_GROUP_PREFIX: u64 = 1 << 63;
+
+    pub fn runtime(id: u64) -> Self {
+        Self(id)
+    }
+
+    pub fn static_generated(id: u64) -> Self {
+        Self(Self::STATIC_GROUP_PREFIX | id)
     }
 }
 
@@ -546,6 +569,9 @@ pub struct ContinuousEffectManager {
     /// Next effect ID to assign
     next_id: u64,
 
+    /// Next group ID to assign to layer-parts of one resolved effect.
+    next_group_id: u64,
+
     /// Current timestamp (for ordering)
     current_timestamp: u64,
 
@@ -587,6 +613,12 @@ impl ContinuousEffectManager {
         self.effects.push(effect);
         self.revision += 1;
         id
+    }
+
+    /// Allocate a shared group id for multiple layer-parts of one effect.
+    pub fn next_effect_group_id(&mut self) -> ContinuousEffectGroupId {
+        self.next_group_id += 1;
+        ContinuousEffectGroupId::runtime(self.next_group_id)
     }
 
     /// Remove an effect by ID.
@@ -803,6 +835,7 @@ impl ContinuousEffect {
             applies_to,
             modification,
             timestamp: 0, // Will be set when added to manager
+            group: None,
             duration: Until::Forever,
             expires_end_of_turn: u32::MAX,
             condition: None,
@@ -820,6 +853,12 @@ impl ContinuousEffect {
     /// Set the turn anchor used by turn-based durations.
     pub fn with_expires_end_of_turn(mut self, expires_end_of_turn: u32) -> Self {
         self.expires_end_of_turn = expires_end_of_turn;
+        self
+    }
+
+    /// Set the shared group id for multi-layer parts of one effect.
+    pub fn with_group(mut self, group: ContinuousEffectGroupId) -> Self {
+        self.group = Some(group);
         self
     }
 
@@ -1135,14 +1174,6 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
     let mut calculated = HashMap::with_capacity(ids.len());
-    let prepared = PreparedDirectCalculation::new(
-        objects,
-        effects,
-        battlefield,
-        commanders,
-        game,
-        DependencySortMode::Baseline,
-    );
 
     for &id in ids {
         if let Some(chars) = in_progress_characteristics(id) {
@@ -1154,13 +1185,14 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
         };
         calculated.insert(
             id,
-            calculate_with_prepared_layers_for_object(
+            calculate_with_layers_direct_internal(
                 object,
-                &prepared,
                 objects,
+                effects,
                 battlefield,
                 commanders,
                 game,
+                DependencySortMode::Baseline,
             ),
         );
     }
@@ -1219,6 +1251,7 @@ pub fn text_box_characteristics_with_effects(
             effects_by_layer.entry(layer).or_default().push(effect);
         }
     }
+    let mut started_groups = HashSet::new();
 
     for layer in [Layer::Copy, Layer::Control, Layer::Text] {
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
@@ -1249,11 +1282,12 @@ pub fn text_box_characteristics_with_effects(
         };
 
         let sorted_effects = if let Some(baseline) = baseline.as_ref() {
-            crate::dependency::sort_layer_effects_with_baseline(
+            crate::dependency::sort_layer_effects_with_baseline_and_started_groups(
                 layer_effects,
                 baseline,
                 objects,
                 game,
+                &started_groups,
             )
         } else {
             crate::dependency::sort_layer_effects(layer_effects)
@@ -1261,7 +1295,8 @@ pub fn text_box_characteristics_with_effects(
 
         for effect in sorted_effects {
             let effect_active = if needs_source_tracking {
-                effect_source_is_active(effect, &source_state)
+                continuous_effect_group_started(effect, &started_groups)
+                    || effect_source_is_active(effect, &source_state)
             } else {
                 true
             };
@@ -1278,8 +1313,9 @@ pub fn text_box_characteristics_with_effects(
             }
 
             if !effect_active
-                || !effect_applies_to_direct(
+                || !effect_applies_to_direct_or_started(
                     effect,
+                    &started_groups,
                     object,
                     &chars,
                     objects,
@@ -1291,6 +1327,7 @@ pub fn text_box_characteristics_with_effects(
                 continue;
             }
 
+            mark_continuous_effect_group_started(effect, &mut started_groups);
             apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
             calc_guard.update(&chars);
         }
@@ -1369,10 +1406,11 @@ fn calculate_with_layers_direct_internal(
 ) -> CalculatedCharacteristics {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
-    use crate::dependency::sort_layer_effects_with_baseline;
+    use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
     let mut chars = initial_characteristics(object);
     let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let mut started_groups = HashSet::new();
 
     // Group effects by layer for dependency-aware sorting within each layer
     let mut effects_by_layer: HashMap<Layer, Vec<&ContinuousEffect>> = HashMap::with_capacity(7);
@@ -1434,7 +1472,13 @@ fn calculate_with_layers_direct_internal(
                     let baseline = baseline
                         .as_ref()
                         .expect("baseline should exist when dependency sorting needs it");
-                    sort_layer_effects_with_baseline(layer_effects, &baseline, objects, game)
+                    sort_layer_effects_with_baseline_and_started_groups(
+                        layer_effects,
+                        &baseline,
+                        objects,
+                        game,
+                        &started_groups,
+                    )
                 } else {
                     sort_layer_effects(layer_effects)
                 }
@@ -1444,7 +1488,8 @@ fn calculate_with_layers_direct_internal(
         // Apply effects in dependency order
         for effect in sorted_effects {
             let effect_active = if needs_source_tracking {
-                effect_source_is_active(effect, &source_state)
+                continuous_effect_group_started(effect, &started_groups)
+                    || effect_source_is_active(effect, &source_state)
             } else {
                 true
             };
@@ -1464,8 +1509,9 @@ fn calculate_with_layers_direct_internal(
                 continue;
             }
 
-            if !effect_applies_to_direct(
+            if !effect_applies_to_direct_or_started(
                 effect,
+                &started_groups,
                 object,
                 &chars,
                 objects,
@@ -1476,6 +1522,7 @@ fn calculate_with_layers_direct_internal(
                 continue;
             }
 
+            mark_continuous_effect_group_started(effect, &mut started_groups);
             apply_modification_to_chars(
                 &effect.modification,
                 &mut chars,
@@ -1516,6 +1563,26 @@ fn calculate_with_layers_direct_internal(
 
     // Now process Layer 7 effects from continuous effects
     if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
+        let needs_source_tracking = layer_needs_source_activity_tracking(pt_effects);
+        let tracked_source_ids =
+            needs_source_tracking.then(|| tracked_source_ids_for_layer(pt_effects));
+        let mut source_state = if needs_source_tracking {
+            build_object_baseline_for_ids(
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                Layer::PowerToughness,
+                None,
+                tracked_source_ids
+                    .as_ref()
+                    .expect("tracked sources should exist when source tracking is enabled"),
+            )
+        } else {
+            HashMap::new()
+        };
+
         // Apply dependency-aware sorting within Layer 7 sublayers.
         let sorted_pt = match sort_mode {
             DependencySortMode::Heuristic => sort_layer_effects(pt_effects),
@@ -1530,7 +1597,13 @@ fn calculate_with_layers_direct_internal(
                         Layer::PowerToughness,
                         None,
                     );
-                    sort_layer_effects_with_baseline(pt_effects, &baseline, objects, game)
+                    sort_layer_effects_with_baseline_and_started_groups(
+                        pt_effects,
+                        &baseline,
+                        objects,
+                        game,
+                        &started_groups,
+                    )
                 } else {
                     sort_layer_effects(pt_effects)
                 }
@@ -1538,8 +1611,31 @@ fn calculate_with_layers_direct_internal(
         };
 
         for effect in sorted_pt {
-            if !effect_applies_to_direct(
+            let effect_active = if needs_source_tracking {
+                continuous_effect_group_started(effect, &started_groups)
+                    || effect_source_is_active(effect, &source_state)
+            } else {
+                true
+            };
+
+            if needs_source_tracking && effect_active {
+                advance_layer_source_state(
+                    &mut source_state,
+                    effect,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                );
+            }
+
+            if !effect_active {
+                continue;
+            }
+
+            if !effect_applies_to_direct_or_started(
                 effect,
+                &started_groups,
                 object,
                 &chars,
                 objects,
@@ -1550,6 +1646,7 @@ fn calculate_with_layers_direct_internal(
                 continue;
             }
 
+            mark_continuous_effect_group_started(effect, &mut started_groups);
             apply_modification_to_chars(
                 &effect.modification,
                 &mut chars,
@@ -1575,15 +1672,18 @@ fn calculate_with_layers_direct_internal(
     chars
 }
 
+#[allow(dead_code)]
 struct PreparedLayerEffects<'a> {
     sorted_effects: Vec<&'a ContinuousEffect>,
 }
 
+#[allow(dead_code)]
 struct PreparedDirectCalculation<'a> {
     layers_1_to_6: HashMap<Layer, PreparedLayerEffects<'a>>,
     layer_7: Option<PreparedLayerEffects<'a>>,
 }
 
+#[allow(dead_code)]
 impl<'a> PreparedDirectCalculation<'a> {
     fn new(
         objects: &HashMap<ObjectId, Object>,
@@ -1709,6 +1809,7 @@ impl<'a> PreparedDirectCalculation<'a> {
     }
 }
 
+#[allow(dead_code)]
 fn calculate_with_prepared_layers_for_object(
     object: &Object,
     prepared: &PreparedDirectCalculation<'_>,
@@ -1826,6 +1927,64 @@ fn effect_applies_to_direct(
     _commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> bool {
+    if !continuous_effect_duration_and_condition_are_active(effect, game) {
+        return false;
+    }
+
+    effect_target_applies_to_direct(effect, object, chars, objects, game)
+}
+
+fn effect_applies_to_direct_or_started(
+    effect: &ContinuousEffect,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    objects: &HashMap<ObjectId, Object>,
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> bool {
+    if !continuous_effect_duration_and_condition_are_active(effect, game) {
+        return false;
+    }
+
+    if continuous_effect_group_started(effect, started_groups) {
+        return true;
+    }
+
+    effect_applies_to_direct(
+        effect,
+        object,
+        chars,
+        objects,
+        battlefield,
+        commanders,
+        game,
+    )
+}
+
+fn continuous_effect_group_started(
+    effect: &ContinuousEffect,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+) -> bool {
+    effect
+        .group
+        .is_some_and(|group| started_groups.contains(&group))
+}
+
+fn mark_continuous_effect_group_started(
+    effect: &ContinuousEffect,
+    started_groups: &mut HashSet<ContinuousEffectGroupId>,
+) {
+    if let Some(group) = effect.group {
+        started_groups.insert(group);
+    }
+}
+
+fn continuous_effect_duration_and_condition_are_active(
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+) -> bool {
     if !continuous_effect_duration_is_active(effect, game) {
         return false;
     }
@@ -1847,6 +2006,16 @@ fn effect_applies_to_direct(
         }
     }
 
+    true
+}
+
+fn effect_target_applies_to_direct(
+    effect: &ContinuousEffect,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    objects: &HashMap<ObjectId, Object>,
+    game: &crate::game_state::GameState,
+) -> bool {
     // First, check if this is a Resolution effect with locked targets.
     if let EffectSourceType::Resolution { ref locked_targets } = effect.source_type {
         if !locked_targets.contains(&object.id) {
@@ -2462,10 +2631,11 @@ fn resolve_value_direct(
 fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> CalculatedCharacteristics {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
-    use crate::dependency::sort_layer_effects_with_baseline;
+    use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
     let mut chars = initial_characteristics(object);
     let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let mut started_groups = HashSet::new();
 
     // Get all effects sorted by layer/sublayer/timestamp
     let effects = ctx.effects.effects_sorted();
@@ -2480,7 +2650,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
             .push(*effect);
     }
 
-    // Process layers in order (1-7)
+    // Process layers in order (1-6); Layer 7 is handled by sublayer below.
     let layers = [
         Layer::Copy,
         Layer::Control,
@@ -2488,7 +2658,6 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
         Layer::Type,
         Layer::Color,
         Layer::Ability,
-        Layer::PowerToughness,
     ];
 
     // Track which abilities have been removed (for dependency detection)
@@ -2544,7 +2713,13 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 let baseline = baseline
                     .as_ref()
                     .expect("baseline should exist when dependency sorting needs it");
-                sort_layer_effects_with_baseline(layer_effects, &baseline, ctx.objects, ctx.game)
+                sort_layer_effects_with_baseline_and_started_groups(
+                    layer_effects,
+                    &baseline,
+                    ctx.objects,
+                    ctx.game,
+                    &started_groups,
+                )
             } else {
                 sort_layer_effects(layer_effects)
             }
@@ -2553,7 +2728,8 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
         // Apply effects in dependency order
         for effect in sorted_effects {
             let effect_active = if needs_source_tracking {
-                effect_source_is_active(effect, &source_state)
+                continuous_effect_group_started(effect, &started_groups)
+                    || effect_source_is_active(effect, &source_state)
             } else {
                 true
             };
@@ -2574,10 +2750,11 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
             }
 
             // Check if this effect applies to our object
-            if !effect_applies_to(effect, object, &chars, ctx) {
+            if !effect_applies_to_or_started(effect, &started_groups, object, &chars, ctx) {
                 continue;
             }
 
+            mark_continuous_effect_group_started(effect, &mut started_groups);
             // Apply the modification
             match &effect.modification {
                 // Layer 1: Copy
@@ -2876,7 +3053,14 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
     }
 
     // Apply Layer 7 effects in sublayer order
-    apply_layer_7_effects(object, ctx, &mut chars, abilities_removed, &calc_guard);
+    apply_layer_7_effects(
+        object,
+        ctx,
+        &mut chars,
+        abilities_removed,
+        &calc_guard,
+        &mut started_groups,
+    );
 
     // Add abilities from level tiers if not removed
     if !abilities_removed {
@@ -2911,10 +3095,11 @@ fn apply_layer_7_effects(
     chars: &mut CalculatedCharacteristics,
     _abilities_removed: bool,
     calc_guard: &CharacteristicCalculationGuard,
+    started_groups: &mut HashSet<ContinuousEffectGroupId>,
 ) {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
-    use crate::dependency::sort_layer_effects_with_baseline;
+    use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
     let effects = ctx.effects.effects_sorted();
     let mut all_effects: Option<Vec<ContinuousEffect>> = None;
@@ -2928,8 +3113,28 @@ fn apply_layer_7_effects(
         .iter()
         .copied()
         .filter(|e| e.modification.layer() == Layer::PowerToughness)
-        .filter(|e| effect_applies_to(e, object, chars, ctx))
         .collect();
+    let needs_source_tracking = layer_needs_source_activity_tracking(&pt_effects);
+    let tracked_source_ids =
+        needs_source_tracking.then(|| tracked_source_ids_for_layer(&pt_effects));
+    let mut source_state = if needs_source_tracking {
+        let all_effects =
+            all_effects.get_or_insert_with(|| effects.iter().map(|e| (*e).clone()).collect());
+        build_object_baseline_for_ids(
+            ctx.objects,
+            all_effects,
+            ctx.battlefield,
+            &ctx.game.commanders,
+            ctx.game,
+            Layer::PowerToughness,
+            None,
+            tracked_source_ids
+                .as_ref()
+                .expect("tracked sources should exist when source tracking is enabled"),
+        )
+    } else {
+        HashMap::new()
+    };
 
     // Sort by sublayer with dependency handling inside each sublayer.
     let pt_effects = {
@@ -2945,7 +3150,13 @@ fn apply_layer_7_effects(
                 Layer::PowerToughness,
                 None,
             );
-            sort_layer_effects_with_baseline(&pt_effects, &baseline, ctx.objects, ctx.game)
+            sort_layer_effects_with_baseline_and_started_groups(
+                &pt_effects,
+                &baseline,
+                ctx.objects,
+                ctx.game,
+                started_groups,
+            )
         } else {
             sort_layer_effects(&pt_effects)
         }
@@ -2960,6 +3171,32 @@ fn apply_layer_7_effects(
 
     // Apply in order, interleaving counters at the right point in 7c
     for effect in &pt_effects {
+        let effect_active = if needs_source_tracking {
+            continuous_effect_group_started(effect, started_groups)
+                || effect_source_is_active(effect, &source_state)
+        } else {
+            true
+        };
+
+        if needs_source_tracking && effect_active {
+            advance_layer_source_state(
+                &mut source_state,
+                effect,
+                ctx.objects,
+                ctx.battlefield,
+                &ctx.game.commanders,
+                ctx.game,
+            );
+        }
+
+        if !effect_active
+            || !effect_applies_to_or_started(effect, started_groups, object, chars, ctx)
+        {
+            continue;
+        }
+
+        mark_continuous_effect_group_started(effect, started_groups);
+
         let effect_sublayer = effect.modification.pt_sublayer();
 
         // If we're in sublayer 7c (Modifying) and counters haven't been applied yet,
@@ -3121,53 +3358,29 @@ fn effect_applies_to(
     chars: &CalculatedCharacteristics,
     ctx: &CalculationContext,
 ) -> bool {
-    if !continuous_effect_duration_is_active(effect, ctx.game) {
+    if !continuous_effect_duration_and_condition_are_active(effect, ctx.game) {
         return false;
     }
 
-    // First, check if this is a Resolution effect with locked targets.
-    // Per Rule 611.2c, these effects only apply to the specific targets
-    // that were chosen when the spell or ability resolved.
-    if let EffectSourceType::Resolution { ref locked_targets } = effect.source_type {
-        // Resolution effects only apply to their locked targets
-        if !locked_targets.contains(&object.id) {
-            return false;
-        }
-        // If the object is in the locked targets, still verify it's on the battlefield
-        // (the effect shouldn't apply if the target somehow left and returned)
-        return object.zone == Zone::Battlefield;
+    effect_target_applies_to_direct(effect, object, chars, ctx.objects, ctx.game)
+}
+
+fn effect_applies_to_or_started(
+    effect: &ContinuousEffect,
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    ctx: &CalculationContext,
+) -> bool {
+    if !continuous_effect_duration_and_condition_are_active(effect, ctx.game) {
+        return false;
     }
 
-    // For StaticAbility, CharacteristicDefining, Combat, and Copy effects,
-    // check the EffectTarget as normal (they apply dynamically).
-    match &effect.applies_to {
-        EffectTarget::Specific(id) => *id == object.id,
-        EffectTarget::Source => effect.source == object.id,
-        EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
-        EffectTarget::AllCreatures => {
-            object.zone == Zone::Battlefield && chars.card_types.contains(&CardType::Creature)
-        }
-        EffectTarget::Filter(filter) => {
-            // Check if object matches filter
-            filter_matches_with_characteristics(
-                filter,
-                object,
-                chars,
-                ctx.game,
-                effect.controller,
-                effect.source,
-            )
-        }
-        EffectTarget::AttachedTo(source_id) => {
-            // The effect applies to whatever permanent the source is attached to
-            if let Some(source) = ctx.objects.get(source_id) {
-                source.attached_to == Some(crate::object::AttachmentTarget::Object(object.id))
-                    && object.zone == Zone::Battlefield
-            } else {
-                false
-            }
-        }
+    if continuous_effect_group_started(effect, started_groups) {
+        return true;
     }
+
+    effect_applies_to(effect, object, chars, ctx)
 }
 
 fn continuous_filter_context(
@@ -3735,36 +3948,9 @@ fn build_object_baseline_for_ids(
 }
 
 fn layer_needs_source_activity_tracking(layer_effects: &[&ContinuousEffect]) -> bool {
-    if layer_effects.len() <= 1 {
-        return false;
-    }
-
-    if !layer_effects
-        .iter()
-        .any(|effect| effect.originating_static_ability.is_some())
-    {
-        return false;
-    }
-
     layer_effects
         .iter()
-        .any(|effect| effect_can_disable_source_static_ability_in_layer(effect))
-}
-
-fn effect_can_disable_source_static_ability_in_layer(effect: &ContinuousEffect) -> bool {
-    match &effect.modification {
-        // A basic land type-setting effect can shut off a source static ability
-        // in the same type layer (Blood Moon/Urborg).
-        Modification::SetSubtypes(subtypes) => {
-            !subtypes.is_empty() && subtypes.iter().all(Subtype::is_basic_land_type)
-        }
-        // Ability-removing effects can shut off same-layer static ability effects.
-        Modification::RemoveAbility(_)
-        | Modification::RemoveAllAbilities
-        | Modification::RemoveAllAbilitiesExceptMana
-        | Modification::SetAbilities(_) => true,
-        _ => false,
-    }
+        .any(|effect| effect.originating_static_ability.is_some())
 }
 
 fn tracked_source_ids_for_layer(layer_effects: &[&ContinuousEffect]) -> HashSet<ObjectId> {

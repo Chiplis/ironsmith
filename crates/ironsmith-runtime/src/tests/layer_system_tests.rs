@@ -13,7 +13,9 @@ use crate::cards::definitions::{
     toph_the_first_metalbender, urzas_saga,
 };
 use crate::combat_state::{AttackTarget, CombatError, new_combat};
-use crate::continuous::{ContinuousEffect, EffectTarget, Modification, PtSublayer};
+use crate::continuous::{
+    ContinuousEffect, ContinuousEffectGroupId, EffectTarget, Modification, PtSublayer,
+};
 use crate::decision::AttackerDeclaration;
 use crate::effect::{Until, Value};
 use crate::game_loop::{GameLoopError, apply_attacker_declarations};
@@ -814,6 +816,116 @@ fn test_humility_plus_crusade_results_in_2_2() {
         !game.object_has_ability(creature_id, &StaticAbility::flying()),
         "Creature under Humility should lose flying"
     );
+}
+
+#[test]
+fn test_multilayer_effect_continues_after_source_ability_removed() {
+    fn run_scenario(
+        effect_timestamp: u64,
+        humility_timestamp: u64,
+    ) -> (bool, Option<i32>, Option<i32>) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(6100), "Static Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_ability = StaticAbility::haste();
+        game.object_mut(source_id)
+            .unwrap()
+            .abilities
+            .push(Ability::static_ability(source_ability.clone()));
+
+        let target_card = CardBuilder::new(CardId::from_raw(6101), "Animated Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let target_id = game.create_object_from_card(&target_card, alice, Zone::Battlefield);
+
+        let group = ContinuousEffectGroupId::static_generated(6100 + effect_timestamp);
+        let mut animate_type = ContinuousEffect::new(
+            source_id,
+            alice,
+            EffectTarget::Specific(target_id),
+            Modification::AddCardTypes(vec![CardType::Creature]),
+        )
+        .with_group(group)
+        .with_originating_static_ability(source_ability.clone());
+        animate_type.timestamp = effect_timestamp;
+
+        let mut grant_indestructible = ContinuousEffect::new(
+            source_id,
+            alice,
+            EffectTarget::Specific(target_id),
+            Modification::AddAbility(StaticAbility::indestructible()),
+        )
+        .with_group(group)
+        .with_originating_static_ability(source_ability.clone());
+        grant_indestructible.timestamp = effect_timestamp;
+
+        let mut set_pt = ContinuousEffect::new(
+            source_id,
+            alice,
+            EffectTarget::Specific(target_id),
+            Modification::SetPowerToughness {
+                power: Value::Fixed(4),
+                toughness: Value::Fixed(4),
+                sublayer: PtSublayer::Setting,
+            },
+        )
+        .with_group(group)
+        .with_originating_static_ability(source_ability);
+        set_pt.timestamp = effect_timestamp;
+
+        let mut remove_abilities = ContinuousEffect::new(
+            source_id,
+            alice,
+            EffectTarget::AllCreatures,
+            Modification::RemoveAllAbilities,
+        );
+        remove_abilities.timestamp = humility_timestamp;
+
+        let mut humility_pt = ContinuousEffect::new(
+            source_id,
+            alice,
+            EffectTarget::AllCreatures,
+            Modification::SetPowerToughness {
+                power: Value::Fixed(1),
+                toughness: Value::Fixed(1),
+                sublayer: PtSublayer::Setting,
+            },
+        );
+        humility_pt.timestamp = humility_timestamp;
+
+        let effects = vec![
+            remove_abilities,
+            humility_pt,
+            animate_type,
+            grant_indestructible,
+            set_pt,
+        ];
+        let chars = crate::continuous::calculate_characteristics_with_effects(
+            target_id,
+            game.objects_map(),
+            &effects,
+            &game.battlefield,
+            &game.commanders,
+            &game,
+        )
+        .expect("target should have calculated characteristics");
+
+        let has_indestructible = chars.abilities.iter().any(
+            |ability| matches!(&ability.kind, AbilityKind::Static(sa) if sa.has_indestructible()),
+        );
+        (has_indestructible, chars.power, chars.toughness)
+    }
+
+    let humility_first = run_scenario(2, 1);
+    assert_eq!(humility_first, (true, Some(4), Some(4)));
+
+    let effect_first = run_scenario(1, 2);
+    assert_eq!(effect_first, (false, Some(1), Some(1)));
 }
 
 // =============================================================================

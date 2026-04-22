@@ -6248,6 +6248,41 @@ mod tests {
     }
 
     #[test]
+    fn describe_unless_any_player_pays_search_sequence_uses_prefix() {
+        let tag = TagKey::from("searched");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default().in_zone(Zone::Library),
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let sequence = crate::effects::SequenceEffect::new(vec![
+            Effect::new(choose),
+            Effect::new(crate::effects::ForEachTaggedEffect::new(
+                tag,
+                vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Hand,
+                    false,
+                ))],
+            )),
+            Effect::new(crate::effects::ShuffleLibraryEffect::new(PlayerFilter::You)),
+        ]);
+        let effect = Effect::unless_pays(
+            vec![Effect::new(sequence)],
+            PlayerFilter::Any,
+            vec![crate::mana::ManaSymbol::Generic(2)],
+        );
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Unless any player pays {2}, search your library for a card, put it into your hand, then shuffle"
+        );
+    }
+
+    #[test]
     fn describe_become_creature_type_choice_uses_each_for_all_creatures() {
         let effect = Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
             ChooseSpec::Object(ObjectFilter::creature()),
@@ -12289,6 +12324,24 @@ pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn describe_unless_any_player_pays_search_prefix(
+    unless_pays: &crate::effects::UnlessPaysEffect,
+    payment_text: &str,
+) -> Option<String> {
+    if unless_pays.player != PlayerFilter::Any {
+        return None;
+    }
+    let [effect] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let search_text = describe_search_sequence(sequence)?;
+    Some(format!(
+        "Unless any player pays {payment_text}, {}",
+        lowercase_first(&search_text)
+    ))
+}
+
 pub(super) fn describe_tap_or_untap_mode(
     choose_mode: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -13396,7 +13449,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Counter {}", describe_choose_spec(&counter_spell.target));
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
-        let payer = describe_player_filter(&unless_pays.player);
+        let payer = match unless_pays.player {
+            PlayerFilter::Any => "any player".to_string(),
+            _ => describe_player_filter(&unless_pays.player),
+        };
         let pay_verb = player_verb(&payer, "pay", "pays");
         let display = describe_total_cost_payment(&unless_pays.cost);
         let payment_text = display.strip_prefix("Pay ").unwrap_or(&display).to_string();
@@ -13440,6 +13496,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let inner_text = describe_effect_list(&unless_pays.effects);
         if let Some(action_text) = action_payment_text(&payment_text) {
             return format!("{} unless {} {}", inner_text, payer, action_text);
+        }
+        if let Some(prefix) =
+            describe_unless_any_player_pays_search_prefix(unless_pays, &payment_text)
+        {
+            return prefix;
         }
         return format!(
             "{} unless {} {} {}",

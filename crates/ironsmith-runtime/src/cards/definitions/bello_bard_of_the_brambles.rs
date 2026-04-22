@@ -91,9 +91,10 @@ mod tests {
     /// Humility first, then Bello.
     ///
     /// Bello applies in layers 4, 6, 7b. Humility applies in layers 6, 7b.
-    /// In layer 6, Humility depends on Bello's ability-granting effect and is applied after it,
-    /// so the granted abilities are removed. In layer 7b, timestamp order applies, so Bello's
-    /// later timestamp sets power/toughness to 4/4.
+    /// Bello starts applying in layer 4, so its later layer parts keep applying
+    /// to the same objects even after Humility removes Bello's source ability in
+    /// layer 6. With no layer-6 dependency, timestamp order applies: Humility
+    /// removes abilities first, then Bello grants them.
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_bello_humility_humility_first_then_bello() {
@@ -136,16 +137,16 @@ mod tests {
             )
         });
         assert!(
-            !has_indestructible,
-            "Humility should remove Bello-granted indestructible when it depends on Bello"
+            has_indestructible,
+            "Bello should grant indestructible after older Humility removes abilities"
         );
         assert!(
-            !has_haste,
-            "Humility should remove Bello-granted haste when it depends on Bello"
+            has_haste,
+            "Bello should grant haste after older Humility removes abilities"
         );
         assert!(
-            !has_draw_trigger,
-            "Humility should remove Bello-granted combat-damage draw trigger when it depends on Bello"
+            has_draw_trigger,
+            "Bello should grant the combat-damage draw trigger after older Humility removes abilities"
         );
     }
 

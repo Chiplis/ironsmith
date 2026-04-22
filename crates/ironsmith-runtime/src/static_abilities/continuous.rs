@@ -76,6 +76,18 @@ fn subject_text(filter: &ObjectFilter) -> String {
     attached_subject(filter).unwrap_or_else(|| filter.description())
 }
 
+fn strip_plural_subject_article(subject: &str) -> &str {
+    for article in ["a ", "an "] {
+        if let Some(rest) = subject.strip_prefix(article) {
+            let first_word = rest.split_whitespace().next().unwrap_or_default();
+            if !first_word.ends_with("'s") {
+                return rest;
+            }
+        }
+    }
+    subject
+}
+
 fn split_subject_suffix(subject: &str) -> (&str, &str) {
     const SUFFIXES: &[&str] = &[
         " you control",
@@ -144,14 +156,9 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         return subject;
     }
 
-    // Strip indefinite article from the beginning.
-    let subject = if let Some(rest) = subject.strip_prefix("a ") {
-        rest.to_string()
-    } else if let Some(rest) = subject.strip_prefix("an ") {
-        rest.to_string()
-    } else {
-        subject
-    };
+    // Strip indefinite articles from object nouns, including each side of a
+    // compound filter such as "artifact or enchantment you control".
+    let subject = strip_plural_subject_article(&subject).to_string();
 
     let (base, suffix) = split_subject_suffix(&subject);
     if !base.is_empty() {
@@ -175,6 +182,7 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
 }
 
 fn pluralize_subject_clause(subject: &str) -> String {
+    let subject = strip_plural_subject_article(subject.trim());
     if let Some((head, tail)) = subject.split_once(" or ") {
         return format!(
             "{} or {}",
@@ -3147,7 +3155,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         let subject = if filter_desc == "Sliver" {
             "All Slivers".to_string()
         } else {
-            filter_desc
+            grant_subject_text(&self.filter)
         };
         let mut text = format!("{subject} have {rendered_ability}");
         if let Some(condition) = &self.condition {

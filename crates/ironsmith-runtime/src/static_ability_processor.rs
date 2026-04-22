@@ -32,7 +32,10 @@
 //! effects which lock their targets at resolution time (Rule 611.2c).
 
 use crate::ability::AbilityKind;
-use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Layer, TextBoxOverlay};
+use crate::continuous::{
+    ContinuousEffect, ContinuousEffectGroupId, EffectSourceType, EffectTarget, Layer,
+    TextBoxOverlay,
+};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use std::collections::HashMap;
@@ -100,6 +103,105 @@ fn text_box_query_scope(effects: &[ContinuousEffect]) -> TextBoxQueryScope {
     }
 }
 
+fn next_static_effect_group_id(next_group_id: &mut u64) -> ContinuousEffectGroupId {
+    let group = ContinuousEffectGroupId::static_generated(*next_group_id);
+    *next_group_id += 1;
+    group
+}
+
+struct GeneratedStaticEffect {
+    effect: ContinuousEffect,
+    ability_text: Option<String>,
+}
+
+fn generated_effects_share_origin(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {
+    match (&a.ability_text, &b.ability_text) {
+        (Some(a_text), Some(b_text)) => a_text == b_text,
+        _ => true,
+    }
+}
+
+fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {
+    let a_effect = &a.effect;
+    let b_effect = &b.effect;
+    a_effect.source == b_effect.source
+        && a_effect.controller == b_effect.controller
+        && a_effect.applies_to == b_effect.applies_to
+        && a_effect.duration == b_effect.duration
+        && a_effect.expires_end_of_turn == b_effect.expires_end_of_turn
+        && a_effect.condition == b_effect.condition
+        && a_effect.source_type == b_effect.source_type
+        && generated_effects_share_origin(a, b)
+}
+
+fn should_infer_multilayer_static_group(
+    effects: &[GeneratedStaticEffect],
+    indices: &[usize],
+) -> bool {
+    if indices.len() <= 1 {
+        return false;
+    }
+
+    let has_type_part = indices
+        .iter()
+        .any(|&idx| effects[idx].effect.modification.layer() == Layer::Type);
+    let has_later_part = indices
+        .iter()
+        .any(|&idx| effects[idx].effect.modification.layer() > Layer::Type);
+    let has_ability_removal = indices.iter().any(|&idx| {
+        matches!(
+            effects[idx].effect.modification,
+            crate::continuous::Modification::RemoveAbility(_)
+                | crate::continuous::Modification::RemoveAllAbilities
+                | crate::continuous::Modification::RemoveAllAbilitiesExceptMana
+                | crate::continuous::Modification::SetAbilities(_)
+        )
+    });
+    let has_pt_setting = indices.iter().any(|&idx| {
+        matches!(
+            effects[idx].effect.modification,
+            crate::continuous::Modification::SetPower { .. }
+                | crate::continuous::Modification::SetToughness { .. }
+                | crate::continuous::Modification::SetPowerToughness { .. }
+        )
+    });
+
+    (has_type_part && has_later_part) || (has_ability_removal && has_pt_setting)
+}
+
+fn assign_inferred_static_effect_groups(
+    effects: &mut [GeneratedStaticEffect],
+    next_group_id: &mut u64,
+) {
+    let mut assigned = vec![false; effects.len()];
+
+    for i in 0..effects.len() {
+        if assigned[i] || effects[i].effect.group.is_some() {
+            continue;
+        }
+
+        let mut group_indices = Vec::new();
+        for j in i..effects.len() {
+            if assigned[j] || effects[j].effect.group.is_some() {
+                continue;
+            }
+            if static_effects_share_scope(&effects[i], &effects[j]) {
+                group_indices.push(j);
+            }
+        }
+
+        if !should_infer_multilayer_static_group(effects, &group_indices) {
+            continue;
+        }
+
+        let group = next_static_effect_group_id(next_group_id);
+        for idx in group_indices {
+            effects[idx].effect.group = Some(group);
+            assigned[idx] = true;
+        }
+    }
+}
+
 /// Generate all continuous effects from static abilities in zones where they function.
 ///
 /// This scans all objects for static abilities and generates the corresponding
@@ -118,10 +220,12 @@ pub fn generate_continuous_effects_from_static_abilities(
     let mut text_box_cache: HashMap<ObjectId, TextBoxOverlay> = HashMap::new();
 
     let object_ids = game.object_ids_in_deterministic_order();
+    let mut next_group_id = 1;
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
         if let Some(object) = game.object(object_id) {
+            let mut object_effects = Vec::new();
             let zone = object.zone;
             let (controller, abilities) = if zone == crate::zone::Zone::Battlefield
                 && text_box_scope.includes(object_id)
@@ -170,9 +274,22 @@ pub fn generate_continuous_effects_from_static_abilities(
                             effect.originating_static_ability = Some(static_ability.clone());
                         }
                     }
-                    effects.extend(ability_effects);
+                    if ability_effects.len() > 1 {
+                        let group = next_static_effect_group_id(&mut next_group_id);
+                        for effect in &mut ability_effects {
+                            effect.group = Some(group);
+                        }
+                    }
+                    object_effects.extend(ability_effects.into_iter().map(|effect| {
+                        GeneratedStaticEffect {
+                            effect,
+                            ability_text: ability.text.clone(),
+                        }
+                    }));
                 }
             }
+            assign_inferred_static_effect_groups(&mut object_effects, &mut next_group_id);
+            effects.extend(object_effects.into_iter().map(|generated| generated.effect));
         }
     }
 

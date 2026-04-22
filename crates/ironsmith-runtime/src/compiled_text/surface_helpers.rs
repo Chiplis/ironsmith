@@ -17,12 +17,16 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     {
         normalized = capitalize_first(&normalized);
     }
+    normalized = replace_standalone_phrase(&normalized, "a artifact", "an artifact");
+    normalized = replace_standalone_phrase(&normalized, "a enchantment", "an enchantment");
+    normalized = replace_standalone_phrase(&normalized, "a Aura", "an Aura");
+    normalized = replace_standalone_phrase(&normalized, "a Elf", "an Elf");
     normalized = normalized
         .replace(" ors ", " or ")
-        .replace("a artifact", "an artifact")
-        .replace("a enchantment", "an enchantment")
-        .replace("a Aura", "an Aura")
-        .replace("a Elf", "an Elf")
+        .replace("non-aura", "non-Aura")
+        .replace("Non-aura", "Non-Aura")
+        .replace("non-equipment", "non-Equipment")
+        .replace("Non-equipment", "Non-Equipment")
         .replace("for each a ", "for each ")
         .replace("for each an ", "for each ");
     if !is_keyword_style_line(&normalized)
@@ -35,6 +39,34 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         normalized.push('.');
     }
     normalized
+}
+
+fn replace_standalone_phrase(input: &str, from: &str, to: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+
+    while let Some(idx) = rest.find(from) {
+        let before_ok = rest[..idx]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '\'');
+        let after_idx = idx + from.len();
+        let after_ok = rest[after_idx..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '\'');
+
+        output.push_str(&rest[..idx]);
+        if before_ok && after_ok {
+            output.push_str(to);
+        } else {
+            output.push_str(from);
+        }
+        rest = &rest[after_idx..];
+    }
+
+    output.push_str(rest);
+    output
 }
 
 pub(super) fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
