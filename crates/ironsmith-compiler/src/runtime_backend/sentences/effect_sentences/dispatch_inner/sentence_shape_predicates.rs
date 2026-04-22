@@ -45,6 +45,102 @@ fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
     false
 }
 
+fn parse_target_deals_power_damage_to_other_and_self_where_x(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+    where_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if words.get(where_idx..where_idx + 5) != Some(["where", "x", "is", "its", "power"].as_slice())
+    {
+        return Ok(None);
+    }
+
+    let deal_idx = find_dispatch_inner_phrase_start(words, &["deals", "x", "damage", "to"])
+        .or_else(|| find_dispatch_inner_phrase_start(words, &["deal", "x", "damage", "to"]));
+    let Some(deal_idx) = deal_idx else {
+        return Ok(None);
+    };
+    if deal_idx == 0 {
+        return Ok(None);
+    }
+
+    let Some(and_idx) = find_dispatch_inner_phrase_start(words, &["and", "x", "damage", "to"])
+    else {
+        return Ok(None);
+    };
+    if and_idx <= deal_idx + 4 || where_idx <= and_idx + 4 {
+        return Ok(None);
+    }
+
+    let self_target_words = &words[and_idx + 4..where_idx];
+    if self_target_words != ["itself"] && self_target_words != ["it"] {
+        return Ok(None);
+    }
+
+    let source_end = token_index_for_word_index(tokens, deal_idx).unwrap_or(tokens.len());
+    let first_target_start =
+        token_index_for_word_index(tokens, deal_idx + 4).unwrap_or(tokens.len());
+    let first_target_end = token_index_for_word_index(tokens, and_idx).unwrap_or(tokens.len());
+    let source_tokens = trim_edge_punctuation(&tokens[..source_end]);
+    let first_target_tokens = trim_edge_punctuation(&tokens[first_target_start..first_target_end]);
+    if source_tokens.is_empty() || first_target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let source = parse_target_phrase(&source_tokens)?;
+    let first_target = parse_target_phrase(&first_target_tokens)?;
+    let source_ref = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    Ok(Some(vec![
+        EffectAst::TargetOnly {
+            target: source.clone(),
+        },
+        EffectAst::DealDamageEqualToPower {
+            source: source_ref.clone(),
+            target: first_target,
+        },
+        EffectAst::DealDamageEqualToPower {
+            source: source_ref.clone(),
+            target: source_ref,
+        },
+    ]))
+}
+
+fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
+    words.len() >= 9
+        && words.get(..6) == Some(["where", "x", "is", "the", "number", "of"].as_slice())
+        && words.ends_with(&["tapped", "this", "way"])
+}
+
+fn parse_tap_then_damage_for_number_tapped_this_way(
+    stripped: &[OwnedLexToken],
+    stripped_words: &[&str],
+    where_words: &[&str],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !where_x_is_number_tapped_this_way(where_words) {
+        return Ok(None);
+    }
+
+    let mut effects = parse_effect_sentence_inner_lexed(stripped)?;
+    if effects.len() != 2 {
+        return Ok(None);
+    }
+    if !matches!(effects[0], EffectAst::Tap { .. } | EffectAst::TapAll { .. }) {
+        return Ok(None);
+    }
+    let EffectAst::DealDamage { amount, target } = &mut effects[1] else {
+        return Ok(None);
+    };
+    if !matches!(amount, Value::X) {
+        return Ok(None);
+    }
+
+    *amount = Value::EventValue(EventValueSpec::Amount);
+    if find_dispatch_inner_phrase_start(stripped_words, &["to", "the", "player"]).is_some() {
+        *target = TargetAst::Player(PlayerFilter::Active, None);
+    }
+    Ok(Some(effects))
+}
+
 fn starts_with_words(words: &[&str], prefix: &[&str]) -> bool {
     words.len() >= prefix.len()
         && words[..prefix.len()]
@@ -503,6 +599,17 @@ fn parse_effect_sentence_with_where_x_lexed(
     let stripped_words = stripped_word_storage.to_word_refs();
     let where_word_storage = DispatchInnerNormalizedWords::new(&primary_where_tokens);
     let where_words = where_word_storage.to_word_refs();
+
+    if let Some(effects) =
+        parse_target_deals_power_damage_to_other_and_self_where_x(tokens, &clause_words, where_idx)?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        parse_tap_then_damage_for_number_tapped_this_way(&stripped, &stripped_words, &where_words)?
+    {
+        return Ok(effects);
+    }
 
     let where_value = match where_words.get(3..) {
         Some(["its", "power"]) => {

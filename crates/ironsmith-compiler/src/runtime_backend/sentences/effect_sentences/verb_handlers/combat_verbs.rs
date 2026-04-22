@@ -237,6 +237,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
 
     let amount = parse_add_mana_equal_amount_value(tokens)
         .or(parse_equal_to_aggregate_filter_value(tokens))
+        .or(parse_devotion_value_from_add_clause(tokens)?)
         .or(parse_equal_to_number_of_filter_value(tokens))
         .or(parse_dynamic_cost_modifier_value(tokens)?)
         .ok_or_else(|| {
@@ -267,6 +268,15 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             }],
         }));
+    }
+    if matches!(target_words.first(), Some(&"each") | Some(&"all")) {
+        if target_tokens.len() < 2 {
+            return Err(CardTextError::ParseError(
+                "missing damage target filter after 'each'".to_string(),
+            ));
+        }
+        let filter = parse_object_filter(&target_tokens[1..], false)?;
+        return Ok(Some(EffectAst::DealDamageEach { amount, filter }));
     }
     let target = parse_target_phrase(&target_tokens)?;
     Ok(Some(EffectAst::DealDamage { amount, target }))
@@ -326,6 +336,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     let amount_tokens = &tokens[..target_to_idx];
     let amount = parse_add_mana_equal_amount_value(amount_tokens)
         .or(parse_equal_to_aggregate_filter_value(amount_tokens))
+        .or(parse_devotion_value_from_add_clause(amount_tokens)?)
         .or(parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
             amount_tokens,
         ))
@@ -388,6 +399,15 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
                 target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             }],
         }));
+    }
+    if matches!(crate::runtime_backend::token_word_refs(normalized_target_tokens).first(), Some(&"each") | Some(&"all")) {
+        if normalized_target_tokens.len() < 2 {
+            return Err(CardTextError::ParseError(
+                "missing damage target filter after 'each'".to_string(),
+            ));
+        }
+        let filter = parse_object_filter(&normalized_target_tokens[1..], false)?;
+        return Ok(Some(EffectAst::DealDamageEach { amount, filter }));
     }
     let target = parse_target_phrase(normalized_target_tokens)?;
     Ok(Some(EffectAst::DealDamage { amount, target }))
@@ -832,4 +852,3 @@ pub(crate) fn parse_instead_if_control_predicate(
         }))
     }
 }
-

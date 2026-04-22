@@ -6533,6 +6533,9 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let power_is_variable = !matches!(power, Value::Fixed(_));
     let toughness_is_variable = !matches!(toughness, Value::Fixed(_));
 
+    if matches!((power, toughness), (Value::X, Value::X)) {
+        return Some(format!("{target} {gets} +X/+X {until_text}"));
+    }
     if let (Value::Scaled(power_inner, -1), Value::Scaled(toughness_inner, -1)) = (power, toughness)
         && power_inner == toughness_inner
     {

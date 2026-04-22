@@ -4513,6 +4513,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(choose_creature_type) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
+            && let Some(compact) =
+                describe_choose_creature_type_then_x_boost(choose_creature_type, filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(put_sticker) =
@@ -4579,6 +4589,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
             && let Some(compact) =
                 describe_reveal_top_then_if_put_into_hand(reveal_top, conditional)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(deal) = filtered[idx + 1].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(compact) = describe_tap_then_damage_for_tapped_this_way(with_id, deal)
         {
             parts.push(compact);
             idx += 2;
@@ -4664,6 +4683,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_target_power_damage_to_other_and_self(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()
@@ -5408,6 +5438,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(draw) = filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(lose) = filtered[idx + 1].downcast_ref::<crate::effects::LoseLifeEffect>()
+            && let Some(compact) = describe_draw_then_lose_life(draw, lose)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(mill) = filtered[idx].downcast_ref::<crate::effects::MillEffect>()
             && let Some(may) = filtered[idx + 1].downcast_ref::<crate::effects::MayEffect>()
             && let Some(compact) = describe_mill_then_may_return(mill, may)
@@ -5896,6 +5935,79 @@ pub(super) fn describe_tagged_target_then_power_damage(
     let target_text = describe_choose_spec(&deal.target);
     Some(format!(
         "{source_text} deals damage equal to its power to {target_text}"
+    ))
+}
+
+fn describe_execute_power_damage_from_tag<'a>(
+    effect: &'a Effect,
+    source_tag: &crate::TagKey,
+) -> Option<&'a crate::effects::DealDamageEffect> {
+    let mut effect = effect;
+    loop {
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            effect = &tag_all.effect;
+            continue;
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            effect = &tagged.effect;
+            continue;
+        }
+        break;
+    }
+    let with_source = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    let ChooseSpec::Tagged(tag) = &with_source.source else {
+        return None;
+    };
+    if tag.as_str() != source_tag.as_str() {
+        return None;
+    }
+    let deal = with_source
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let Value::PowerOf(power_source) = &deal.amount else {
+        return None;
+    };
+    let ChooseSpec::Tagged(power_tag) = power_source.as_ref() else {
+        return None;
+    };
+    if power_tag.as_str() != source_tag.as_str() {
+        return None;
+    }
+    Some(deal)
+}
+
+pub(super) fn describe_target_power_damage_to_other_and_self(
+    target_effect: &Effect,
+    other_damage_effect: &Effect,
+    self_damage_effect: &Effect,
+) -> Option<String> {
+    let tagged_target = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged_target
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let other_damage =
+        describe_execute_power_damage_from_tag(other_damage_effect, &tagged_target.tag)?;
+    let self_damage =
+        describe_execute_power_damage_from_tag(self_damage_effect, &tagged_target.tag)?;
+    if !matches!(other_damage.target, ChooseSpec::AnyOtherTarget) {
+        return None;
+    }
+    if !matches!(
+        self_damage.target,
+        ChooseSpec::Tagged(ref target_tag) if target_tag.as_str() == tagged_target.tag.as_str()
+    ) {
+        return None;
+    }
+
+    let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+    let verb = if choose_spec_is_plural(&target_only.target) {
+        "deal"
+    } else {
+        "deals"
+    };
+    Some(format!(
+        "{subject} {verb} X damage to {} and X damage to itself, where X is its power",
+        describe_choose_spec(&other_damage.target)
     ))
 }
 
@@ -6920,6 +7032,118 @@ pub(super) fn describe_for_each_put_counters_then_untap(
         describe_put_counter_phrase(&put.amount, put.counter_type),
         filter_text
     ))
+}
+
+pub(super) fn describe_for_each_devotion_damage(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    if for_each.effects.len() != 1 {
+        return None;
+    }
+    let deal = if let Some(deal) =
+        for_each.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()
+    {
+        deal
+    } else if let Some(tagged) = for_each.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+    {
+        tagged
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()?
+    } else {
+        return None;
+    };
+    if !matches!(deal.target, ChooseSpec::Iterated) {
+        return None;
+    }
+    if !matches!(
+        deal.amount,
+        Value::Devotion { .. } | Value::DevotionToChosenColor(_)
+    ) {
+        return None;
+    }
+
+    let description = for_each.filter.description();
+    let filter_text = strip_indefinite_article(&description);
+    Some(format!(
+        "Deal damage to each {filter_text} equal to {}",
+        describe_value(&deal.amount)
+    ))
+}
+
+pub(super) fn describe_tap_then_damage_for_tapped_this_way(
+    with_id: &crate::effects::WithIdEffect,
+    deal: &crate::effects::DealDamageEffect,
+) -> Option<String> {
+    if deal.amount != Value::EffectValue(with_id.id) {
+        return None;
+    }
+    if !matches!(deal.target, ChooseSpec::Player(PlayerFilter::Active)) {
+        return None;
+    }
+    let tap = with_id.effect.downcast_ref::<crate::effects::TapEffect>()?;
+    let ChooseSpec::All(filter) = tap.target.base() else {
+        return None;
+    };
+    if !matches!(filter.controller, Some(PlayerFilter::Active)) || !filter.untapped {
+        return None;
+    }
+
+    let full_description_storage = filter.description();
+    let full_description = strip_indefinite_article(&full_description_storage);
+    let controlled_description = full_description
+        .strip_prefix("the active player's ")
+        .or_else(|| full_description.strip_prefix("active player's "))
+        .map(|rest| format!("{} that player controls", pluralize_noun_phrase(rest)))
+        .unwrap_or_else(|| pluralize_noun_phrase(full_description));
+
+    let mut count_filter = filter.clone();
+    count_filter.controller = None;
+    count_filter.untapped = false;
+    let count_description_storage = count_filter.description();
+    let count_description =
+        pluralize_noun_phrase(strip_indefinite_article(&count_description_storage));
+    Some(format!(
+        "Tap all {controlled_description} and this permanent deals X damage to the player, where X is the number of {count_description} tapped this way"
+    ))
+}
+
+pub(super) fn describe_choose_creature_type_then_x_boost(
+    choose: &crate::effects::ChooseCreatureTypeEffect,
+    followup: &Effect,
+) -> Option<String> {
+    if !choose.excluded_subtypes.is_empty() || !matches!(choose.chooser, PlayerFilter::You) {
+        return None;
+    }
+    let followup = if let Some(tagged) = followup.downcast_ref::<crate::effects::TaggedEffect>() {
+        &tagged.effect
+    } else {
+        followup
+    };
+    let apply = followup.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !matches!(apply.until, Until::EndOfTurn)
+        || apply.modification.is_some()
+        || !apply.additional_modifications.is_empty()
+    {
+        return None;
+    }
+    let [
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness },
+    ] = apply.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    if !matches!((power, toughness), (Value::X, Value::X)) {
+        return None;
+    }
+    let crate::continuous::EffectTarget::Filter(filter) = &apply.target else {
+        return None;
+    };
+    if filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || !filter.chosen_creature_type
+    {
+        return None;
+    }
+    Some("Creatures of the creature type of your choice get +X/+X until end of turn".to_string())
 }
 
 fn put_counters_each_filter_text(effect: &Effect) -> Option<String> {
@@ -10180,6 +10404,22 @@ pub(super) fn describe_draw_then_gain_life(
     ))
 }
 
+pub(super) fn describe_draw_then_lose_life(
+    draw: &crate::effects::DrawCardsEffect,
+    lose: &crate::effects::LoseLifeEffect,
+) -> Option<String> {
+    if !matches!(draw.player, PlayerFilter::You)
+        || !matches!(lose.player, ChooseSpec::Player(PlayerFilter::You))
+        || draw.count != lose.amount
+    {
+        return None;
+    }
+    let where_x = describe_where_x_basis(&draw.count)?;
+    Some(format!(
+        "You draw X cards and you lose X life, where X is {where_x}"
+    ))
+}
+
 pub(super) fn describe_mill_then_may_return(
     mill: &crate::effects::MillEffect,
     may: &crate::effects::MayEffect,
@@ -10884,6 +11124,7 @@ pub(super) fn describe_where_x_basis(value: &Value) -> Option<String> {
             "the number of {}",
             pluralize_noun_phrase(&describe_for_each_count_filter(filter))
         )),
+        Value::Devotion { .. } | Value::DevotionToChosenColor(_) => Some(describe_value(value)),
         _ => {
             let rendered = describe_value(value);
             if rendered.starts_with("the number of ") {
@@ -13024,6 +13265,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_each_created_token_attachment(for_each) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_each_devotion_damage(for_each) {
             return compact;
         }
         if for_each.effects.len() == 1

@@ -15493,6 +15493,129 @@ fn parse_attached_role_reflexive_fight_uses_enchanted_creature_not_role_token() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn render_draw_and_life_loss_with_shared_dynamic_x() {
+    let count_def = CardDefinitionBuilder::new(CardId::new(), "Shared Count Draw Loss")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You draw X cards and you lose X life, where X is the number of creatures you control.",
+        )
+        .expect("shared count draw/loss spell should parse");
+    assert_eq!(
+        unprocessed_compiled_lines(&count_def).join("\n"),
+        "You draw X cards and you lose X life, where X is the number of creatures you control."
+    );
+
+    let devotion_def = CardDefinitionBuilder::new(CardId::new(), "Shared Devotion Draw Loss")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("You draw X cards and you lose X life, where X is your devotion to black.")
+        .expect("shared devotion draw/loss spell should parse");
+    assert_eq!(
+        unprocessed_compiled_lines(&devotion_def).join("\n"),
+        "You draw X cards and you lose X life, where X is your devotion to black."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_damage_to_each_creature_equal_to_devotion() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Skyreaping")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Skyreaping deals damage to each creature with flying equal to your devotion to green.",
+        )
+        .expect("devotion damage to each matching creature should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Deal damage to each creature with flying equal to your devotion to green."
+    );
+    let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
+    assert!(
+        debug.contains("ForEachObject")
+            && debug.contains("Devotion")
+            && debug.contains("Flying")
+            && debug.contains("target: Iterated"),
+        "expected devotion damage to be applied to each flying creature, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_target_source_power_damage_to_other_target_and_itself() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Self-Destruct")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature you control deals X damage to any other target and X damage to itself, where X is its power.",
+        )
+        .expect("source power damage split between another target and itself should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Target creature you control deals X damage to any other target and X damage to itself, where X is its power."
+    );
+    let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
+    assert!(
+        debug.contains("TargetOnlyEffect")
+            && debug.contains("targeted_0")
+            && debug.contains("ExecuteWithSourceEffect")
+            && debug.contains("AnyOtherTarget")
+            && debug.contains("PowerOf"),
+        "expected one target source reused for both power damage events, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_tapped_this_way_count_damage_from_triggered_tap_effect() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Monsoon")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's end step, tap all untapped Islands that player controls and this enchantment deals X damage to the player, where X is the number of Islands tapped this way.",
+        )
+        .expect("triggered tap/damage with tapped-this-way count should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "At the beginning of each player's end step, tap all untapped Islands that player controls and this enchantment deals X damage to the player, where X is the number of Islands tapped this way."
+    );
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("TapEffect")
+            && debug.contains("EffectValue")
+            && debug.contains("Active"),
+        "expected damage to use the tap effect result and hit the active player, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_chosen_creature_type_x_boost_as_choice_inline() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tribal Unity")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .parse_text("Creatures of the creature type of your choice get +X/+X until end of turn.")
+        .expect("chosen creature type X boost should parse");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Creatures of the creature type of your choice get +X/+X until end of turn."
+    );
+    let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
+    assert!(
+        debug.contains("ChooseCreatureTypeEffect")
+            && debug.contains("chosen_creature_type: true")
+            && debug.contains("ModifyPowerToughness"),
+        "expected a creature-type choice feeding a chosen-type X boost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Asinine Antics")
         .mana_cost(ManaCost::from_pips(vec![
