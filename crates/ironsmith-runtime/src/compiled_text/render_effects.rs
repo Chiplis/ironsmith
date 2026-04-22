@@ -4561,6 +4561,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_create_attached_token_then_reflexive_fight(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(reveal_top) =
                 filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
@@ -12882,6 +12893,116 @@ fn describe_for_each_created_token_attachment(
     let target_noun = describe_iterated_object_reference_noun(&for_each.filter);
     Some(format!(
         "For each {subject}, create {token} attached to that {target_noun}"
+    ))
+}
+
+fn tagged_attach_with_id(
+    effect: &Effect,
+) -> Option<(
+    &crate::effects::WithIdEffect,
+    Option<&TagKey>,
+    &crate::effects::AttachObjectsEffect,
+)> {
+    let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    if let Some(tagged) = with_id
+        .effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    {
+        let attach = tagged
+            .effect
+            .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+        return Some((with_id, Some(&tagged.tag), attach));
+    }
+    let attach = with_id
+        .effect
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    Some((with_id, None, attach))
+}
+
+fn attachment_target_reference(target: &ChooseSpec) -> &'static str {
+    let description = describe_choose_spec(target).to_ascii_lowercase();
+    if description.contains("creature") {
+        "that creature"
+    } else if description.contains("artifact") {
+        "that artifact"
+    } else if description.contains("enchantment") {
+        "that enchantment"
+    } else if description.contains("land") {
+        "that land"
+    } else if description.contains("permanent") {
+        "that permanent"
+    } else {
+        "it"
+    }
+}
+
+fn describe_attached_target_fight_followup(
+    if_effect: &crate::effects::IfEffect,
+    attachment_target_tag: &TagKey,
+    target_reference: &str,
+) -> Option<String> {
+    if if_effect.predicate != EffectPredicate::Happened || !if_effect.else_.is_empty() {
+        return None;
+    }
+
+    let visible_then = if_effect
+        .then
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [fight_effect] = visible_then.as_slice() else {
+        return None;
+    };
+    let fight = fight_effect.downcast_ref::<crate::effects::FightEffect>()?;
+    if !matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == attachment_target_tag) {
+        return None;
+    }
+
+    Some(format!(
+        "{target_reference} fights {}",
+        describe_choose_spec(&fight.creature2)
+    ))
+}
+
+fn describe_create_attached_token_then_reflexive_fight(
+    create_effect: &Effect,
+    attach_effect: &Effect,
+    followup_effect: &Effect,
+) -> Option<String> {
+    let (created_tag, create_token) = tagged_create_token_effect(create_effect)?;
+    let (with_id, attachment_target_tag, attach) = tagged_attach_with_id(attach_effect)?;
+    let attachment_target_tag = attachment_target_tag?;
+    let if_effect = followup_effect.downcast_ref::<crate::effects::IfEffect>()?;
+
+    if if_effect.condition != with_id.id
+        || !choose_spec_references_exact_tag(&attach.objects, created_tag)
+        || create_token.count != Value::Fixed(1)
+        || !matches!(&create_token.controller, PlayerFilter::You)
+        || create_token.controller_target.is_some()
+        || create_token.enters_tapped
+        || create_token.enters_attacking
+        || create_token.exile_at_end_of_combat
+        || create_token.sacrifice_at_end_of_combat
+        || create_token.sacrifice_at_next_end_step
+        || create_token.exile_at_next_end_step
+    {
+        return None;
+    }
+
+    let target_reference = attachment_target_reference(&attach.target);
+    let followup = describe_attached_target_fight_followup(
+        if_effect,
+        attachment_target_tag,
+        target_reference,
+    )?;
+    let token = with_indefinite_article(&describe_token_blueprint(&create_token.token));
+    Some(format!(
+        "Create {token} attached to {}. When you do, {followup}",
+        describe_choose_spec(&attach.target)
     ))
 }
 

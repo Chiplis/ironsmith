@@ -466,7 +466,13 @@ pub(super) fn try_compile_token_generation_effect(
                     ));
                 };
                 let objects = ChooseSpec::All(ObjectFilter::tagged(created_tag));
-                compiled.push(Effect::attach_objects(objects, target_spec));
+                let mut attach_effect = Effect::attach_objects(objects, target_spec);
+                if ctx.auto_tag_object_targets {
+                    let tag = ctx.next_tag("attachment_target");
+                    attach_effect = attach_effect.tag(tag.clone());
+                    ctx.last_object_tag = Some(tag);
+                }
+                compiled.push(attach_effect);
             }
             (compiled, choices)
         }

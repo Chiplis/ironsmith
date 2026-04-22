@@ -15456,6 +15456,43 @@ fn parse_create_supported_role_tokens_attached_to_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_attached_role_reflexive_fight_uses_enchanted_creature_not_role_token() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Attached Role Fight")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a Monster Role token attached to target creature you control. \
+             When you do, that creature fights up to one target creature you don't control.",
+        )
+        .expect("attached Role fight spell should parse");
+
+    let spell_effect = def.spell_effect.as_ref().expect("spell effect");
+    let debug = format!("{spell_effect:?}");
+    assert!(
+        debug.contains("AttachObjectsEffect") && debug.contains("attachment_target_1"),
+        "expected Role attachment target to be tagged for the follow-up fight, got {debug}"
+    );
+    assert!(
+        debug.contains("FightEffect { creature1: Tagged(TagKey(\"attachment_target_1\"))"),
+        "expected the enchanted creature, not the Role token, to fight, got {debug}"
+    );
+    assert!(
+        !debug.contains("FightEffect { creature1: Tagged(TagKey(\"created_0\"))"),
+        "the created Aura Role token must not be used as the fighting creature: {debug}"
+    );
+    assert!(
+        debug.contains("Anthem") && debug.contains("GrantAbility") && debug.contains("Trample"),
+        "expected Monster Role token to carry its enchanted-creature buff and trample grant, got {debug}"
+    );
+
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Create a Monster Role token attached to target creature you control. When you do, that creature fights up to one target creature you don't control."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_asinine_antics_uses_flash_cast_method_and_iterated_role_attachment() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Asinine Antics")
         .mana_cost(ManaCost::from_pips(vec![

@@ -6,7 +6,7 @@ use crate::effect::Effect;
 use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::StaticAbility;
+use crate::static_abilities::{Anthem, GrantAbility, StaticAbility};
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
@@ -194,7 +194,20 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
     role_token("Young Hero Role")
 }
 pub fn monster_role_token_definition() -> CardDefinition {
-    role_token("Monster Role")
+    let enchanted = enchanted_creature_filter();
+    CardDefinitionBuilder::new(CardId::new(), "Monster Role")
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .oracle_text("Enchant creature\nEnchanted creature gets +1/+1 and has trample.")
+        .enchants(ObjectFilter::creature().into())
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            Anthem::new(enchanted.clone(), 1, 1),
+        )))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(enchanted, StaticAbility::trample().into()),
+        )))
+        .build()
 }
 pub fn sorcerer_role_token_definition() -> CardDefinition {
     role_token("Sorcerer Role")

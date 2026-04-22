@@ -788,6 +788,9 @@ fn advance_reference_frame_for_effect(
             {
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
             }
+            if frame.auto_tag_object_targets && attached_to.is_some() {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "attachment_target"));
+            }
         }
         EffectAst::MoveAllCounters { .. } => {
             if frame.auto_tag_object_targets {
