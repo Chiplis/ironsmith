@@ -985,6 +985,14 @@ pub fn player_matches_filter_with_combat(
             .any(|snapshot| {
                 snapshot.controller == player_id && snapshot.card_types.contains(card_type)
             }),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            if !player_matches_filter_with_combat(player_id, base, game, controller, combat) {
+                return false;
+            }
+            let candidate_hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+            let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
+            candidate_hand >= your_hand.saturating_add(*count as usize)
+        }
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
         PlayerFilter::IteratedPlayer => {

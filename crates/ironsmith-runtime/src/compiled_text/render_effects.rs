@@ -530,6 +530,30 @@ fn describe_for_players_target_return_unless_draw(
     ))
 }
 
+fn choose_spec_contains_hand_advantage_player_filter(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_contains_hand_advantage_player_filter(inner)
+        }
+        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            player_filter_contains_hand_advantage_filter(filter)
+        }
+        _ => false,
+    }
+}
+
+fn player_filter_contains_hand_advantage_filter(filter: &PlayerFilter) -> bool {
+    match filter {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => true,
+        PlayerFilter::Target(inner) => player_filter_contains_hand_advantage_filter(inner),
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_contains_hand_advantage_filter(base)
+                || player_filter_contains_hand_advantage_filter(excluded)
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let preserve_target_only_players = effects.iter().any(|effect| {
         effect
@@ -561,6 +585,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                             ChooseSpec::Player(_) | ChooseSpec::WithCount(_, _)
                         )
                     })
+            {
+                return true;
+            }
+
+            if effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some_and(|target_only| {
+                    choose_spec_contains_hand_advantage_player_filter(&target_only.target)
+                })
             {
                 return true;
             }

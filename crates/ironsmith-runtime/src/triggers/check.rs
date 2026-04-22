@@ -1466,6 +1466,13 @@ pub fn player_filter_matches_with_context(
                 }
             })
             .unwrap_or(false),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            player_filter_matches_with_context(base, player, controller, game, defending_player)
+                && game.player(player).is_some_and(|candidate| {
+                    let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
+                    candidate.hand.len() >= your_hand.saturating_add(*count as usize)
+                })
+        }
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store
             .turn_history

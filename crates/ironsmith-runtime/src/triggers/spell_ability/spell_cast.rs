@@ -273,6 +273,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::MostCardsInHand => {
                     "the player who has the most cards in hand".to_string()
                 }
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn",
                     card_type.to_string().to_ascii_lowercase()

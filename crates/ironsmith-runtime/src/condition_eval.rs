@@ -2,7 +2,7 @@ use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object_query::candidate_ids_for_zone;
@@ -2054,6 +2054,22 @@ fn resolve_condition_player_simple(
                 [leader] => Some(*leader),
                 _ => None,
             }
+        }
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+            let filter_ctx = crate::target::FilterContext::new(controller)
+                .with_opponents(
+                    game.players
+                        .iter()
+                        .filter(|p| p.id != controller && p.is_in_game())
+                        .map(|p| p.id)
+                        .collect(),
+                )
+                .with_active_player(game.turn.active_player);
+            game.players.iter().find_map(|candidate| {
+                (candidate.is_in_game()
+                    && player_filter_matches_game(player, candidate.id, game, &filter_ctx))
+                .then_some(candidate.id)
+            })
         }
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)

@@ -5,7 +5,7 @@
 //! - Player filter resolution
 //! - Target finding and validation
 
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
 use std::collections::HashSet;
 
 use crate::cost::OptionalCostsPaid;
@@ -1462,7 +1462,9 @@ pub fn resolve_player_filter(
                 .ok_or_else(|| ExecutionError::UnresolvableValue("No matching players".to_string()))
         }
         PlayerFilter::Specific(id) => Ok(*id),
-        PlayerFilter::MostLifeTied | PlayerFilter::CastCardTypeThisTurn(_) => {
+        PlayerFilter::MostLifeTied
+        | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
             players
@@ -1778,10 +1780,10 @@ pub fn validate_target(
             }
         }
         (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
-            filter.matches_player(*id, &filter_ctx)
+            player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
-            filter.matches_player(*id, &filter_ctx)
+            player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => game
             .object(*id)
@@ -2444,7 +2446,7 @@ pub fn resolve_players_from_spec(
                 .players
                 .iter()
                 .filter(|p| p.is_in_game())
-                .filter(|p| filter.matches_player(p.id, &filter_ctx))
+                .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
                 .map(|p| p.id)
                 .collect();
 
@@ -2574,6 +2576,13 @@ pub(crate) fn resolve_player_filter_to_list(
                         snapshot.controller == player.id && snapshot.card_types.contains(card_type)
                     })
             })
+            .map(|player| player.id)
+            .collect()),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
             .map(|player| player.id)
             .collect()),
         PlayerFilter::ChosenPlayer => ctx

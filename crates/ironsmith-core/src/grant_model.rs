@@ -326,6 +326,7 @@ where
                     "Any player who cast one or more {} spells this turn may",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
                 | PlayerFilter::IteratedPlayer

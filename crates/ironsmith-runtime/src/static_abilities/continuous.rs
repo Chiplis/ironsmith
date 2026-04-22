@@ -797,6 +797,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
             crate::target::PlayerFilter::MostCardsInHand => {
                 "as long as the player who has the most cards in hand is the monarch".to_string()
             }
+            crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
                 "as long as that player is the monarch".to_string()
             }

@@ -69,6 +69,23 @@ fn write_cards_with_unsupported_json(path: &Path) {
     .expect("write cards.json with unsupported card");
 }
 
+fn write_cards_with_semantic_mismatch_json(path: &Path) {
+    fs::write(
+        path,
+        r#"[
+  {
+    "name":"G'raha Tia Variant",
+    "oracle_text":"Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.",
+    "mana_cost":"{2}{G}",
+    "type_line":"Creature — Cat Wizard",
+    "power":"2",
+    "toughness":"3"
+  }
+]"#,
+    )
+    .expect("write cards.json with semantic mismatch card");
+}
+
 fn write_cards_with_parenthetical_json(path: &Path) {
     fs::write(
         path,
@@ -873,6 +890,52 @@ fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
         )
         .expect("query parse status");
     assert_eq!(parse_status, "parse_failed");
+}
+
+#[test]
+fn compile_oracle_text_keeps_semantic_mismatch_status_in_line_with_sync_db() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let db_path = dir.path().join("authoritative.sqlite3");
+    write_cards_with_semantic_mismatch_json(&cards_path);
+
+    let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("G'raha Tia Variant")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(&db_path)
+        .status()
+        .expect("run authoritative compile_oracle_text on semantic mismatch card");
+    assert!(
+        status.success(),
+        "compile_oracle_text should succeed for compiled semantic mismatches"
+    );
+
+    let conn = Connection::open(&db_path).expect("open sqlite db");
+    let (parse_status, semantic_mismatch, parse_error, compiled_text): (
+        String,
+        i64,
+        Option<String>,
+        Option<String>,
+    ) = conn
+        .query_row(
+            "SELECT parse_status, semantic_mismatch, parse_error, compiled_text
+             FROM latest_card_compilation
+             WHERE card_name = 'G''raha Tia Variant'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("query semantic mismatch snapshot");
+
+    assert_eq!(parse_status, "strict_compiled");
+    assert_eq!(semantic_mismatch, 1);
+    assert!(parse_error.is_none());
+    assert!(
+        compiled_text.is_some(),
+        "semantic mismatch snapshots should keep compiled text"
+    );
 }
 
 #[test]

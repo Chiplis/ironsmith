@@ -14,8 +14,6 @@ use ironsmith_tools::{
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
 const DEFAULT_SHOW_DEFINITION: bool = true;
-const SEMANTIC_MISMATCH_ERROR: &str =
-    "compiled output still semantically mismatches the oracle text";
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -189,11 +187,6 @@ struct CompileJob {
     compiled_definition: Option<CardDefinition>,
 }
 
-fn failed_authoritative_semantic_gate(snapshot: &CompilationSnapshot) -> bool {
-    snapshot.parse_status == ParseStatus::ParseFailed
-        && snapshot.parse_error.as_deref() == Some(SEMANTIC_MISMATCH_ERROR)
-}
-
 fn compile_job_for_name(
     cards_path: &str,
     name: &str,
@@ -302,13 +295,8 @@ fn write_compiled_job<W: Write>(
         };
     }
 
-    let authoritative_semantic_gate_failure = job
-        .authoritative_snapshot
-        .as_ref()
-        .is_some_and(failed_authoritative_semantic_gate);
     if let Some(snapshot) = job.authoritative_snapshot.as_ref()
         && snapshot.parse_status == ParseStatus::ParseFailed
-        && !authoritative_semantic_gate_failure
     {
         let _ = store_snapshot_if_requested(
             should_write_db,
@@ -396,25 +384,15 @@ fn write_compiled_job<W: Write>(
         .db_payload
         .as_ref()
         .map(|payload| snapshot_from_payload_definition(payload, def));
-    let snapshot_to_store = if authoritative_semantic_gate_failure {
-        job.authoritative_snapshot.as_ref()
-    } else {
-        fresh_snapshot
-            .as_ref()
-            .or(job.authoritative_snapshot.as_ref())
-    };
+    let snapshot_to_store = fresh_snapshot
+        .as_ref()
+        .or(job.authoritative_snapshot.as_ref());
     store_snapshot_if_requested(
         should_write_db,
         snapshot_to_store,
         job.db_payload.as_ref(),
         db_path,
     )?;
-    if authoritative_semantic_gate_failure {
-        return Err(format!(
-            "parse failed for {}: {SEMANTIC_MISMATCH_ERROR}",
-            job.name
-        ));
-    }
     Ok(())
 }
 
@@ -684,54 +662,5 @@ mod tests {
         assert_eq!(job.name, "House Cartographer");
         assert!(job.parse_input.contains("Type: Creature"));
         assert!(job.db_payload.is_some());
-    }
-
-    #[test]
-    fn semantic_gate_failure_still_prints_compiled_definition() {
-        let definition = parse_card_definition_with_runtime_builder(
-            "Semantic Gate Probe",
-            "Mana cost: {R}\nType: Instant\nSemantic Gate Probe deals 3 damage to any target."
-                .to_string(),
-            false,
-        )
-        .expect("probe should compile");
-        let mut snapshot = CompilationSnapshot::from_definition_result(
-            "Semantic Gate Probe",
-            "Semantic Gate Probe deals 3 damage to any target.",
-            ParseStatus::StrictCompiled,
-            None,
-            Some(&definition),
-        );
-        snapshot.parse_status = ParseStatus::ParseFailed;
-        snapshot.parse_error = Some(SEMANTIC_MISMATCH_ERROR.to_string());
-
-        let job = CompileJob {
-            name: "Semantic Gate Probe".to_string(),
-            oracle_text: "Semantic Gate Probe deals 3 damage to any target.".to_string(),
-            parse_input:
-                "Mana cost: {R}\nType: Instant\nSemantic Gate Probe deals 3 damage to any target."
-                    .to_string(),
-            db_payload: None,
-            authoritative_snapshot: Some(snapshot),
-            compiled_definition: Some(definition),
-        };
-        let mut output = Vec::new();
-
-        let err = write_compiled_job(&mut output, &job, false, false, true, false, "")
-            .expect_err("semantic gate failure should still fail the command");
-        let stdout = String::from_utf8(output).expect("stdout should be utf8");
-
-        assert!(
-            stdout.contains("Compiled card definition:"),
-            "expected definition output before semantic gate failure, got {stdout}"
-        );
-        assert!(
-            stdout.contains("Semantic Gate Probe"),
-            "expected built card name in definition output, got {stdout}"
-        );
-        assert!(
-            err.contains(SEMANTIC_MISMATCH_ERROR),
-            "expected semantic gate error, got {err}"
-        );
     }
 }

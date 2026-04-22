@@ -3,6 +3,23 @@ use crate::{
     Subtype, Supertype, TagKey, Value, Zone,
 };
 
+fn small_number_word(n: u32) -> Option<&'static str> {
+    match n {
+        0 => Some("zero"),
+        1 => Some("one"),
+        2 => Some("two"),
+        3 => Some("three"),
+        4 => Some("four"),
+        5 => Some("five"),
+        6 => Some("six"),
+        7 => Some("seven"),
+        8 => Some("eight"),
+        9 => Some("nine"),
+        10 => Some("ten"),
+        _ => None,
+    }
+}
+
 /// A reference to an object for use in filters and effects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ObjectRef {
@@ -146,6 +163,10 @@ pub enum PlayerFilter {
     MostLifeTied,
     MostCardsInHand,
     CastCardTypeThisTurn(CardType),
+    CardsInHandAtLeastMoreThanYou {
+        base: Box<PlayerFilter>,
+        count: u32,
+    },
     ChosenPlayer,
     TaggedPlayer(TagKey),
     IteratedPlayer,
@@ -181,6 +202,7 @@ impl PlayerFilter {
         match self {
             Self::IteratedPlayer => true,
             Self::Target(inner) => inner.mentions_iterated_player(),
+            Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
             }
@@ -227,6 +249,16 @@ impl PlayerFilter {
                 "a player who cast one or more {} spells this turn",
                 card_type.to_string().to_ascii_lowercase()
             ),
+            Self::CardsInHandAtLeastMoreThanYou { base, count } => {
+                let count_text = small_number_word(*count)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count.to_string());
+                format!(
+                    "{} who has at least {} more cards in hand than you do",
+                    base.description(),
+                    count_text
+                )
+            }
             Self::ChosenPlayer => "the chosen player".to_string(),
             Self::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
                 "enchanted player".to_string()
@@ -1087,6 +1119,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
                 )),
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
                 PlayerFilter::TaggedPlayer(_) => parts.push("that player's".to_string()),
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
@@ -1152,6 +1187,9 @@ impl ObjectFilter {
                     "a player who cast one or more {} spells this turn owns",
                     card_type.to_string().to_ascii_lowercase()
                 ),
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
@@ -2042,6 +2080,15 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            let count_text = small_number_word(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            format!(
+                "{} who has at least {count_text} more cards in hand than you do's",
+                describe_player_filter(base)
+            )
+        }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
@@ -2087,6 +2134,15 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            let count_text = small_number_word(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            format!(
+                "{} who has at least {count_text} more cards in hand than you do",
+                describe_player_filter(base)
+            )
+        }
         PlayerFilter::ChosenPlayer => "chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()

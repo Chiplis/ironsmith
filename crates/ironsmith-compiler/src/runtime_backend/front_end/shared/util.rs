@@ -2443,6 +2443,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
 
+    if let Some(filter) = parse_hand_advantage_player_target_filter(&remaining_words) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(filter, target_span),
+            target_count,
+        ));
+    }
+
     if remaining_words.as_slice() == ["player", "on", "your", "team"]
         || remaining_words.as_slice() == ["players", "on", "your", "team"]
     {
@@ -2910,6 +2917,66 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         TargetAst::Object(filter, target_span, it_span),
         target_count,
     ))
+}
+
+fn parse_hand_advantage_player_target_filter(words: &[&str]) -> Option<PlayerFilter> {
+    let (base, mut idx) = match words.first().copied()? {
+        "opponent" | "opponents" => (PlayerFilter::Opponent, 1),
+        "player" | "players" => (PlayerFilter::Any, 1),
+        _ => return None,
+    };
+
+    if !matches!(words.get(idx).copied(), Some("who" | "that")) {
+        return None;
+    }
+    idx += 1;
+    if words.get(idx).copied() != Some("has") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() == Some("at") && words.get(idx + 1).copied() == Some("least") {
+        idx += 2;
+    }
+
+    let count = parse_number_word_u32(words.get(idx).copied()?)?;
+    idx += 1;
+
+    if words.get(idx).copied() != Some("more")
+        || !matches!(words.get(idx + 1).copied(), Some("card" | "cards"))
+        || words.get(idx + 2).copied() != Some("in")
+    {
+        return None;
+    }
+    idx += 3;
+
+    if words.get(idx).copied() == Some("their") {
+        idx += 1;
+    }
+    if words.get(idx).copied() != Some("hand") {
+        return None;
+    }
+    idx += 1;
+
+    if words.get(idx).copied() != Some("than") || words.get(idx + 1).copied() != Some("you") {
+        return None;
+    }
+    idx += 2;
+    if words.get(idx).copied() == Some("do") {
+        idx += 1;
+    }
+
+    if idx < words.len() {
+        let rest = &words[idx..];
+        if rest != ["as", "you", "activate", "this", "ability"] {
+            return None;
+        }
+    }
+
+    Some(PlayerFilter::CardsInHandAtLeastMoreThanYou {
+        base: Box::new(base),
+        count,
+    })
 }
 
 pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {

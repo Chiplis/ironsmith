@@ -8234,6 +8234,37 @@ fn test_peek_targets_opponent_hand() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_keeper_of_the_mind_target_condition_survives_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of the Mind Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{U}, {T}: Choose target opponent who has at least two more cards in hand than you do as you activate this ability. Draw a card.",
+        )
+        .expect("parse Keeper of the Mind ability");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CardsInHandAtLeastMoreThanYou")
+            && debug.contains("base: Opponent")
+            && debug.contains("TargetOnlyEffect")
+            && debug.contains("DrawCardsEffect"),
+        "expected a hand-size-gated opponent target followed by draw, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" | ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("choose target opponent who has at least two more cards in hand than you do")
+            && rendered.contains("draw a card"),
+        "expected Keeper target condition in compiled output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_untap_another_target_permanent_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Untap Probe")
         .card_types(vec![CardType::Creature])

@@ -843,6 +843,9 @@ impl PlayerFilterExt for PlayerFilter {
             PlayerFilter::MostLifeTied => false,
             PlayerFilter::MostCardsInHand => false,
             PlayerFilter::CastCardTypeThisTurn(_) => false,
+            PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. } => {
+                base.matches_player(player, ctx)
+            }
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
                 .tagged_players
@@ -884,6 +887,40 @@ impl PlayerFilterExt for PlayerFilter {
                     .is_some_and(|snapshot| snapshot.owner == player)
             }
         }
+    }
+}
+
+pub(crate) fn player_filter_matches_game(
+    filter: &PlayerFilter,
+    player: PlayerId,
+    game: &crate::game_state::GameState,
+    ctx: &FilterContext,
+) -> bool {
+    match filter {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            let Some(you) = ctx.you else {
+                return false;
+            };
+            let candidate_hand = game.player(player).map(|p| p.hand.len()).unwrap_or(0);
+            let your_hand = game.player(you).map(|p| p.hand.len()).unwrap_or(0);
+            candidate_hand >= your_hand.saturating_add(*count as usize)
+        }
+        PlayerFilter::Target(inner) => {
+            if !ctx.target_players.is_empty() {
+                return ctx.target_players.contains(&player)
+                    && player_filter_matches_game(inner, player, game, ctx);
+            }
+            ctx.iterated_player.is_some_and(|p| p == player)
+                && player_filter_matches_game(inner, player, game, ctx)
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_matches_game(base, player, game, ctx)
+                && !player_filter_matches_game(excluded, player, game, ctx)
+        }
+        other => other.matches_player(player, ctx),
     }
 }
 
@@ -2484,6 +2521,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::MostCardsInHand => {
                     parts.push("the player with the most cards in hand's".to_string())
                 }
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => parts.push(format!(
                     "a player who cast one or more {} spells this turn's",
                     card_type.to_string().to_ascii_lowercase()
@@ -2550,6 +2590,9 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 PlayerFilter::MostCardsInHand => {
                     "the player who has the most cards in hand owns".to_string()
+                }
+                PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn owns",
@@ -3572,6 +3615,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn's",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
@@ -3617,6 +3663,13 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            let count_text = count.to_string();
+            format!(
+                "{} who has at least {count_text} more cards in hand than you do",
+                describe_player_filter(base)
+            )
+        }
         PlayerFilter::ChosenPlayer => "chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()

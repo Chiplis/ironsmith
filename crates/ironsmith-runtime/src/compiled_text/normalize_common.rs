@@ -43,6 +43,15 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "a player who cast one or more {} spells this turn",
             card_type.to_string().to_ascii_lowercase()
         ),
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
+            let count_text = small_number_word(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            format!(
+                "{} who has at least {count_text} more cards in hand than you do",
+                strip_leading_article(&describe_player_filter(base))
+            )
+        }
         PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()

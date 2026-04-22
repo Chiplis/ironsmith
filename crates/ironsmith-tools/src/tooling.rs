@@ -338,17 +338,11 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
         .as_ref()
         .and_then(generated_definition_unsupported_mechanics_message);
     let mut snapshot = snapshot_from_attempt(payload, &attempt);
-    if snapshot.parse_status == ParseStatus::StrictCompiled
-        && (snapshot.has_unimplemented || snapshot.semantic_mismatch)
-    {
+    if snapshot.parse_status == ParseStatus::StrictCompiled && snapshot.has_unimplemented {
         snapshot.parse_status = ParseStatus::ParseFailed;
-        snapshot.parse_error = Some(if snapshot.has_unimplemented {
-            unsupported_mechanics_message.unwrap_or_else(|| {
-                "generated definition still contains unimplemented content".to_string()
-            })
-        } else {
-            "compiled output still semantically mismatches the oracle text".to_string()
-        });
+        snapshot.parse_error = Some(unsupported_mechanics_message.unwrap_or_else(|| {
+            "generated definition still contains unimplemented content".to_string()
+        }));
         snapshot.compiled_text = None;
         snapshot.unprocessed_compiled_text = None;
         snapshot.compiled_card_definition = None;
@@ -2357,6 +2351,26 @@ CardDefinition {
         assert_eq!(
             fallback_snapshot.unprocessed_compiled_text.as_deref(),
             Some("Reach\nYou draw a card.")
+        );
+    }
+
+    #[test]
+    fn authoritative_snapshot_keeps_semantic_mismatch_as_strict_compiled() {
+        let snapshot =
+            compile_authoritative_snapshot_from_payload(&pseudo_oracle_fallback_payload());
+
+        assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
+        assert!(
+            snapshot.semantic_mismatch,
+            "authoritative snapshots should preserve semantic mismatch flags"
+        );
+        assert!(
+            snapshot.parse_error.is_none(),
+            "semantic mismatches should not be stored as parse errors"
+        );
+        assert!(
+            snapshot.compiled_text.is_some(),
+            "semantic mismatch snapshots should keep their compiled text"
         );
     }
 

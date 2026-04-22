@@ -5,7 +5,7 @@
 
 use crate::ability::extract_static_abilities;
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::PlayerFilterExt;
+use crate::filter::player_filter_matches_game;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
@@ -427,7 +427,7 @@ fn compute_player_targets(
                 |source| game.can_target_player_from_source(p.id, source),
             )
         })
-        .filter(|p| filter.matches_player(p.id, &filter_ctx))
+        .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
         .map(|p| Target::Player(p.id))
         .collect()
 }
@@ -494,6 +494,15 @@ mod tests {
 
     fn create_test_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+    }
+
+    fn add_hand_card(game: &mut GameState, id: u32, owner: PlayerId) {
+        let card = CardBuilder::new(CardId::from_raw(id), &format!("Hand Card {id}"))
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Hand);
     }
 
     fn create_creature(id: u32, name: &str, controller: PlayerId) -> Object {
@@ -784,6 +793,41 @@ mod tests {
         assert!(
             legal_targets.contains(&Target::Player(p0)),
             "other legal players should remain targetable"
+        );
+    }
+
+    #[test]
+    fn test_hand_advantage_player_filter_targets_only_qualified_opponent() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        add_hand_card(&mut game, 101, alice);
+        add_hand_card(&mut game, 102, bob);
+        add_hand_card(&mut game, 103, bob);
+
+        let filter = PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base: Box::new(PlayerFilter::Opponent),
+            count: 2,
+        };
+        let legal_targets =
+            compute_legal_targets(&game, &ChooseSpec::Player(filter.clone()), alice, None);
+
+        assert!(
+            !legal_targets.contains(&Target::Player(bob)),
+            "Bob should not be legal while only one card ahead"
+        );
+
+        add_hand_card(&mut game, 104, bob);
+        let legal_targets = compute_legal_targets(&game, &ChooseSpec::Player(filter), alice, None);
+
+        assert!(
+            legal_targets.contains(&Target::Player(bob)),
+            "Bob should be legal once he has at least two more cards than Alice"
+        );
+        assert!(
+            !legal_targets.contains(&Target::Player(alice)),
+            "the base opponent filter should still exclude Alice"
         );
     }
 

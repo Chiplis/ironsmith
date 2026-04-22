@@ -799,6 +799,7 @@ fn object_matches_filter_with_chars(
             PlayerFilter::NotYou
             | PlayerFilter::MostLifeTied
             | PlayerFilter::MostCardsInHand
+            | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate
             | PlayerFilter::Active
