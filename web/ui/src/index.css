@@ -3730,6 +3730,12 @@
   -webkit-box-decoration-break: clone;
 }
 
+.inspector-oracle-line--topbar {
+  width: 100%;
+  margin-left: 0;
+  padding-inline: 0;
+}
+
 .inspector-oracle-line-bullet {
   padding-right: 0.98rem;
   text-indent: 0;

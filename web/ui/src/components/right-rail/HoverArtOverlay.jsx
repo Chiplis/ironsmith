@@ -498,6 +498,7 @@ export default function HoverArtOverlay({
   onShowNextTransientPreview = null,
   stackTimelineHeight = 0,
   compact = false,
+  compactLayout = "default",
   displayMode = "inspector",
   inspectorVariant = "normal",
   availableInspectorWidth = null,
@@ -513,6 +514,7 @@ export default function HoverArtOverlay({
 }) {
   const { state, game } = useGame();
   const debugInspector = inspectorVariant === "debug";
+  const compactTopbarLayout = compact && compactLayout === "topbar";
   const playerNameById = useMemo(() => buildPlayerNameMap(state), [state]);
   const { byId: objectNameById, byStableId: objectNameByStableId } = useMemo(
     () => buildObjectNameMaps(state),
@@ -1362,7 +1364,9 @@ export default function HoverArtOverlay({
     ? "text-[11px] leading-snug text-[#d1e2f6] text-center"
     : "leading-snug text-[#d1e2f6] text-center";
   const rulesTextClassName = compact
-    ? "text-[13px] leading-[1.28] text-white font-semibold text-left"
+    ? (compactTopbarLayout
+      ? "text-[12px] leading-[1.22] text-white font-semibold text-left"
+      : "text-[13px] leading-[1.28] text-white font-semibold text-left")
     : "text-white font-semibold text-left";
   const inspectorTitleStyle = compact ? undefined : {
     fontSize: `${INSPECTOR_TITLE_FONT_SIZE * inspectorTitleScale}px`,
@@ -1546,8 +1550,122 @@ export default function HoverArtOverlay({
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.16)_48%,rgba(0,0,0,0.3)_100%)]" />
         <div className="absolute inset-0 overflow-hidden">
           <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[34%] bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.52)_46%,rgba(0,0,0,0.74)_100%)]" />
-        {(transitionTitle || displayStatsText || displayTopLeftDetailLines.length > 0 || displayTopLeftOwnershipLines.length > 0) && (
-          <div ref={topHeaderRef} className="pointer-events-auto absolute top-0 left-0 z-[60] flex max-w-[72%] flex-col items-start gap-1">
+        {compactTopbarLayout && (
+          <div className="pointer-events-auto absolute inset-0 z-[60] grid grid-cols-[minmax(0,1fr)_144px] gap-2 p-2">
+            <div ref={topHeaderRef} className="flex min-h-0 min-w-0 flex-col items-start gap-1 overflow-hidden">
+              <div className="flex max-w-full min-w-0 items-start gap-1">
+                {displayObjectName && (
+                  <div
+                    ref={inspectorTitleRef}
+                    className="inspector-banner inspector-banner--title min-w-0 shrink overflow-hidden rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] px-2.5 py-1 text-[16px] font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff] backdrop-blur-[2px]"
+                  >
+                    <span className="inline-flex max-w-full items-center gap-2 whitespace-nowrap">
+                      {groupedCardCount > 1 && (
+                        <span className="inspector-chip-count inline-flex h-4 min-w-4 items-center justify-center rounded-none border border-[#f5d08b]/70 bg-[rgba(0,0,0,0.45)] px-1 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                          x{groupedCardCount}
+                        </span>
+                      )}
+                      <span className="min-w-0 truncate">{displayObjectName}</span>
+                    </span>
+                  </div>
+                )}
+                <InspectorMetadataBlock
+                  lines={displayTopLeftDetailLines}
+                  className={cn(
+                    "inspector-banner inspector-banner--meta min-w-[10rem] max-w-none flex-1 self-start rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 backdrop-blur-[1.8px]",
+                    topMetadataTextClassName
+                  )}
+                  lineClassName="whitespace-normal break-words text-left"
+                  style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                />
+              </div>
+              <div className="flex max-w-full flex-wrap items-start gap-1">
+                {displayTypeLineBadges.length > 0 && (
+                  <div className="flex max-w-full flex-wrap gap-1">
+                    {displayTypeLineBadges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="inspector-banner inspector-banner--meta rounded-none bg-[rgba(8,18,30,0.62)] px-2 py-1 text-[9px] font-extrabold uppercase leading-none tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]"
+                        style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                        title={badge === "All creature types" ? "This object has every creature type." : badge}
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {displayRulesLines.length > 0 && (
+                <div
+                  className={cn(
+                    "min-h-0 max-w-full flex-1 self-start overflow-hidden bg-transparent px-2.5 py-1 text-left",
+                    rulesTextClassName
+                  )}
+                >
+                  <div className="h-full overflow-y-auto pr-1">
+                    <div className="space-y-0.5">
+                      {displayRulesLines.map((line, lineIndex) => (
+                        <SymbolText
+                          key={`${lineIndex}-${line.slice(0, 32)}`}
+                          text={line}
+                          className={cn(
+                            rulesTextClassName,
+                            "inspector-oracle-line",
+                            "inspector-oracle-line--topbar",
+                            /^\s*[•*-]\s+/.test(String(line || "")) && "inspector-oracle-line-bullet"
+                          )}
+                          style={rulesTextStyle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div ref={topMetadataRef} className="flex min-h-0 min-w-0 flex-col items-end gap-1 overflow-hidden">
+              {displayManaCost && (
+                <div className="inspector-banner inspector-banner--mana rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1" style={inspectorManaStyle}>
+                  <ManaCostIcons cost={displayManaCost} size={14} />
+                </div>
+              )}
+              {displayStatsText && (
+                <div
+                  className="inspector-banner inspector-banner--stats rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1 text-[13px] font-extrabold leading-none tracking-wide text-[#f8d98e] backdrop-blur-[1.8px]"
+                  style={METADATA_TEXT_STYLE}
+                >
+                  {displayStatsText}
+                </div>
+              )}
+              <InspectorMetadataBlock
+                lines={[...displayTopRightDetailLines, ...displayTopLeftOwnershipLines]}
+                className={cn(
+                  "inspector-banner inspector-banner--meta max-w-full self-end rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 text-right backdrop-blur-[1.8px]",
+                  topMetadataTextClassName
+                )}
+                lineClassName="text-right"
+                style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle, fontSize: "10px" }}
+              />
+              <div className="min-h-0 flex-1" />
+              <InspectorMetadataBlock
+                lines={displayBottomRightZoneLines}
+                className={cn(
+                  "inspector-banner inspector-banner--meta max-w-full self-end rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 text-right backdrop-blur-[1.8px]",
+                  topMetadataTextClassName
+                )}
+                lineClassName="text-right"
+                style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+              />
+            </div>
+          </div>
+        )}
+        {!compactTopbarLayout && (transitionTitle || displayStatsText || displayTopLeftDetailLines.length > 0 || displayTopLeftOwnershipLines.length > 0) && (
+          <div
+            ref={topHeaderRef}
+            className={cn(
+              "pointer-events-auto absolute top-0 left-0 z-[60] flex flex-col items-start overflow-hidden",
+              "max-w-[72%] gap-1"
+            )}
+          >
             {transitionTitle && (
               <div
                 className={cn(
@@ -1638,7 +1756,7 @@ export default function HoverArtOverlay({
             />
           </div>
         )}
-        {(displayManaCost || displayTopRightDetailLines.length > 0) && (
+        {!compactTopbarLayout && (displayManaCost || displayTopRightDetailLines.length > 0) && (
           <div ref={topMetadataRef} className="absolute top-0 right-0 z-[50] flex max-w-[40%] flex-col items-end gap-0">
             {displayManaCost && (
               <div className="flex items-center justify-end gap-1.5">
@@ -1658,45 +1776,47 @@ export default function HoverArtOverlay({
             />
           </div>
         )}
-        <div
-          key={rulesRenderKey}
-          ref={oracleScrollRef}
-          className="inspector-oracle-scroll absolute inset-x-0 top-0 z-20 overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
-          style={{ bottom: `${Math.max(0, stackTimelineHeight - 4)}px` }}
-        >
-          <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
-            <div ref={oracleBodyRef} className="space-y-1 w-full max-w-[min(92%,44rem)] self-center text-left">
-              {displayRulesLines.length > 0 && (
-                <div className="space-y-0.5">
-                  {displayRulesLines.map((line, lineIndex) => (
-                    <div
-                      key={`${lineIndex}-${line.slice(0, 32)}`}
-                      ref={(node) => {
-                        if (node) {
-                          ruleLineRefs.current.set(lineIndex, node);
-                        } else {
-                          ruleLineRefs.current.delete(lineIndex);
-                        }
-                      }}
-                      className="block w-full"
-                    >
-                      <SymbolText
-                        text={line}
-                        className={cn(
-                          rulesTextClassName,
-                          "inspector-oracle-line",
-                          /^\s*[•*-]\s+/.test(String(line || "")) && "inspector-oracle-line-bullet"
-                        )}
-                        style={rulesTextStyle}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+        {!compactTopbarLayout && (
+          <div
+            key={rulesRenderKey}
+            ref={oracleScrollRef}
+            className="inspector-oracle-scroll absolute inset-x-0 top-0 z-20 overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
+            style={{ bottom: `${Math.max(0, stackTimelineHeight - 4)}px` }}
+          >
+            <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
+              <div ref={oracleBodyRef} className="space-y-1 w-full max-w-[min(92%,44rem)] self-center text-left">
+                {displayRulesLines.length > 0 && (
+                  <div className="space-y-0.5">
+                    {displayRulesLines.map((line, lineIndex) => (
+                      <div
+                        key={`${lineIndex}-${line.slice(0, 32)}`}
+                        ref={(node) => {
+                          if (node) {
+                            ruleLineRefs.current.set(lineIndex, node);
+                          } else {
+                            ruleLineRefs.current.delete(lineIndex);
+                          }
+                        }}
+                        className="block w-full"
+                      >
+                        <SymbolText
+                          text={line}
+                          className={cn(
+                            rulesTextClassName,
+                            "inspector-oracle-line",
+                            /^\s*[•*-]\s+/.test(String(line || "")) && "inspector-oracle-line-bullet"
+                          )}
+                          style={rulesTextStyle}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        {displayObjectName && (
+        )}
+        {!compactTopbarLayout && displayObjectName && (
           <div className="pointer-events-none absolute bottom-0 left-0 z-10 flex max-w-[72%] items-end px-3 pb-3">
             <div
               ref={inspectorTitleRef}
@@ -1717,7 +1837,7 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {displayBottomRightZoneLines.length > 0 && (
+        {!compactTopbarLayout && displayBottomRightZoneLines.length > 0 && (
           <div className="pointer-events-none absolute bottom-0 right-0 z-10 flex max-w-[48%] items-end px-3 pb-3">
             <InspectorMetadataBlock
               lines={displayBottomRightZoneLines}

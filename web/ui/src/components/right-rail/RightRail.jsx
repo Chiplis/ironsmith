@@ -281,6 +281,8 @@ export default function RightRail({
   inlineDockPlacement = "bottom",
   inlineHostSide = "right",
   inlineExpandedSide = "right",
+  inlineFillWidth = false,
+  disableInlineExpansion = false,
   allowTopInlinePlacement = false,
   dockRole = "primary",
   inspectorVariant = "normal",
@@ -413,6 +415,7 @@ export default function RightRail({
   );
   const shouldRenderExpandedInlineInspector =
     inline
+    && !disableInlineExpansion
     && shouldShowRail
     && (inlineExpanded || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
   const useExpandedInlineInspector =
@@ -584,7 +587,11 @@ export default function RightRail({
     () => (inline
       ? {
         width: shouldShowRail
-          ? (useExpandedInlineInspector ? `${expandedInlineWidth}px` : inlineWidth)
+          ? (
+            inlineFillWidth
+              ? "100%"
+              : (useExpandedInlineInspector ? `${expandedInlineWidth}px` : inlineWidth)
+          )
           : "0px",
       }
       : {
@@ -595,6 +602,7 @@ export default function RightRail({
     [
       expandedInlineWidth,
       inline,
+      inlineFillWidth,
       inlineWidth,
       inspectorBottomOffset,
       shouldShowRail,
@@ -637,6 +645,7 @@ export default function RightRail({
                 onShowPreviousTransientPreview={onShowPreviousTransientInspectorPreview}
                 onShowNextTransientPreview={onShowNextTransientInspectorPreview}
                 compact={inline}
+                compactLayout={disableInlineExpansion ? "topbar" : "default"}
                 inspectorVariant={inspectorVariant}
                 onPreferredWidthChange={inline ? setPreferredInlineWidth : null}
                 onInspectorAccentChange={useExpandedInlineInspector ? null : setInspectorAccent}

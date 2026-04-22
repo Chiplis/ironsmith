@@ -20,6 +20,9 @@ import {
 
 const HAND_PEEK_HEIGHT_DEFAULT = 46;
 const HAND_REVEAL_HEIGHT_DEFAULT = 164;
+const TOP_LEFT_INSPECTOR_INSET = 6;
+const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
+const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
 const HAND_LANE_HOVER_FUZZ = 6;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
@@ -541,6 +544,15 @@ export default function Workspace({
   const activeTransientInspectorPreview = hasTransientInspectorPreview
     ? transientInspectorPreviews[Math.min(transientInspectorPreviewIndex, transientInspectorPreviews.length - 1)] || null
     : null;
+  const topLeftInspectorHeight = opponentsZoneHostRect
+    ? Math.floor(opponentsZoneHostRect.top - TOP_LEFT_INSPECTOR_INSET - TOP_LEFT_INSPECTOR_ZONE_GAP)
+    : null;
+  const showTopLeftInspectorDock = (
+    showTopDock
+    && !deckLoadingMode
+    && topLeftInspectorHeight != null
+    && topLeftInspectorHeight >= TOP_LEFT_INSPECTOR_MIN_HEIGHT
+  );
 
   const clearTransientInspectorPreviews = useCallback(() => {
     transitionInspectorRestoreRef.current = null;
@@ -1239,15 +1251,17 @@ export default function Workspace({
           setMobileOpponentIndex={setMobileOpponentIndex}
         />
       </div>
-      {showTopDock && !deckLoadingMode && opponentsInspectorDockTop != null && (
+      {showTopLeftInspectorDock && (
         <div
-          className="pointer-events-none fixed inset-x-0 z-30 flex items-end justify-end overflow-visible px-2"
-          style={{ top: `${opponentsInspectorDockTop}px`, height: `${HAND_PEEK_HEIGHT}px` }}
+          className="pointer-events-none fixed left-[6px] top-[6px] z-[70] flex items-start justify-start overflow-visible"
+          style={{
+            width: "min(760px, calc(100vw - 12px))",
+            height: `${topLeftInspectorHeight}px`,
+          }}
           data-inspector-dock="top"
-          data-opponents-inspector-dock
         >
-          <div className="pointer-events-none relative flex shrink-0 items-end gap-1.5 self-end overflow-visible">
-          <RightRail
+          <div className="pointer-events-none relative flex h-full w-full items-start justify-start overflow-visible">
+            <RightRail
               pinnedObjectId={pinnedInspectorObjectId}
               transientInspectorPreview={activeTransientInspectorPreview}
               transientInspectorPreviewIndex={transientInspectorPreviewIndex}
@@ -1258,27 +1272,12 @@ export default function Workspace({
               suppressFallback={suppressFallbackInspector}
               inline
               inlineDockPlacement="top"
+              inlineExpandedSide="left"
+              inlineFillWidth
+              disableInlineExpansion
               allowTopInlinePlacement
-              inlineExpanded={inlineInspectorExpanded}
+              inlineExpanded={false}
             />
-            {inspectorDebug && (
-              <RightRail
-                pinnedObjectId={pinnedInspectorObjectId}
-                transientInspectorPreview={activeTransientInspectorPreview}
-                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-                transientInspectorPreviewCount={transientInspectorPreviews.length}
-                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
-                suppressFallback={suppressFallbackInspector}
-                inline
-                inlineDockPlacement="top"
-                allowTopInlinePlacement
-                dockRole="opposite"
-                inspectorVariant="debug"
-                inlineExpanded={inlineInspectorExpanded}
-              />
-            )}
           </div>
         </div>
       )}
