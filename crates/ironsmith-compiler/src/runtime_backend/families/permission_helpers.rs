@@ -29,6 +29,7 @@ pub(crate) enum PermissionLifetime {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    ForAsLongAsExiled,
     Static,
 }
 
@@ -354,6 +355,13 @@ fn parse_permission_duration_prefix_tokens<'a>(
         return (Some(permission_lifetime_from_turn_duration(duration)), rest);
     }
 
+    if let Some(rest) = strip_prefix_phrase(
+        tokens,
+        &["for", "as", "long", "as", "it", "remains", "exiled"],
+    ) {
+        return (Some(PermissionLifetime::ForAsLongAsExiled), rest);
+    }
+
     (None, tokens)
 }
 
@@ -538,6 +546,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 let label = match prefixed {
                     PermissionLifetime::UntilEndOfTurn => "until-end-of-turn",
                     PermissionLifetime::UntilYourNextTurn => "until-next-turn",
+                    PermissionLifetime::ForAsLongAsExiled => "for-as-long-as-exiled",
                     _ => "permission",
                 };
                 return Err(CardTextError::ParseError(format!(
@@ -561,10 +570,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             PermissionLifetime::ThisTurn
                 | PermissionLifetime::UntilEndOfTurn
                 | PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::ForAsLongAsExiled
         ) && target_ref.as_copy
         {
             let label = match lifetime {
                 PermissionLifetime::UntilYourNextTurn => "until-next-turn",
+                PermissionLifetime::ForAsLongAsExiled => "for-as-long-as-exiled",
                 _ => "until-end-of-turn",
             };
             return Err(CardTextError::ParseError(format!(
@@ -590,6 +601,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported until-next-turn play target (clause: '{}')",
+                clause_refs.join(" ")
+            )));
+        }
+        if lifetime == PermissionLifetime::ForAsLongAsExiled && without_paying_mana_cost {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported for-as-long-as-exiled play target with alternative cost (clause: '{}')",
                 clause_refs.join(" ")
             )));
         }
@@ -747,6 +764,9 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
         && (word_slice_has_sequence(&clause_refs, &["may", "play"])
             || word_slice_has_sequence(&clause_refs, &["may", "cast"]))
     {
+        if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
+            return Ok(None);
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported for-as-long-as play/cast permission clause (clause: '{}')",
             clause_refs.join(" ")
@@ -995,6 +1015,21 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 player: PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
+                allow_any_color_for_cast,
+            }))
+        }
+        Some(PermissionClauseSpec::Tagged {
+            tag,
+            player,
+            allow_land,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: PermissionLifetime::ForAsLongAsExiled,
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+            Ok(Some(EffectAst::GrantPlayTaggedForAsLongAsExiled {
+                tag,
+                player: PlayerAst::Implicit,
+                allow_land,
                 allow_any_color_for_cast,
             }))
         }

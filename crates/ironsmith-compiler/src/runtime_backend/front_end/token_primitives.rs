@@ -397,6 +397,12 @@ pub(crate) fn strip_leading_if_you_do_lexed(tokens: &[OwnedLexToken]) -> &[Owned
     let words = TokenWordView::new(tokens);
     let Some(prefix_len) = (word_view_has_prefix(&words, &["if", "you", "do"]).then_some(3usize))
         .or_else(|| word_view_has_prefix(&words, &["if", "they", "do"]).then_some(3usize))
+        .or_else(|| {
+            word_view_has_prefix(&words, &["if", "that", "player", "does"]).then_some(4usize)
+        })
+        .or_else(|| {
+            word_view_has_prefix(&words, &["if", "the", "player", "does"]).then_some(4usize)
+        })
     else {
         return tokens;
     };

@@ -673,6 +673,24 @@ pub(super) fn small_number_word(n: u32) -> Option<&'static str> {
     }
 }
 
+fn ordinal_number_word(n: u32) -> String {
+    match n {
+        1 => "first".to_string(),
+        2 => "second".to_string(),
+        3 => "third".to_string(),
+        4 => "fourth".to_string(),
+        5 => "fifth".to_string(),
+        6 => "sixth".to_string(),
+        7 => "seventh".to_string(),
+        8 => "eighth".to_string(),
+        9 => "ninth".to_string(),
+        10 => "tenth".to_string(),
+        11 => "eleventh".to_string(),
+        12 => "twelfth".to_string(),
+        _ => format!("{n}th"),
+    }
+}
+
 pub(super) fn number_word(n: i32) -> Option<&'static str> {
     match n {
         0 => Some("zero"),
@@ -1203,6 +1221,10 @@ pub(super) fn normalize_create_named_token_article(line: &str) -> String {
             .is_some_and(|ch| ch.is_ascii_uppercase())
         && tail.contains(", a ")
     {
+        let first_item = tail.split(',').next().unwrap_or(tail).trim();
+        if first_item.ends_with(" token") {
+            return line.to_string();
+        }
         return format!("{}create {}", head, tail);
     }
     line.to_string()
@@ -1878,8 +1900,24 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Target attacking or blocking creature",
         )
         .replace(
+            "Target attacking/blocking creatures",
+            "Target attacking or blocking creatures",
+        )
+        .replace(
             "target attacking/blocking creature",
             "target attacking or blocking creature",
+        )
+        .replace(
+            "target attacking/blocking creatures",
+            "target attacking or blocking creatures",
+        )
+        .replace(
+            "an attacking/blocking creature",
+            "an attacking or blocking creature",
+        )
+        .replace(
+            "attacking/blocking creatures",
+            "attacking or blocking creatures",
         )
         .replace(
             "with a +1/+1 counter on it you control",
@@ -4324,6 +4362,21 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             1,
         );
     }
+    if normalized.starts_with("At the beginning of each player's end step,") {
+        let lower = normalized.to_ascii_lowercase();
+        if !lower.contains("that player") && !lower.contains("the player") {
+            normalized = normalized.replacen(
+                "At the beginning of each player's end step,",
+                "At the beginning of each end step,",
+                1,
+            );
+        }
+    }
+    if normalized
+        == "At the beginning of your upkeep, if you have the city's blessing, you draw a card. Otherwise, each player draws a card."
+    {
+        normalized = "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
+    }
     if normalized.contains("that player loses life equal to this creature's power") {
         normalized = normalized.replace(
             "that player loses life equal to this creature's power",
@@ -6129,6 +6182,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of creature types among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::CardTypesAmong(filter) => format!(
+            "the number of card types among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::ColorsAmong(filter) => {
             format!("the number of {}", describe_colors_among(filter))
         }
@@ -6182,6 +6239,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
+        }
+        Value::StartingLifeTotal(filter) => {
+            format!(
+                "{} starting life total",
+                describe_possessive_player_filter(filter)
+            )
         }
         Value::HalfLifeTotalRoundedUp(filter) => format!(
             "half {} life total, rounded up",
@@ -6789,7 +6852,17 @@ pub(super) fn describe_apply_continuous_clauses(
             clauses.push(format!("{loses} all abilities"));
         }
         crate::continuous::Modification::AddAbilityGeneric(ability) => {
-            clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
+            if matches!(
+                ability.kind,
+                crate::ability::AbilityKind::Triggered(_)
+                    | crate::ability::AbilityKind::Activated(_)
+            ) {
+                let ability_text = capitalize_first(&describe_inline_ability(ability))
+                    .replace(". otherwise,", ". Otherwise,");
+                clauses.push(format!("{has} \"{ability_text}\""));
+            } else {
+                clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
+            }
         }
         crate::continuous::Modification::DoesntUntap => {
             clauses.push("can't untap".to_string());
@@ -7758,7 +7831,160 @@ pub(super) fn describe_player_relative_condition(condition: &Condition) -> Optio
     }
 }
 
+fn spell_cast_this_turn_condition_filter(
+    condition: &Condition,
+) -> Option<(&PlayerFilter, &ObjectFilter)> {
+    let Condition::ValueComparison {
+        left:
+            Value::SpellsCastThisTurnMatching {
+                player,
+                filter,
+                exclude_source: false,
+            },
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    } = condition
+    else {
+        return None;
+    };
+    Some((player, filter))
+}
+
+fn describe_both_spell_cast_condition(left: &Condition, right: &Condition) -> Option<String> {
+    let (left_player, left_filter) = spell_cast_this_turn_condition_filter(left)?;
+    let (right_player, right_filter) = spell_cast_this_turn_condition_filter(right)?;
+    if left_player != right_player {
+        return None;
+    }
+    let left_spell = with_indefinite_article(&describe_for_each_filter(left_filter));
+    let right_spell = with_indefinite_article(&describe_for_each_filter(right_filter));
+    let opener = match left_player {
+        PlayerFilter::You => "you've cast".to_string(),
+        player => {
+            let subject = describe_player_filter(player);
+            format!("{} {} cast", subject, player_verb(&subject, "have", "has"))
+        }
+    };
+    Some(format!(
+        "{opener} both {left_spell} and {right_spell} this turn"
+    ))
+}
+
+fn happily_permanents_you_control_filter() -> ObjectFilter {
+    ObjectFilter::permanent().you_control()
+}
+
+fn happily_cards_in_your_graveyard_filter() -> ObjectFilter {
+    ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You)
+}
+
+fn happily_card_type_scope_filter() -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        happily_permanents_you_control_filter(),
+        happily_cards_in_your_graveyard_filter(),
+    ];
+    filter
+}
+
+fn describe_happily_scope(filter: &ObjectFilter) -> Option<&'static str> {
+    if *filter == happily_permanents_you_control_filter() {
+        return Some("permanents you control");
+    }
+    if *filter == happily_card_type_scope_filter() {
+        return Some("permanents you control and/or cards in your graveyard");
+    }
+    None
+}
+
+fn describe_happily_value_comparison(
+    left: &Value,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<String> {
+    match (left, operator, right) {
+        (
+            Value::ColorsAmong(filter),
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            Value::Fixed(count),
+        ) if *count == 5 && *filter == happily_permanents_you_control_filter() => {
+            Some("there are five colors among permanents you control".to_string())
+        }
+        (
+            Value::CardTypesAmong(filter),
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            Value::Fixed(count),
+        ) => {
+            let scope = describe_happily_scope(filter)?;
+            let count_text = small_number_word(*count as u32)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "there are {count_text} or more card types among {scope}"
+            ))
+        }
+        (
+            Value::LifeTotal(PlayerFilter::You),
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            Value::StartingLifeTotal(PlayerFilter::You),
+        ) => {
+            Some("your life total is greater than or equal to your starting life total".to_string())
+        }
+        _ => None,
+    }
+}
+
+fn collect_and_conditions<'a>(condition: &'a Condition, out: &mut Vec<&'a Condition>) {
+    if let Condition::And(left, right) = condition {
+        collect_and_conditions(left, out);
+        collect_and_conditions(right, out);
+    } else {
+        out.push(condition);
+    }
+}
+
+fn describe_happily_ever_after_condition(condition: &Condition) -> Option<String> {
+    let mut conditions = Vec::new();
+    collect_and_conditions(condition, &mut conditions);
+    let [first, second, third] = conditions.as_slice() else {
+        return None;
+    };
+
+    let first = match first {
+        Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } => describe_happily_value_comparison(left, *operator, right)?,
+        _ => return None,
+    };
+    let second = match second {
+        Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } => describe_happily_value_comparison(left, *operator, right)?,
+        _ => return None,
+    };
+    let third = match third {
+        Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } => describe_happily_value_comparison(left, *operator, right)?,
+        _ => return None,
+    };
+
+    Some(format!("{first}, {second}, and {third}"))
+}
+
 pub(super) fn describe_condition(condition: &Condition) -> String {
+    if let Some(compact) = describe_happily_ever_after_condition(condition) {
+        return compact;
+    }
+
     match condition {
         Condition::YouControl(filter) => format!("you control {}", filter.description()),
         Condition::OpponentControls(filter) => {
@@ -8088,10 +8314,16 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} is the monarch", describe_player_filter(player))
         }
         Condition::PlayerHasInitiative { player } => {
-            format!("{} has the initiative", describe_player_filter(player))
+            let subject = describe_player_filter(player);
+            format!("{} {} the initiative", subject, player_verb(&subject, "have", "has"))
         }
         Condition::PlayerHasCitysBlessing { player } => {
-            format!("{} has the city's blessing", describe_player_filter(player))
+            let subject = describe_player_filter(player);
+            format!(
+                "{} {} the city's blessing",
+                subject,
+                player_verb(&subject, "have", "has")
+            )
         }
         Condition::PlayerCommittedCrimeThisTurn { player } => {
             format!("{} committed a crime this turn", describe_player_filter(player))
@@ -8396,11 +8628,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
 	                        .iter()
 	                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
 	                        .collect::<Vec<_>>();
-	                    let noun_phrase = format!("{} card", join_with_or(&words));
-	                    return is_clause(&noun_phrase);
-	                }
+                    let noun_phrase = format!("{} card", join_with_or(&words));
+                    return is_clause(&noun_phrase);
+                }
 
                 let stripped = strip_leading_article(&desc).to_ascii_lowercase();
+                if matches!(filter.controller, Some(PlayerFilter::Opponent))
+                    && filter.card_types.len() == 1
+                    && filter.card_types[0] == CardType::Creature
+                    && filter.zone.is_none()
+                    && filter.owner.is_none()
+                    && filter.subtypes.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.tagged_constraints.is_empty()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    return "an opponent controls that creature".to_string();
+                }
                 if let Some((_, rest)) = stripped.split_once(" with mana value ") {
                     let possessive = if subject == "it" {
                         "its"
@@ -8490,6 +8737,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::FirstTimeThisTurn => "this is the first time this ability triggered this turn"
             .to_string(),
+        Condition::ThisAbilityResolvedThisTurnExactly(count) => format!(
+            "this is the {} time this ability has resolved this turn",
+            ordinal_number_word(*count)
+        ),
         Condition::MaxTimesEachTurn(limit) => {
             format!("this ability has triggered fewer than {limit} times this turn")
         }
@@ -8582,6 +8833,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if let Some(rendered) = describe_happily_value_comparison(left, *operator, right) {
+                return rendered;
+            }
             if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -8713,6 +8967,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::And(left, right) => {
+            if let Some(spell_cast_condition) = describe_both_spell_cast_condition(left, right) {
+                return spell_cast_condition;
+            }
             if let Some(source_activity_condition) =
                 describe_source_neither_attacked_nor_entered_condition(left, right)
             {

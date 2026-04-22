@@ -94,6 +94,166 @@ fn parse_lantern_of_insight_public_top_library_static() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fae_offering_keeps_both_spell_gate_and_token_bundle() {
+    let line = "At the beginning of each end step, if you've cast both a creature spell and a noncreature spell this turn, create a Clue token, a Food token, and a Treasure token.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fae Offering Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(line)
+        .expect("Fae Offering text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("And(")
+            && debug.contains("card_types: [Creature]")
+            && debug.contains("excluded_card_types: [Creature]"),
+        "expected separate creature and noncreature spell-cast gates, got {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![line.to_string()],
+        "expected Fae Offering oracle wording to survive compilation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sphinx_ambassador_keeps_search_name_choice_condition() {
+    let triggered = "Whenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sphinx Ambassador Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(&format!("Flying\n{triggered}"))
+        .expect("Sphinx Ambassador search/name sequence should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseCardNameEffect") && debug.contains("SameNameAsTagged"),
+        "expected name choice and chosen-name condition, got {debug}"
+    );
+
+    let lines = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        lines,
+        vec!["Flying".to_string(), triggered.to_string()],
+        "expected oracle-style Sphinx wording to survive compilation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
+    let triggered = "Whenever one or more opponents lose life, you may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Emet-Selch of the Third Seat Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elder, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .parse_text(&format!(
+            "Spells you cast from your graveyard cost {{2}} less to cast.\n{triggered} Do this only once each turn."
+        ))
+        .expect("Emet-Selch graveyard cast trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerLosesLife") && debug.contains("CastTaggedEffect"),
+        "expected opponent life-loss trigger with cast-tagged effect, got {debug}"
+    );
+    assert!(
+        debug.contains("RegisterZoneReplacementEffect"),
+        "expected one-shot graveyard-to-exile replacement for cast spell, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Spells you cast from your graveyard cost {2} less to cast")
+            && rendered.contains(triggered),
+        "expected Emet-Selch oracle wording to survive compilation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn eye_of_doom_keeps_doom_counter_choice_and_destroy_filter() {
+    let lines = [
+        "When this artifact enters, each player chooses a nonland permanent and puts a doom counter on it.",
+        "{2}, {T}, Sacrifice this artifact: Destroy each permanent with a doom counter on it.",
+    ];
+    let def = CardDefinitionBuilder::new(CardId::new(), "Eye of Doom Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(&lines.join("\n"))
+        .expect("Eye of Doom counter choice/destroy text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ForPlayersEffect") && debug.contains("PutCountersEffect"),
+        "expected each-player counter placement, got {debug}"
+    );
+    assert!(
+        debug.contains("with_counter: Some(Typed(Named(\"doom\")))"),
+        "expected destroy filter to require a doom counter, got {debug}"
+    );
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![lines[0].to_string(), lines[1].to_string()],
+        "expected Eye of Doom oracle wording to survive compilation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission() {
+    let trigger = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dream-Thief's Bandana Variant")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(&format!("{trigger}\nEquip {{1}}"))
+        .expect("Dream-Thief's Bandana text should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("ExileEffect"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(debug.contains("ForAsLongAsExiled"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![trigger.to_string(), "Equip {1}".to_string()],
+        "expected Dream-Thief's Bandana oracle wording to survive compilation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn happily_ever_after_keeps_life_draw_and_win_gate() {
+    let lines = [
+        "When this enchantment enters, each player gains 5 life and draws a card.",
+        "At the beginning of your upkeep, if there are five colors among permanents you control, there are six or more card types among permanents you control and/or cards in your graveyard, and your life total is greater than or equal to your starting life total, you win the game.",
+    ];
+    let def = CardDefinitionBuilder::new(CardId::new(), "Happily Ever After Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(&lines.join("\n"))
+        .expect("Happily Ever After text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("intervening_if: Some")
+            && debug.contains("ColorsAmong")
+            && debug.contains("CardTypesAmong")
+            && debug.contains("StartingLifeTotal"),
+        "expected Happily Ever After's upkeep trigger to keep the full modeled gate, got {debug}"
+    );
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![lines[0].to_string(), lines[1].to_string()],
+        "expected Happily Ever After oracle wording to survive compilation"
+    );
+}
+
 #[test]
 fn test_creature_with_etb() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "ETB Creature")
@@ -23271,6 +23431,96 @@ fn slippery_scoundrel_keeps_hexproof_and_unblockable_under_citys_blessing() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn kumenas_awakening_renders_ascend_and_citys_blessing_replacement() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Kumena's Awakening"));
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Ascend",
+            "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.",
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fear_of_immobility_keeps_tap_target_and_conditional_stun_counter() {
+    let def = parse_oracle_card_definition("Fear of Immobility");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("tap up to one target creature")
+            && rendered.contains("stun counter")
+            && rendered.contains("opponent controls"),
+        "expected Fear of Immobility to render tap target plus opponent-control stun condition, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("TapEffect")
+            && ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("TaggedObjectMatches")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("tapped_0"),
+        "expected target tap followed by conditional stun counter, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn regal_sliver_keeps_granted_monarch_otherwise_branch() {
+    let def = parse_oracle_card_definition("Regal Sliver");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def);
+
+    assert!(
+        rendered.contains("Sliver creatures you control have")
+            && rendered.contains("if you're the monarch")
+            && rendered.contains("Otherwise, you become the monarch"),
+        "expected Regal Sliver to render the full granted monarch trigger, got {rendered}"
+    );
+    assert!(
+        debug.contains("AddAbilityGeneric")
+            && debug.contains("ConditionalEffect")
+            && debug.contains("PlayerIsMonarch")
+            && debug.contains("BecomeMonarchEffect"),
+        "expected granted trigger to lower monarch if/otherwise branch, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nissa_resurgent_animist_keeps_second_resolution_consult() {
+    let def = parse_oracle_card_definition("Nissa, Resurgent Animist");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def);
+
+    assert!(
+        rendered.contains("add one mana of any color")
+            && rendered.contains(
+                "Then if this is the second time this ability has resolved this turn"
+            )
+            && rendered.contains(
+                "reveal cards from the top of your library until you reveal an Elf or Elemental card"
+            )
+            && rendered
+                .contains("Put that card into your hand and the rest on the bottom of your library"),
+        "expected Nissa to render mana plus conditional reveal-until follow-up, got {rendered}"
+    );
+    assert!(
+        debug.contains("AddManaOfAnyColorEffect")
+            && debug.contains("ThisAbilityResolvedThisTurnExactly")
+            && debug.contains("2,")
+            && debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Hand")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Nissa to lower second-resolution consult to hand and bottom remainder, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn living_plane_oracle_like_text_merges_animation_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
         .card_types(vec![CardType::Enchantment])
@@ -32634,6 +32884,55 @@ fn parse_hermit_druid_uses_consult_basic_land_lowering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_mirror_mad_uses_consult_named_card_lowering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mirror-Mad Phantasm")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(5, 1))
+        .parse_text(
+            "{1}{U}: This creature's owner shuffles it into their library. If that player does, they reveal cards from the top of that library until a card named Mirror-Mad Phantasm is revealed. The player puts that card onto the battlefield and all other cards revealed this way into their graveyard.",
+        )
+        .expect("Mirror-Mad Phantasm should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected Mirror-Mad to lower to consult effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("name: Some")
+            && abilities_debug
+                .to_ascii_lowercase()
+                .contains("mirror-mad phantasm"),
+        "expected named-card stop filter, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("zone: Battlefield")
+            && abilities_debug.contains("zone: Graveyard"),
+        "expected matched card to battlefield and other revealed cards to graveyard, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("RevealTopEffect"),
+        "expected Mirror-Mad to avoid the generic reveal-top fallback, got {abilities_debug}"
+    );
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if that player does")
+            && rendered.contains("a card named mirror mad phantasm is revealed")
+            && rendered.contains("all other cards revealed this way into their graveyard"),
+        "expected compact Mirror-Mad rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn bruenor_battlehammer_anthem_parses_attached_to_affected_not_source() {
     // Verify that "Each creature you control gets +2/+0 for each Equipment
     // attached to it." parses with AttachedToAffected (not AttachedToSource),
@@ -33744,5 +34043,36 @@ fn stand_or_fall_keeps_only_the_chosen_pile_legal_to_block() {
     assert!(
         !game.can_block(other_id),
         "creatures outside the chosen pile should be unable to block"
+    );
+}
+
+#[test]
+fn incriminate_keeps_same_controller_choice_sacrifice() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Incriminate Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose two target creatures controlled by the same player. That player sacrifices one of them of their choice.",
+        )
+        .expect("parse Incriminate text");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Choose two target creatures controlled by the same player. That player sacrifices one of them of their choice"
+        ),
+        "expected same-controller choice-sacrifice wording, got {rendered}"
+    );
+
+    let effects = def.spell_effect.as_ref().expect("spell effect");
+    let debug = format!("{effects:?}");
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("ControllerOf")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected target set, controller choice, and sacrifice, got {debug}"
     );
 }

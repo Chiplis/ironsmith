@@ -130,6 +130,7 @@ impl EffectExecutor for DiscoverEffect {
                         source_snapshot: None,
                         source_name: Some(candidate_name),
                         triggering_event: None,
+                        trigger_identity: None,
                         intervening_if: None,
                         keyword_payment_contributions: vec![],
                         crew_contributors: vec![],

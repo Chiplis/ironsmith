@@ -34,8 +34,9 @@ use super::super::token_primitives::{
     str_starts_with, strip_leading_if_you_do_lexed, word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::super::util::{
-    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_number, parse_subject,
-    parse_target_phrase, span_from_tokens, token_index_for_word_index, trim_commas, words,
+    helper_tag_for_tokens, is_article, mana_pips_from_token, parse_counter_type_from_tokens,
+    parse_number, parse_subject, parse_target_phrase, span_from_tokens, token_index_for_word_index,
+    trim_commas, words,
 };
 use super::super::value_helpers::parse_value_from_lexed;
 use super::bundle_rules::{
@@ -83,6 +84,68 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn apply_trailing_counter_constraint_to_destroy_all(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) {
+    let token_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(counter_idx) = token_words
+        .iter()
+        .position(|word| *word == "counter" || *word == "counters")
+    else {
+        return;
+    };
+    if token_words.get(counter_idx + 1) != Some(&"on")
+        || !token_words
+            .get(counter_idx + 2)
+            .is_some_and(|word| matches!(*word, "it" | "them"))
+    {
+        return;
+    }
+    let descriptor_start = token_words[..counter_idx]
+        .iter()
+        .rposition(|word| *word == "with")
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    let descriptor_words = token_words[descriptor_start..counter_idx]
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "a" | "an" | "one" | "or" | "more"))
+        .collect::<Vec<_>>();
+    let counter_constraint = if descriptor_words.is_empty() {
+        crate::filter::CounterConstraint::Any
+    } else {
+        let descriptor_tokens = descriptor_words
+            .iter()
+            .chain(std::iter::once(&"counter"))
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let Some(counter_type) = parse_counter_type_from_tokens(&descriptor_tokens) else {
+            return;
+        };
+        crate::filter::CounterConstraint::Typed(counter_type)
+    };
+    if !token_words[..counter_idx]
+        .iter()
+        .any(|word| *word == "with")
+    {
+        return;
+    }
+
+    for effect in effects {
+        match effect {
+            EffectAst::DestroyAll { filter }
+            | EffectAst::DestroyAllNoRegeneration { filter }
+            | EffectAst::ExileAll { filter, .. } => {
+                if filter.with_counter.is_none() {
+                    filter.with_counter = Some(counter_constraint);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub(super) fn leading_may_actor_to_player(
@@ -787,6 +850,7 @@ pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
+        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
         parse_trace::event(format!(
             "exact effect bundle -> {}",
@@ -800,6 +864,7 @@ pub(crate) fn parse_effect_sentences_lexed(
         .map(SentenceInput::from_lexed)
         .collect::<Vec<_>>();
     let mut effects = parse_effect_sentences_from_sentence_inputs(sentences)?;
+    apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
 }

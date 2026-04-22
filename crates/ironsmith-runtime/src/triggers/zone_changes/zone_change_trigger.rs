@@ -31,6 +31,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::types::CardType;
 use crate::zone::Zone;
 use std::fmt;
 
@@ -249,6 +250,22 @@ impl ZoneChangeTrigger {
 
     /// Generate display text for this trigger.
     fn generate_display(&self) -> String {
+        fn subject_is_always_creature(filter: &ObjectFilter) -> bool {
+            if !filter.all_card_types.is_empty() {
+                return filter.all_card_types.contains(&CardType::Creature);
+            }
+            filter.card_types.len() == 1 && filter.card_types[0] == CardType::Creature
+        }
+
+        fn subject_description_for_zone_change(filter: &ObjectFilter) -> String {
+            if filter.other && !subject_is_always_creature(filter) {
+                let mut explicit_other = filter.clone();
+                explicit_other.other = false;
+                return format!("{} other than this", explicit_other.description());
+            }
+            filter.description()
+        }
+
         fn enters_origin_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
             let ZonePattern::Specific(from_zone) = trigger.from else {
                 return None;
@@ -300,9 +317,16 @@ impl ZoneChangeTrigger {
                 (
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
-                ) => {
+                ) if subject_is_always_creature(&self.object_filter) => {
                     format!("When this {} dies", battlefield_subject)
                 }
+                (
+                    ZonePattern::Specific(Zone::Battlefield),
+                    ZonePattern::Specific(Zone::Graveyard),
+                ) => format!(
+                    "When this {} is put into a graveyard from the battlefield",
+                    card_subject
+                ),
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
                     format!("When this {} enters the battlefield", battlefield_subject)
                 }
@@ -332,7 +356,7 @@ impl ZoneChangeTrigger {
         }
 
         // Object filter description
-        let mut filter_desc = self.object_filter.description();
+        let mut filter_desc = subject_description_for_zone_change(&self.object_filter);
         if self.to == ZonePattern::Specific(Zone::Battlefield)
             && enters_origin_phrase(self).is_some()
             && let Some(stripped) = filter_desc.strip_suffix(" you own")
@@ -357,8 +381,13 @@ impl ZoneChangeTrigger {
 
         // Zone change description
         match (&self.from, &self.to) {
-            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard)) => {
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard))
+                if subject_is_always_creature(&self.object_filter) =>
+            {
                 parts.push("dies".to_string());
+            }
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard)) => {
+                parts.push("is put into a graveyard from the battlefield".to_string());
             }
             (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
                 parts.push("is discarded".to_string());

@@ -628,12 +628,26 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     }) else {
         return Ok(None);
     };
-    if shuffle_idx > 3 {
+
+    let subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
+    let owner_of_subject_target = {
+        let subject_words = token_words(&subject_tokens);
+        if word_slice_starts_with(&subject_words, &["the", "owner", "of"]) {
+            let Some(target_start) = token_index_for_word_index(&subject_tokens, 3) else {
+                return Ok(None);
+            };
+            Some(parse_target_phrase(&subject_tokens[target_start..])?)
+        } else {
+            None
+        }
+    };
+    if shuffle_idx > 3 && owner_of_subject_target.is_none() {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
-    let subject = if subject_tokens.is_empty() {
+    let subject = if owner_of_subject_target.is_some() {
+        SubjectAst::Player(PlayerAst::ItsOwner)
+    } else if subject_tokens.is_empty() {
         SubjectAst::Player(PlayerAst::You)
     } else {
         parse_subject(&subject_tokens)
@@ -680,6 +694,18 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         return Ok(None);
     }
     let target_words = token_words(&target_tokens);
+    if let Some(target) = owner_of_subject_target {
+        if matches!(
+            target_words.as_slice(),
+            ["it"] | ["them"] | ["that"] | ["that", "object"] | ["that", "card"]
+        ) {
+            return append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
+                target,
+                player: PlayerAst::ItsOwner,
+            }]);
+        }
+        return Ok(None);
+    }
     if matches!(subject, SubjectAst::Player(PlayerAst::ItsOwner))
         && matches!(
             target_words.as_slice(),

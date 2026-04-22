@@ -143,6 +143,70 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     ]))
 }
 
+pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::super::grammar::primitives as grammar;
+    use crate::effect::Until;
+
+    let suffix =
+        grammar::strip_lexed_suffix_phrase(tokens, &["attack", "this", "turn", "if", "able"])
+            .or_else(|| {
+                grammar::strip_lexed_suffix_phrase(
+                    tokens,
+                    &["attacks", "this", "turn", "if", "able"],
+                )
+            });
+    let Some(subject_tokens) = suffix else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(subject_tokens);
+    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(&subject_tokens) else {
+        return Ok(None);
+    };
+    let trailing_subject = trim_commas(&subject_tokens[choice_idx + consumed..]);
+    if !trailing_subject.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing creature-type choice attack clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+    let mut filter_tokens = trim_commas(&subject_tokens[..choice_idx]).to_vec();
+    if filter_tokens
+        .first()
+        .is_some_and(|token| token.is_word("all"))
+    {
+        filter_tokens.remove(0);
+    }
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing creature subject before creature-type choice attack clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
+        return Err(CardTextError::ParseError(format!(
+            "creature-type choice attack subject must be creature-based (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+    filter.chosen_creature_type = true;
+
+    Ok(Some(vec![
+        EffectAst::ChooseCreatureType {
+            player: PlayerAst::You,
+            excluded_subtypes: vec![],
+        },
+        EffectAst::GrantAbilitiesAll {
+            filter,
+            abilities: vec![crate::runtime_backend::GrantedAbilityAst::MustAttack],
+            duration: Until::EndOfTurn,
+        },
+    ]))
+}
+
 pub(crate) fn parse_sentence_put_sticker_on(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

@@ -8317,6 +8317,31 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_owner_of_target_shuffles_it_into_their_library() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Cathartic Variant")
+            .parse_text(
+                "The owner of target artifact or enchantment an opponent controls shuffles it into their library.",
+            )
+            .expect("owner-of-target shuffle clause should parse");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ShuffleObjectsIntoLibraryEffect"),
+            "expected shuffle-objects-into-library effect, got {debug}"
+        );
+        assert!(
+            debug.contains("OwnerOf("),
+            "expected owner-of-target library shuffle, got {debug}"
+        );
+        assert!(
+            !debug.contains("MoveToZoneEffect"),
+            "expected shuffle clause to avoid bottom-library move fallback, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_blink_keeps_targeted_shuffle_investigate_and_token_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blink")
             .card_types(vec![CardType::Enchantment])
@@ -8993,6 +9018,117 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             debug.contains("DealDistributedDamageEffect"),
             "expected distributed damage effect, got {debug}"
+        );
+        assert!(
+            debug.contains("ChoiceCount { min: 1, max: Some(3)"),
+            "expected one-to-three distributed damage targets, got {debug}"
+        );
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            joined.contains(
+                "deal 3 damage divided as you choose among one, two, or three target attacking or blocking creatures"
+            ),
+            "expected enumerated distributed damage rendering, got {joined}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_choose_land_of_each_basic_land_type_then_destroy() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Sundering Titan Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "When this creature enters or leaves the battlefield, choose a land of each basic land type, then destroy those lands.",
+            )
+            .expect("Sundering Titan style choice should parse");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+        let effects = &triggered.effects.segments[0].default_effects;
+        let choices = effects
+            .iter()
+            .filter_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            .collect::<Vec<_>>();
+        assert_eq!(choices.len(), 5, "expected five basic-land-type choices");
+        for subtype in [
+            Subtype::Plains,
+            Subtype::Island,
+            Subtype::Swamp,
+            Subtype::Mountain,
+            Subtype::Forest,
+        ] {
+            assert!(
+                choices
+                    .iter()
+                    .any(|choose| choose.filter.subtypes == vec![subtype]
+                        && choose.filter.controller == Some(PlayerFilter::Any)),
+                "expected unrestricted land choice for {subtype:?}, got {choices:#?}"
+            );
+        }
+
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            joined.contains("choose a land of each basic land type, then destroy those lands"),
+            "expected compact basic-land-type choice rendering, got {joined}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_noncreature_graveyard_from_battlefield_trigger_keeps_controller() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ashiok's Reaper Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever an enchantment you control is put into a graveyard from the battlefield, draw a card.",
+            )
+            .expect("enchantment-you-control graveyard trigger should parse");
+
+        let ability = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+        let trigger_debug = format!("{:?}", ability.trigger);
+        assert!(
+            trigger_debug.contains("controller: Some(You)"),
+            "expected trigger subject to preserve controller, got {trigger_debug}"
+        );
+
+        let joined = crate::compiled_text::unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            joined.contains(
+                "whenever an enchantment you control is put into a graveyard from the battlefield"
+            ) && !joined.contains("enchantment you control dies"),
+            "expected noncreature zone-change wording, got {joined}"
+        );
+
+        let yomiji = CardDefinitionBuilder::new(CardId::new(), "Yomiji Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever a legendary permanent other than Yomiji is put into a graveyard from the battlefield, return that card to its owner's hand.",
+            )
+            .expect("other-than-source permanent graveyard trigger should parse");
+        let yomiji_joined = crate::compiled_text::unprocessed_compiled_lines(&yomiji)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            yomiji_joined.contains(
+                "whenever a legendary permanent other than this is put into a graveyard from the battlefield"
+            ),
+            "expected explicit other-than-this zone-change wording, got {yomiji_joined}"
         );
     }
 
@@ -12674,6 +12810,31 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && debug.contains("per_matching_objects: Some")
                 && debug.contains("functional_zones: [Hand]"),
             "expected self cost reduction with per-match filter and nonbattlefield zones, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parse_self_activated_ability_cost_reduction_for_basic_land_types() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Domain Codex Variant")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "Domain — {5}, {T}: Draw a card. This ability costs {1} less to activate for each basic land type among lands you control.",
+            )
+            .expect("domain activated-ability cost reduction should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("ActivatedAbilityCostReduction")
+                && debug.contains("per_basic_land_types_among: Some")
+                && !debug.contains("per_matching_objects: Some"),
+            "expected domain cost reduction to count distinct basic land types, got {debug}"
+        );
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("for each basic land type among lands you control")
+                && !rendered.contains("for each basic land you control"),
+            "expected domain cost reduction rendering, got {rendered}"
         );
     }
 

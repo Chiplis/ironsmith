@@ -470,6 +470,7 @@ pub(crate) enum PredicateAst {
     ThisSpellWasKicked,
     ThisSpellPaidLabel(String),
     TargetWasKicked,
+    ThisAbilityResolvedThisTurnExactly(u32),
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
     TargetSpellNoManaSpentToCast,
@@ -877,6 +878,12 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+    },
+    GrantPlayTaggedForAsLongAsExiled {
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: bool,
     },
     CastTagged {
         tag: TagKey,

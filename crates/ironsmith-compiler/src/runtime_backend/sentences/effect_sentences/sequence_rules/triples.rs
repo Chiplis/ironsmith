@@ -22,7 +22,7 @@ use crate::runtime_backend::token_primitives::{
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
 use crate::target::ChooseSpec;
-use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -156,6 +156,136 @@ pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
         return Ok(None);
     };
     *existing = if_not_chosen;
+    Ok(Some(effects))
+}
+
+pub(super) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let Some(then_idx) = first.iter().position(|token| token.is_word("then")) else {
+        return Ok(None);
+    };
+    let search_tokens = trim_commas(&first[..then_idx]);
+    let name_tokens = trim_commas(&first[then_idx + 1..]);
+    if search_tokens.is_empty() || name_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let name_words = TokenWordView::new(&name_tokens).word_refs();
+    if !matches!(
+        name_words.as_slice(),
+        ["that", "player", "chooses", "a", "card", "name"]
+            | ["that", "player", "choose", "a", "card", "name"]
+    ) {
+        return Ok(None);
+    }
+
+    let search_words = TokenWordView::new(&search_tokens).word_refs();
+    if !matches!(
+        search_words.as_slice(),
+        ["search", "that", "player's", "library", "for", "a", "card"]
+            | ["search", "that", "players", "library", "for", "a", "card"]
+    ) {
+        return Ok(None);
+    }
+    let searched_tag = TagKey::from("searched");
+    let mut search_filter = ObjectFilter::default();
+    search_filter.owner = Some(PlayerFilter::DamagedPlayer);
+    search_filter.zone = Some(Zone::Library);
+    let search_effects = vec![EffectAst::ChooseObjectsAcrossZones {
+        filter: search_filter,
+        count: ChoiceCount::exactly(1),
+        count_value: None,
+        player: PlayerAst::You,
+        tag: searched_tag.clone(),
+        zones: vec![Zone::Library],
+        search_mode: Some(crate::effect::SearchSelectionMode::Exact),
+    }];
+    let chosen_name_tag = TagKey::from("__chosen_name__");
+
+    let second_words = TokenWordView::new(sentences[sentence_idx + 1].lowered()).word_refs();
+    let has_searched_creature_card =
+        find_word_sequence_start(&second_words, &["if", "you", "searched", "for"]).is_some()
+            && find_word_sequence_start(&second_words, &["creature", "card"]).is_some();
+    let has_doesnt_have_name =
+        find_word_sequence_start(&second_words, &["doesn't", "have", "that", "name"]).is_some()
+            || find_word_sequence_start(&second_words, &["doesnt", "have", "that", "name"])
+                .is_some()
+            || find_word_sequence_start(&second_words, &["doesn", "t", "have", "that", "name"])
+                .is_some();
+    let has_may_put_battlefield = find_word_sequence_start(
+        &second_words,
+        &[
+            "you",
+            "may",
+            "put",
+            "it",
+            "onto",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+        ],
+    )
+    .is_some();
+    if !has_searched_creature_card || !has_doesnt_have_name || !has_may_put_battlefield {
+        return Ok(None);
+    }
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered()).word_refs();
+    if !matches!(
+        third_words.as_slice(),
+        ["then", "that", "player", "shuffles"] | ["then", "that", "player", "shuffle"]
+    ) {
+        return Ok(None);
+    }
+
+    let mut creature_filter = ObjectFilter::default();
+    creature_filter.card_types.push(CardType::Creature);
+    let mut chosen_name_filter = ObjectFilter::default();
+    chosen_name_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_name_tag.clone(),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+
+    let mut effects = search_effects;
+    effects.push(EffectAst::ChooseCardName {
+        player: PlayerAst::That,
+        filter: None,
+        tag: chosen_name_tag,
+    });
+    effects.push(EffectAst::Conditional {
+        predicate: PredicateAst::And(
+            Box::new(PredicateAst::TaggedMatches(
+                searched_tag.clone(),
+                creature_filter,
+            )),
+            Box::new(PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+                searched_tag.clone(),
+                chosen_name_filter,
+            )))),
+        ),
+        if_true: vec![EffectAst::May {
+            effects: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(searched_tag.clone(), None),
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::You,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        }],
+        if_false: Vec::new(),
+    });
+    effects.push(EffectAst::ShuffleLibrary {
+        player: PlayerAst::That,
+    });
+
     Ok(Some(effects))
 }
 

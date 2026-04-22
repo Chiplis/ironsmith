@@ -88,6 +88,7 @@ pub enum EffectPredicate {
 pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
+    ForAsLongAsExiled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

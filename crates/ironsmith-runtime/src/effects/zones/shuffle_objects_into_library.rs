@@ -7,7 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::ShuffleLibraryEvent;
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
@@ -37,7 +37,15 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let player_id = if matches!(self.target, ChooseSpec::Source)
+            && matches!(self.player, PlayerFilter::OwnerOf(ObjectRef::Target))
+        {
+            game.object(ctx.source)
+                .map(|object| object.owner)
+                .ok_or(ExecutionError::ObjectNotFound(ctx.source))?
+        } else {
+            resolve_player_filter(game, &self.player, ctx)?
+        };
         let object_ids = match resolve_objects_for_effect(game, ctx, &self.target) {
             Ok(ids) => ids,
             Err(ExecutionError::InvalidTarget) => Vec::new(),

@@ -514,6 +514,20 @@ fn evaluate_value(
             }
             ValueEval::Scalar(seen.len() as i32)
         }
+        Value::CardTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for (id, chars) in baseline {
+                let Some(obj) = objects.get(id) else {
+                    continue;
+                };
+                if object_matches_filter_with_chars(filter, obj, chars, game, effect_controller) {
+                    for card_type in &chars.card_types {
+                        seen.insert(*card_type);
+                    }
+                }
+            }
+            ValueEval::Scalar(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => ValueEval::Scalar(
             game.turn_store
                 .turn_history
@@ -1236,6 +1250,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::GreatestManaValue(_)
         | Value::BasicLandTypesAmong(_)
         | Value::CreatureTypesAmong(_)
+        | Value::CardTypesAmong(_)
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)
@@ -1249,6 +1264,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::HalfStartingLifeTotalRoundedUp(_)

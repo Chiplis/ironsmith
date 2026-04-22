@@ -137,6 +137,117 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
     ))
 }
 
+fn ordinal_number_word(word: &str) -> Option<u32> {
+    match word {
+        "first" => Some(1),
+        "second" => Some(2),
+        "third" => Some(3),
+        "fourth" => Some(4),
+        "fifth" => Some(5),
+        "sixth" => Some(6),
+        "seventh" => Some(7),
+        "eighth" => Some(8),
+        "ninth" => Some(9),
+        "tenth" => Some(10),
+        _ => parse_named_number(word),
+    }
+}
+
+fn parse_this_ability_resolution_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let count = match filtered {
+        [
+            "this",
+            "is",
+            count,
+            "time",
+            "this",
+            "ability",
+            "has",
+            "resolved",
+            "this",
+            "turn",
+        ]
+        | [
+            "this",
+            "is",
+            count,
+            "time",
+            "this",
+            "ability",
+            "resolved",
+            "this",
+            "turn",
+        ]
+        | [
+            "this",
+            "ability",
+            "has",
+            "resolved",
+            "for",
+            count,
+            "time",
+            "this",
+            "turn",
+        ]
+        | [
+            "this",
+            "ability",
+            "resolved",
+            "for",
+            count,
+            "time",
+            "this",
+            "turn",
+        ] => ordinal_number_word(count)?,
+        ["it's", count, "time"] | ["its", count, "time"] | ["it", "s", count, "time"] => {
+            ordinal_number_word(count)?
+        }
+        _ => return None,
+    };
+
+    Some(PredicateAst::ThisAbilityResolvedThisTurnExactly(count))
+}
+
+fn spell_cast_matching_predicate(
+    player: PlayerFilter,
+    filter_words: &[&str],
+) -> Result<PredicateAst, CardTextError> {
+    let filter_tokens = filter_words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    Ok(PredicateAst::ValueComparison {
+        left: Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source: false,
+        },
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    })
+}
+
+fn parse_both_spell_cast_predicate(
+    player: PlayerFilter,
+    filter_words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(stripped) = filter_words.strip_prefix(&["both"]) else {
+        return Ok(None);
+    };
+    let Some(and_idx) = find_index(stripped, |word| *word == "and") else {
+        return Ok(None);
+    };
+    let left_words = &stripped[..and_idx];
+    let right_words = &stripped[and_idx + 1..];
+    if left_words.is_empty() || right_words.is_empty() {
+        return Ok(None);
+    }
+    let left = spell_cast_matching_predicate(player.clone(), left_words)?;
+    let right = spell_cast_matching_predicate(player, right_words)?;
+    Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
+}
+
 fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
@@ -157,6 +268,124 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     }
 }
 
+fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
+    if matches!(
+        words,
+        ["permanent" | "permanents", "you", "control" | "controls"]
+    ) {
+        return Some(ObjectFilter::permanent().you_control());
+    }
+    None
+}
+
+fn cards_in_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
+    if matches!(words, ["card" | "cards", "in", "your", "graveyard"]) {
+        return Some(
+            ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+        );
+    }
+    None
+}
+
+fn permanents_and_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
+    let graveyard_start = if words.len() == 8 && words[3] == "and/or" {
+        4
+    } else if words.len() == 9 && words[3] == "and" && words[4] == "or" {
+        5
+    } else {
+        return None;
+    };
+    let battlefield = permanents_you_control_scope(&words[..3])?;
+    let graveyard = cards_in_your_graveyard_scope(&words[graveyard_start..])?;
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![battlefield, graveyard];
+    Some(filter)
+}
+
+fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() >= 7
+        && words[0] == "there"
+        && words[1] == "are"
+        && matches!(words.get(3).copied(), Some("color" | "colors"))
+        && words.get(4).copied() == Some("among")
+        && let Some(count) = parse_named_number(words[2])
+        && let Some(filter) = permanents_you_control_scope(&words[5..])
+    {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::ColorsAmong(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+    None
+}
+
+fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() >= 13
+        && words[0] == "there"
+        && words[1] == "are"
+        && words.get(3).copied() == Some("or")
+        && words.get(4).copied() == Some("more")
+        && words.get(5).copied() == Some("card")
+        && matches!(words.get(6).copied(), Some("type" | "types"))
+        && words.get(7).copied() == Some("among")
+        && let Some(count) = parse_named_number(words[2])
+        && let Some(filter) = permanents_and_your_graveyard_scope(&words[8..])
+    {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CardTypesAmong(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+    None
+}
+
+fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if matches!(
+        words,
+        [
+            "your", "life", "total", "is", "greater", "than", "or", "equal", "to", "your",
+            "starting", "life", "total"
+        ]
+    ) {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::LifeTotal(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::StartingLifeTotal(PlayerFilter::You),
+        });
+    }
+    None
+}
+
+fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let cleaned = words
+        .iter()
+        .copied()
+        .filter(|word| *word != ",")
+        .collect::<Vec<_>>();
+    let words = cleaned.as_slice();
+    let second_there_idx = words
+        .windows(2)
+        .enumerate()
+        .skip(1)
+        .find_map(|(idx, window)| (window == ["there", "are"]).then_some(idx))?;
+    let life_idx = words.windows(4).enumerate().find_map(|(idx, window)| {
+        (idx > second_there_idx && window == ["and", "your", "life", "total"]).then_some(idx)
+    })?;
+
+    let first = parse_colors_among_predicate(&words[..second_there_idx])?;
+    let second = parse_card_types_among_predicate(&words[second_there_idx..life_idx])?;
+    let third = parse_life_total_at_least_starting_predicate(&words[life_idx + 1..])?;
+
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::And(Box::new(first), Box::new(second))),
+        Box::new(third),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -170,6 +399,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
         ));
+    }
+
+    if let Some(predicate) = parse_this_ability_resolution_count_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_stack_object_targets_only_source_predicate(&filtered) {
@@ -207,7 +440,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_happily_style_conjoined_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_colors_among_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_card_types_among_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_life_total_at_least_starting_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -271,6 +520,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             player: PlayerAst::You,
             filter,
         });
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        ["an", "opponent", "controls", "it"]
+            | ["an", "opponent", "controls", "that", "creature"]
+            | ["an", "opponent", "controls", "that", "permanent"]
+            | ["opponent", "controls", "it"]
+            | ["opponent", "controls", "that", "creature"]
+            | ["opponent", "controls", "that", "permanent"]
+    ) {
+        let mut filter = ObjectFilter {
+            controller: Some(PlayerFilter::Opponent),
+            ..Default::default()
+        };
+        if filtered.last().copied() == Some("creature") {
+            filter.card_types.push(CardType::Creature);
+        }
+        return Ok(PredicateAst::ItMatches(filter));
     }
 
     if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
@@ -2139,20 +2407,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && filtered[filtered.len() - 2..] == ["this", "turn"]
     {
         let filter_words = &filtered[prefix_len..filtered.len() - 2];
-        let filter_tokens = filter_words
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect::<Vec<_>>();
-        if let Ok(filter) = parse_object_filter_lexed(&filter_tokens, false) {
-            return Ok(PredicateAst::ValueComparison {
-                left: Value::SpellsCastThisTurnMatching {
-                    player,
-                    filter,
-                    exclude_source: false,
-                },
-                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-                right: Value::Fixed(1),
-            });
+        if let Some(predicate) = parse_both_spell_cast_predicate(player.clone(), filter_words)? {
+            return Ok(predicate);
+        }
+        if let Ok(predicate) = spell_cast_matching_predicate(player, filter_words) {
+            return Ok(predicate);
         }
     }
 

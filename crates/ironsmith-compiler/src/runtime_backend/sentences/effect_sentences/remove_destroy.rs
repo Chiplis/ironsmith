@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::util::parse_filter_counter_constraint_words;
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = find_index(tokens, |token| token.is_word("from")) {
@@ -189,6 +190,24 @@ pub(crate) fn wrap_destroy_with_delayed_timing(
     }
 }
 
+fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
+    if let Some(with_idx) = find_index(tokens, |token: &OwnedLexToken| token.is_word("with")) {
+        let base_tokens = trim_commas(&tokens[..with_idx]);
+        let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
+        if !base_tokens.is_empty()
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&tail_words)
+            && consumed == tail_words.len()
+        {
+            let mut filter = parse_object_filter(&base_tokens, false)?;
+            filter.with_counter = Some(counter_constraint);
+            return Ok(filter);
+        }
+    }
+
+    parse_object_filter(tokens, false)
+}
+
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let original_clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut delayed_timing = None;
@@ -364,7 +383,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             ));
         }
 
-        let filter = parse_object_filter(filter_tokens, false)?;
+        let filter = parse_destroy_all_filter(filter_tokens)?;
         return Ok(wrap_destroy_with_delayed_timing(
             EffectAst::DestroyAll { filter },
             delayed_timing,

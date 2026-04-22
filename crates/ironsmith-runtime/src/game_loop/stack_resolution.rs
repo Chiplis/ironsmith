@@ -300,6 +300,9 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
+    if let Some(trigger_identity) = entry.trigger_identity {
+        ctx = ctx.with_trigger_identity(trigger_identity);
+    }
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
@@ -354,6 +357,10 @@ pub(super) fn resolve_stack_entry_full(
             );
         }
         return Ok(());
+    }
+
+    if let Some(trigger_identity) = entry.trigger_identity {
+        game.record_triggered_ability_resolved(execution_source, trigger_identity);
     }
 
     // Check intervening-if condition at resolution time

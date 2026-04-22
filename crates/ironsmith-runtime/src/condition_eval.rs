@@ -272,6 +272,7 @@ struct SharedConditionContext<'a> {
     source: ObjectId,
     filter_source: Option<ObjectId>,
     triggering_event: Option<&'a TriggerEvent>,
+    trigger_identity: Option<TriggerIdentity>,
 }
 
 fn condition_filter_context(
@@ -487,6 +488,12 @@ fn evaluate_condition_shared_core(
             }
             Some(false)
         }
+        Condition::ThisAbilityResolvedThisTurnExactly(count) => {
+            Some(ctx.trigger_identity.is_some_and(|trigger_identity| {
+                game.triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
+                    == *count
+            }))
+        }
         Condition::Custom(_) => Some(false),
         Condition::Unmodeled(_) => Some(true),
         _ => None,
@@ -557,6 +564,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerTaggedObjectMatches { .. } => {}
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => {}
         Condition::PlayerOwnsCardNamedInZones { .. } => {}
+        Condition::ThisAbilityResolvedThisTurnExactly(..) => {}
         Condition::FirstTimeThisTurn => {}
         Condition::MaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
@@ -682,6 +690,7 @@ pub fn evaluate_condition_external(
             source: ctx.source,
             filter_source: ctx.filter_source,
             triggering_event: ctx.triggering_event,
+            trigger_identity: ctx.trigger_identity,
         },
     ) {
         return result;
@@ -1325,6 +1334,7 @@ pub fn evaluate_condition_external(
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
+        | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => unreachable!("handled before external match"),
@@ -1499,6 +1509,7 @@ fn evaluate_condition_simple(
             source,
             filter_source: Some(source),
             triggering_event: None,
+            trigger_identity: None,
         },
     ) {
         return result;
@@ -1995,6 +2006,7 @@ fn evaluate_condition_simple(
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
+        | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => {
@@ -2199,6 +2211,7 @@ fn evaluate_condition(
             source: ctx.source,
             filter_source: Some(ctx.source),
             triggering_event: ctx.triggering_event.as_ref(),
+            trigger_identity: ctx.trigger_identity,
         },
     ) {
         return Ok(result);
@@ -2985,6 +2998,7 @@ fn evaluate_condition(
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::YouControlCommander
+        | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => {

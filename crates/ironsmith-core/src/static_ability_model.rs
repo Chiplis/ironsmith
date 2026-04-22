@@ -300,6 +300,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         reduction: u32,
         condition: Option<ActivatedAbilityCostCondition>,
         per_matching_objects: Option<ObjectFilter>,
+        per_basic_land_types_among: Option<ObjectFilter>,
         minimum_total_mana: Option<u32>,
     },
     ActivatedAbilityCostIncrease {
@@ -909,12 +910,14 @@ where
                 reduction,
                 condition,
                 per_matching_objects,
+                per_basic_land_types_among,
                 minimum_total_mana,
             } => StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
                 condition,
                 per_matching_objects,
+                per_basic_land_types_among,
                 minimum_total_mana,
             },
             StaticAbilityPayload::ActivatedAbilityCostIncrease { filter, increase } => {
@@ -1817,6 +1820,7 @@ impl<
                 reduction,
                 condition: None,
                 per_matching_objects: None,
+                per_basic_land_types_among: None,
                 minimum_total_mana,
             },
         }
@@ -1835,6 +1839,7 @@ impl<
                 reduction,
                 condition: Some(condition),
                 per_matching_objects: None,
+                per_basic_land_types_among: None,
                 minimum_total_mana,
             },
         }
@@ -1853,6 +1858,26 @@ impl<
                 reduction,
                 condition: None,
                 per_matching_objects: Some(per_filter),
+                per_basic_land_types_among: None,
+                minimum_total_mana,
+            },
+        }
+    }
+    pub fn reduce_activated_ability_costs_for_each_basic_land_type(
+        filter: ObjectFilter,
+        reduction: u32,
+        lands_filter: ObjectFilter,
+        minimum_total_mana: Option<u32>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ActivatedAbilityCostReduction),
+            label: "reduce activated ability costs for each basic land type".into(),
+            payload: StaticAbilityPayload::ActivatedAbilityCostReduction {
+                filter,
+                reduction,
+                condition: None,
+                per_matching_objects: None,
+                per_basic_land_types_among: Some(lands_filter),
                 minimum_total_mana,
             },
         }

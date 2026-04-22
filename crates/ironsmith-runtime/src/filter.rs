@@ -676,6 +676,20 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::CardTypesAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    let card_types = game
+                        .current_card_types(object.id)
+                        .unwrap_or_else(|| object.card_types.clone());
+                    for card_type in card_types {
+                        seen.insert(card_type);
+                    }
+                }
+            }
+            Some(seen.len() as i32)
+        }
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
@@ -4043,6 +4057,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::CardTypesAmong(filter) => {
+                format!("the number of card types among {}", filter.description())
+            }
             Value::DistinctPowers(filter) => {
                 format!(
                     "the number of different powers among {}",
@@ -4059,6 +4076,8 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!("the number of {} counters", counter_type.description())
             }
             Value::CountersOn(_, None) => "the number of counters".to_string(),
+            Value::SourcePower => "this creature's power".to_string(),
+            Value::SourceToughness => "this creature's toughness".to_string(),
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",

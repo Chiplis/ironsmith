@@ -763,12 +763,22 @@ fn rewrite_item_to_parsed_item(
             })))
         }
         RewriteSemanticItem::Static(line) => {
-            let mut restrictions = ParsedRestrictions::default();
-            let chunks = if line.text == "activate only once each turn." {
-                restrictions
-                    .activation
-                    .push("Activate only once each turn".to_string());
-                Vec::new()
+            let (parsed_sentences, restrictions) =
+                split_text_for_parse(&line.text, &line.text, line.info.line_index);
+            let chunks = if !restrictions.activation.is_empty() || !restrictions.trigger.is_empty()
+            {
+                if parsed_sentences.is_empty() {
+                    Vec::new()
+                } else {
+                    let parsed_text = parsed_sentences.join(". ");
+                    let parsed_tokens = lex_line(&parsed_text, line.info.line_index)?;
+                    vec![lower_rewrite_static_to_chunk(
+                        line.info.clone(),
+                        &parsed_text,
+                        &parsed_tokens,
+                        line.chosen_option_label.as_deref(),
+                    )?]
+                }
             } else {
                 vec![lower_rewrite_static_to_chunk(
                     line.info.clone(),

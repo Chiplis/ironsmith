@@ -93,9 +93,14 @@ pub(crate) fn parse_consult_traversal_sentence(
     let player = if consult_verb_idx == 0 {
         infer_consult_player_from_prefix(&prefix_tokens).unwrap_or(PlayerAst::You)
     } else {
-        match parse_subject(&consult_tokens[..consult_verb_idx]) {
-            SubjectAst::Player(player) => player,
-            _ => return Ok(None),
+        let subject_words = TokenWordView::new(&consult_tokens[..consult_verb_idx]).word_refs();
+        if subject_words.as_slice() == ["they"] {
+            PlayerAst::That
+        } else {
+            match parse_subject(&consult_tokens[..consult_verb_idx]) {
+                SubjectAst::Player(player) => player,
+                _ => return Ok(None),
+            }
         }
     };
     let mode = if consult_tokens[consult_verb_idx].is_word("reveal")
@@ -333,7 +338,13 @@ fn parse_passive_consult_stop_rule_and_filter(
     mode: LibraryConsultModeAst,
 ) -> Result<Option<(LibraryConsultStopRuleAst, ObjectFilter)>, CardTextError> {
     let tokens = trim_commas(tokens);
-    let Some((count, used)) = parse_number(&tokens) else {
+    let Some((count, used)) = parse_number(&tokens).or_else(|| {
+        TokenWordView::new(&tokens)
+            .word_refs()
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an"))
+            .then_some((1, 1))
+    }) else {
         return Ok(None);
     };
 
@@ -348,10 +359,16 @@ fn parse_passive_consult_stop_rule_and_filter(
         LibraryConsultModeAst::Reveal => ["card", "is", "revealed"],
         LibraryConsultModeAst::Exile => ["card", "is", "exiled"],
     };
+    let bare_singular_suffix = match mode {
+        LibraryConsultModeAst::Reveal => ["is", "revealed"],
+        LibraryConsultModeAst::Exile => ["is", "exiled"],
+    };
     let suffix_len = if tail_word_refs.as_slice().ends_with(&passive_suffix) {
         passive_suffix.len()
     } else if tail_word_refs.as_slice().ends_with(&singular_suffix) {
         singular_suffix.len()
+    } else if tail_word_refs.as_slice().ends_with(&bare_singular_suffix) {
+        bare_singular_suffix.len()
     } else {
         return Ok(None);
     };

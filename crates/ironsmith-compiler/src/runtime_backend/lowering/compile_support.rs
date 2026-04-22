@@ -510,6 +510,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::ThisSpellWasKicked => Condition::ThisSpellWasKicked,
         PredicateAst::ThisSpellPaidLabel(label) => Condition::ThisSpellPaidLabel(label.clone()),
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
+        PredicateAst::ThisAbilityResolvedThisTurnExactly(count) => {
+            Condition::ThisAbilityResolvedThisTurnExactly(*count)
+        }
         PredicateAst::TargetSpellCastOrderThisTurn(order) => {
             Condition::TargetSpellCastOrderThisTurn(*order)
         }
@@ -905,6 +908,7 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => {

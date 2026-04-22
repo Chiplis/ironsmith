@@ -3298,6 +3298,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_activated_ability_cost_reduction_counts_distinct_basic_land_types() {
+        use crate::ability::Ability;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::static_abilities::StaticAbility;
+        use crate::target::ObjectFilter;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(31), "Domain Codex")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(source_id)
+            .expect("source exists")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
+                    ObjectFilter::source(),
+                    1,
+                    ObjectFilter::land().you_control(),
+                    Some(1),
+                ),
+            ));
+
+        for (id, name, subtype) in [
+            (32, "Plains", Subtype::Plains),
+            (33, "Snowfield", Subtype::Plains),
+            (34, "Island", Subtype::Island),
+        ] {
+            let land = CardBuilder::new(CardId::from_raw(id), name)
+                .card_types(vec![CardType::Land])
+                .subtypes(vec![subtype])
+                .build();
+            game.create_object_from_card(&land, alice, Zone::Battlefield);
+        }
+
+        let reduced = calculate_effective_activation_mana_cost(
+            &game,
+            alice,
+            source_id,
+            &ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]),
+        );
+        assert_eq!(
+            reduced.generic_mana_total(),
+            3,
+            "three lands with two basic land types should reduce {{5}} by two"
+        );
+    }
+
     /// Tests that summoning sick creatures cannot activate mana abilities with tap costs.
     ///
     /// Scenario: Alice casts Llanowar Elves. On the same turn, the creature has

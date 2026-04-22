@@ -1267,7 +1267,6 @@ pub(crate) fn parse_trigger_clause_lexed(
                 ))
             })?;
             filter.zone = None;
-            filter.controller = None;
             filter.owner = None;
             if subject_words
                 .iter()

@@ -1431,18 +1431,25 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     let after_first_comma = trim_lexed_commas(after_first_comma);
     let (_, after_if) = primitives::parse_prefix(after_first_comma, primitives::kw("if"))?;
 
-    let (predicate_tokens, effects_tokens) = primitives::split_lexed_once_on_comma(after_if)?;
-    let predicate_tokens = trim_lexed_commas(predicate_tokens);
-    let effects_tokens = trim_lexed_commas(effects_tokens);
-    if predicate_tokens.is_empty() || effects_tokens.is_empty() {
-        return None;
+    for comma_idx in (0..after_if.len())
+        .rev()
+        .filter(|idx| after_if[*idx].is_comma())
+    {
+        let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
+        let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
+        if predicate_tokens.is_empty() || effects_tokens.is_empty() {
+            continue;
+        }
+        if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
+            return Some(TriggeredConditionalClauseSpec {
+                trigger_tokens,
+                predicate,
+                effects_tokens,
+            });
+        }
     }
 
-    Some(TriggeredConditionalClauseSpec {
-        trigger_tokens,
-        predicate: parse_modeled_predicate(predicate_tokens)?,
-        effects_tokens,
-    })
+    None
 }
 
 pub(crate) fn split_state_triggered_clause_lexed<'a>(

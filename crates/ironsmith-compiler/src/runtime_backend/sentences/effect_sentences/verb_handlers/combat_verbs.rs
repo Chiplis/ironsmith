@@ -458,7 +458,13 @@ fn parse_divided_damage_target(
     let count = if grammar::words_match_any_prefix(&among_tail, ANY_NUMBER_OF_PREFIXES).is_some() {
         ChoiceCount::any_number()
     } else {
-        ChoiceCount::up_to(max_targets as usize)
+        ChoiceCount {
+            min: 1,
+            max: Some(max_targets as usize),
+            dynamic_x: false,
+            up_to_x: false,
+            random: false,
+        }
     };
     Ok(TargetAst::WithCount(Box::new(base_target), count))
 }

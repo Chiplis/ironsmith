@@ -1057,7 +1057,7 @@ pub(crate) fn parse_cost_reduction_line(
             return Ok(Some(StaticAbility::reduce_activated_ability_costs(
                 ObjectFilter::source(),
                 reduction,
-                Some(1),
+                None,
             )));
         }
         if slice_starts_with(&tail_words, &["less", "to", "activate", "if"]) {
@@ -1090,7 +1090,7 @@ pub(crate) fn parse_cost_reduction_line(
                             count: count as usize,
                             filter,
                         },
-                        Some(1),
+                        None,
                     ),
                 ));
             }
@@ -1100,6 +1100,18 @@ pub(crate) fn parse_cost_reduction_line(
             )));
         }
         if slice_starts_with(&tail_words, &["less", "to", "activate", "for", "each"]) {
+            if let Some(Value::BasicLandTypesAmong(lands_filter)) =
+                parse_dynamic_cost_modifier_value(&tail_tokens)?
+            {
+                return Ok(Some(
+                    StaticAbility::reduce_activated_ability_costs_for_each_basic_land_type(
+                        ObjectFilter::source(),
+                        reduction,
+                        lands_filter,
+                        None,
+                    ),
+                ));
+            }
             let mut per_filter = parse_object_filter(&tail_tokens[5..], false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported activated-ability cost reduction tail (clause: '{}')",
@@ -1114,7 +1126,7 @@ pub(crate) fn parse_cost_reduction_line(
                     ObjectFilter::source(),
                     reduction,
                     per_filter,
-                    Some(1),
+                    None,
                 ),
             ));
         }

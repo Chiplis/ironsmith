@@ -2189,6 +2189,20 @@ impl StaticAbility {
         Self::new(ability)
     }
 
+    pub fn reduce_activated_ability_costs_for_each_basic_land_type(
+        filter: crate::target::ObjectFilter,
+        reduction: u32,
+        lands_filter: crate::target::ObjectFilter,
+        minimum_total_mana: Option<u32>,
+    ) -> Self {
+        let mut ability = ActivatedAbilityCostReduction::new(filter, reduction)
+            .with_per_basic_land_types_among(lands_filter);
+        if let Some(minimum) = minimum_total_mana {
+            ability = ability.with_minimum_total_mana(minimum);
+        }
+        Self::new(ability)
+    }
+
     pub fn increase_activated_ability_costs(
         filter: crate::target::ObjectFilter,
         increase: crate::cost::TotalCost,

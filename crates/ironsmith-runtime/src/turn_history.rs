@@ -32,6 +32,7 @@ pub struct TurnHistory {
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
     pub triggers_fired_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
+    pub triggered_abilities_resolved_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
     pub turn_counters: TurnCounterTracker,
     pub foretell_actions_this_turn: HashSet<PlayerId>,
     pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
@@ -51,6 +52,7 @@ impl TurnHistory {
         self.activated_abilities_this_turn.clear();
         self.chosen_modes_by_ability_this_turn.clear();
         self.triggers_fired_this_turn.clear();
+        self.triggered_abilities_resolved_this_turn.clear();
         self.turn_counters.clear();
         self.foretell_actions_this_turn.clear();
         self.mana_spent_to_cast_spells_this_turn.clear();

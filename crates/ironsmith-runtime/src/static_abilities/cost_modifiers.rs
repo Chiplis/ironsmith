@@ -10,6 +10,7 @@ use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
 use crate::mana::ManaCost;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
+use crate::zone::Zone;
 
 fn describe_comparison(cmp: &Comparison) -> String {
     let describe_values = |values: &[i32]| -> String {
@@ -415,6 +416,33 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
         _ => {}
     }
+    if let Some(zone_suffix) = match filter.zone {
+        Some(Zone::Hand) => Some(match filter.owner.as_ref() {
+            Some(PlayerFilter::You) => "from your hand".to_string(),
+            Some(owner) => format!("from {} hand", owner.description()),
+            None => "from your hand".to_string(),
+        }),
+        Some(Zone::Graveyard) => Some(match filter.owner.as_ref() {
+            Some(PlayerFilter::You) => "from your graveyard".to_string(),
+            Some(owner) => format!("from {} graveyard", owner.description()),
+            None => "from a graveyard".to_string(),
+        }),
+        Some(Zone::Exile) => Some(match filter.owner.as_ref() {
+            Some(PlayerFilter::You) => "from exile you own".to_string(),
+            Some(owner) => format!("from exile {}", owner.description()),
+            None => "from exile".to_string(),
+        }),
+        Some(Zone::Library) => Some(match filter.owner.as_ref() {
+            Some(PlayerFilter::You) => "from your library".to_string(),
+            Some(owner) => format!("from {} library", owner.description()),
+            None => "from a library".to_string(),
+        }),
+        Some(Zone::Command) => Some("from the command zone".to_string()),
+        _ => None,
+    } {
+        description.push(' ');
+        description.push_str(&zone_suffix);
+    }
     if let Some(power) = &filter.power {
         description.push_str(" with power ");
         description.push_str(&describe_comparison(power));
@@ -646,6 +674,7 @@ pub struct ActivatedAbilityCostReduction {
     pub reduction: u32,
     pub minimum_total_mana: Option<u32>,
     pub per_matching_objects: Option<ObjectFilter>,
+    pub per_basic_land_types_among: Option<ObjectFilter>,
     pub condition: Option<ActivatedAbilityCostCondition>,
 }
 
@@ -656,6 +685,7 @@ impl ActivatedAbilityCostReduction {
             reduction,
             minimum_total_mana: None,
             per_matching_objects: None,
+            per_basic_land_types_among: None,
             condition: None,
         }
     }
@@ -667,6 +697,11 @@ impl ActivatedAbilityCostReduction {
 
     pub fn with_per_matching_objects(mut self, filter: ObjectFilter) -> Self {
         self.per_matching_objects = Some(filter);
+        self
+    }
+
+    pub fn with_per_basic_land_types_among(mut self, filter: ObjectFilter) -> Self {
+        self.per_basic_land_types_among = Some(filter);
         self
     }
 
@@ -793,6 +828,11 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         };
         if let Some(filter) = &self.per_matching_objects {
             line.push_str(&format!(" for each {}", filter.description()));
+        } else if let Some(filter) = &self.per_basic_land_types_among {
+            line.push_str(&format!(
+                " for each basic land type among {}",
+                describe_types_among_scope(filter)
+            ));
         }
         if let Some(condition) = &self.condition {
             line.push(' ');

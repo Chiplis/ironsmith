@@ -244,6 +244,9 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if lower_line.contains("ravenous") && lower_line.contains("if x is 5 or more") {
         return "Ravenous".to_string();
     }
+    if let Some(compact) = compact_land_animation_line(line) {
+        return compact;
+    }
     if let Some(rest) = strip_prefix_ascii_ci(line, "Enters with ") {
         return format!("This creature enters with {rest}");
     }
@@ -260,6 +263,26 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
         return compact;
     }
     normalize_debug_safe_keyword_punctuation(line)
+}
+
+fn compact_land_animation_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (prefix, rest) = if let Some(rest) = trimmed.strip_prefix("Lands are ") {
+        ("All lands are ", rest)
+    } else if let Some(rest) = trimmed.strip_prefix("lands are ") {
+        ("all lands are ", rest)
+    } else {
+        return None;
+    };
+    let pt = rest.strip_suffix(" creatures in addition to their other types")?;
+    if !pt
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || ch == '/' || ch == 'X' || ch == '*' || ch == '+')
+        || !pt.contains('/')
+    {
+        return None;
+    }
+    Some(format!("{prefix}{pt} creatures that are still lands."))
 }
 
 fn compact_debug_safe_reinforce_line(line: &str) -> Option<String> {
@@ -349,6 +372,8 @@ fn normalize_debug_safe_generic_surface(line: &str) -> String {
         )
         .replace("another creatures", "other creatures")
         .replace("another creature", "other creature")
+        .replace("Attacking/blocking", "Attacking or blocking")
+        .replace("attacking/blocking", "attacking or blocking")
         .replace("or greaters", "or greater")
         .replace("attached tos", "attached to")
         .replace(
@@ -811,17 +836,25 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
             continue;
         }
 
-        normalized.push(
-            strip_duplicate_gift_card_draw_surface(&normalize_debug_safe_citys_blessing_surface(
-                line,
-            ))
-            .replace("a Elf", "an Elf")
-            .replace(" hand :", " hand:"),
-        );
+        let line = strip_duplicate_gift_card_draw_surface(
+            &normalize_debug_safe_citys_blessing_surface(line),
+        )
+        .replace("a Elf", "an Elf")
+        .replace(" hand :", " hand:");
+        normalized.push(normalize_citys_blessing_instead_surface(&line));
         idx += 1;
     }
 
     normalized
+}
+
+fn normalize_citys_blessing_instead_surface(line: &str) -> String {
+    if line
+        == "At the beginning of your upkeep, if you have the city's blessing, you draw a card. Otherwise, each player draws a card."
+    {
+        return "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
+    }
+    line.to_string()
 }
 
 fn strip_duplicate_gift_card_draw_surface(line: &str) -> String {
@@ -873,8 +906,10 @@ fn is_ascend_runtime_scaffold(line: &str) -> bool {
 }
 
 fn line_mentions_citys_blessing_condition(line: &str) -> bool {
-    line.to_ascii_lowercase()
-        .contains("playerhascitysblessing { player: you }")
+    let lower = line.to_ascii_lowercase();
+    lower.contains("playerhascitysblessing { player: you }")
+        || lower.contains("you have the city's blessing")
+        || lower.contains("you has the city's blessing")
 }
 
 fn normalize_debug_safe_citys_blessing_surface(line: &str) -> String {

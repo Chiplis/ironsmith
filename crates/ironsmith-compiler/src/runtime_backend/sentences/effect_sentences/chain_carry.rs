@@ -40,10 +40,11 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, TargetAst, TextSpan,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until};
-use crate::target::PlayerFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
+use crate::types::Subtype;
 use crate::zone::Zone;
 
 const EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
@@ -59,6 +60,66 @@ const UNTIL_YOUR_NEXT_UNTAP_PREFIXES: &[&[&str]] = &[
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
+}
+
+fn parse_choose_land_of_each_basic_land_type_segment(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.word_refs();
+    let choice_words = match words.as_slice() {
+        ["choose", "a", "land", "of", "each", "basic", "land", "type"]
+        | ["choose", "land", "of", "each", "basic", "land", "type"] => words.as_slice(),
+        [
+            "you",
+            "choose",
+            "a",
+            "land",
+            "of",
+            "each",
+            "basic",
+            "land",
+            "type",
+        ]
+        | [
+            "you",
+            "choose",
+            "land",
+            "of",
+            "each",
+            "basic",
+            "land",
+            "type",
+        ] => &words[1..],
+        _ => return None,
+    };
+    if choice_words.is_empty() {
+        return None;
+    }
+
+    let basic_land_types = [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ];
+    Some(
+        basic_land_types
+            .into_iter()
+            .map(|subtype| {
+                let mut filter = ObjectFilter::land().with_subtype(subtype);
+                filter.controller = Some(PlayerFilter::Any);
+                EffectAst::ChooseObjects {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::Implicit,
+                    tag: TagKey::from(crate::cards::builders::IT_TAG),
+                }
+            })
+            .collect(),
+    )
 }
 
 fn contains_char(text: &str, expected: char) -> bool {
@@ -912,6 +973,11 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         {
             continue;
         }
+        if let Some(segment_effects) = parse_choose_land_of_each_basic_land_type_segment(&segment) {
+            effects.extend(segment_effects);
+            previous_segment = Some(segment);
+            continue;
+        }
         let mut effect = parse_effect_clause_with_trailing_if_lexed(&segment)?;
         if let Some(context) = carried_context {
             maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
@@ -1190,6 +1256,9 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasMoreLifeThanYou { .. }
             | PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. }
             | PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. }
+            | PredicateAst::PlayerIsMonarch { .. }
+            | PredicateAst::PlayerHasInitiative { .. }
+            | PredicateAst::PlayerHasCitysBlessing { .. }
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")
 }
@@ -2072,6 +2141,10 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             ..
         }
         | EffectAst::GrantPlayTaggedUntilYourNextTurn {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::GrantPlayTaggedForAsLongAsExiled {
             player: effect_player,
             ..
         }

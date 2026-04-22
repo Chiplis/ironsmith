@@ -496,6 +496,7 @@ impl StaticAbilityModelInterpreter {
                 reduction,
                 condition,
                 per_matching_objects,
+                per_basic_land_types_among,
                 minimum_total_mana,
             } => {
                 let mut converted =
@@ -505,6 +506,10 @@ impl StaticAbilityModelInterpreter {
                 }
                 if let Some(per_matching_objects) = per_matching_objects {
                     converted = converted.with_per_matching_objects(per_matching_objects.clone());
+                }
+                if let Some(per_basic_land_types_among) = per_basic_land_types_among {
+                    converted = converted
+                        .with_per_basic_land_types_among(per_basic_land_types_among.clone());
                 }
                 if let Some(condition) = condition {
                     converted = converted.with_condition(match condition {

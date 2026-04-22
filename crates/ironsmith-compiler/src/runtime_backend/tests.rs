@@ -1391,6 +1391,33 @@ fn rewrite_structure_triggered_conditional_clause_parser_keeps_count_based_battl
 }
 
 #[test]
+fn rewrite_structure_triggered_conditional_clause_parser_splits_happily_ever_after_gate() {
+    let tokens = lex_line(
+        "At the beginning of your upkeep, if there are five colors among permanents you control, there are six or more card types among permanents you control and/or cards in your graveyard, and your life total is greater than or equal to your starting life total, you win the game.",
+        0,
+    )
+    .expect("rewrite lexer should classify Happily Ever After conditional trigger");
+    let spec = super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+        .expect("structure helper should detect Happily Ever After intervening-if trigger");
+
+    assert_eq!(
+        spec.effects_tokens
+            .iter()
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>(),
+        vec!["you", "win", "the", "game", "."]
+    );
+    let predicate_debug = format!("{:?}", spec.predicate);
+    assert!(
+        predicate_debug.contains("And(")
+            && predicate_debug.contains("ColorsAmong")
+            && predicate_debug.contains("CardTypesAmong")
+            && predicate_debug.contains("StartingLifeTotal"),
+        "expected Happily Ever After's full gate to stay modeled, got {predicate_debug}"
+    );
+}
+
+#[test]
 fn rewrite_structure_state_triggered_clause_parser_splits_when_condition() {
     let tokens = lex_line("When you control no Swamps, sacrifice this creature.", 0)
         .expect("rewrite lexer should classify state-trigger line");
@@ -3811,6 +3838,28 @@ fn rewrite_lexed_permission_helpers_preserve_any_color_cast_suffix() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("GrantPlayTaggedUntilEndOfTurn"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
+    let text = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify while-exiled play trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("while-exiled play trigger should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsCombatDamageToPlayer"), "{debug}");
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("player: That"), "{debug}");
+    assert!(debug.contains("Exile"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
 }
 
@@ -6824,6 +6873,28 @@ fn rewrite_lexed_predicate_parser_handles_color_contraction() {
 }
 
 #[test]
+fn rewrite_lexed_predicate_parser_splits_both_spell_cast_conditions() {
+    let text = "you've cast both a creature spell and a noncreature spell this turn";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify spell-cast predicate");
+
+    let parser_root = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
+    let grammar = super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+        .expect("grammar predicate entrypoint should parse");
+    let debug = format!("{parser_root:?}");
+
+    assert_eq!(debug, format!("{grammar:?}"));
+    assert!(
+        debug.contains("And("),
+        "expected conjoined spell-cast predicates, got {debug}"
+    );
+    assert!(
+        debug.contains("card_types: [Creature]")
+            && debug.contains("excluded_card_types: [Creature]"),
+        "expected separate creature and noncreature spell filters, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_predicate_parser_matches_grammar_entrypoint_for_this_spell_cast_from_zone() {
     let text = "this spell was cast from a graveyard";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify graveyard-cast predicate");
@@ -7394,6 +7465,41 @@ fn rewrite_sequence_registry_matches_damage_prevention_counter_followup() {
         "{debug}"
     );
     assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_replacement() {
+    let sentences = registry_sentence_inputs(
+        "You may cast target instant or sorcery card from your graveyard. If that spell would be put into your graveyard, exile it instead.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match may-cast/replacement bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "may-cast-target-graveyard-spell-then-exile-replacement"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("RegisterZoneReplacement"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_destroy_all_keeps_named_counter_filter() {
+    let lexed = lex_line("Destroy each permanent with a doom counter on it.", 0)
+        .expect("rewrite lexer should classify destroy-with-counter text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("destroy-with-counter sentence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DestroyAll"), "{debug}");
+    assert!(debug.contains("with_counter: Some"), "{debug}");
+    assert!(debug.contains("doom"), "{debug}");
 }
 
 #[test]

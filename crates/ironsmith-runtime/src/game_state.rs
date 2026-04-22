@@ -291,6 +291,13 @@ fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -
     format!("activated_ability:{}:{}", source.0, ability_index)
 }
 
+fn triggered_ability_resolution_turn_counter_name(
+    source: ObjectId,
+    trigger_id: TriggerIdentity,
+) -> String {
+    format!("triggered_ability_resolved:{}:{}", source.0, trigger_id.0)
+}
+
 impl TurnCounterTracker {
     pub fn increment(&mut self, key: TurnCounterKey) {
         *self.counters.entry(key).or_insert(0) += 1;
@@ -1356,6 +1363,8 @@ pub struct StackEntry {
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    /// Structural identity of the triggered ability represented by this stack entry.
+    pub trigger_identity: Option<TriggerIdentity>,
     /// Intervening-if condition that must be true at resolution time (for triggered abilities).
     /// If this condition is false when the ability would resolve, the ability does nothing.
     pub intervening_if: Option<crate::ConditionExpr>,
@@ -1411,6 +1420,7 @@ impl StackEntry {
             source_snapshot: None,
             source_name: None,
             triggering_event: None,
+            trigger_identity: None,
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
@@ -1444,6 +1454,7 @@ impl StackEntry {
             source_snapshot: None,
             source_name: None,
             triggering_event: None,
+            trigger_identity: None,
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
@@ -1527,6 +1538,12 @@ impl StackEntry {
     /// Set the triggering event for this triggered ability.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.triggering_event = Some(event);
+        self
+    }
+
+    /// Set the structural trigger identity for this triggered ability stack entry.
+    pub fn with_trigger_identity(mut self, trigger_identity: TriggerIdentity) -> Self {
+        self.trigger_identity = Some(trigger_identity);
         self
     }
 
@@ -5675,6 +5692,42 @@ impl GameState {
             .get(&(source_object_id, trigger_id))
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Record that a specific triggered ability resolved this turn.
+    pub fn record_triggered_ability_resolved(
+        &mut self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) {
+        *self
+            .turn_store
+            .turn_history
+            .triggered_abilities_resolved_this_turn
+            .entry((source_object_id, trigger_id))
+            .or_insert(0) += 1;
+        self.turn_store.turn_history.turn_counters.increment_named(
+            triggered_ability_resolution_turn_counter_name(source_object_id, trigger_id),
+        );
+    }
+
+    /// Get how many times this triggered ability resolved this turn.
+    pub fn triggered_ability_resolution_count_this_turn(
+        &self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) -> u32 {
+        self.turn_store
+            .turn_history
+            .triggered_abilities_resolved_this_turn
+            .get(&(source_object_id, trigger_id))
+            .copied()
+            .unwrap_or_else(|| {
+                self.named_turn_counter(&triggered_ability_resolution_turn_counter_name(
+                    source_object_id,
+                    trigger_id,
+                ))
+            })
     }
 
     /// Record an event kind occurrence this turn.

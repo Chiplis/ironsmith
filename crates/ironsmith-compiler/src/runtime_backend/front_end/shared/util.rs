@@ -1735,6 +1735,12 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::ItsOwner);
     }
+    if words_have_prefix(slice, &["this"]) && words_have_suffix(slice, &["controller"]) {
+        return SubjectAst::Player(PlayerAst::ItsController);
+    }
+    if words_have_prefix(slice, &["this"]) && words_have_suffix(slice, &["owner"]) {
+        return SubjectAst::Player(PlayerAst::ItsOwner);
+    }
     if words_have_suffix(slice, &["its", "controller"])
         || words_have_suffix(slice, &["their", "controller"])
     {

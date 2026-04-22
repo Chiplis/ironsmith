@@ -1,6 +1,6 @@
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::clause_support::{
-    parse_static_ability_ast_line_lexed, parse_triggered_line_lexed,
+    parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
@@ -336,6 +336,13 @@ pub(crate) fn parse_simple_ability_duration(
     None
 }
 
+fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {
+    matches!(
+        words_after_verb,
+        ["when", ..] | ["whenever", ..] | ["at", "the", ..]
+    )
+}
+
 fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(usize, Until)> {
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
@@ -471,7 +478,11 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     }
 
-    let duration_phrase = parse_simple_ability_duration(words_after_verb);
+    let duration_phrase = if words_start_nested_triggered_ability(words_after_verb) {
+        None
+    } else {
+        parse_simple_ability_duration(words_after_verb)
+    };
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
@@ -842,10 +853,27 @@ pub(crate) fn parse_gain_ability_sentence(
         && let Some((subject_verb, _)) = find_verb(&tokens[subject_start_token_idx..gain_token_idx])
         && subject_verb != Verb::Get
     {
-        return Ok(None);
+        let subject_tokens = trim_commas(&tokens[subject_start_token_idx..gain_token_idx]);
+        let subject_words = GainAbilityWordView::new(&subject_tokens);
+        let subject_word_refs = subject_words.to_word_refs();
+        let target_phrase_with_controller_tail = subject_word_refs.first().copied()
+            == Some("target")
+            && (word_slice_contains(&subject_word_refs, "control")
+                || word_slice_contains(&subject_word_refs, "controls"));
+        let controller_tail_subject = word_slice_contains(&subject_word_refs, "control")
+            || word_slice_contains(&subject_word_refs, "controls");
+        let object_filter_subject = parse_object_filter(&subject_tokens, false).is_ok();
+        if !target_phrase_with_controller_tail && !controller_tail_subject && !object_filter_subject
+        {
+            return Ok(None);
+        }
     }
 
-    let duration_phrase = parse_simple_ability_duration(after_gain);
+    let duration_phrase = if words_start_nested_triggered_ability(after_gain) {
+        None
+    } else {
+        parse_simple_ability_duration(after_gain)
+    };
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
@@ -960,7 +988,14 @@ pub(crate) fn parse_gain_ability_sentence(
         None
     };
     let has_have_verb = matches!(word_list[gain_idx], "has" | "have");
-    if has_have_verb && pump_effect.is_none() && !has_explicit_duration {
+    let has_nested_granted_ability = abilities
+        .iter()
+        .any(|ability| matches!(ability, GrantedAbilityAst::ParsedObjectAbility { .. }));
+    if has_have_verb
+        && pump_effect.is_none()
+        && !has_explicit_duration
+        && !has_nested_granted_ability
+    {
         return Ok(None);
     }
 
@@ -1256,24 +1291,29 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         };
         parsed
     } else {
-        match parse_triggered_line_lexed(&ability_tokens)? {
-            LineAst::Triggered {
-                trigger,
-                effects,
-                max_triggers_per_turn,
-            } => parsed_triggered_ability(
-                trigger,
-                effects,
-                vec![Zone::Battlefield],
-                Some(display.clone()),
-                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                ReferenceImports::default(),
-            ),
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported granted activated/triggered ability clause (clause: '{}')",
-                    clause_words.join(" ")
-                )));
+        if let Some(parsed) = parse_granted_triggered_otherwise_ability(&ability_tokens, &display)?
+        {
+            parsed
+        } else {
+            match parse_triggered_line_lexed(&ability_tokens)? {
+                LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                } => parsed_triggered_ability(
+                    trigger,
+                    effects,
+                    vec![Zone::Battlefield],
+                    Some(display.clone()),
+                    max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+                    ReferenceImports::default(),
+                ),
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported granted activated/triggered ability clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
             }
         }
     };
@@ -1282,6 +1322,66 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         ability: parsed_ability,
         display,
     }))
+}
+
+fn parse_granted_triggered_otherwise_ability(
+    ability_tokens: &[OwnedLexToken],
+    display: &str,
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let start_idx = if ability_tokens.first().is_some_and(|token| {
+        token.is_word("when") || token.is_word("whenever") || token.is_word("at")
+    }) {
+        1
+    } else {
+        0
+    };
+    let Some(comma_idx) = ability_tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    let Some(otherwise_idx) = ability_tokens
+        .iter()
+        .position(|token| token.is_word("otherwise"))
+    else {
+        return Ok(None);
+    };
+    if otherwise_idx <= comma_idx + 1 || comma_idx <= start_idx {
+        return Ok(None);
+    }
+
+    let trigger = parse_trigger_clause_lexed(&ability_tokens[start_idx..comma_idx])?;
+    let true_tokens = trim_edge_punctuation(trim_lexed_commas(
+        &ability_tokens[comma_idx + 1..otherwise_idx],
+    ));
+    let false_tokens =
+        trim_edge_punctuation(trim_lexed_commas(&ability_tokens[otherwise_idx + 1..]));
+    if true_tokens.is_empty() || false_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut true_effects = parse_effect_chain(&true_tokens)?;
+    if true_effects.len() != 1 {
+        return Ok(None);
+    }
+    let mut conditional = true_effects.remove(0);
+    let EffectAst::Conditional { if_false, .. } = &mut conditional else {
+        return Ok(None);
+    };
+    if !if_false.is_empty() {
+        return Ok(None);
+    }
+    *if_false = parse_effect_chain(&false_tokens)?;
+    if if_false.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(parsed_triggered_ability(
+        trigger,
+        vec![conditional],
+        vec![Zone::Battlefield],
+        Some(display.to_string()),
+        None,
+        ReferenceImports::default(),
+    )))
 }
 
 pub(crate) fn append_gain_ability_trailing_effects(
@@ -1640,6 +1740,26 @@ mod tests {
         assert!(
             string_contains(&debug, "LoseLife"),
             "expected lose-life text to remain inside the granted ability payload, got {debug}"
+        );
+    }
+
+    #[test]
+    fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
+        let tokens = tokenize_line(
+            "Sliver creatures you control have \"When this creature enters, Slivers you control get +1/+1 until end of turn if you're the monarch. Otherwise, you become the monarch.\"",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("quoted monarch trigger should parse")
+            .expect("quoted monarch trigger should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "GrantAbilitiesAll")
+                && string_contains(&debug, "Conditional")
+                && string_contains(&debug, "PlayerIsMonarch")
+                && string_contains(&debug, "BecomeMonarch"),
+            "expected granted trigger to keep monarch if/otherwise effects, got {debug}"
         );
     }
 

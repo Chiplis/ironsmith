@@ -380,6 +380,37 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
+        Value::CardTypesAmong(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    for card_type in &snapshot.card_types {
+                        seen.insert(*card_type);
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                let card_types = game
+                    .current_card_types(obj.id)
+                    .unwrap_or_else(|| obj.card_types.clone());
+                for card_type in card_types {
+                    seen.insert(card_type);
+                }
+            }
+            Ok(seen.len() as i32)
+        }
         Value::ColorsAmong(filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
@@ -662,6 +693,13 @@ pub fn resolve_value(
                 .player(player_id)
                 .ok_or(ExecutionError::PlayerNotFound(player_id))?;
             Ok(player.life)
+        }
+        Value::StartingLifeTotal(player_spec) => {
+            let player_id = resolve_player_filter(game, player_spec, ctx)?;
+            let player = game
+                .player(player_id)
+                .ok_or(ExecutionError::PlayerNotFound(player_id))?;
+            Ok(player.starting_life)
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player_id = resolve_player_filter(game, player_spec, ctx)?;

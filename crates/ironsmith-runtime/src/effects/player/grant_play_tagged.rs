@@ -128,6 +128,7 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 Self::next_turn_number_for_player(game, player)
             }
+            GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
         }
     }
 }
@@ -357,6 +358,68 @@ mod tests {
         assert!(
             game.can_spend_mana_as_any_color(alice, Some(exiled_id)),
             "temporary effect-sourced mana permission should survive tracker refreshes"
+        );
+    }
+
+    #[test]
+    fn grant_play_tagged_for_as_long_as_exiled_uses_open_ended_exile_permission() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(3), "Exiled Spell")
+            .card_types(vec![crate::types::CardType::Instant])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled spell"), &game);
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+
+        let mut dm = SelectFirstDecisionMaker;
+        let source = ObjectId::from_raw(102);
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+
+        let effect = GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::ForAsLongAsExiled,
+            true,
+            true,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
+            "tagged card should be playable from exile"
+        );
+        assert!(game.can_spend_mana_as_any_color(alice, Some(exiled_id)));
+
+        game.turn.turn_number = game.turn.turn_number.saturating_add(20);
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice
+            ),
+            "while-exiled grant should not expire at end of turn"
+        );
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Graveyard,
+                alice
+            ),
+            "grant remains tied to the exile zone"
         );
     }
 }

@@ -1,6 +1,25 @@
 use super::*;
 use crate::filter::ObjectFilterExt as _;
 
+fn count_basic_land_types_among_filter(
+    game: &GameState,
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+) -> u32 {
+    let mut seen = std::collections::HashSet::new();
+    for obj in game.objects_in_deterministic_order() {
+        if !filter.matches(obj, filter_ctx, game) {
+            continue;
+        }
+        for subtype in game.calculated_subtypes(obj.id) {
+            if subtype.is_basic_land_type() {
+                seen.insert(subtype);
+            }
+        }
+    }
+    seen.len() as u32
+}
+
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
 pub fn calculate_effective_activation_total_cost(
     game: &GameState,
@@ -249,6 +268,8 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
                         .into_iter()
                         .filter(|obj| per_filter.matches(obj, &filter_ctx, game))
                         .count() as u32
+                } else if let Some(lands_filter) = &reduction.per_basic_land_types_among {
+                    count_basic_land_types_among_filter(game, lands_filter, &filter_ctx)
                 } else {
                     1
                 };

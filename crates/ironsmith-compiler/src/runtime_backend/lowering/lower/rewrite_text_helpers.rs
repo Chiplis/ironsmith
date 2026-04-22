@@ -468,11 +468,13 @@ pub(crate) fn rewrite_lower_line_ast(
         let abilities_after = builder.abilities.len();
 
         for ability_idx in abilities_before..abilities_after {
-            apply_pending_restrictions_to_ability(
-                &mut builder.abilities[ability_idx],
-                &mut restrictions,
-            );
-            handled_restrictions_for_new_ability = true;
+            if is_restrictable_ability(&builder.abilities[ability_idx]) {
+                apply_pending_restrictions_to_ability(
+                    &mut builder.abilities[ability_idx],
+                    &mut restrictions,
+                );
+                handled_restrictions_for_new_ability = true;
+            }
         }
 
         rewrite_update_last_restrictable_ability(

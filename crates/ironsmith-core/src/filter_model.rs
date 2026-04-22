@@ -2285,12 +2285,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
             }
+            Value::CardTypesAmong(filter) => {
+                format!("the number of card types among {}", filter.description())
+            }
             Value::CreatureTypesAmong(filter) => {
                 format!(
                     "the number of creature types among {}",
                     filter.description()
                 )
             }
+            Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
             Value::CountersOnSource(counter_type) => {
                 format!(
                     "the number of {} counters on this",
@@ -2301,6 +2305,8 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!("the number of {} counters", counter_type.description())
             }
             Value::CountersOn(_, None) => "the number of counters".to_string(),
+            Value::SourcePower => "this creature's power".to_string(),
+            Value::SourceToughness => "this creature's toughness".to_string(),
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",

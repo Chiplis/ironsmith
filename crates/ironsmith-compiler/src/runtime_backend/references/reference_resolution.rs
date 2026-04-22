@@ -1007,6 +1007,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GrantPlayTaggedUntilEndOfTurn { .. }
         | EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { .. }
+        | EffectAst::GrantPlayTaggedForAsLongAsExiled { .. }
         | EffectAst::CastTagged { .. }
         | EffectAst::ExileInsteadOfGraveyardThisTurn { .. }
         | EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
@@ -1855,6 +1856,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             tag, ..
         }
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
+        | EffectAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
         | EffectAst::CastTagged { tag, .. }
         | EffectAst::RevealTagged { tag }
         | EffectAst::ReorderTopOfLibrary { tag }
@@ -2251,6 +2253,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),

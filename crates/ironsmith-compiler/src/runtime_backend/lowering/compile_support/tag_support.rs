@@ -456,6 +456,7 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter) => filter
@@ -676,6 +677,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ReduceNextSpellCostThisTurn { player, .. }
         | EffectAst::GrantNextSpellAbilityThisTurn { player, .. }
         | EffectAst::GrantPlayTaggedUntilEndOfTurn { player, .. }
+        | EffectAst::GrantPlayTaggedForAsLongAsExiled { player, .. }
         | EffectAst::GrantBySpec { player, .. }
         | EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
             player,
@@ -846,6 +848,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             tag, ..
         }
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
+        | EffectAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
         | EffectAst::CastTagged { tag, .. }
         | EffectAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
         EffectAst::CreateTokenWithMods { count, .. } => value_references_tag(count, IT_TAG),

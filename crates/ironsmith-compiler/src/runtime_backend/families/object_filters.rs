@@ -696,6 +696,22 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(with_idx) = tokens.iter().position(|token| token.is_word("with")) {
+        let base_tokens = trim_commas(&tokens[..with_idx]);
+        let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
+        if !base_tokens.is_empty()
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&tail_words)
+            && consumed == tail_words.len()
+        {
+            let mut filter = super::grammar::filters::parse_object_filter_with_grammar_entrypoint(
+                &base_tokens,
+                other,
+            )?;
+            filter.with_counter = Some(counter_constraint);
+            return Ok(filter);
+        }
+    }
     super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)
 }
 

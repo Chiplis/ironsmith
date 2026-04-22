@@ -3866,6 +3866,10 @@ pub(crate) fn parse_spells_cost_modifier_line(
         if contains_keyword_static_phrase(&between_words, &["you", "cast"]) {
             filter.cast_by = Some(PlayerFilter::You);
         }
+        if contains_keyword_static_phrase(&between_words, &["from", "your", "graveyard"]) {
+            filter.zone = Some(Zone::Graveyard);
+            filter.owner = Some(PlayerFilter::You);
+        }
         if between_words
             .iter()
             .any(|word| *word == "opponent" || *word == "opponents")

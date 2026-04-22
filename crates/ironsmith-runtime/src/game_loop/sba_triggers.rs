@@ -429,6 +429,9 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
+    if let Some(trigger_identity) = entry.trigger_identity {
+        ctx = ctx.with_trigger_identity(trigger_identity);
+    }
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
@@ -444,6 +447,10 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         validate_stack_entry_targets(game, &entry);
     if !entry.targets.is_empty() && all_targets_invalid {
         return;
+    }
+
+    if let Some(trigger_identity) = entry.trigger_identity {
+        game.record_triggered_ability_resolved(entry.object_id, trigger_identity);
     }
 
     if let Some(ref condition) = entry.intervening_if
@@ -775,7 +782,8 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     )
     .with_provenance(trigger.triggering_event.provenance())
     .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
-    .with_triggering_event(trigger.triggering_event.clone());
+    .with_triggering_event(trigger.triggering_event.clone())
+    .with_trigger_identity(trigger.trigger_identity);
     if let Some(source_obj) = game.object(trigger.source) {
         entry = entry.with_optional_costs_paid(source_obj.optional_costs_paid.clone());
     }

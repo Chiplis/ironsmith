@@ -118,6 +118,17 @@ fn parse_exile_top_library_then_play_bundle(
             player,
             allow_land,
         },
+        EffectAst::GrantPlayTaggedForAsLongAsExiled {
+            player,
+            allow_land,
+            allow_any_color_for_cast,
+            ..
+        } => EffectAst::GrantPlayTaggedForAsLongAsExiled {
+            tag,
+            player,
+            allow_land,
+            allow_any_color_for_cast,
+        },
         _ => return Ok(None),
     };
 

@@ -203,6 +203,7 @@ impl EffectExecutor for CastTaggedEffect {
             source_snapshot: None,
             source_name: Some(card_name),
             triggering_event: None,
+            trigger_identity: None,
             intervening_if: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],

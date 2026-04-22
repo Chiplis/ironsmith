@@ -96,6 +96,7 @@ mod tests {
             source_snapshot: None,
             source_name: Some(name.to_string()),
             triggering_event: None,
+            trigger_identity: None,
             intervening_if: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],

@@ -3586,6 +3586,21 @@ fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::CardTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(controller, source);
+
+            let mut seen = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    for card_type in &obj.card_types {
+                        seen.insert(*card_type);
+                    }
+                }
+            });
+            seen.len() as i32
+        }
         Value::ColorsAmong(filter) => {
             let filter_ctx = continuous_filter_context(controller, source);
 
@@ -3834,6 +3849,7 @@ fn resolve_value_with_context(
         | Value::ToughnessOf(_)
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::HalfStartingLifeTotalRoundedUp(_)

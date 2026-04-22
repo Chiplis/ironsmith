@@ -45,6 +45,35 @@ fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
     false
 }
 
+fn trailing_counter_constraint(tokens: &[OwnedLexToken]) -> Option<crate::filter::CounterConstraint> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let with_idx = words.iter().position(|word| *word == "with")?;
+    let tail = &words[with_idx + 1..];
+    let (counter_constraint, consumed) = parse_filter_counter_constraint_words(tail)?;
+    (consumed == tail.len()).then_some(counter_constraint)
+}
+
+fn apply_trailing_counter_constraint_to_destroy_all(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) {
+    let Some(counter_constraint) = trailing_counter_constraint(tokens) else {
+        return;
+    };
+    for effect in effects {
+        match effect {
+            EffectAst::DestroyAll { filter }
+            | EffectAst::DestroyAllNoRegeneration { filter }
+            | EffectAst::ExileAll { filter, .. } => {
+                if filter.with_counter.is_none() {
+                    filter.with_counter = Some(counter_constraint);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn parse_target_deals_power_damage_to_other_and_self_where_x(
     tokens: &[OwnedLexToken],
     words: &[&str],
@@ -497,10 +526,12 @@ pub(crate) fn parse_effect_sentence_lexed(
     let clause_words = clause_word_storage.to_word_refs();
     if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
         let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
+        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         normalize_search_followup_shuffles(&mut effects);
         return Ok(effects);
     }
     let mut effects = parse_effect_sentence_inner_lexed(tokens)?;
+    apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     normalize_search_followup_shuffles(&mut effects);
     Ok(effects)
 }

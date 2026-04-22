@@ -220,6 +220,13 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_pump_creature_type_of_choice
     ),
     primitive!(
+        "must-attack-creature-type-of-choice",
+        65,
+        PostDiagnostic,
+        &[LexRuleHeadHint::Single("creatures")],
+        parse_sentence_must_attack_creature_type_of_choice
+    ),
+    primitive!(
         "return-multiple-targets",
         70,
         PostDiagnostic,

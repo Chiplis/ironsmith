@@ -89,7 +89,7 @@ fn first_word_target_exile_look_or_reveal(
     sentence_head_word_in(
         sentences,
         sentence_idx,
-        &["target", "exile", "look", "reveal"],
+        &["if", "target", "exile", "look", "reveal"],
     )
 }
 
@@ -98,6 +98,17 @@ fn first_word_if_target_exile_or_reveal(sentences: &[SentenceInput], sentence_id
         sentences,
         sentence_idx,
         &["if", "target", "exile", "reveal"],
+    )
+}
+
+fn first_word_then_if_target_exile_or_reveal(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> bool {
+    sentence_head_word_in(
+        sentences,
+        sentence_idx,
+        &["then", "if", "target", "exile", "reveal"],
     )
 }
 
@@ -239,6 +250,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: triples::parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
     },
     SequenceRuleDef {
+        name: "search-player-names-card-conditional-put-then-shuffle",
+        feature_tag: Some("search-name-choice-conditional-put"),
+        priority: 340,
+        consumed_sentences: 3,
+        predicate: first_word_search,
+        parser: triples::parse_search_then_player_names_card_conditional_put_then_shuffle,
+    },
+    SequenceRuleDef {
         name: "search-face-down-exile-conditional-cast-else-hand",
         feature_tag: Some("search-face-down-cast"),
         priority: 339,
@@ -368,6 +387,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: pairs::parse_whenever_gain_life_then_self_animate_source,
     },
     SequenceRuleDef {
+        name: "may-cast-target-graveyard-spell-then-exile-replacement",
+        feature_tag: Some("cast-target-graveyard-spell-replacement"),
+        priority: 242,
+        consumed_sentences: 2,
+        predicate: first_word_you,
+        parser: pairs::parse_may_cast_target_graveyard_spell_then_exile_replacement,
+    },
+    SequenceRuleDef {
         name: "gain-life-then-self-animate-source",
         feature_tag: Some("self-animate-source"),
         priority: 241,
@@ -400,6 +427,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: pairs::parse_choose_then_do_same_for_filter_then_return_to_battlefield,
     },
     SequenceRuleDef {
+        name: "choose-same-controller-targets-then-sacrifice-one",
+        feature_tag: Some("same-controller-target-choice"),
+        priority: 238,
+        consumed_sentences: 2,
+        predicate: first_word_choose,
+        parser: pairs::parse_choose_same_controller_targets_then_sacrifice_one,
+    },
+    SequenceRuleDef {
         name: "delayed-dies-exile-top-power-choose-play",
         feature_tag: Some("delayed-dies-consult"),
         priority: 237,
@@ -414,6 +449,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_target,
         parser: pairs::parse_target_gains_flashback_until_eot_with_targets_mana_cost,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-exile-face-down-play-while-exiled",
+        feature_tag: Some("looked-card-play-while-exiled"),
+        priority: 236,
+        consumed_sentences: 2,
+        predicate: first_head_look_at,
+        parser: pairs::parse_look_at_top_then_exile_face_down_then_play_while_exiled,
     },
     SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand",
@@ -464,6 +507,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: pairs::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
     },
     SequenceRuleDef {
+        name: "conditional-consult-match-move-bottom-remainder",
+        feature_tag: Some("consult-conditional-bottom-remainder"),
+        priority: 230,
+        consumed_sentences: 2,
+        predicate: first_word_then_if_target_exile_or_reveal,
+        parser: pairs::parse_conditional_consult_match_move_and_bottom_remainder,
+    },
+    SequenceRuleDef {
         name: "consult-match-move-bottom-remainder",
         feature_tag: Some("consult-bottom-remainder"),
         priority: 229,
@@ -494,6 +545,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_target_exile_look_or_reveal,
         parser: pairs::parse_consult_match_into_hand_others_graveyard,
+    },
+    SequenceRuleDef {
+        name: "consult-match-into-battlefield-others-graveyard",
+        feature_tag: Some("consult-battlefield-graveyard-others"),
+        priority: 227,
+        consumed_sentences: 2,
+        predicate: first_word_target_exile_look_or_reveal,
+        parser: pairs::parse_consult_match_into_battlefield_others_graveyard,
     },
 ];
 

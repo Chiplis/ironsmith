@@ -9,8 +9,9 @@ use super::keyword_static::parse_where_x_value_clause;
 use super::object_filters::parse_object_filter;
 #[allow(unused_imports)]
 use super::util::{
-    is_source_reference_words, parse_counter_type_from_tokens, parse_subject, parse_target_phrase,
-    parse_value, span_from_tokens,
+    is_source_reference_words, parse_counter_type_from_tokens,
+    parse_filter_counter_constraint_words, parse_subject, parse_target_phrase, parse_value,
+    span_from_tokens,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{

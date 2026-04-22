@@ -5,15 +5,18 @@ use super::super::dispatch_entry::{
     parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
 };
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectFilter, OwnedLexToken,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, ObjectFilter, OwnedLexToken,
     PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::Value;
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::contains_word_sequence;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed;
 use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
+use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_index_for_word_index;
 use crate::runtime_backend::token_primitives::{
     find_index, parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
@@ -22,6 +25,7 @@ use crate::runtime_backend::token_primitives::{
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{helper_tag_for_tokens, is_article, parse_subject};
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::CardType;
 use crate::zone::Zone;
 
 fn find_word_sequence(words: &[&str], pattern: &[&str]) -> Option<usize> {
@@ -39,6 +43,246 @@ fn sentence_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
 
 fn token_index_for_word(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
     TokenWordView::new(tokens).token_index_for_word_index(word_idx)
+}
+
+fn strip_controlled_by_same_player_suffix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let words = sentence_words(tokens);
+    let suffix_len = if words.ends_with(&["controlled", "by", "the", "same", "player"]) {
+        5
+    } else if words.ends_with(&["controlled", "by", "same", "player"]) {
+        4
+    } else {
+        return None;
+    };
+    let suffix_word_start = words.len().checked_sub(suffix_len)?;
+    let suffix_token_start = token_index_for_word(tokens, suffix_word_start)?;
+    Some(trim_commas(&tokens[..suffix_token_start]))
+}
+
+pub(super) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first_words = sentence_words(&first_tokens);
+    let Some(then_idx) = find_word_sequence(&first_words, &["then", "exile"]) else {
+        return Ok(None);
+    };
+    let Some(then_token_idx) = token_index_for_word(&first_tokens, then_idx) else {
+        return Ok(None);
+    };
+    let Some(exile_token_idx) = token_index_for_word(&first_tokens, then_idx + 1) else {
+        return Ok(None);
+    };
+
+    let look_tokens = trim_commas(&first_tokens[..then_token_idx]);
+    let exile_tokens = trim_commas(&first_tokens[exile_token_idx..]);
+    let exile_words: Vec<&str> = sentence_words(&exile_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let exiles_looked_card_face_down = exile_words.as_slice() == ["exile", "it", "face", "down"]
+        || exile_words.as_slice() == ["exile", "that", "card", "face", "down"];
+    if !exiles_looked_card_face_down {
+        return Ok(None);
+    }
+
+    let Ok(look_effects) = effect_sentences::parse_effect_sentence_lexed(&look_tokens) else {
+        return Ok(None);
+    };
+    let [EffectAst::LookAtTopCards { player, count, .. }] = look_effects.as_slice() else {
+        return Ok(None);
+    };
+
+    let Some(permission_effect) =
+        parse_cast_or_play_tagged_clause(sentences[sentence_idx + 1].lowered())?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::GrantPlayTaggedForAsLongAsExiled {
+        player: permission_player,
+        allow_land,
+        allow_any_color_for_cast,
+        ..
+    } = permission_effect
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    Ok(Some(vec![
+        EffectAst::LookAtTopCards {
+            player: *player,
+            count: count.clone(),
+            tag: looked_tag.clone(),
+        },
+        EffectAst::Exile {
+            target: TargetAst::Tagged(looked_tag.clone(), None),
+            face_down: true,
+        },
+        EffectAst::GrantPlayTaggedForAsLongAsExiled {
+            tag: looked_tag,
+            player: permission_player,
+            allow_land,
+            allow_any_color_for_cast,
+        },
+    ]))
+}
+
+pub(super) fn parse_choose_same_controller_targets_then_sacrifice_one(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    if !first_tokens
+        .first()
+        .is_some_and(|token| token.is_word("choose"))
+    {
+        return Ok(None);
+    }
+    let Some(first_without_controller_tail) = strip_controlled_by_same_player_suffix(&first_tokens)
+    else {
+        return Ok(None);
+    };
+    if first_without_controller_tail.len() <= 1 {
+        return Ok(None);
+    }
+    let target = effect_sentences::parse_target_phrase(&first_without_controller_tail[1..])?;
+    let TargetAst::WithCount(_, target_count) = &target else {
+        return Ok(None);
+    };
+    if target_count.min != 2 || target_count.max != Some(2) || target_count.is_random() {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = sentence_words(&second_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    if !matches!(
+        second_words.as_slice(),
+        [
+            "that",
+            "player",
+            "sacrifices",
+            "one",
+            "of",
+            "them",
+            "of",
+            "their",
+            "choice"
+        ] | [
+            "that",
+            "player",
+            "sacrifice",
+            "one",
+            "of",
+            "them",
+            "of",
+            "their",
+            "choice"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    let chosen_tag = helper_tag_for_tokens(&second_tokens, "chosen");
+    Ok(Some(vec![
+        EffectAst::TargetOnly { target },
+        EffectAst::ChooseObjects {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::ItsController,
+            tag: chosen_tag.clone(),
+        },
+        EffectAst::Sacrifice {
+            filter: ObjectFilter::tagged(chosen_tag),
+            player: PlayerAst::That,
+            count: 1,
+            target: None,
+        },
+    ]))
+}
+
+pub(super) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let first_words = sentence_words(&first);
+    let second_words = sentence_words(&second);
+
+    if first_words.as_slice()
+        != [
+            "you",
+            "may",
+            "cast",
+            "target",
+            "instant",
+            "or",
+            "sorcery",
+            "card",
+            "from",
+            "your",
+            "graveyard",
+        ]
+    {
+        return Ok(None);
+    }
+    if second_words.as_slice()
+        != [
+            "if",
+            "that",
+            "spell",
+            "would",
+            "be",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "exile",
+            "it",
+            "instead",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let tag = TagKey::from("target_instant_or_sorcery_card");
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+    filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+        },
+        EffectAst::May {
+            effects: vec![EffectAst::CastTagged {
+                tag: tag.clone(),
+                player: PlayerAst::You,
+                allow_land: false,
+                as_copy: false,
+                without_paying_mana_cost: false,
+                cost_reduction: None,
+            }],
+        },
+        EffectAst::RegisterZoneReplacement {
+            target: TargetAst::Tagged(tag, None),
+            from_zone: Some(Zone::Stack),
+            to_zone: Some(Zone::Graveyard),
+            replacement_zone: Zone::Exile,
+            duration: ZoneReplacementDurationAst::OneShot,
+        },
+    ]))
 }
 
 fn previous_sentence_chose_stack_object(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -540,6 +784,15 @@ pub(super) fn parse_whenever_gain_life_then_self_animate_source(
     let first = sentences[sentence_idx].lowered();
     let second = sentences[sentence_idx + 1].lowered();
 
+    let first_words = sentence_words(first);
+    if !first_words
+        .iter()
+        .any(|word| *word == "gain" || *word == "gains")
+        || !first_words.iter().any(|word| *word == "life")
+    {
+        return Ok(None);
+    }
+
     let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
     if !first_effects
         .iter()
@@ -567,6 +820,15 @@ pub(super) fn parse_gain_life_then_self_animate_source(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = sentences[sentence_idx].lowered();
     let second = sentences[sentence_idx + 1].lowered();
+
+    let first_words = sentence_words(first);
+    if !first_words
+        .iter()
+        .any(|word| *word == "gain" || *word == "gains")
+        || !first_words.iter().any(|word| *word == "life")
+    {
+        return Ok(None);
+    }
 
     let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
     if !first_effects
@@ -1059,6 +1321,57 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
     Ok(Some(effects))
 }
 
+pub(super) fn parse_conditional_consult_match_move_and_bottom_remainder(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let conditional_tokens = if first_tokens.len() >= 2
+        && first_tokens[0].is_word("then")
+        && first_tokens[1].is_word("if")
+    {
+        &first_tokens[1..]
+    } else if first_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+    {
+        first_tokens.as_slice()
+    } else {
+        return Ok(None);
+    };
+
+    let Some(comma_idx) = conditional_tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    if comma_idx <= 1 {
+        return Ok(None);
+    }
+
+    let predicate_tokens = trim_commas(&conditional_tokens[1..comma_idx]);
+    let effect_tokens = trim_commas(&conditional_tokens[comma_idx + 1..]);
+    if predicate_tokens.is_empty() || effect_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens) else {
+        return Ok(None);
+    };
+
+    let synthetic = [
+        SentenceInput::from_lexed(&effect_tokens),
+        SentenceInput::from_lexed(sentences[sentence_idx + 1].lowered()),
+    ];
+    let Some(if_true) = parse_consult_match_move_and_bottom_remainder(&synthetic, 0)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate,
+        if_true,
+        if_false: Vec::new(),
+    }]))
+}
+
 pub(super) fn parse_consult_match_move_all_to_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -1210,6 +1523,105 @@ pub(super) fn parse_consult_match_into_hand_others_graveyard(
     effects.push(EffectAst::MoveToZone {
         target: TargetAst::Tagged(parts.match_tag.clone(), None),
         zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: parts.all_tag,
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                ObjectFilter::tagged(parts.match_tag),
+            ),
+            if_true: Vec::new(),
+            if_false: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(
+                    crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                    None,
+                ),
+                zone: Zone::Graveyard,
+                to_top: false,
+                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        }],
+    });
+    Ok(Some(effects))
+}
+
+pub(super) fn parse_consult_match_into_battlefield_others_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::ConsultTopOfLibrary {
+            mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let moves_to_battlefield = crate::runtime_backend::grammar::primitives::words_match_prefix(
+        &second_tokens,
+        &["put", "that", "card", "onto", "the", "battlefield"],
+    )
+    .is_some()
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &["put", "it", "onto", "the", "battlefield"],
+        )
+        .is_some()
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &[
+                "the",
+                "player",
+                "puts",
+                "that",
+                "card",
+                "onto",
+                "the",
+                "battlefield",
+            ],
+        )
+        .is_some()
+        || crate::runtime_backend::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &[
+                "that",
+                "player",
+                "puts",
+                "that",
+                "card",
+                "onto",
+                "the",
+                "battlefield",
+            ],
+        )
+        .is_some();
+    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
+    let others_to_graveyard = (contains_word_sequence(&second_words, &["other", "cards"])
+        || contains_word_sequence(&second_words, &["all", "other"]))
+        && slice_contains(&second_words, &"graveyard");
+    if !moves_to_battlefield || !others_to_graveyard {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(parts.match_tag.clone(), None),
+        zone: Zone::Battlefield,
         to_top: false,
         battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
         battlefield_tapped: false,

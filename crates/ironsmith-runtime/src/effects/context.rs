@@ -202,6 +202,8 @@ pub struct ExecutionContext<'a> {
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    /// Structural identity of the resolving triggered ability, when available.
+    pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
     /// Pre-chosen modes for modal spells (set during casting per MTG rule 601.2b).
     /// If Some, ChooseModeEffect should use these instead of prompting.
     pub chosen_modes: Option<Vec<usize>>,
@@ -243,6 +245,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             )
             .field("face_down_exile_viewers", &self.face_down_exile_viewers)
             .field("triggering_event", &self.triggering_event)
+            .field("trigger_identity", &self.trigger_identity)
             .field("cause", &self.cause)
             .field("provenance", &self.provenance)
             .field("mana", &self.mana)
@@ -280,6 +283,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
+            trigger_identity: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -320,6 +324,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
+            trigger_identity: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -350,6 +355,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: self.tagged_players,
             face_down_exile_viewers: self.face_down_exile_viewers,
             triggering_event: self.triggering_event,
+            trigger_identity: self.trigger_identity,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
@@ -611,6 +617,15 @@ impl<'a> ExecutionContext<'a> {
         }
 
         self.triggering_event = Some(event);
+        self
+    }
+
+    /// Set the structural identity for the resolving triggered ability.
+    pub fn with_trigger_identity(
+        mut self,
+        trigger_identity: crate::triggers::TriggerIdentity,
+    ) -> Self {
+        self.trigger_identity = Some(trigger_identity);
         self
     }
 
