@@ -314,6 +314,9 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerShufflesLibrary { .. }
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
+        | TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::ThisDealsCombatDamageToPlayer
+        | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)

@@ -25866,6 +25866,39 @@ fn parse_allows_that_player_when_trigger_binds_player_context() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_allows_that_player_library_search_when_combat_damage_trigger_binds_player() {
+    let cases = [
+        (
+            "Thada Search Probe",
+            "Whenever this creature deals combat damage to a player, search that player's library for an artifact card and exile it. Then that player shuffles. Until end of turn, you may play that card.",
+        ),
+        (
+            "Rootwater Search Probe",
+            "Whenever this creature deals combat damage to a player, you may pay {2}. If you do, search that player's library for a card and exile it, then the player shuffles.",
+        ),
+    ];
+
+    for (name, text) in cases {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(vec![CardType::Creature])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+
+        let debug = format!("{:#?}", def.abilities);
+        let compact_debug = debug.split_whitespace().collect::<String>();
+        assert!(
+            compact_debug.contains("ChooseObjectsEffect")
+                && compact_debug.contains("zone:Some(")
+                && compact_debug.contains("Library")
+                && compact_debug.contains("owner:Some(")
+                && compact_debug.contains("IteratedPlayer"),
+            "expected that player's library search to bind to the combat-damaged player, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mind's Desire Variant")
         .card_types(vec![CardType::Sorcery])
