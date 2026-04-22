@@ -103,6 +103,40 @@ fn parse_source_exiled_with_counter_predicate(
     ))
 }
 
+fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tail = if filtered.starts_with(&["that", "spell"]) {
+        &filtered[2..]
+    } else if filtered.starts_with(&["spell"]) {
+        &filtered[1..]
+    } else if filtered.starts_with(&["it"]) {
+        &filtered[1..]
+    } else {
+        return None;
+    };
+
+    if !tail.starts_with(&["targets", "only"]) {
+        return None;
+    }
+
+    let target_words = &tail[2..];
+    let mut target_filter = match target_words {
+        ["this", "creature"] => ObjectFilter::creature(),
+        ["this", "artifact"] => ObjectFilter::artifact(),
+        ["this", "enchantment"] => ObjectFilter::enchantment(),
+        ["this", "land"] => ObjectFilter::land(),
+        ["this", "permanent"] => ObjectFilter::default().in_zone(Zone::Battlefield),
+        ["this", "source"] | ["it"] => ObjectFilter::source(),
+        _ => return None,
+    };
+    target_filter.source = true;
+
+    Some(PredicateAst::ItMatches(
+        ObjectFilter::spell()
+            .targeting_only_object(target_filter)
+            .target_count_exact(1),
+    ))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -116,6 +150,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
         ));
+    }
+
+    if let Some(predicate) = parse_stack_object_targets_only_source_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     for (phrase, zone) in [

@@ -269,6 +269,92 @@ fn for_each_subject_reference_phrase(subject: &str) -> &'static str {
     }
 }
 
+fn describe_stack_object_copy_target(target: &ChooseSpec) -> String {
+    match target {
+        ChooseSpec::Source => "this spell".to_string(),
+        ChooseSpec::Tagged(tag) if matches!(tag.as_str(), "triggering" | "__it__" | "it") => {
+            "that spell".to_string()
+        }
+        _ => {
+            let described = describe_choose_spec(target);
+            if described == "it" {
+                "that spell".to_string()
+            } else {
+                described
+            }
+        }
+    }
+}
+
+fn copy_target_player_candidate_text(filter: &PlayerFilter, plural: bool) -> String {
+    match (filter, plural) {
+        (PlayerFilter::Any, false) => "player".to_string(),
+        (PlayerFilter::Any, true) => "players".to_string(),
+        (PlayerFilter::Opponent, false) => "opponent".to_string(),
+        (PlayerFilter::Opponent, true) => "opponents".to_string(),
+        (PlayerFilter::You, _) => "you".to_string(),
+        (_, false) => strip_leading_article(&describe_player_filter(filter)).to_string(),
+        (_, true) => pluralize_noun_phrase(&describe_player_filter(filter)),
+    }
+}
+
+fn describe_copy_target_candidates(
+    object_filter: Option<&ObjectFilter>,
+    player_filter: Option<&PlayerFilter>,
+    plural: bool,
+) -> String {
+    let object_text = object_filter.map(|filter| {
+        let description = strip_leading_article(&filter.description()).to_string();
+        if plural {
+            pluralize_noun_phrase(&description)
+        } else {
+            description
+        }
+    });
+    let player_text = player_filter.map(|filter| copy_target_player_candidate_text(filter, plural));
+
+    match (object_text, player_text, plural) {
+        (Some(object), Some(player), false) => format!("{object} or {player}"),
+        (Some(object), Some(player), true) => format!("{object} and {player}"),
+        (Some(object), None, _) => object,
+        (None, Some(player), _) => player,
+        (None, None, false) => "target".to_string(),
+        (None, None, true) => "targets".to_string(),
+    }
+}
+
+fn describe_copy_spell_for_each_target(
+    effect: &crate::effects::CopySpellForEachTargetEffect,
+) -> String {
+    let stack_object = describe_stack_object_copy_target(&effect.target);
+    let candidate = describe_copy_target_candidates(
+        effect.object_filter.as_ref(),
+        effect.player_filter.as_ref(),
+        false,
+    );
+    let candidate = if effect.exclude_current_targets {
+        format!("other {candidate}")
+    } else {
+        candidate
+    };
+    let plural_candidate = describe_copy_target_candidates(
+        effect.object_filter.as_ref(),
+        effect.player_filter.as_ref(),
+        true,
+    );
+
+    let mut text = format!(
+        "Copy {stack_object} for each {candidate} {stack_object} could target. Each copy targets a different one of those {plural_candidate}"
+    );
+    if effect
+        .removed_supertypes
+        .contains(&crate::types::Supertype::Legendary)
+    {
+        text.push_str(". The copies aren't legendary");
+    }
+    text
+}
+
 fn describe_phase_in_out_pair(first: &Effect, second: &Effect) -> Option<String> {
     let phase_in = first.downcast_ref::<crate::effects::PhaseInEffect>()?;
     let phase_out = second.downcast_ref::<crate::effects::PhaseOutEffect>()?;
@@ -15633,6 +15719,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(monstrosity) = effect.downcast_ref::<crate::effects::MonstrosityEffect>() {
         return format!("Monstrosity {}", describe_value(&monstrosity.n));
+    }
+    if let Some(copy_for_each) =
+        effect.downcast_ref::<crate::effects::CopySpellForEachTargetEffect>()
+    {
+        return describe_copy_spell_for_each_target(copy_for_each);
     }
     if let Some(copy_spell) = effect.downcast_ref::<crate::effects::CopySpellEffect>() {
         if matches!(copy_spell.target, ChooseSpec::Source) {

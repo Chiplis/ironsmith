@@ -55,6 +55,157 @@ fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
     }
 }
 
+fn merge_optional_predicates(
+    left: Option<PredicateAst>,
+    right: Option<PredicateAst>,
+) -> Option<PredicateAst> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(PredicateAst::And(Box::new(left), Box::new(right))),
+        (Some(predicate), None) | (None, Some(predicate)) => Some(predicate),
+        (None, None) => None,
+    }
+}
+
+fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
+    filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
+}
+
+fn is_stack_object_targeting_predicate(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ItMatches(filter) => is_stack_object_targeting_filter(filter),
+        PredicateAst::And(left, right) => {
+            is_stack_object_targeting_predicate(left) && is_stack_object_targeting_predicate(right)
+        }
+        _ => false,
+    }
+}
+
+fn merge_spell_cast_trigger_filter(base: &mut ObjectFilter, overlay: ObjectFilter) {
+    if let Some(zone) = overlay.zone {
+        base.zone.get_or_insert(zone);
+    }
+    if base.stack_kind.is_none() {
+        base.stack_kind = overlay.stack_kind;
+    }
+    base.has_mana_cost |= overlay.has_mana_cost;
+    for card_type in overlay.card_types {
+        if !base.card_types.contains(&card_type) {
+            base.card_types.push(card_type);
+        }
+    }
+    for card_type in overlay.all_card_types {
+        if !base.all_card_types.contains(&card_type) {
+            base.all_card_types.push(card_type);
+        }
+    }
+    for card_type in overlay.excluded_card_types {
+        if !base.excluded_card_types.contains(&card_type) {
+            base.excluded_card_types.push(card_type);
+        }
+    }
+    if base.targets_player.is_none() {
+        base.targets_player = overlay.targets_player;
+    }
+    if base.targets_object.is_none() {
+        base.targets_object = overlay.targets_object;
+    }
+    base.targets_any_of |= overlay.targets_any_of;
+    if base.targets_only_player.is_none() {
+        base.targets_only_player = overlay.targets_only_player;
+    }
+    if base.targets_only_object.is_none() {
+        base.targets_only_object = overlay.targets_only_object;
+    }
+    base.targets_only_any_of |= overlay.targets_only_any_of;
+    if base.target_count.is_none() {
+        base.target_count = overlay.target_count;
+    }
+}
+
+fn absorb_predicate_into_trigger(
+    trigger: TriggerSpec,
+    predicate: PredicateAst,
+) -> (TriggerSpec, Option<PredicateAst>) {
+    match predicate {
+        PredicateAst::And(left, right) => {
+            let (trigger, left_remainder) = absorb_predicate_into_trigger(trigger, *left);
+            let (trigger, right_remainder) = absorb_predicate_into_trigger(trigger, *right);
+            (
+                trigger,
+                merge_optional_predicates(left_remainder, right_remainder),
+            )
+        }
+        PredicateAst::ItMatches(filter) if is_stack_object_targeting_filter(&filter) => {
+            match trigger {
+                TriggerSpec::SpellCast {
+                    filter: trigger_filter,
+                    caster,
+                    during_turn,
+                    min_spells_this_turn,
+                    exact_spells_this_turn,
+                    from_not_hand,
+                } => {
+                    let mut merged_filter = trigger_filter.unwrap_or_else(ObjectFilter::spell);
+                    merge_spell_cast_trigger_filter(&mut merged_filter, filter);
+                    (
+                        TriggerSpec::SpellCast {
+                            filter: Some(merged_filter),
+                            caster,
+                            during_turn,
+                            min_spells_this_turn,
+                            exact_spells_this_turn,
+                            from_not_hand,
+                        },
+                        None,
+                    )
+                }
+                other => (other, Some(PredicateAst::ItMatches(filter))),
+            }
+        }
+        other => (trigger, Some(other)),
+    }
+}
+
+fn absorb_single_conditional_effect_into_trigger(
+    trigger: TriggerSpec,
+    effects: Vec<EffectAst>,
+) -> (TriggerSpec, Vec<EffectAst>) {
+    if effects.len() != 1 {
+        return (trigger, effects);
+    }
+
+    let mut effects = effects;
+    let Some(effect) = effects.pop() else {
+        return (trigger, Vec::new());
+    };
+    match effect {
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } if if_false.is_empty() => {
+            let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
+            if let Some(predicate) = predicate {
+                (
+                    trigger,
+                    vec![EffectAst::Conditional {
+                        predicate,
+                        if_true,
+                        if_false: Vec::new(),
+                    }],
+                )
+            } else {
+                (trigger, if_true)
+            }
+        }
+        other => (trigger, vec![other]),
+    }
+}
+
 fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
     let references_it = filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == IT_TAG
@@ -458,6 +609,16 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
             effects,
             max_triggers_per_turn,
         } => {
+            let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
+            let (trigger, effects) =
+                absorb_single_conditional_effect_into_trigger(trigger, effects);
+            let Some(predicate) = predicate else {
+                return Ok(LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                });
+            };
             if matches!(
                 effects.as_slice(),
                 [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
@@ -493,6 +654,25 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                         .collect();
                 }
                 parsed.effects_ast = Some(effects_ast);
+            }
+            if is_stack_object_targeting_predicate(&predicate) {
+                if let Some(effects_ast) = parsed.effects_ast.take() {
+                    if let [
+                        EffectAst::Conditional {
+                            predicate,
+                            if_true,
+                            if_false,
+                        },
+                    ] = effects_ast.as_slice()
+                        && if_false.is_empty()
+                        && is_stack_object_targeting_predicate(predicate)
+                    {
+                        parsed.effects_ast = Some(if_true.clone());
+                    } else {
+                        parsed.effects_ast = Some(effects_ast);
+                    }
+                }
+                return Ok(LineAst::Ability(parsed));
             }
             let compiled_condition = compile_condition_from_predicate_ast_with_env(
                 &predicate,

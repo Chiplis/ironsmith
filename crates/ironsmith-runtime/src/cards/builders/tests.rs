@@ -2535,6 +2535,54 @@ fn copy_assignment_family_parses_to_multi_copy_primitive() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn ink_treader_nephilim_merges_targeting_condition_into_spell_trigger() {
+    let def = copy_assignment_card_definition(
+        "Ink-Treader Nephilim",
+        "Whenever a player casts an instant or sorcery spell, if that spell targets only this creature, copy the spell for each other creature that spell could target. Each copy targets a different one of those creatures.",
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Ink-Treader Nephilim should compile to a triggered ability");
+
+    let trigger_debug = format!("{:#?}", triggered.trigger);
+    assert!(
+        trigger_debug.contains("targets_only_object")
+            && trigger_debug.contains("source: true")
+            && trigger_debug.contains("target_count"),
+        "expected targeting-only condition to become part of the spell-cast trigger, got {trigger_debug}"
+    );
+    assert!(
+        triggered.intervening_if.is_none(),
+        "targeting-only spell condition should not remain as an unevaluable intervening-if: {:#?}",
+        triggered.intervening_if
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("instant or sorcery spell that targets only this creature"),
+        "expected trigger text to retain the targeting-only spell filter, got {rendered}"
+    );
+    assert!(
+        rendered.contains("copy that spell for each other creature that spell could target")
+            && rendered.contains("each copy targets a different one of those creatures"),
+        "expected copy-for-each-target text to render from the reusable effect, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "copy-for-each-target should render without unsupported fallback, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn radiate_parses_chosen_spell_reference_to_multi_copy_primitive() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Radiate")
         .card_types(vec![CardType::Instant])

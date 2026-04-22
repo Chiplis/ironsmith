@@ -234,6 +234,18 @@ impl TriggerMatcher for SpellCastTrigger {
     }
 }
 
+fn indefinite_article_for(text: &str) -> &'static str {
+    match text
+        .trim_start()
+        .chars()
+        .next()
+        .map(|ch| ch.to_ascii_lowercase())
+    {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    }
+}
+
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.targets_player.is_some() || filter.targets_object.is_some() {
         let mut base_filter = filter.clone();
@@ -367,7 +379,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         } else {
             match fallback.split_whitespace().next() {
                 Some("a" | "an" | "the" | "another" | "target") => fallback,
-                _ => format!("a {fallback}"),
+                _ => format!("{} {fallback}", indefinite_article_for(&fallback)),
             }
         }
     } else {
