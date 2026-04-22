@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::env;
 use std::fmt;
 use std::fs::{self, File};
@@ -6,13 +5,10 @@ use std::io::{BufReader, Read};
 use std::panic::{self, AssertUnwindSafe};
 
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
-use ironsmith::compiled_text::canonical_compiled_lines;
+use ironsmith::compiled_text::compiled_text_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::strip_reminder_text_for_comparison;
-use ironsmith_tools::{
-    CardStatusDb, CompilationSnapshot, ParseStatus, default_cards_path, default_db_path,
-    parse_card_definition_with_runtime_builder,
-};
+use ironsmith_tools::{default_cards_path, parse_card_definition_with_runtime_builder};
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde_json::Value;
 
@@ -22,8 +18,6 @@ struct Args {
     all_out: String,
     mismatch_out: String,
     strip_reminder_for_comparison: bool,
-    db_path: String,
-    no_db: bool,
 }
 
 #[derive(Debug)]
@@ -53,8 +47,6 @@ fn parse_args() -> Result<Args, String> {
     let mut all_out = "cards_compiled_oracle_text.csv".to_string();
     let mut mismatch_out = "cards_compiled_oracle_text_semantic_mismatch.csv".to_string();
     let mut strip_reminder_for_comparison = true;
-    let mut db_path = default_db_path().display().to_string();
-    let mut no_db = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -88,22 +80,14 @@ fn parse_args() -> Result<Args, String> {
                     }
                 };
             }
-            "--db-path" => {
-                db_path = args
-                    .next()
-                    .ok_or_else(|| "--db-path requires a path".to_string())?;
-            }
-            "--no-db" => {
-                no_db = true;
-            }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --release --bin export_compiled_oracle_csv -- [--cards <path>] [--all-out <path>] [--mismatch-out <path>] [--comparison-mode <strip-reminder|full>] [--db-path <path>] [--no-db]".to_string(),
+                    "usage: cargo run --release --bin export_compiled_oracle_csv -- [--cards <path>] [--all-out <path>] [--mismatch-out <path>] [--comparison-mode <strip-reminder|full>]".to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--all-out/--mismatch-out/--comparison-mode/--db-path/--no-db"
+                    "unknown argument '{arg}'. expected --cards/--all-out/--mismatch-out/--comparison-mode"
                 ));
             }
         }
@@ -114,8 +98,6 @@ fn parse_args() -> Result<Args, String> {
         all_out,
         mismatch_out,
         strip_reminder_for_comparison,
-        db_path,
-        no_db,
     })
 }
 
@@ -206,34 +188,11 @@ fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String {
     lines.join("\n")
 }
 
-fn normalize_line_for_comparison(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn reminder_equivalent_lines_from_oracle(oracle_text: &str) -> HashSet<String> {
-    oracle_text
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if !(trimmed.starts_with('(') && trimmed.ends_with(')')) {
-                return None;
-            }
-            let inner = trimmed.trim_start_matches('(').trim_end_matches(')').trim();
-            if inner.is_empty() {
-                return None;
-            }
-            Some(normalize_line_for_comparison(inner))
-        })
-        .collect()
-}
-
-fn strip_compiled_reminder_equivalents(compiled_text: &str, oracle_text: &str) -> String {
-    let reminder_equivalents = reminder_equivalent_lines_from_oracle(oracle_text);
+fn strip_compiled_text_for_comparison(compiled_text: &str) -> String {
     strip_reminder_text_for_comparison(compiled_text)
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .filter(|line| !reminder_equivalents.contains(&normalize_line_for_comparison(line)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -383,11 +342,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reader = BufReader::new(file);
 
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
-    let db = if args.no_db {
-        None
-    } else {
-        Some(CardStatusDb::open(&args.db_path)?)
-    };
 
     let mut total_rows = 0usize;
     let mut rows_with_oracle = 0usize;
@@ -409,54 +363,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         rows_with_oracle += 1;
 
-        let (definition, used_fallback, parse_error, parse_status) =
+        let (definition, used_fallback) =
             match parse_card(&card_input.name, &card_input.parse_input, false) {
-                ParseOutcome::Success(definition) => {
-                    (definition, false, None, ParseStatus::StrictCompiled)
-                }
+                ParseOutcome::Success(definition) => (definition, false),
                 ParseOutcome::Error(strict_error) => {
                     match parse_card(&card_input.name, &card_input.parse_input, true) {
-                        ParseOutcome::Success(definition) => (
-                            definition,
-                            true,
-                            None,
-                            ParseStatus::CompiledWithAllowUnsupported,
-                        ),
+                        ParseOutcome::Success(definition) => (definition, true),
                         ParseOutcome::Error(_) => {
+                            let _ = strict_error;
                             parse_failures += 1;
-                            if let Some(db) = db.as_ref() {
-                                let snapshot = CompilationSnapshot::from_definition_result(
-                                    &card_input.name,
-                                    &card_input.oracle_text,
-                                    ParseStatus::ParseFailed,
-                                    Some(strict_error),
-                                    None,
-                                );
-                                db.insert_snapshot_if_changed(&snapshot)
-                                    .map_err(|err| err.to_string())?;
-                            }
                             return Ok(());
                         }
                     }
                 }
             };
 
-        if let Some(db) = db.as_ref() {
-            let snapshot = CompilationSnapshot::from_definition_result(
-                &card_input.name,
-                &card_input.oracle_text,
-                parse_status,
-                parse_error,
-                Some(&definition),
-            );
-            db.insert_snapshot_if_changed(&snapshot)
-                .map_err(|err| err.to_string())?;
-        }
-
-        let compiled = canonical_compiled_lines(&definition);
+        let compiled = compiled_text_lines(&definition);
         let compiled_text = compiled.join("\n");
         let comparison_compiled_text = if args.strip_reminder_for_comparison {
-            strip_compiled_reminder_equivalents(&compiled_text, &card_input.oracle_text)
+            strip_compiled_text_for_comparison(&compiled_text)
         } else {
             compiled_text.clone()
         };
@@ -546,9 +471,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Semantic mismatch rows: {mismatch_rows_count}");
     println!("- All rows CSV: {}", args.all_out);
     println!("- Mismatch rows CSV: {}", args.mismatch_out);
-    if !args.no_db {
-        println!("- DB: {}", args.db_path);
-    }
 
     Ok(())
 }

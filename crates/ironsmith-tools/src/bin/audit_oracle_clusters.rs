@@ -13,10 +13,7 @@ use ironsmith::semantic_compare::{
     compare_semantics_scored as shared_compare_semantics_scored,
     semantic_clauses_for_compare as shared_semantic_clauses,
 };
-use ironsmith_tools::{
-    CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path,
-    parse_card_definition_with_runtime_builder,
-};
+use ironsmith_tools::{CardStatusDb, default_db_path, parse_card_definition_with_runtime_builder};
 
 mod tooling_paths;
 
@@ -1920,7 +1917,7 @@ fn set_allow_unsupported(enabled: bool) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
-    let db = if args.no_db {
+    let db = if args.no_db || args.cards_path.is_some() {
         None
     } else {
         Some(CardStatusDb::open(&args.db_path)?)
@@ -1985,7 +1982,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.allow_unsupported,
         );
 
-        let (audit, snapshot) = match parse_result {
+        let audit = match parse_result {
             Ok(definition) => {
                 let has_unimplemented = generated_definition_has_unimplemented_content(&definition);
                 let compiled = unprocessed_compiled_lines(&definition);
@@ -2001,64 +1998,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &compiled,
                     embedding_cfg,
                 );
-                (
-                    CardAudit {
-                        name: card_input.name.clone(),
-                        oracle_text: card_input.oracle_text.clone(),
-                        cluster_key,
-                        parse_error: None,
-                        unprocessed_compiled_lines: compiled,
-                        oracle_coverage,
-                        compiled_coverage,
-                        similarity_score,
-                        line_delta,
-                        semantic_mismatch,
-                        semantic_false_positive: false,
-                        has_unimplemented,
-                    },
-                    CompilationSnapshot::from_definition_result(
-                        &card_input.name,
-                        &card_input.oracle_text,
-                        if args.allow_unsupported {
-                            ParseStatus::CompiledWithAllowUnsupported
-                        } else {
-                            ParseStatus::StrictCompiled
-                        },
-                        None,
-                        Some(&definition),
-                    ),
-                )
+                CardAudit {
+                    name: card_input.name.clone(),
+                    oracle_text: card_input.oracle_text.clone(),
+                    cluster_key,
+                    parse_error: None,
+                    unprocessed_compiled_lines: compiled,
+                    oracle_coverage,
+                    compiled_coverage,
+                    similarity_score,
+                    line_delta,
+                    semantic_mismatch,
+                    semantic_false_positive: false,
+                    has_unimplemented,
+                }
             }
             Err(err) => {
                 let parse_error = format!("{err:?}");
-                (
-                    CardAudit {
-                        name: card_input.name.clone(),
-                        oracle_text: card_input.oracle_text.clone(),
-                        cluster_key,
-                        parse_error: Some(parse_error.clone()),
-                        unprocessed_compiled_lines: Vec::new(),
-                        oracle_coverage: 0.0,
-                        compiled_coverage: 0.0,
-                        similarity_score: 0.0,
-                        line_delta: 0,
-                        semantic_mismatch: false,
-                        semantic_false_positive: false,
-                        has_unimplemented: false,
-                    },
-                    CompilationSnapshot::from_definition_result(
-                        &card_input.name,
-                        &card_input.oracle_text,
-                        ParseStatus::ParseFailed,
-                        Some(parse_error),
-                        None,
-                    ),
-                )
+                CardAudit {
+                    name: card_input.name.clone(),
+                    oracle_text: card_input.oracle_text.clone(),
+                    cluster_key,
+                    parse_error: Some(parse_error),
+                    unprocessed_compiled_lines: Vec::new(),
+                    oracle_coverage: 0.0,
+                    compiled_coverage: 0.0,
+                    similarity_score: 0.0,
+                    line_delta: 0,
+                    semantic_mismatch: false,
+                    semantic_false_positive: false,
+                    has_unimplemented: false,
+                }
             }
         };
-        if let Some(db) = db.as_ref() {
-            db.insert_snapshot_if_changed(&snapshot)?;
-        }
         audits.push(audit);
     }
 
@@ -2275,8 +2247,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("- Embedding audit: disabled");
     }
-    if !args.no_db {
-        println!("- DB: {}", args.db_path);
+    if !args.no_db && args.cards_path.is_none() {
+        println!("- DB input: {}", args.db_path);
     }
     println!("- Total clusters: {}", ranked.len());
     println!("- Reporting up to {} clusters", args.top_clusters);

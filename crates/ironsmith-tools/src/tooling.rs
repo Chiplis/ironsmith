@@ -17,7 +17,7 @@ use ironsmith::cards::{
     CardDefinition, generated_definition_has_unimplemented_content,
     generated_definition_unsupported_mechanics_message,
 };
-use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
+use ironsmith::compiled_text::{compiled_text_lines, normalized_oracle_lines};
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
 use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder, parse_trace};
@@ -25,7 +25,7 @@ use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder,
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 8;
+const DB_SCHEMA_VERSION: i64 = 9;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -160,8 +160,8 @@ pub struct CompilationSnapshot {
     pub raw_oracle_text: String,
     pub parse_status: ParseStatus,
     pub parse_error: Option<String>,
+    pub normalized_oracle_text: String,
     pub compiled_text: Option<String>,
-    pub unprocessed_compiled_text: Option<String>,
     pub compiled_card_definition: Option<String>,
     pub oracle_coverage: f32,
     pub compiled_coverage: f32,
@@ -344,7 +344,6 @@ pub fn compile_authoritative_snapshot_from_payload(payload: &CardPayload) -> Com
             "generated definition still contains unimplemented content".to_string()
         }));
         snapshot.compiled_text = None;
-        snapshot.unprocessed_compiled_text = None;
         snapshot.compiled_card_definition = None;
         snapshot.oracle_coverage = 0.0;
         snapshot.compiled_coverage = 0.0;
@@ -397,8 +396,8 @@ impl CompilationSnapshot {
     ) -> Self {
         let stored_oracle_text = strip_parenthetical_text(oracle_text);
         let (
+            normalized_oracle_text,
             compiled_text,
-            unprocessed_compiled_text,
             compiled_card_definition,
             oracle_coverage,
             compiled_coverage,
@@ -407,10 +406,10 @@ impl CompilationSnapshot {
             semantic_mismatch,
             has_unimplemented,
         ) = if let Some(definition) = definition {
-            let compiled = canonical_compiled_lines(definition);
+            let normalized_oracle = normalized_oracle_lines(definition);
+            let normalized_oracle_text = normalized_oracle.join("\n");
+            let compiled = compiled_text_lines(definition);
             let compiled_text = compiled.join("\n");
-            let debug_compiled = unprocessed_compiled_lines(definition);
-            let unprocessed_compiled_text = debug_compiled.join("\n");
             let (
                 oracle_coverage,
                 compiled_coverage,
@@ -419,13 +418,13 @@ impl CompilationSnapshot {
                 semantic_mismatch,
             ) = compare_card_semantics_scored(
                 card_name,
-                &stored_oracle_text,
-                &debug_compiled,
+                &normalized_oracle_text,
+                &compiled,
                 report_embedding_config(),
             );
             (
+                normalized_oracle_text,
                 Some(compiled_text),
-                Some(unprocessed_compiled_text),
                 Some(stable_compiled_definition_snapshot(definition)),
                 oracle_coverage,
                 compiled_coverage,
@@ -435,7 +434,17 @@ impl CompilationSnapshot {
                 generated_definition_has_unimplemented_content(definition),
             )
         } else {
-            (None, None, None, 0.0, 0.0, 0.0, 0, false, false)
+            (
+                stored_oracle_text.clone(),
+                None,
+                None,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                false,
+                false,
+            )
         };
 
         let mut snapshot = Self {
@@ -444,8 +453,8 @@ impl CompilationSnapshot {
             raw_oracle_text: oracle_text.to_string(),
             parse_status,
             parse_error: parse_error.map(|error| normalize_debug_card_ids(&error)),
+            normalized_oracle_text,
             compiled_text,
-            unprocessed_compiled_text,
             compiled_card_definition,
             oracle_coverage,
             compiled_coverage,
@@ -471,14 +480,9 @@ impl CompilationSnapshot {
         hasher.update([0]);
         hasher.update(self.parse_error.as_deref().unwrap_or("").as_bytes());
         hasher.update([0]);
-        hasher.update(self.compiled_text.as_deref().unwrap_or("").as_bytes());
+        hasher.update(self.normalized_oracle_text.as_bytes());
         hasher.update([0]);
-        hasher.update(
-            self.unprocessed_compiled_text
-                .as_deref()
-                .unwrap_or("")
-                .as_bytes(),
-        );
+        hasher.update(self.compiled_text.as_deref().unwrap_or("").as_bytes());
         hasher.update([0]);
         hasher.update(
             self.compiled_card_definition
@@ -610,6 +614,55 @@ impl CardStatusDb {
         Ok(())
     }
 
+    fn rename_compilation_text_columns_if_needed(&self) -> Result<(), Box<dyn Error>> {
+        if !self.card_compilation_has_column("normalized_oracle_text")
+            && self.card_compilation_has_column("compiled_text")
+        {
+            self.conn
+                .execute_batch("DROP VIEW IF EXISTS latest_card_compilation;")?;
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 RENAME COLUMN compiled_text TO normalized_oracle_text;",
+            )?;
+        }
+
+        if self.card_compilation_has_column("unprocessed_compiled_text") {
+            self.conn
+                .execute_batch("DROP VIEW IF EXISTS latest_card_compilation;")?;
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 RENAME COLUMN unprocessed_compiled_text TO compiled_text;",
+            )?;
+        }
+
+        if self.card_compilation_has_column("oracle_text")
+            && !self.card_compilation_has_column("normalized_oracle_text")
+        {
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 ADD COLUMN normalized_oracle_text TEXT;
+                 UPDATE card_compilation
+                 SET normalized_oracle_text = oracle_text
+                 WHERE normalized_oracle_text IS NULL;",
+            )?;
+        }
+
+        if !self.card_compilation_has_column("compiled_text") {
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 ADD COLUMN compiled_text TEXT;",
+            )?;
+        }
+
+        self.conn.execute_batch(
+            "UPDATE card_compilation
+             SET normalized_oracle_text = oracle_text
+             WHERE normalized_oracle_text IS NULL;",
+        )?;
+
+        Ok(())
+    }
+
     pub fn initialize(&self) -> Result<(), Box<dyn Error>> {
         let version: i64 = self
             .conn
@@ -680,6 +733,10 @@ impl CardStatusDb {
             self.drop_uses_pseudo_oracle_fallback_column_if_present()?;
         }
 
+        if version > 0 && version < 9 {
+            self.rename_compilation_text_columns_if_needed()?;
+        }
+
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS card_compilation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -688,8 +745,8 @@ impl CardStatusDb {
                 raw_oracle_text TEXT NOT NULL,
                 parse_status TEXT NOT NULL,
                 parse_error TEXT,
+                normalized_oracle_text TEXT,
                 compiled_text TEXT,
-                unprocessed_compiled_text TEXT,
                 compiled_card_definition TEXT,
                 oracle_coverage REAL NOT NULL,
                 compiled_coverage REAL NOT NULL,
@@ -782,8 +839,8 @@ impl CardStatusDb {
                 raw_oracle_text,
                 parse_status,
                 parse_error,
+                normalized_oracle_text,
                 compiled_text,
-                unprocessed_compiled_text,
                 compiled_card_definition,
                 oracle_coverage,
                 compiled_coverage,
@@ -799,8 +856,8 @@ impl CardStatusDb {
                 snapshot.raw_oracle_text,
                 snapshot.parse_status.as_str(),
                 snapshot.parse_error,
+                snapshot.normalized_oracle_text,
                 snapshot.compiled_text,
-                snapshot.unprocessed_compiled_text,
                 snapshot.compiled_card_definition,
                 snapshot.oracle_coverage,
                 snapshot.compiled_coverage,
@@ -852,8 +909,8 @@ impl CardStatusDb {
                     raw_oracle_text,
                     parse_status,
                     parse_error,
+                    normalized_oracle_text,
                     compiled_text,
-                    unprocessed_compiled_text,
                     compiled_card_definition,
                     oracle_coverage,
                     compiled_coverage,
@@ -890,8 +947,8 @@ impl CardStatusDb {
                     snapshot.raw_oracle_text.as_str(),
                     snapshot.parse_status.as_str(),
                     snapshot.parse_error.as_deref(),
+                    snapshot.normalized_oracle_text.as_str(),
                     snapshot.compiled_text.as_deref(),
-                    snapshot.unprocessed_compiled_text.as_deref(),
                     snapshot.compiled_card_definition.as_deref(),
                     snapshot.oracle_coverage,
                     snapshot.compiled_coverage,
@@ -2339,17 +2396,17 @@ CardDefinition {
     }
 
     #[test]
-    fn snapshot_records_canonical_and_debug_safe_text() {
+    fn snapshot_records_normalized_oracle_and_compiled_text() {
         let fallback_snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
         assert_eq!(fallback_snapshot.parse_status, ParseStatus::StrictCompiled);
         assert_eq!(
-            fallback_snapshot.compiled_text.as_deref(),
-            Some(
+            fallback_snapshot.normalized_oracle_text,
+            String::from(
                 "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn."
             )
         );
         assert_eq!(
-            fallback_snapshot.unprocessed_compiled_text.as_deref(),
+            fallback_snapshot.compiled_text.as_deref(),
             Some("Reach\nYou draw a card.")
         );
     }
@@ -2375,13 +2432,13 @@ CardDefinition {
     }
 
     #[test]
-    fn unprocessed_snapshot_applies_safe_keyword_transforms() {
+    fn compiled_snapshot_applies_safe_keyword_transforms() {
         for payload in [battle_cry_payload(), enlist_payload()] {
             let snapshot = compile_snapshot_from_payload(&payload);
             assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
-            assert_eq!(snapshot.compiled_text, snapshot.unprocessed_compiled_text);
+            assert_eq!(snapshot.normalized_oracle_text, payload.oracle_text);
             assert_eq!(
-                snapshot.unprocessed_compiled_text.as_deref(),
+                snapshot.compiled_text.as_deref(),
                 Some(payload.oracle_text.as_str())
             );
         }
@@ -2607,6 +2664,7 @@ CardDefinition {
 
         assert_eq!(snapshot.oracle_text, "Flying\nCycling {2}");
         assert_eq!(snapshot.raw_oracle_text, oracle);
+        assert_eq!(snapshot.normalized_oracle_text, "Flying\nCycling {2}");
         assert_eq!(
             snapshot.compiled_text.as_deref(),
             Some("Flying\nCycling {2}")
@@ -2630,8 +2688,16 @@ CardDefinition {
             "latest view should not expose removed pseudo-oracle fallback flag"
         );
         db.connection()
-            .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")
-            .expect("latest view should expose unprocessed compiled text");
+            .prepare(
+                "SELECT normalized_oracle_text, compiled_text FROM latest_card_compilation LIMIT 0",
+            )
+            .expect("latest view should expose normalized oracle and compiled text");
+        assert!(
+            db.connection()
+                .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")
+                .is_err(),
+            "latest view should not expose legacy unprocessed compiled text"
+        );
         let _ = fs::remove_file(path);
     }
 
@@ -2661,24 +2727,24 @@ CardDefinition {
     }
 
     #[test]
-    fn db_persists_unprocessed_compiled_text() {
-        let path = unique_temp_path("unprocessed-compiled-text");
+    fn db_persists_compiled_text() {
+        let path = unique_temp_path("compiled-text");
         let db = CardStatusDb::open(&path).expect("open db");
         let snapshot = compile_snapshot_from_payload(&pseudo_oracle_fallback_payload());
 
         assert!(db.insert_snapshot_if_changed(&snapshot).expect("insert"));
 
-        let unprocessed: String = db
+        let compiled: String = db
             .connection()
             .query_row(
-                "SELECT unprocessed_compiled_text
+                "SELECT compiled_text
                  FROM latest_card_compilation
                  WHERE card_name = ?1",
                 ["G'raha Tia Variant"],
                 |row| row.get(0),
             )
-            .expect("stored unprocessed text");
-        assert_eq!(unprocessed, "Reach\nYou draw a card.");
+            .expect("stored compiled text");
+        assert_eq!(compiled, "Reach\nYou draw a card.");
         let _ = fs::remove_file(path);
     }
 

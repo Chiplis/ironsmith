@@ -371,16 +371,17 @@ fn sync_bins_strip_parenthetical_text_from_stored_oracle_and_compiled_columns() 
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .expect("registry sky drake row");
-    let (compiled_oracle, compiled_text): (String, String) = conn
+    let (compiled_oracle, normalized_oracle_text, compiled_text): (String, String, String) = conn
         .query_row(
-            "SELECT oracle_text, compiled_text FROM latest_card_compilation WHERE card_name = 'Sky Drake'",
+            "SELECT oracle_text, normalized_oracle_text, compiled_text FROM latest_card_compilation WHERE card_name = 'Sky Drake'",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .expect("compiled sky drake row");
 
     assert_eq!(registry_oracle, "Flying");
     assert_eq!(compiled_oracle, "Flying");
+    assert_eq!(normalized_oracle_text, "Flying");
     assert_eq!(compiled_text, "Flying");
     assert!(registry_parse_input.contains(
         "Flying (This creature can't be blocked except by creatures with flying or reach.)"
@@ -705,60 +706,37 @@ fn sync_card_status_db_reports_strict_compiled_score_summary() {
 }
 
 #[test]
-fn compile_oracle_text_only_writes_for_authoritative_cards_and_obeys_no_db() {
+fn compile_oracle_text_never_interacts_with_status_db() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
-    let authoritative_db = dir.path().join("authoritative.sqlite3");
-    let no_db_path = dir.path().join("no-db.sqlite3");
-    let adhoc_db = dir.path().join("adhoc.sqlite3");
+    let default_db_path = dir.path().join("reports").join("engine-status.sqlite3");
     write_cards_json(&cards_path);
 
     let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .current_dir(dir.path())
         .arg("--name")
         .arg("Lightning Bolt")
         .arg("--cards")
         .arg(&cards_path)
-        .arg("--db-path")
-        .arg(&authoritative_db)
         .status()
         .expect("run authoritative compile_oracle_text");
     assert!(
         status.success(),
         "authoritative compile_oracle_text should succeed"
     );
-    assert_eq!(
-        query_count(&authoritative_db, "SELECT COUNT(*) FROM card_compilation"),
-        1
+    assert!(
+        !default_db_path.exists(),
+        "compile_oracle_text should not create the default status DB"
     );
 
     let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
-        .arg("--name")
-        .arg("Lightning Bolt")
-        .arg("--cards")
-        .arg(&cards_path)
-        .arg("--db-path")
-        .arg(&no_db_path)
-        .arg("--no-db")
-        .status()
-        .expect("run compile_oracle_text with --no-db");
-    assert!(
-        status.success(),
-        "compile_oracle_text --no-db should succeed"
-    );
-    assert!(
-        !no_db_path.exists(),
-        "--no-db should prevent the database from being created"
-    );
-
-    let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .current_dir(dir.path())
         .arg("--name")
         .arg("Lightning Bolt")
         .arg("--cards")
         .arg(&cards_path)
         .arg("--text")
         .arg("Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target.")
-        .arg("--db-path")
-        .arg(&adhoc_db)
         .status()
         .expect("run ad hoc compile_oracle_text");
     assert!(
@@ -766,8 +744,36 @@ fn compile_oracle_text_only_writes_for_authoritative_cards_and_obeys_no_db() {
         "ad hoc compile_oracle_text should succeed"
     );
     assert!(
-        !adhoc_db.exists(),
-        "ad hoc compile_oracle_text should not create the status DB"
+        !default_db_path.exists(),
+        "ad hoc compile_oracle_text should not create the default status DB"
+    );
+}
+
+#[test]
+fn compile_oracle_text_rejects_obsolete_db_flags() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    write_cards_json(&cards_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .arg("--name")
+        .arg("Lightning Bolt")
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--db-path")
+        .arg(dir.path().join("obsolete.sqlite3"))
+        .output()
+        .expect("run compile_oracle_text with obsolete --db-path");
+    assert!(
+        !output.status.success(),
+        "compile_oracle_text should reject --db-path"
+    );
+
+    let stderr =
+        String::from_utf8(output.stderr).expect("compile_oracle_text stderr should be utf8");
+    assert!(
+        stderr.contains("unknown argument '--db-path'"),
+        "expected obsolete flag error, got {stderr}"
     );
 }
 
@@ -782,7 +788,6 @@ fn compile_oracle_text_uses_builtin_linked_face_metadata_for_transform_pairs() {
         .arg("Conqueror's Galleon // Conqueror's Foothold")
         .arg("--cards")
         .arg(&cards_path)
-        .arg("--no-db")
         .output()
         .expect("run compile_oracle_text");
     assert!(
@@ -814,7 +819,6 @@ fn compile_oracle_text_trace_is_card_aware_instead_of_parser_firehose() {
         .arg("--cards")
         .arg(&cards_path)
         .arg("--trace")
-        .arg("--no-db")
         .output()
         .expect("run compile_oracle_text --trace");
     assert!(
@@ -857,60 +861,47 @@ fn compile_oracle_text_trace_is_card_aware_instead_of_parser_firehose() {
 }
 
 #[test]
-fn compile_oracle_text_writes_parse_failed_snapshot_for_authoritative_card() {
+fn compile_oracle_text_does_not_write_parse_failed_snapshot_for_authoritative_card() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
-    let db_path = dir.path().join("authoritative.sqlite3");
+    let default_db_path = dir.path().join("reports").join("engine-status.sqlite3");
     write_cards_with_unsupported_json(&cards_path);
 
     let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .current_dir(dir.path())
         .arg("--name")
         .arg("Unsupported Fixture")
         .arg("--cards")
         .arg(&cards_path)
-        .arg("--db-path")
-        .arg(&db_path)
         .status()
         .expect("run authoritative compile_oracle_text on unsupported card");
     assert!(
         !status.success(),
         "compile_oracle_text should still fail for unsupported authoritative cards"
     );
-    assert_eq!(
-        query_count(&db_path, "SELECT COUNT(*) FROM card_compilation"),
-        1
+    assert!(
+        !default_db_path.exists(),
+        "compile_oracle_text should not write parse failure snapshots"
     );
-
-    let conn = Connection::open(&db_path).expect("open sqlite db");
-    let parse_status: String = conn
-        .query_row(
-            "SELECT parse_status FROM latest_card_compilation WHERE card_name = 'Unsupported Fixture'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("query parse status");
-    assert_eq!(parse_status, "parse_failed");
 }
 
 #[test]
-fn compile_oracle_text_keeps_semantic_mismatch_status_in_line_with_sync_db() {
+fn sync_card_status_db_records_semantic_mismatch_status() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");
     let db_path = dir.path().join("authoritative.sqlite3");
     write_cards_with_semantic_mismatch_json(&cards_path);
 
-    let status = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
-        .arg("--name")
-        .arg("G'raha Tia Variant")
+    let status = Command::new(env!("CARGO_BIN_EXE_sync_card_status_db"))
         .arg("--cards")
         .arg(&cards_path)
         .arg("--db-path")
         .arg(&db_path)
         .status()
-        .expect("run authoritative compile_oracle_text on semantic mismatch card");
+        .expect("run sync_card_status_db on semantic mismatch card");
     assert!(
         status.success(),
-        "compile_oracle_text should succeed for compiled semantic mismatches"
+        "sync_card_status_db should succeed for compiled semantic mismatches"
     );
 
     let conn = Connection::open(&db_path).expect("open sqlite db");

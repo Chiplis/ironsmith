@@ -98,8 +98,8 @@ def load_latest_semantic_scores(db_path: Path) -> Dict[str, float]:
             WHERE parse_status = 'strict_compiled'
               AND parse_error IS NULL
               AND has_unimplemented = 0
+              AND normalized_oracle_text IS NOT NULL
               AND compiled_text IS NOT NULL
-              AND unprocessed_compiled_text IS NOT NULL
             """
         ):
             maybe_insert(name, score)

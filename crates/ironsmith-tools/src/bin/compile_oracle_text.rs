@@ -2,14 +2,13 @@ use std::env;
 use std::io::{self, IsTerminal, Read, Write};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
-use ironsmith::compiled_text::{canonical_compiled_lines, unprocessed_compiled_lines};
+use ironsmith::compiled_text::compiled_text_lines;
 use ironsmith_compiler::parse_trace as card_parse_trace;
 use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
-    CardStatusDb, CompilationSnapshot, ParseStatus, build_parse_input,
+    CompilationSnapshot, ParseStatus, build_parse_input,
     compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
-    compile_snapshot_from_payload, default_cards_path, default_db_path, load_card_by_name,
-    parse_card_definition_with_runtime_builder, snapshot_from_payload_definition,
+    default_cards_path, load_card_by_name, parse_card_definition_with_runtime_builder,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -45,58 +44,6 @@ fn should_read_input_text(
     stdin_is_terminal: bool,
 ) -> bool {
     text_arg_present || names_empty || !stdin_is_terminal
-}
-
-fn store_snapshot_if_requested(
-    should_write_db: bool,
-    snapshot: Option<&CompilationSnapshot>,
-    db_payload: Option<&ironsmith_tools::CardPayload>,
-    db_path: &str,
-) -> Result<(), String> {
-    if !should_write_db {
-        return Ok(());
-    }
-    let Some(payload) = db_payload else {
-        return Ok(());
-    };
-
-    let db = CardStatusDb::open(db_path).map_err(|err| err.to_string())?;
-    let snapshot = snapshot
-        .cloned()
-        .unwrap_or_else(|| compile_snapshot_from_payload(payload));
-    let inserted = db
-        .insert_snapshot_if_changed(&snapshot)
-        .map_err(|err| err.to_string())?;
-    eprintln!(
-        "[INFO] {} card status snapshot in {}",
-        if inserted {
-            "stored"
-        } else {
-            "skipped unchanged"
-        },
-        db_path
-    );
-    Ok(())
-}
-
-fn snapshot_payload_for_db(
-    card: Option<&ironsmith_tools::CardPayload>,
-    oracle_text: &str,
-    parse_input: &str,
-) -> Option<ironsmith_tools::CardPayload> {
-    let card = card?;
-    let oracle_matches = card.oracle_text.trim() == oracle_text.trim();
-    let parse_input_matches = card.parse_input.trim() == parse_input.trim();
-    (oracle_matches && parse_input_matches).then(|| ironsmith_tools::CardPayload {
-        name: card.name.clone(),
-        parse_name: card.parse_name.clone(),
-        oracle_text: card.oracle_text.clone(),
-        raw_oracle_text: card.raw_oracle_text.clone(),
-        metadata_lines: card.metadata_lines.clone(),
-        parse_input: card.parse_input.clone(),
-        other_face_name: card.other_face_name.clone(),
-        linked_face_layout: card.linked_face_layout,
-    })
 }
 
 fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
@@ -182,7 +129,6 @@ struct CompileJob {
     name: String,
     oracle_text: String,
     parse_input: String,
-    db_payload: Option<ironsmith_tools::CardPayload>,
     authoritative_snapshot: Option<CompilationSnapshot>,
     compiled_definition: Option<CardDefinition>,
 }
@@ -218,7 +164,6 @@ fn compile_job_for_name(
             name: definition.name().to_string(),
             oracle_text: payload.oracle_text.clone(),
             parse_input: payload.parse_input.clone(),
-            db_payload: Some(payload),
             authoritative_snapshot: None,
             compiled_definition: Some(definition),
         });
@@ -232,7 +177,6 @@ fn compile_job_for_name(
                 name: card.name,
                 oracle_text,
                 parse_input,
-                db_payload: None,
                 authoritative_snapshot: None,
                 compiled_definition: None,
             })
@@ -241,7 +185,6 @@ fn compile_job_for_name(
             name: card.name,
             oracle_text: card.oracle_text,
             parse_input: text.to_string(),
-            db_payload: None,
             authoritative_snapshot: None,
             compiled_definition: None,
         }),
@@ -249,7 +192,6 @@ fn compile_job_for_name(
             name: name.to_string(),
             oracle_text: text.to_string(),
             parse_input: text.to_string(),
-            db_payload: None,
             authoritative_snapshot: None,
             compiled_definition: None,
         }),
@@ -257,7 +199,6 @@ fn compile_job_for_name(
             let name = card.name.clone();
             let oracle_text = card.oracle_text.clone();
             let parse_input = card.parse_input.clone();
-            let db_payload = snapshot_payload_for_db(Some(&card), &oracle_text, &parse_input);
             let authoritative_snapshot = {
                 let _scope = card_parse_trace::scope("authoritative snapshot");
                 compile_authoritative_snapshot_from_payload(&card)
@@ -270,7 +211,6 @@ fn compile_job_for_name(
                 name,
                 oracle_text,
                 parse_input,
-                db_payload,
                 authoritative_snapshot: Some(authoritative_snapshot),
                 compiled_definition,
             })
@@ -285,8 +225,6 @@ fn write_compiled_job<W: Write>(
     detailed: bool,
     raw: bool,
     show_definition: bool,
-    should_write_db: bool,
-    db_path: &str,
 ) -> Result<(), String> {
     macro_rules! outln {
         ($($arg:tt)*) => {
@@ -298,12 +236,6 @@ fn write_compiled_job<W: Write>(
     if let Some(snapshot) = job.authoritative_snapshot.as_ref()
         && snapshot.parse_status == ParseStatus::ParseFailed
     {
-        let _ = store_snapshot_if_requested(
-            should_write_db,
-            Some(snapshot),
-            job.db_payload.as_ref(),
-            db_path,
-        );
         return Err(format!(
             "parse failed for {}: {}",
             job.name,
@@ -322,15 +254,7 @@ fn write_compiled_job<W: Write>(
             let _scope = card_parse_trace::scope("display definition");
             parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
         }
-        .map_err(|err| {
-            let _ = store_snapshot_if_requested(
-                should_write_db,
-                job.authoritative_snapshot.as_ref(),
-                job.db_payload.as_ref(),
-                db_path,
-            );
-            format!("parse failed for {}: {err:?}", job.name)
-        })?;
+        .map_err(|err| format!("parse failed for {}: {err:?}", job.name))?;
         &parsed_definition
     };
     let mut display_def = def.clone();
@@ -362,11 +286,7 @@ fn write_compiled_job<W: Write>(
     if raw {
         outln!("- {:#?}", display_def);
     } else {
-        let lines = if detailed {
-            unprocessed_compiled_lines(&display_def)
-        } else {
-            canonical_compiled_lines(&display_def)
-        };
+        let lines = compiled_text_lines(&display_def);
         if lines.is_empty() {
             outln!("- <none>");
         } else {
@@ -379,20 +299,6 @@ fn write_compiled_job<W: Write>(
         outln!("Compiled card definition:");
         outln!("{:#?}", display_def);
     }
-
-    let fresh_snapshot = job
-        .db_payload
-        .as_ref()
-        .map(|payload| snapshot_from_payload_definition(payload, def));
-    let snapshot_to_store = fresh_snapshot
-        .as_ref()
-        .or(job.authoritative_snapshot.as_ref());
-    store_snapshot_if_requested(
-        should_write_db,
-        snapshot_to_store,
-        job.db_payload.as_ref(),
-        db_path,
-    )?;
     Ok(())
 }
 
@@ -406,8 +312,6 @@ fn main() -> Result<(), String> {
     let mut detailed = false;
     let mut raw = false;
     let mut show_definition = DEFAULT_SHOW_DEFINITION;
-    let mut db_path = default_db_path().display().to_string();
-    let mut no_db = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -461,17 +365,9 @@ fn main() -> Result<(), String> {
             "--show-definition" => {
                 show_definition = true;
             }
-            "--db-path" => {
-                db_path = args
-                    .next()
-                    .ok_or_else(|| "--db-path requires a value".to_string())?;
-            }
-            "--no-db" => {
-                no_db = true;
-            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --db-path <path>, --no-db, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, and/or --stacktrace"
                 ));
             }
         }
@@ -521,17 +417,8 @@ fn main() -> Result<(), String> {
         let compile_one = || -> Result<Vec<u8>, String> {
             card_parse_trace::event(format!("Trace: {name}"));
             let job = compile_job_for_name(&cards_path, name, input_text.as_deref())?;
-            let should_write_db = !no_db && job.db_payload.is_some();
             let mut output = Vec::new();
-            write_compiled_job(
-                &mut output,
-                &job,
-                detailed,
-                raw,
-                show_definition,
-                should_write_db,
-                &db_path,
-            )?;
+            write_compiled_job(&mut output, &job, detailed, raw, show_definition)?;
             Ok(output)
         };
 
@@ -559,7 +446,6 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironsmith_tools::CardPayload;
 
     #[test]
     fn build_parse_input_appends_oracle_text_after_metadata() {
@@ -602,58 +488,6 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_payload_for_db_accepts_canonical_stdin_parse_block() {
-        let payload = CardPayload {
-            name: "House Cartographer".to_string(),
-            parse_name: None,
-            oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            raw_oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            metadata_lines: vec![
-                "Mana cost: {1}{G}".to_string(),
-                "Type: Creature — Human Scout Survivor".to_string(),
-                "Power/Toughness: 2/2".to_string(),
-            ],
-            parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            other_face_name: None,
-            linked_face_layout: None,
-        };
-
-        let matched =
-            snapshot_payload_for_db(Some(&payload), &payload.oracle_text, &payload.parse_input);
-
-        assert!(
-            matched.is_some(),
-            "canonical parse block should store a snapshot"
-        );
-    }
-
-    #[test]
-    fn snapshot_payload_for_db_rejects_modified_override_text() {
-        let payload = CardPayload {
-            name: "House Cartographer".to_string(),
-            parse_name: None,
-            oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            raw_oracle_text: "Survival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            metadata_lines: vec![
-                "Mana cost: {1}{G}".to_string(),
-                "Type: Creature — Human Scout Survivor".to_string(),
-                "Power/Toughness: 2/2".to_string(),
-            ],
-            parse_input: "Mana cost: {1}{G}\nType: Creature — Human Scout Survivor\nPower/Toughness: 2/2\nSurvival — At the beginning of your second main phase, if this creature is tapped, reveal cards from the top of your library until you reveal a land card. Put that card into your hand and the rest on the bottom of your library in a random order.".to_string(),
-            other_face_name: None,
-            linked_face_layout: None,
-        };
-
-        let matched =
-            snapshot_payload_for_db(Some(&payload), "Modified text", &payload.parse_input);
-
-        assert!(
-            matched.is_none(),
-            "non-canonical override text should not store a snapshot"
-        );
-    }
-
-    #[test]
     fn compile_job_for_name_builds_batch_lookup_job() {
         let cards_path = format!("{}/../../cards.json", env!("CARGO_MANIFEST_DIR"));
         let job = compile_job_for_name(&cards_path, "House Cartographer", None)
@@ -661,6 +495,7 @@ mod tests {
 
         assert_eq!(job.name, "House Cartographer");
         assert!(job.parse_input.contains("Type: Creature"));
-        assert!(job.db_payload.is_some());
+        assert!(job.authoritative_snapshot.is_some());
+        assert!(job.compiled_definition.is_some());
     }
 }

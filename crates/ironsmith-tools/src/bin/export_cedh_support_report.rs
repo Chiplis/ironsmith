@@ -8,10 +8,8 @@ use std::time::Duration;
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::compiled_text::unprocessed_compiled_lines;
 use ironsmith::semantic_compare::compare_semantics_scored;
+use ironsmith_tools::default_cards_path;
 use ironsmith_tools::parse_card_definition_with_runtime_builder;
-use ironsmith_tools::{
-    CardStatusDb, CompilationSnapshot, ParseStatus, default_cards_path, default_db_path,
-};
 use rayon::prelude::*;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -25,8 +23,6 @@ struct Args {
     lookback_days: i32,
     concurrency: usize,
     event_limit: Option<usize>,
-    db_path: String,
-    no_db: bool,
 }
 
 #[derive(Debug)]
@@ -123,8 +119,6 @@ fn parse_args() -> Result<Args, String> {
     let mut lookback_days = 90i32;
     let mut concurrency = 24usize;
     let mut event_limit = None;
-    let mut db_path = default_db_path().display().to_string();
-    let mut no_db = false;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -172,20 +166,12 @@ fn parse_args() -> Result<Args, String> {
                         .map_err(|err| format!("invalid --event-limit '{raw}': {err}"))?,
                 );
             }
-            "--db-path" => {
-                db_path = iter
-                    .next()
-                    .ok_or_else(|| "--db-path requires a path".to_string())?;
-            }
-            "--no-db" => {
-                no_db = true;
-            }
             "-h" | "--help" => {
-                return Err("usage: cargo run --release --bin export_cedh_support_report -- [--cards <path>] [--out <path>] [--top <n>] [--days <n>] [--concurrency <n>] [--event-limit <n>] [--db-path <path>] [--no-db]".to_string());
+                return Err("usage: cargo run --release --bin export_cedh_support_report -- [--cards <path>] [--out <path>] [--top <n>] [--days <n>] [--concurrency <n>] [--event-limit <n>]".to_string());
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --cards/--out/--top/--days/--concurrency/--event-limit/--db-path/--no-db"
+                    "unknown argument '{arg}'. expected --cards/--out/--top/--days/--concurrency/--event-limit"
                 ));
             }
         }
@@ -208,8 +194,6 @@ fn parse_args() -> Result<Args, String> {
         lookback_days,
         concurrency,
         event_limit,
-        db_path,
-        no_db,
     })
 }
 
@@ -501,7 +485,6 @@ fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseOu
 fn build_rows(
     ranked_cards: &[RankedCard],
     cards: &HashMap<String, CardPayload>,
-    db: Option<&CardStatusDb>,
 ) -> Result<Vec<Row>, Box<dyn std::error::Error>> {
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
     let mut rows = Vec::with_capacity(ranked_cards.len());
@@ -538,50 +521,29 @@ fn build_rows(
         };
 
         let strict_result = parse_card(&ranked.name, &payload.parse_input, false);
-        let snapshot = match strict_result {
+        match strict_result {
             ParseOutcome::Success(definition) => {
                 populate_row_from_definition(&mut row, payload, &definition);
                 row.parsed = true;
                 row.parse_strict = true;
                 row.parse_with_allow_unsupported = true;
-                build_snapshot_from_row(
-                    &ranked.name,
-                    payload,
-                    ParseStatus::StrictCompiled,
-                    None,
-                    Some(&definition),
-                )
             }
             ParseOutcome::Error(err) => {
-                row.parse_error_strict = err.clone();
+                row.parse_error_strict = err;
                 let allow_result = parse_card(&ranked.name, &payload.parse_input, true);
                 match allow_result {
                     ParseOutcome::Success(definition) => {
                         populate_row_from_definition(&mut row, payload, &definition);
                         row.parsed = true;
                         row.parse_with_allow_unsupported = true;
-                        build_snapshot_from_row(
-                            &ranked.name,
-                            payload,
-                            ParseStatus::CompiledWithAllowUnsupported,
-                            None,
-                            Some(&definition),
-                        )
                     }
                     ParseOutcome::Error(allow_err) => {
                         row.parse_error_allow_unsupported = allow_err;
                         row.status = "does_not_parse".to_string();
-                        build_snapshot_from_row(
-                            &ranked.name,
-                            payload,
-                            ParseStatus::ParseFailed,
-                            Some(err),
-                            None,
-                        )
                     }
                 }
             }
-        };
+        }
 
         row.supported = row.parsed && !row.has_unimplemented;
         if row.supported {
@@ -590,9 +552,6 @@ fn build_rows(
             row.status = "unsupported".to_string();
         }
 
-        if let Some(db) = db {
-            db.insert_snapshot_if_changed(&snapshot)?;
-        }
         rows.push(row);
     }
 
@@ -604,22 +563,6 @@ fn build_rows(
     }
 
     Ok(rows)
-}
-
-fn build_snapshot_from_row(
-    ranked_name: &str,
-    payload: &CardPayload,
-    parse_status: ParseStatus,
-    parse_error: Option<String>,
-    definition: Option<&CardDefinition>,
-) -> CompilationSnapshot {
-    CompilationSnapshot::from_definition_result(
-        ranked_name,
-        &payload.oracle_text,
-        parse_status,
-        parse_error,
-        definition,
-    )
 }
 
 fn populate_row_from_definition(row: &mut Row, payload: &CardPayload, definition: &CardDefinition) {
@@ -723,12 +666,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ranked_cards = build_ranked_cards(&event_summaries, args.top_n);
     let cards = load_cards(&args.cards_path)?;
-    let db = if args.no_db {
-        None
-    } else {
-        Some(CardStatusDb::open(&args.db_path)?)
-    };
-    let mut rows = build_rows(&ranked_cards, &cards, db.as_ref())?;
+    let mut rows = build_rows(&ranked_cards, &cards)?;
 
     rows.sort_by(|left, right| {
         left.supported.cmp(&right.supported).then_with(|| {
@@ -760,9 +698,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Supported: {supported_count}");
     println!("- Unsupported: {unsupported_count}");
     println!("- CSV: {}", args.out_csv);
-    if !args.no_db {
-        println!("- DB: {}", args.db_path);
-    }
 
     Ok(())
 }

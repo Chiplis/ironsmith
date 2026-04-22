@@ -12,8 +12,12 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 }
 
 /// Render the structured compiled-text surface used for DB scoring.
-pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
+pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     debug_compiled_lines(def)
+}
+
+pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    compiled_text_lines(def)
 }
 
 fn safe_intrinsic_label_from_ability_source_text(ability: &Ability) -> Option<String> {
