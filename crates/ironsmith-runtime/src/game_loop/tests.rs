@@ -5339,18 +5339,15 @@ fn test_marhault_elsdragon_rampage_buffs_for_blockers_beyond_first() {
     game.object_mut(marhault_id)
         .expect("Marhault should exist")
         .abilities
-        .push(
-            Ability::triggered(
-                Trigger::this_becomes_blocked(),
-                vec![Effect::pump(
-                    Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }),
-                    Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }),
-                    crate::target::ChooseSpec::Source,
-                    Until::EndOfTurn,
-                )],
-            )
-            .with_text("Rampage 1"),
-        );
+        .push(Ability::triggered(
+            Trigger::this_becomes_blocked(),
+            vec![Effect::pump(
+                Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }),
+                Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }),
+                crate::target::ChooseSpec::Source,
+                Until::EndOfTurn,
+            )],
+        ));
 
     let blocker_1 = create_creature(&mut game, "Blocker 1", bob, 1, 1);
     let blocker_2 = create_creature(&mut game, "Blocker 2", bob, 1, 1);
@@ -14749,11 +14746,9 @@ fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     definition.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![
         Effect::gain_life(1),
     ]));
-    definition.abilities.push(
-        Ability::static_ability(StaticAbility::rebound())
-            .in_zones(vec![Zone::Stack])
-            .with_text("Rebound"),
-    );
+    definition
+        .abilities
+        .push(Ability::static_ability(StaticAbility::rebound()).in_zones(vec![Zone::Stack]));
 
     let rebound_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
@@ -22053,13 +22048,10 @@ fn test_gift_given_event_queues_opponent_gives_gift_trigger() {
     let watcher = CardDefinitionBuilder::new(CardId::from_raw(9201), "Gift Watcher")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
-        .with_ability(
-            Ability::triggered(
-                Trigger::player_gives_gift(PlayerFilter::Opponent),
-                vec![Effect::target_draws(1, PlayerFilter::You)],
-            )
-            .with_text("Whenever an opponent gives a gift, draw a card."),
-        )
+        .with_ability(Ability::triggered(
+            Trigger::player_gives_gift(PlayerFilter::Opponent),
+            vec![Effect::target_draws(1, PlayerFilter::You)],
+        ))
         .build();
     let watcher_id = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
 

@@ -3550,9 +3550,7 @@ pub(crate) fn parse_morph_keyword_line(
     };
 
     Ok(Some(ParsedAbility {
-        ability: Ability::static_ability(static_ability)
-            .with_text(&text)
-            .into(),
+        ability: Ability::static_ability(static_ability).into(),
         text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),

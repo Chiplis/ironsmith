@@ -211,33 +211,27 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
     match ability {
         GrantedAbilityAst::KeywordAction(action) => {
             let static_ability = lower_keyword_action_or_err(action.clone())?;
-            let text = static_ability.display();
-            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+            Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::MustAttack => {
             let static_ability = StaticAbility::must_attack();
-            let text = static_ability.display();
-            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+            Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::MustBlock => {
             let static_ability = StaticAbility::must_block();
-            let text = static_ability.display();
-            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+            Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::CanAttackAsThoughNoDefender => {
             let static_ability = StaticAbility::can_attack_as_though_no_defender();
-            let text = static_ability.display();
-            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+            Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat { additional } => {
             let static_ability =
                 StaticAbility::can_block_additional_creature_each_combat(*additional);
-            let text = static_ability.display();
-            Ok(Ability::static_ability(static_ability).with_text(text.as_str()))
+            Ok(Ability::static_ability(static_ability))
         }
-        GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
+        GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
             let lowered = rewrite_lower_parsed_ability(ability.clone())?.into_runtime();
-            let _ = display;
             Ok(lowered)
         }
     }

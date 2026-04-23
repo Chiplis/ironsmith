@@ -927,8 +927,7 @@ mod tests {
         let fallback = Ability::static_ability(StaticAbility::unsupported_parser_line(
             "probe text",
             "ParseError(\"mock\")",
-        ))
-        .with_text("probe text");
+        ));
         let mut definition = CardDefinition::new(card);
         definition.abilities.push(fallback);
 
@@ -943,8 +942,7 @@ mod tests {
         let fallback = Ability::static_ability(StaticAbility::unsupported_parser_line(
             "probe text",
             "ParseError(\"unsupported ring clause (clause: 'Ring tempts')\")",
-        ))
-        .with_text("probe text");
+        ));
         let mut definition = CardDefinition::new(card);
         definition.abilities.push(fallback);
 

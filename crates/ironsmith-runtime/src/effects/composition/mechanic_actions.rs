@@ -777,14 +777,12 @@ impl EffectExecutor for CipherEffect {
         };
 
         game.imprint_card(chosen_creature, exiled_id);
-        let trigger_text = "Whenever this creature deals combat damage to a player, its controller may cast a copy of the encoded card without paying its mana cost.";
         let ability = crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_deals_combat_damage_to_player(),
             vec![crate::effect::Effect::cast_encoded_card_copy(
                 exiled_stable_id,
             )],
-        )
-        .with_text(trigger_text);
+        );
         if let Some(creature) = game.object_mut(chosen_creature) {
             creature.abilities.push(ability);
         }
@@ -1981,7 +1979,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = create_creature(&mut game, alice, 20, "Backup Source", 2, 2);
         let target = create_creature(&mut game, alice, 21, "Backup Target", 1, 1);
-        let granted = Ability::static_ability(StaticAbility::flying()).with_text("Flying");
+        let granted = Ability::static_ability(StaticAbility::flying());
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
 

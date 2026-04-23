@@ -1,10 +1,6 @@
 use super::*;
 use crate::cards::CardDefinitionRuntimeExt;
 
-pub(super) fn debug_safe_surface_definition(def: &CardDefinition) -> CardDefinition {
-    def.clone()
-}
-
 pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<String> {
     stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
 }

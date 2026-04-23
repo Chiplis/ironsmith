@@ -235,25 +235,12 @@ fn lower_abilities_chunk(
     let LineChunkLoweringInput {
         mut builder,
         parsed,
-        info,
         ..
     } = input;
     let NormalizedLineChunk::Abilities(actions) = parsed else {
         unreachable!("abilities lowerer received mismatched chunk");
     };
 
-    let keyword_segment = info
-        .raw_line
-        .split('(')
-        .next()
-        .unwrap_or(info.raw_line.as_str());
-    let separator = if super::str_find(keyword_segment, ";").is_some() {
-        "; "
-    } else {
-        ", "
-    };
-    let _ = keyword_segment;
-    let _ = separator;
     for action in actions {
         builder = builder.apply_keyword_action(action);
     }
@@ -265,7 +252,7 @@ fn compile_static_ability_with_zones(
     info: &LineInfo,
 ) -> Ability {
     let ability = rewrite_self_spell_cost_modifier(ability, info.raw_line.as_str());
-    let mut compiled = Ability::static_ability(ability).with_text(info.raw_line.as_str());
+    let mut compiled = Ability::static_ability(ability);
     if let AbilityKind::Static(static_ability) = &compiled.kind
         && super::uses_spell_only_functional_zones(static_ability)
     {

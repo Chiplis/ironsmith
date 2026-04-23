@@ -61,8 +61,7 @@ pub fn clue_token_definition() -> CardDefinition {
         ]),
         vec![Effect::draw(1)],
         crate::ability::ActivationTiming::AnyTime,
-    )
-    .with_text("{2}, Sacrifice this artifact: Draw a card.");
+    );
 
     CardDefinitionBuilder::new(CardId::new(), "Clue")
         .token()
@@ -164,8 +163,7 @@ pub fn shard_token_definition() -> CardDefinition {
         ]),
         vec![Effect::scry(1), Effect::draw(1)],
         crate::ability::ActivationTiming::AnyTime,
-    )
-    .with_text("{2}, Sacrifice this token: Scry 1, then draw a card.");
+    );
 
     CardDefinitionBuilder::new(CardId::new(), "Shard")
         .token()

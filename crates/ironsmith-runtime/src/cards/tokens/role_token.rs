@@ -48,7 +48,7 @@ pub fn wicked_role_token_definition() -> CardDefinition {
             Trigger::this_dies(),
             vec![Effect::for_each_opponent(vec![Effect::lose_life(1)])],
         )
-        .with_text("When this token is put into a graveyard from the battlefield, each opponent loses 1 life."),
+        ,
     )
     .build()
 }
@@ -84,9 +84,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
             },
             "enchanted creature has whenever this creature attacks if its toughness is 3 or less put a +1/+1 counter on it".to_string(),
         ))
-        .with_text(
-            "Enchanted creature has \"Whenever this creature attacks, if its toughness is 3 or less, put a +1/+1 counter on it.\"",
-        ),
+        ,
     )
     .build()
 }
@@ -126,7 +124,7 @@ pub fn sorcerer_role_token_definition() -> CardDefinition {
             granted_trigger,
             "enchanted creature has whenever this creature attacks scry 1".to_string(),
         ))
-        .with_text("Enchanted creature has \"Whenever this creature attacks, scry 1.\""),
+        ,
     )
     .build()
 }

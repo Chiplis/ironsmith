@@ -7489,7 +7489,8 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
     if tagged_apply_pair_preserves_animated_land(first, second)
         && (first.until == second.until || matches!(second.until, Until::Forever))
         && (first.condition == second.condition || second.condition.is_none())
-        && let Some(text) = describe_apply_continuous_animation_effect(first, &target, plural_target)
+        && let Some(text) =
+            describe_apply_continuous_animation_effect(first, &target, plural_target)
     {
         return Some(text);
     }
@@ -7525,7 +7526,11 @@ fn tagged_apply_pair_preserves_animated_land(
             if card_types.len() == 1 && card_types.contains(&CardType::Land)
     ) && second.additional_modifications.is_empty()
         && second.runtime_modifications.is_empty()
-        && first.target_spec.as_ref().and_then(choose_spec_land_filter).is_some()
+        && first
+            .target_spec
+            .as_ref()
+            .and_then(choose_spec_land_filter)
+            .is_some()
 }
 
 pub(super) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {

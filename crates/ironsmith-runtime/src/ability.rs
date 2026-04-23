@@ -104,59 +104,59 @@ pub enum StackedAbilityKind {
 }
 
 pub fn flying() -> Ability {
-    Ability::static_ability(NewStaticAbility::flying()).with_text("Flying")
+    Ability::static_ability(NewStaticAbility::flying())
 }
 
 pub fn first_strike() -> Ability {
-    Ability::static_ability(NewStaticAbility::first_strike()).with_text("First strike")
+    Ability::static_ability(NewStaticAbility::first_strike())
 }
 
 pub fn double_strike() -> Ability {
-    Ability::static_ability(NewStaticAbility::double_strike()).with_text("Double strike")
+    Ability::static_ability(NewStaticAbility::double_strike())
 }
 
 pub fn deathtouch() -> Ability {
-    Ability::static_ability(NewStaticAbility::deathtouch()).with_text("Deathtouch")
+    Ability::static_ability(NewStaticAbility::deathtouch())
 }
 
 pub fn lifelink() -> Ability {
-    Ability::static_ability(NewStaticAbility::lifelink()).with_text("Lifelink")
+    Ability::static_ability(NewStaticAbility::lifelink())
 }
 
 pub fn vigilance() -> Ability {
-    Ability::static_ability(NewStaticAbility::vigilance()).with_text("Vigilance")
+    Ability::static_ability(NewStaticAbility::vigilance())
 }
 
 pub fn trample() -> Ability {
-    Ability::static_ability(NewStaticAbility::trample()).with_text("Trample")
+    Ability::static_ability(NewStaticAbility::trample())
 }
 
 pub fn haste() -> Ability {
-    Ability::static_ability(NewStaticAbility::haste()).with_text("Haste")
+    Ability::static_ability(NewStaticAbility::haste())
 }
 
 pub fn reach() -> Ability {
-    Ability::static_ability(NewStaticAbility::reach()).with_text("Reach")
+    Ability::static_ability(NewStaticAbility::reach())
 }
 
 pub fn defender() -> Ability {
-    Ability::static_ability(NewStaticAbility::defender()).with_text("Defender")
+    Ability::static_ability(NewStaticAbility::defender())
 }
 
 pub fn hexproof() -> Ability {
-    Ability::static_ability(NewStaticAbility::hexproof()).with_text("Hexproof")
+    Ability::static_ability(NewStaticAbility::hexproof())
 }
 
 pub fn indestructible() -> Ability {
-    Ability::static_ability(NewStaticAbility::indestructible()).with_text("Indestructible")
+    Ability::static_ability(NewStaticAbility::indestructible())
 }
 
 pub fn menace() -> Ability {
-    Ability::static_ability(NewStaticAbility::menace()).with_text("Menace")
+    Ability::static_ability(NewStaticAbility::menace())
 }
 
 pub fn flash() -> Ability {
-    Ability::static_ability(NewStaticAbility::flash()).with_text("Flash")
+    Ability::static_ability(NewStaticAbility::flash())
 }
 
 pub fn etb_trigger(effects: impl Into<ResolutionProgram>) -> Ability {

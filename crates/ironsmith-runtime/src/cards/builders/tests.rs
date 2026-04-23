@@ -645,7 +645,7 @@ fn test_builder_sunburst_creature_uses_plus_one_counters() {
         .sunburst()
         .build();
 
-    assert_eq!(def.abilities.len(), 1);
+    assert_eq!(def.abilities.len(), 2);
     let debug = format!("{:?}", def.abilities);
     assert!(
         debug.contains("EntersWithCounters"),
@@ -668,7 +668,7 @@ fn test_builder_sunburst_noncreature_uses_charge_counters() {
         .sunburst()
         .build();
 
-    assert_eq!(def.abilities.len(), 1);
+    assert_eq!(def.abilities.len(), 2);
     let debug = format!("{:?}", def.abilities);
     assert!(
         debug.contains("EntersWithCounters"),

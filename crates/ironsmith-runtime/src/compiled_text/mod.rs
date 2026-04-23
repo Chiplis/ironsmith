@@ -31,7 +31,6 @@ pub use self::debug_safe::debug_compiled_lines;
 pub use self::debug_safe::unprocessed_compiled_lines;
 pub(crate) use self::normalize_common::describe_value;
 pub use self::oracle_style::canonical_compiled_lines;
-pub use self::oracle_style::normalized_oracle_lines;
 pub use self::render_effects::compile_effect_list;
 
 #[cfg(test)]

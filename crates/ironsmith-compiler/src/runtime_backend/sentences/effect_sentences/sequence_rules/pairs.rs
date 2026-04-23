@@ -8,8 +8,7 @@ use super::super::dispatch_entry::{
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryBottomOrderAst,
     ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
-    TargetAst,
-    ZoneReplacementDurationAst,
+    TargetAst, ZoneReplacementDurationAst,
 };
 use crate::effect::Value;
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::contains_word_sequence;
@@ -146,10 +145,11 @@ pub(super) fn parse_look_at_top_then_put_one_hand_other_bottom(
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let words = sentence_words(&second_tokens);
-    let starts_with_hand_choice = slice_starts_with(
-        &words,
-        &["put", "one", "of", "them", "into", "your", "hand"],
-    ) || slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
+    let starts_with_hand_choice =
+        slice_starts_with(
+            &words,
+            &["put", "one", "of", "them", "into", "your", "hand"],
+        ) || slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
     if !starts_with_hand_choice {
         return Ok(None);
     }

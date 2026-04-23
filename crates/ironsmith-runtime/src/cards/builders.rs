@@ -219,7 +219,6 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
         return None;
     }
 
-    let _ = triggered;
     let trigger_display = triggered.trigger.display().to_ascii_lowercase();
     let is_delayed_step_trigger = trigger_display.contains("beginning of")
         && (trigger_display.contains("upkeep")
@@ -1589,12 +1588,12 @@ impl CardDefinitionBuilder {
             KeywordAction::Overload(cost) => self.overload(cost),
             KeywordAction::Spectacle(cost) => self.spectacle(cost),
             KeywordAction::Foretell(cost) => self.foretell(cost),
-            KeywordAction::Echo { total_cost, text } => self.echo(total_cost, text),
+            KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
             KeywordAction::CumulativeUpkeep {
                 mana_symbols_per_counter,
                 life_per_counter,
-                text,
-            } => self.cumulative_upkeep(mana_symbols_per_counter, life_per_counter, text),
+                ..
+            } => self.cumulative_upkeep(mana_symbols_per_counter, life_per_counter),
             KeywordAction::Casualty(power) => self.casualty(power),
             KeywordAction::Conspire => self.conspire(),
             KeywordAction::Devour(multiplier) => self.devour(multiplier),
@@ -2105,7 +2104,7 @@ impl CardDefinitionBuilder {
     ///
     /// Example: `ward(TotalCost::mana("{3}"))` for "Ward {3}"
     pub fn ward(self, cost: TotalCost) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::ward(cost)).with_text("Ward"))
+        self.with_ability(Ability::static_ability(StaticAbility::ward(cost)))
     }
 
     /// Add ward with a generic mana cost.
@@ -2135,17 +2134,17 @@ impl CardDefinitionBuilder {
 
     /// Add shroud.
     pub fn shroud(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::shroud()).with_text("Shroud"))
+        self.with_ability(Ability::static_ability(StaticAbility::shroud()))
     }
 
     /// Add wither.
     pub fn wither(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::wither()).with_text("Wither"))
+        self.with_ability(Ability::static_ability(StaticAbility::wither()))
     }
 
     /// Add infect.
     pub fn infect(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::infect()).with_text("Infect"))
+        self.with_ability(Ability::static_ability(StaticAbility::infect()))
     }
 
     /// Add undying.
@@ -2261,13 +2260,10 @@ impl CardDefinitionBuilder {
     /// Prowess means "Whenever you cast a noncreature spell, this creature gets +1/+1 until
     /// end of turn."
     pub fn prowess(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::spell_cast(Some(ObjectFilter::noncreature_spell()), PlayerFilter::You),
-                vec![Effect::pump(1, 1, ChooseSpec::Source, Until::EndOfTurn)],
-            )
-            .with_text("Prowess"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::spell_cast(Some(ObjectFilter::noncreature_spell()), PlayerFilter::You),
+            vec![Effect::pump(1, 1, ChooseSpec::Source, Until::EndOfTurn)],
+        ))
     }
 
     /// Add exalted.
@@ -2276,38 +2272,31 @@ impl CardDefinitionBuilder {
     /// until end of turn."
     pub fn exalted(self) -> Self {
         let attacker_tag = "exalted_attacker";
-        self.with_ability(
-            Ability::triggered(
-                Trigger::attacks_alone(ObjectFilter::creature().you_control()),
-                vec![
-                    Effect::tag_triggering_object(attacker_tag),
-                    Effect::pump(
-                        1,
-                        1,
-                        ChooseSpec::Tagged(attacker_tag.into()),
-                        Until::EndOfTurn,
-                    ),
-                ],
-            )
-            .with_text("Exalted"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::attacks_alone(ObjectFilter::creature().you_control()),
+            vec![
+                Effect::tag_triggering_object(attacker_tag),
+                Effect::pump(
+                    1,
+                    1,
+                    ChooseSpec::Tagged(attacker_tag.into()),
+                    Until::EndOfTurn,
+                ),
+            ],
+        ))
     }
 
     /// Add toxic N.
     ///
     /// Toxic N means "Players dealt combat damage by this creature also get N poison counters."
     pub fn toxic(self, amount: u32) -> Self {
-        let text = format!("Toxic {amount}");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_deals_combat_damage_to_player(),
-                vec![Effect::poison_counters_player(
-                    amount as i32,
-                    PlayerFilter::DamagedPlayer,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_deals_combat_damage_to_player(),
+            vec![Effect::poison_counters_player(
+                amount as i32,
+                PlayerFilter::DamagedPlayer,
+            )],
+        ))
     }
 
     /// Add battle cry.
@@ -2317,13 +2306,10 @@ impl CardDefinitionBuilder {
     pub fn battle_cry(self) -> Self {
         let mut filter = ObjectFilter::creature().you_control().other();
         filter.attacking = true;
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_attacks(),
-                vec![Effect::pump_all(filter, 1, 0, Until::EndOfTurn)],
-            )
-            .with_text("Battle cry"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks(),
+            vec![Effect::pump_all(filter, 1, 0, Until::EndOfTurn)],
+        ))
     }
 
     /// Add melee.
@@ -2331,13 +2317,10 @@ impl CardDefinitionBuilder {
     /// Melee means "Whenever this creature attacks, it gets +1/+1 until end of
     /// turn for each opponent you attacked this combat."
     pub fn melee(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_attacks(),
-                vec![Effect::new(crate::effects::MeleeEffect::new())],
-            )
-            .with_text("Melee"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks(),
+            vec![Effect::new(crate::effects::MeleeEffect::new())],
+        ))
     }
 
     /// Add dethrone.
@@ -2345,13 +2328,10 @@ impl CardDefinitionBuilder {
     /// Dethrone means "Whenever this creature attacks the player with the most life
     /// or tied for most life, put a +1/+1 counter on it."
     pub fn dethrone(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_attacks_player_with_most_life(),
-                vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
-            )
-            .with_text("Dethrone"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks_player_with_most_life(),
+            vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+        ))
     }
 
     /// Add evolve.
@@ -2359,13 +2339,10 @@ impl CardDefinitionBuilder {
     /// Evolve means "Whenever a creature enters under your control, if that creature has
     /// greater power or toughness than this creature, put a +1/+1 counter on this creature."
     pub fn evolve(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
-                vec![Effect::evolve_source()],
-            )
-            .with_text("Evolve"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
+            vec![Effect::evolve_source()],
+        ))
     }
 
     /// Add mentor.
@@ -2395,16 +2372,13 @@ impl CardDefinitionBuilder {
     /// Training means "Whenever this creature attacks with another creature with greater power,
     /// put a +1/+1 counter on this creature."
     pub fn training(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_attacks_with_greater_power(),
-                vec![
-                    Effect::plus_one_counters(1, ChooseSpec::Source),
-                    Effect::emit_keyword_action(crate::events::KeywordActionKind::Train, 1),
-                ],
-            )
-            .with_text("Training"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks_with_greater_power(),
+            vec![
+                Effect::plus_one_counters(1, ChooseSpec::Source),
+                Effect::emit_keyword_action(crate::events::KeywordActionKind::Train, 1),
+            ],
+        ))
     }
 
     /// Add renown N.
@@ -2412,14 +2386,10 @@ impl CardDefinitionBuilder {
     /// Renown N means "When this creature deals combat damage to a player, if it isn't renowned,
     /// put N +1/+1 counters on it and it becomes renowned."
     pub fn renown(self, amount: u32) -> Self {
-        let text = format!("Renown {amount}");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_deals_combat_damage_to_player(),
-                vec![Effect::renown_source(amount)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_deals_combat_damage_to_player(),
+            vec![Effect::renown_source(amount)],
+        ))
     }
 
     /// Add soulbond.
@@ -2427,13 +2397,10 @@ impl CardDefinitionBuilder {
     /// Soulbond means "You may pair this creature with another unpaired creature
     /// when either enters. They remain paired while you control both."
     pub fn soulbond(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
-                vec![Effect::new(crate::effects::SoulbondPairEffect::new())],
-            )
-            .with_text("Soulbond"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::enters_battlefield(ObjectFilter::creature().you_control(), None),
+            vec![Effect::new(crate::effects::SoulbondPairEffect::new())],
+        ))
     }
 
     /// Add soulshift N.
@@ -2587,13 +2554,12 @@ impl CardDefinitionBuilder {
     /// - This permanent enters with an internal Echo counter.
     /// - At the beginning of each upkeep, remove one Echo counter from this permanent.
     /// - If a counter was removed this way, pay the echo cost or sacrifice this permanent.
-    pub fn echo(self, total_cost: TotalCost, text: String) -> Self {
+    pub fn echo(self, total_cost: TotalCost) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters(CounterType::Echo, 1))
-                .with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters(CounterType::Echo, 1),
+        ))
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
@@ -2628,7 +2594,6 @@ impl CardDefinitionBuilder {
         self,
         mana_symbols_per_counter: Vec<ManaSymbol>,
         life_per_counter: u32,
-        _text: String,
     ) -> Self {
         let age_count = Value::CountersOnSource(CounterType::Age);
         let life = scale_value(age_count, life_per_counter);
@@ -2803,14 +2768,10 @@ impl CardDefinitionBuilder {
     /// Devour means "As this creature enters, you may sacrifice any number of creatures.
     /// This creature enters with N times that many +1/+1 counters on it."
     pub fn devour(self, multiplier: u32) -> Self {
-        let text = format!("Devour {multiplier}");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::devour(multiplier)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::devour(multiplier)],
+        ))
     }
 
     /// Add ravenous.
@@ -2821,13 +2782,9 @@ impl CardDefinitionBuilder {
         use crate::effect::Value;
         use crate::object::CounterType;
 
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters_value(
-                CounterType::PlusOnePlusOne,
-                Value::X,
-            ))
-            .with_text("Ravenous"),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters_value(CounterType::PlusOnePlusOne, Value::X),
+        ))
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_enters_battlefield(),
@@ -2963,10 +2920,10 @@ impl CardDefinitionBuilder {
                 Until::EndOfTurn,
             ),
         ];
-        self.with_ability(
-            Ability::triggered(Trigger::this_attacks(), vec![Effect::may(effects)])
-                .with_text("Enlist"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks(),
+            vec![Effect::may(effects)],
+        ))
     }
 
     /// Add undaunted.
@@ -2979,7 +2936,6 @@ impl CardDefinitionBuilder {
         );
         self.with_ability(
             Ability::static_ability(StaticAbility::new(reduction))
-                .with_text("Undaunted")
                 .in_zones(vec![Zone::Stack, Zone::Hand]),
         )
     }
@@ -3042,13 +2998,10 @@ impl CardDefinitionBuilder {
             },
         ];
 
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::choose_one(modes)],
-            )
-            .with_text("Riot"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::choose_one(modes)],
+        ))
     }
 
     /// Add unleash.
@@ -3056,16 +3009,13 @@ impl CardDefinitionBuilder {
     /// Unleash means "You may have this creature enter with a +1/+1 counter on it.
     /// It can't block as long as it has a +1/+1 counter on it."
     pub fn unleash(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::may_single(Effect::plus_one_counters(
-                    1,
-                    ChooseSpec::Source,
-                ))],
-            )
-            .with_text("Unleash"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::may_single(Effect::plus_one_counters(
+                1,
+                ChooseSpec::Source,
+            ))],
+        ))
         .with_ability(Ability::static_ability(StaticAbility::unleash()))
     }
 
@@ -3074,14 +3024,14 @@ impl CardDefinitionBuilder {
     /// Partner is a deck-construction ability used in Commander variants.
     /// It has no battlefield rules impact in this runtime.
     pub fn partner(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::partner()).with_text("Partner"))
+        self.with_ability(Ability::static_ability(StaticAbility::partner()))
     }
 
     /// Add assist.
     ///
     /// Assist is relevant in multiplayer casting. In 1v1 it has no gameplay impact.
     pub fn assist(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::assist()).with_text("Assist"))
+        self.with_ability(Ability::static_ability(StaticAbility::assist()))
     }
 
     /// Add split second.
@@ -3090,9 +3040,7 @@ impl CardDefinitionBuilder {
     /// or activate abilities that aren't mana abilities."
     pub fn split_second(self) -> Self {
         self.with_ability(
-            Ability::static_ability(StaticAbility::split_second())
-                .in_zones(vec![Zone::Stack])
-                .with_text("Split second"),
+            Ability::static_ability(StaticAbility::split_second()).in_zones(vec![Zone::Stack]),
         )
     }
 
@@ -3104,9 +3052,7 @@ impl CardDefinitionBuilder {
     /// random order."
     pub fn cascade(self) -> Self {
         self.with_ability(
-            Ability::static_ability(StaticAbility::cascade())
-                .in_zones(vec![Zone::Stack])
-                .with_text("Cascade"),
+            Ability::static_ability(StaticAbility::cascade()).in_zones(vec![Zone::Stack]),
         )
     }
 
@@ -3117,9 +3063,7 @@ impl CardDefinitionBuilder {
     /// its mana cost."
     pub fn rebound(self) -> Self {
         self.with_ability(
-            Ability::static_ability(StaticAbility::rebound())
-                .in_zones(vec![Zone::Stack])
-                .with_text("Rebound"),
+            Ability::static_ability(StaticAbility::rebound()).in_zones(vec![Zone::Stack]),
         )
     }
 
@@ -3142,13 +3086,12 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
             "Sunburst",
         )))
-        .with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters_value(
+        .with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters_value(
                 counter_type,
                 Value::ColorsOfManaSpentToCastThisSpell,
-            ))
-            .with_text("Sunburst"),
-        )
+            ),
+        ))
     }
 
     /// Add fading N.
@@ -3157,14 +3100,9 @@ impl CardDefinitionBuilder {
     /// At the beginning of your upkeep, remove a fade counter from it.
     /// If you can't, sacrifice it."
     pub fn fading(self, amount: u32) -> Self {
-        let text = format!("Fading {amount}");
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters(
-                CounterType::Fade,
-                amount,
-            ))
-            .with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters(CounterType::Fade, amount),
+        ))
         .with_ability(Ability::triggered(
             Trigger::beginning_of_upkeep(PlayerFilter::You),
             vec![Effect::remove_counters(
@@ -3192,20 +3130,11 @@ impl CardDefinitionBuilder {
     /// At the beginning of your upkeep, remove a time counter from it.
     /// When the last is removed, sacrifice it."
     pub fn vanishing(self, amount: u32) -> Self {
-        let text = if amount == 0 {
-            "Vanishing".to_string()
-        } else {
-            format!("Vanishing {amount}")
-        };
         let mut builder = self;
         if amount > 0 {
-            builder = builder.with_ability(
-                Ability::static_ability(StaticAbility::enters_with_counters(
-                    CounterType::Time,
-                    amount,
-                ))
-                .with_text(&text),
-            );
+            builder = builder.with_ability(Ability::static_ability(
+                StaticAbility::enters_with_counters(CounterType::Time, amount),
+            ));
         }
         builder
             .with_ability(Ability::triggered(
@@ -3234,9 +3163,9 @@ impl CardDefinitionBuilder {
     /// it can grant the abilities printed below it.
     pub fn backup(self, amount: u32) -> Self {
         let text = format!("Backup {amount}");
-        self.with_ability(
-            Ability::static_ability(StaticAbility::keyword_marker(text.clone())).with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+            text.clone(),
+        )))
     }
 
     /// Add cipher as a placeholder printed ability.
@@ -3244,9 +3173,9 @@ impl CardDefinitionBuilder {
     /// This is finalized into a resolution add-on after the full definition has
     /// been built, so generated definitions do not rely on a marker static ability.
     pub fn cipher(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::keyword_marker("Cipher")).with_text("Cipher"),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+            "Cipher",
+        )))
     }
 
     /// Add modular N.
@@ -3254,7 +3183,6 @@ impl CardDefinitionBuilder {
     /// Modular means "This creature enters with N +1/+1 counters on it. When it dies,
     /// you may put its +1/+1 counters on target artifact creature."
     pub fn modular(self, amount: u32) -> Self {
-        let text = format!("Modular {amount}");
         let target = ChooseSpec::target(ChooseSpec::Object(
             ObjectFilter::default()
                 .with_all_type(CardType::Artifact)
@@ -3269,13 +3197,9 @@ impl CardDefinitionBuilder {
             Some(CounterType::PlusOnePlusOne),
         );
 
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters(
-                CounterType::PlusOnePlusOne,
-                amount,
-            ))
-            .with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, amount),
+        ))
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_dies(),
@@ -3315,13 +3239,12 @@ impl CardDefinitionBuilder {
             Some(CounterType::PlusOnePlusOne),
         );
 
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters_value(
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters_value(
                 CounterType::PlusOnePlusOne,
                 Value::ColorsOfManaSpentToCastThisSpell,
-            ))
-            .with_text("Modular—Sunburst"),
-        )
+            ),
+        ))
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_dies(),
@@ -3345,16 +3268,11 @@ impl CardDefinitionBuilder {
     /// Graft means "This creature enters with N +1/+1 counters on it. Whenever another
     /// creature enters, you may move a +1/+1 counter from this creature onto it."
     pub fn graft(self, amount: u32) -> Self {
-        let text = format!("Graft {amount}");
         let entered_tag = "graft_entered_creature";
 
-        self.with_ability(
-            Ability::static_ability(StaticAbility::enters_with_counters(
-                CounterType::PlusOnePlusOne,
-                amount,
-            ))
-            .with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::enters_with_counters(CounterType::PlusOnePlusOne, amount),
+        ))
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::enters_battlefield(ObjectFilter::creature().other(), None),
@@ -3379,16 +3297,13 @@ impl CardDefinitionBuilder {
     /// Ingest means "Whenever this creature deals combat damage to a player,
     /// that player exiles the top card of their library."
     pub fn ingest(self) -> Self {
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_deals_combat_damage_to_player(),
-                vec![Effect::exile_top_of_library_player(
-                    1,
-                    PlayerFilter::DamagedPlayer,
-                )],
-            )
-            .with_text("Ingest"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_deals_combat_damage_to_player(),
+            vec![Effect::exile_top_of_library_player(
+                1,
+                PlayerFilter::DamagedPlayer,
+            )],
+        ))
     }
 
     /// Add storm.
@@ -3417,21 +3332,19 @@ impl CardDefinitionBuilder {
 
     /// Add fear.
     pub fn fear(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::fear()).with_text("Fear"))
+        self.with_ability(Ability::static_ability(StaticAbility::fear()))
     }
 
     /// Add intimidate.
     pub fn intimidate(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::intimidate()).with_text("Intimidate"),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::intimidate()))
     }
 
     /// Add skulk.
     ///
     /// Skulk means "This creature can't be blocked by creatures with greater power."
     pub fn skulk(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::skulk()).with_text("Skulk"))
+        self.with_ability(Ability::static_ability(StaticAbility::skulk()))
     }
 
     /// Add afterlife N.
@@ -3439,17 +3352,13 @@ impl CardDefinitionBuilder {
     /// Afterlife means "When this creature dies, create N 1/1 white and black Spirit creature
     /// tokens with flying."
     pub fn afterlife(self, amount: u32) -> Self {
-        let text = format!("Afterlife {amount}");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_dies(),
-                vec![Effect::create_tokens(
-                    Self::afterlife_spirit_token(),
-                    amount,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_dies(),
+            vec![Effect::create_tokens(
+                Self::afterlife_spirit_token(),
+                amount,
+            )],
+        ))
     }
 
     /// Add fabricate N.
@@ -3458,7 +3367,6 @@ impl CardDefinitionBuilder {
     /// • Put N +1/+1 counters on it.
     /// • Create N 1/1 colorless Servo artifact creature tokens."
     pub fn fabricate(self, amount: u32) -> Self {
-        let text = format!("Fabricate {amount}");
         let put_description = if amount == 1 {
             "Put a +1/+1 counter on this creature".to_string()
         } else {
@@ -3480,13 +3388,10 @@ impl CardDefinitionBuilder {
             },
         ];
 
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::choose_one(modes)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![Effect::choose_one(modes)],
+        ))
     }
 
     /// Add "For Mirrodin!"
@@ -3494,17 +3399,13 @@ impl CardDefinitionBuilder {
     /// "When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it."
     pub fn for_mirrodin(self) -> Self {
         let created_tag = TagKey::from("for_mirrodin_created");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![
-                    Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
-                        .tag(created_tag.clone()),
-                    Effect::attach_to(ChooseSpec::Tagged(created_tag)),
-                ],
-            )
-            .with_text("For Mirrodin!"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![
+                Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1).tag(created_tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
     }
 
     /// Add living weapon.
@@ -3512,17 +3413,13 @@ impl CardDefinitionBuilder {
     /// "When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it."
     pub fn living_weapon(self) -> Self {
         let created_tag = TagKey::from("living_weapon_created");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![
-                    Effect::create_tokens(Self::living_weapon_germ_token(), 1)
-                        .tag(created_tag.clone()),
-                    Effect::attach_to(ChooseSpec::Tagged(created_tag)),
-                ],
-            )
-            .with_text("Living weapon"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![
+                Effect::create_tokens(Self::living_weapon_germ_token(), 1).tag(created_tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
     }
 
     /// Add myriad.
@@ -3533,27 +3430,22 @@ impl CardDefinitionBuilder {
     pub fn myriad(self) -> Self {
         let opponent_other_than_defending =
             PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_attacks(),
-                vec![Effect::for_players(
-                    opponent_other_than_defending,
-                    vec![Effect::may(vec![Effect::new(
-                        crate::effects::CreateTokenCopyEffect::new(
-                            ChooseSpec::Source,
-                            1,
-                            PlayerFilter::You,
-                        )
-                        .enters_tapped(true)
-                        .attacking_player_or_planeswalker_controlled_by(
-                            PlayerFilter::IteratedPlayer,
-                        )
-                        .exile_at_eoc(true),
-                    )])],
-                )],
-            )
-            .with_text("Myriad"),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks(),
+            vec![Effect::for_players(
+                opponent_other_than_defending,
+                vec![Effect::may(vec![Effect::new(
+                    crate::effects::CreateTokenCopyEffect::new(
+                        ChooseSpec::Source,
+                        1,
+                        PlayerFilter::You,
+                    )
+                    .enters_tapped(true)
+                    .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer)
+                    .exile_at_eoc(true),
+                )])],
+            )],
+        ))
     }
 
     /// Add mobilize N.
@@ -3562,7 +3454,6 @@ impl CardDefinitionBuilder {
     /// attacking 1/1 red Warrior creature tokens. Sacrifice them at the
     /// beginning of the next end step."
     pub fn mobilize(self, amount: u32) -> Self {
-        let text = format!("Mobilize {amount}");
         let effect = crate::effects::CreateTokenEffect::new(
             Self::mobilize_warrior_token(),
             amount,
@@ -3572,21 +3463,20 @@ impl CardDefinitionBuilder {
         .attacking()
         .sacrifice_at_next_end_step();
 
-        self.with_ability(
-            Ability::triggered(Trigger::this_attacks(), vec![Effect::new(effect)]).with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks(),
+            vec![Effect::new(effect)],
+        ))
     }
 
     /// Add shadow.
     pub fn shadow(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::shadow()).with_text("Shadow"))
+        self.with_ability(Ability::static_ability(StaticAbility::shadow()))
     }
 
     /// Add horsemanship.
     pub fn horsemanship(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::horsemanship()).with_text("Horsemanship"),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::horsemanship()))
     }
 
     /// Add bushido N.
@@ -3595,19 +3485,15 @@ impl CardDefinitionBuilder {
     /// end of turn."
     pub fn bushido(self, amount: u32) -> Self {
         use crate::effect::Until;
-        let text = format!("Bushido {amount}");
-        self.with_ability(
-            Ability::triggered(
-                Trigger::this_blocks_or_becomes_blocked(),
-                vec![Effect::pump(
-                    amount,
-                    amount,
-                    ChooseSpec::Source,
-                    Until::EndOfTurn,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::triggered(
+            Trigger::this_blocks_or_becomes_blocked(),
+            vec![Effect::pump(
+                amount,
+                amount,
+                ChooseSpec::Source,
+                Until::EndOfTurn,
+            )],
+        ))
     }
 
     /// Add bloodthirst N.
@@ -3615,10 +3501,7 @@ impl CardDefinitionBuilder {
     /// Bloodthirst means "If an opponent was dealt damage this turn, this creature enters
     /// the battlefield with N +1/+1 counters on it."
     pub fn bloodthirst(self, amount: u32) -> Self {
-        let text = format!("Bloodthirst {amount}");
-        self.with_ability(
-            Ability::static_ability(StaticAbility::bloodthirst(amount)).with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::bloodthirst(amount)))
     }
 
     /// Add rampage N.
@@ -3626,51 +3509,42 @@ impl CardDefinitionBuilder {
     /// Rampage means "Whenever this creature becomes blocked, it gets +N/+N until end of turn
     /// for each creature blocking it beyond the first."
     pub fn rampage(self, amount: u32) -> Self {
-        let text = format!("Rampage {amount}");
-        self.with_ability(
-            Ability::static_ability(StaticAbility::keyword_marker(format!("rampage {amount}")))
-                .with_text(&text),
-        )
-        .with_ability(
-            Ability::triggered(
-                Trigger::this_becomes_blocked(),
-                vec![Effect::pump(
-                    Value::EventValue(EventValueSpec::BlockersBeyondFirst {
-                        multiplier: amount as i32,
-                    }),
-                    Value::EventValue(EventValueSpec::BlockersBeyondFirst {
-                        multiplier: amount as i32,
-                    }),
-                    ChooseSpec::Source,
-                    Until::EndOfTurn,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+            format!("rampage {amount}"),
+        )))
+        .with_ability(Ability::triggered(
+            Trigger::this_becomes_blocked(),
+            vec![Effect::pump(
+                Value::EventValue(EventValueSpec::BlockersBeyondFirst {
+                    multiplier: amount as i32,
+                }),
+                Value::EventValue(EventValueSpec::BlockersBeyondFirst {
+                    multiplier: amount as i32,
+                }),
+                ChooseSpec::Source,
+                Until::EndOfTurn,
+            )],
+        ))
     }
 
     /// Add unblockable (can't be blocked).
     pub fn unblockable(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::unblockable())
-                .with_text("This creature can't be blocked."),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::unblockable()))
     }
 
     /// Add "may assign combat damage as though unblocked" (Thorn Elemental ability).
     pub fn may_assign_damage_as_unblocked(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::may_assign_damage_as_unblocked())
-                .with_text("You may have ~ assign its combat damage as though it weren't blocked."),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::may_assign_damage_as_unblocked(),
+        ))
     }
 
     /// Add "shuffle into library from graveyard" (Darksteel Colossus ability).
     pub fn shuffle_into_library_from_graveyard(self) -> Self {
         use crate::zone::Zone;
         self.with_ability(
-            Ability::static_ability(StaticAbility::shuffle_into_library_from_graveyard())
-                .in_zones(vec![
+            Ability::static_ability(StaticAbility::shuffle_into_library_from_graveyard()).in_zones(
+                vec![
                     Zone::Battlefield,
                     Zone::Stack,
                     Zone::Hand,
@@ -3678,8 +3552,8 @@ impl CardDefinitionBuilder {
                     Zone::Graveyard,
                     Zone::Exile,
                     Zone::Command,
-                ])
-                .with_text("If ~ would be put into a graveyard from anywhere, reveal it and shuffle it into its owner's library instead."),
+                ],
+            ),
         )
     }
 
@@ -3687,43 +3561,38 @@ impl CardDefinitionBuilder {
 
     /// Add affinity for artifacts (cost reduction based on artifacts you control).
     pub fn affinity_for_artifacts(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::affinity_for_artifacts())
-                .with_text("Affinity for artifacts"),
-        )
+        self.with_ability(Ability::static_ability(
+            StaticAbility::affinity_for_artifacts(),
+        ))
     }
 
     /// Add delve (exile cards from graveyard to pay generic mana).
     pub fn delve(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::delve()).with_text("Delve"))
+        self.with_ability(Ability::static_ability(StaticAbility::delve()))
     }
 
     /// Add convoke (tap creatures to help pay for this spell).
     pub fn convoke(self) -> Self {
-        self.with_ability(Ability::static_ability(StaticAbility::convoke()).with_text("Convoke"))
+        self.with_ability(Ability::static_ability(StaticAbility::convoke()))
     }
 
     /// Add improvise (tap artifacts to pay generic mana).
     pub fn improvise(self) -> Self {
-        self.with_ability(
-            Ability::static_ability(StaticAbility::improvise()).with_text("Improvise"),
-        )
+        self.with_ability(Ability::static_ability(StaticAbility::improvise()))
     }
 
     /// Add protection from a color.
     pub fn protection_from(self, colors: ColorSet) -> Self {
         use crate::ability::ProtectionFrom;
         let protection = StaticAbility::protection(ProtectionFrom::Color(colors));
-        let text = protection.display();
-        self.with_ability(Ability::static_ability(protection).with_text(&text))
+        self.with_ability(Ability::static_ability(protection))
     }
 
     /// Add protection from a card type.
     pub fn protection_from_card_type(self, card_type: CardType) -> Self {
         use crate::ability::ProtectionFrom;
         let protection = StaticAbility::protection(ProtectionFrom::CardType(card_type));
-        let text = protection.display();
-        self.with_ability(Ability::static_ability(protection).with_text(&text))
+        self.with_ability(Ability::static_ability(protection))
     }
 
     /// Add protection from a creature subtype (e.g., "Protection from Humans").
@@ -3732,8 +3601,7 @@ impl CardDefinitionBuilder {
         let protection = StaticAbility::protection(ProtectionFrom::Permanents(
             ObjectFilter::default().with_subtype(subtype),
         ));
-        let text = protection.display();
-        self.with_ability(Ability::static_ability(protection).with_text(&text))
+        self.with_ability(Ability::static_ability(protection))
     }
 
     // === Triggered ability shortcuts ===
@@ -4252,19 +4120,14 @@ mod delayed_trigger_finalization_tests {
                 .card_types(vec![CardType::Instant]);
         let mut definition = original_builder.clone().build();
         definition.spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::draw(1)]));
-        definition.abilities.push(
-            Ability::triggered(
-                Trigger::beginning_of_upkeep(PlayerFilter::You),
-                vec![Effect::unless_pays(
-                    vec![Effect::lose_the_game()],
-                    PlayerFilter::You,
-                    vec![ManaSymbol::Generic(2), ManaSymbol::Green, ManaSymbol::Green],
-                )],
-            )
-            .with_text(
-                "At the beginning of your next upkeep, pay {2}{G}{G}. If you don't, you lose the game.",
-            ),
-        );
+        definition.abilities.push(Ability::triggered(
+            Trigger::beginning_of_upkeep(PlayerFilter::You),
+            vec![Effect::unless_pays(
+                vec![Effect::lose_the_game()],
+                PlayerFilter::You,
+                vec![ManaSymbol::Generic(2), ManaSymbol::Green, ManaSymbol::Green],
+            )],
+        ));
 
         let finalized = finalize_definition(definition, &original_builder, "")
             .expect("definition should finalize");
@@ -4289,8 +4152,7 @@ mod delayed_trigger_finalization_tests {
         definition.spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::draw(1)]));
         definition.abilities.push(
             Ability::triggered(Trigger::you_cast_this_spell(), vec![Effect::draw(1)])
-                .in_zones(vec![Zone::Stack])
-                .with_text("When you cast this spell, draw a card."),
+                .in_zones(vec![Zone::Stack]),
         );
 
         let finalized = finalize_definition(definition, &original_builder, "")

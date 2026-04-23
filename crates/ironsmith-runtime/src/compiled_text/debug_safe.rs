@@ -7,8 +7,7 @@ use crate::text_cleanup::strip_parenthetical_text;
 /// renders abilities without source text, then applies only debug-safe
 /// normalization owned by this module.
 pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    let structured_def = debug_safe_surface_definition(def);
-    normalize_debug_safe_surface(&structured_def, def, ast_compiled_lines(&structured_def))
+    normalize_debug_safe_surface(def, def, ast_compiled_lines(def))
 }
 
 /// Render the structured compiled-text surface used for DB scoring.
@@ -38,9 +37,7 @@ pub(super) fn normalize_debug_safe_surface(
         .filter(|line| !line.is_empty())
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect::<Vec<_>>();
-    let same_is_true_compacted = compact_same_is_true_keyword_surface(provenance_def, normalized);
-    let without_suspend_intrinsics =
-        drop_suspend_keyword_intrinsic_lines(surface_def, same_is_true_compacted);
+    let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(surface_def, normalized);
     let merged_predicates = merge_adjacent_subject_predicate_lines(without_suspend_intrinsics);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
@@ -78,13 +75,6 @@ pub(super) fn normalize_debug_safe_surface(
         .filter(|line| !line.is_empty())
         .collect();
     normalize_debug_safe_line_sequences(provenance_def, final_lines)
-}
-
-fn compact_same_is_true_keyword_surface(
-    _provenance_def: &CardDefinition,
-    lines: Vec<String>,
-) -> Vec<String> {
-    lines
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {

@@ -2720,7 +2720,6 @@ pub(crate) fn parse_soulbond_shared_line(
             );
             return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
                 ability,
-                display,
             }]));
         }
 
@@ -2744,13 +2743,10 @@ pub(crate) fn parse_soulbond_shared_line(
             return Ok(Some(shared));
         }
 
-        if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
+        if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, .. }) =
             parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
         {
-            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
-                ability,
-                display,
-            }]));
+            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility { ability }]));
         }
 
         return Err(CardTextError::ParseError(format!(
@@ -3473,15 +3469,10 @@ pub(crate) fn parse_heterogeneous_granted_tail(
 
         if let Some(actions) = parse_granted_keyword_fragment(&segment) {
             reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-            if let [KeywordAction::CumulativeUpkeep { total_cost, text }] = actions.as_slice()
-            {
+            if let [KeywordAction::CumulativeUpkeep { total_cost, .. }] = actions.as_slice() {
                 parsed.granted_object_abilities.push((
                     ParsedAbility {
-                        ability: cumulative_upkeep_granted_ability(
-                            total_cost.clone(),
-                            text.clone(),
-                        )
-                        .into(),
+                        ability: cumulative_upkeep_granted_ability(total_cost.clone()).into(),
                         text: Some(display_text_for_tokens(&segment, false)),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),

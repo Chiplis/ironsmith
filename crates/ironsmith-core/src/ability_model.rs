@@ -231,11 +231,6 @@ where
         self
     }
 
-    pub fn with_text(self, text: &str) -> Self {
-        let _ = text;
-        self
-    }
-
     pub fn is_mana_ability(&self) -> bool {
         matches!(&self.kind, AbilityKind::Activated(a) if a.is_mana_ability())
     }

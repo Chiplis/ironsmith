@@ -313,9 +313,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Overload(cost) => self.overload(cost),
-            KeywordAction::Echo { total_cost, text } => self.echo(total_cost, text),
-            KeywordAction::CumulativeUpkeep { total_cost, text } => {
-                self.cumulative_upkeep(total_cost, text)
+            KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
+            KeywordAction::CumulativeUpkeep { total_cost, .. } => {
+                self.cumulative_upkeep(total_cost)
             }
             KeywordAction::Casualty(amount) => self.casualty(amount),
             KeywordAction::Conspire => self.conspire(),
@@ -346,38 +346,34 @@ impl CardDefinitionBuilder {
             KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
             KeywordAction::ProtectionFrom(colors) => self.protection_from(colors),
-            KeywordAction::ProtectionFromAllColors => self.with_ability(
-                crate::ability::Ability::static_ability(
+            KeywordAction::ProtectionFromAllColors => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::protection(
                         crate::ability::ProtectionFrom::AllColors,
                     ),
-                )
-                .with_text("Protection from all colors"),
-            ),
-            KeywordAction::ProtectionFromColorless => self.with_ability(
-                crate::ability::Ability::static_ability(
+                ))
+            }
+            KeywordAction::ProtectionFromColorless => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::protection(
                         crate::ability::ProtectionFrom::Colorless,
                     ),
-                )
-                .with_text("Protection from colorless"),
-            ),
-            KeywordAction::ProtectionFromEverything => self.with_ability(
-                crate::ability::Ability::static_ability(
+                ))
+            }
+            KeywordAction::ProtectionFromEverything => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::protection(
                         crate::ability::ProtectionFrom::Everything,
                     ),
-                )
-                .with_text("Protection from everything"),
-            ),
-            KeywordAction::ProtectionFromChosenPlayer => self.with_ability(
-                crate::ability::Ability::static_ability(
+                ))
+            }
+            KeywordAction::ProtectionFromChosenPlayer => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::protection(
                         crate::ability::ProtectionFrom::ChosenPlayer,
                     ),
-                )
-                .with_text("Protection from the chosen player"),
-            ),
+                ))
+            }
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -393,15 +389,12 @@ impl CardDefinitionBuilder {
                         matches!(card_type, CardType::Instant | CardType::Sorcery)
                     }) =>
             {
-                self.with_ability(
-                    crate::ability::Ability::static_ability(
-                        crate::static_abilities::StaticAbility::keyword_marker(format!(
-                            "Bolster {}",
-                            parse_standalone_bolster_marker(name).unwrap()
-                        )),
-                    )
-                    .with_text(name),
-                )
+                self.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_marker(format!(
+                        "Bolster {}",
+                        parse_standalone_bolster_marker(name).unwrap()
+                    )),
+                ))
             }
             KeywordAction::MarkerText(text) if text.eq_ignore_ascii_case("fuse") => self.has_fuse(),
             KeywordAction::MarkerText(text)
@@ -411,14 +404,11 @@ impl CardDefinitionBuilder {
                     }) =>
             {
                 let amount = parse_standalone_bolster_marker(&text).unwrap();
-                self.with_ability(
-                    crate::ability::Ability::static_ability(
-                        crate::static_abilities::StaticAbility::keyword_marker(format!(
-                            "Bolster {amount}"
-                        )),
-                    )
-                    .with_text(&text),
-                )
+                self.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::keyword_marker(format!(
+                        "Bolster {amount}"
+                    )),
+                ))
             }
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
@@ -429,17 +419,12 @@ impl CardDefinitionBuilder {
                     .unwrap_or_else(|| {
                         crate::static_abilities::StaticAbility::keyword_marker(text.clone())
                     });
-                self.with_ability(
-                    crate::ability::Ability::static_ability(static_ability).with_text(&text),
-                )
+                self.with_ability(crate::ability::Ability::static_ability(static_ability))
             }
-            other => self.with_ability(
-                crate::ability::Ability::triggered(
-                    crate::triggers::Trigger::custom("compiler-keyword", other.display_text()),
-                    crate::resolution::ResolutionProgram::default(),
-                )
-                .with_text(&other.display_text()),
-            ),
+            other => self.with_ability(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::custom("compiler-keyword", other.display_text()),
+                crate::resolution::ResolutionProgram::default(),
+            )),
         }
     }
 
@@ -499,164 +484,117 @@ impl CardDefinitionBuilder {
     }
 
     pub fn flying(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::flying(),
-            )
-            .with_text("Flying"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::flying(),
+        ))
     }
 
     pub fn defender(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::defender(),
-            )
-            .with_text("Defender"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::defender(),
+        ))
     }
 
     pub fn vigilance(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::vigilance(),
-            )
-            .with_text("Vigilance"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::vigilance(),
+        ))
     }
 
     pub fn prowess(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::prowess(),
-            )
-            .with_text("Prowess"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::prowess(),
+        ))
     }
 
     pub fn trample(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::trample(),
-            )
-            .with_text("Trample"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::trample(),
+        ))
     }
 
     pub fn lifelink(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::lifelink(),
-            )
-            .with_text("Lifelink"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::lifelink(),
+        ))
     }
 
     pub fn deathtouch(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::deathtouch(),
-            )
-            .with_text("Deathtouch"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::deathtouch(),
+        ))
     }
 
     pub fn haste(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::haste(),
-        ).with_text("Haste"))
+        ))
     }
 
     pub fn menace(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::menace(),
-            )
-            .with_text("Menace"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::menace(),
+        ))
     }
 
     pub fn reach(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::reach(),
-        ).with_text("Reach"))
+        ))
     }
 
     pub fn hexproof(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::hexproof(),
-            )
-            .with_text("Hexproof"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::hexproof(),
+        ))
     }
 
     pub fn indestructible(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::indestructible(),
-            )
-            .with_text("Indestructible"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::indestructible(),
+        ))
     }
 
     pub fn toxic(self, amount: u32) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_deals_combat_damage_to_player(),
-                vec![crate::effect::Effect::poison_counters_player(
-                    amount as i32,
-                    crate::target::PlayerFilter::DamagedPlayer,
-                )],
-            )
-            .with_text(&format!("Toxic {amount}")),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            vec![crate::effect::Effect::poison_counters_player(
+                amount as i32,
+                crate::target::PlayerFilter::DamagedPlayer,
+            )],
+        ))
     }
 
     pub fn ward_generic(self, amount: u32) -> Self {
         let mana = ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(amount as u8)]);
-        self.with_ability(
-            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::ward(
-                TotalCost::mana(mana),
-            ))
-            .with_text(&format!("Ward {{{amount}}}")),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::ward(TotalCost::mana(mana)),
+        ))
     }
 
     pub fn first_strike(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::first_strike(),
-            )
-            .with_text("First strike"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::first_strike(),
+        ))
     }
 
     pub fn double_strike(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::double_strike(),
-            )
-            .with_text("Double strike"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::double_strike(),
+        ))
     }
 
     pub fn afterlife(self, amount: u32) -> Self {
-        let text = format!("Afterlife {amount}");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_dies(),
-                vec![crate::effect::Effect::create_tokens(
-                    Self::afterlife_spirit_token(),
-                    amount,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_dies(),
+            vec![crate::effect::Effect::create_tokens(
+                Self::afterlife_spirit_token(),
+                amount,
+            )],
+        ))
     }
 
     pub fn fabricate(self, amount: u32) -> Self {
-        let text = format!("Fabricate {amount}");
         let put_description = if amount == 1 {
             "Put a +1/+1 counter on this creature".to_string()
         } else {
@@ -685,34 +623,28 @@ impl CardDefinitionBuilder {
             ),
         ];
 
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![crate::effect::Effect::choose_one(modes)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![crate::effect::Effect::choose_one(modes)],
+        ))
     }
 
     pub fn exalted(self) -> Self {
         let attacker_tag = crate::tag::TagKey::from("exalted_attacker");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::attacks_alone(
-                    crate::target::ObjectFilter::creature().you_control(),
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::attacks_alone(
+                crate::target::ObjectFilter::creature().you_control(),
+            ),
+            vec![
+                crate::effect::Effect::tag_triggering_object(attacker_tag.clone()),
+                crate::effect::Effect::pump(
+                    1,
+                    1,
+                    crate::target::ChooseSpec::Tagged(attacker_tag),
+                    crate::effect::Until::EndOfTurn,
                 ),
-                vec![
-                    crate::effect::Effect::tag_triggering_object(attacker_tag.clone()),
-                    crate::effect::Effect::pump(
-                        1,
-                        1,
-                        crate::target::ChooseSpec::Tagged(attacker_tag),
-                        crate::effect::Until::EndOfTurn,
-                    ),
-                ],
-            )
-            .with_text("Exalted"),
-        )
+            ],
+        ))
     }
 
     pub fn storm(self) -> Self {
@@ -745,65 +677,53 @@ impl CardDefinitionBuilder {
             .you_control()
             .other();
         filter.attacking = true;
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks(),
-                vec![crate::effect::Effect::for_each(
-                    filter,
-                    vec![crate::effect::Effect::pump(
-                        1,
-                        0,
-                        crate::target::ChooseSpec::Iterated,
-                        crate::effect::Until::EndOfTurn,
-                    )],
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            vec![crate::effect::Effect::for_each(
+                filter,
+                vec![crate::effect::Effect::pump(
+                    1,
+                    0,
+                    crate::target::ChooseSpec::Iterated,
+                    crate::effect::Until::EndOfTurn,
                 )],
-            )
-            .with_text("Battle cry"),
-        )
+            )],
+        ))
     }
 
     pub fn dethrone(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks_player_with_most_life(),
-                vec![crate::effect::Effect::put_counters(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    1,
-                    crate::target::ChooseSpec::Source,
-                )],
-            )
-            .with_text("Dethrone"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks_player_with_most_life(),
+            vec![crate::effect::Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                1,
+                crate::target::ChooseSpec::Source,
+            )],
+        ))
     }
 
     pub fn evolve(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::enters_battlefield(
-                    crate::target::ObjectFilter::creature().you_control(),
-                    None,
-                ),
-                vec![crate::effect::Effect::new(
-                    crate::effects::EvolveEffect::new(),
-                )],
-            )
-            .with_text("Evolve"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::enters_battlefield(
+                crate::target::ObjectFilter::creature().you_control(),
+                None,
+            ),
+            vec![crate::effect::Effect::new(
+                crate::effects::EvolveEffect::new(),
+            )],
+        ))
     }
 
     pub fn ingest(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_deals_combat_damage_to_player(),
-                vec![crate::effect::Effect::exile_top_of_library_player(
-                    1,
-                    crate::target::PlayerFilter::DamagedPlayer,
-                    "ingested",
-                    None,
-                )],
-            )
-            .with_text("Ingest"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            vec![crate::effect::Effect::exile_top_of_library_player(
+                1,
+                crate::target::PlayerFilter::DamagedPlayer,
+                "ingested",
+                None,
+            )],
+        ))
     }
 
     pub fn mentor(self) -> Self {
@@ -831,23 +751,20 @@ impl CardDefinitionBuilder {
     }
 
     pub fn training(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks_with_greater_power(),
-                vec![
-                    crate::effect::Effect::put_counters(
-                        crate::object::CounterType::PlusOnePlusOne,
-                        1,
-                        crate::target::ChooseSpec::Source,
-                    ),
-                    crate::effect::Effect::emit_keyword_action(
-                        crate::events::KeywordActionKind::Train,
-                        1,
-                    ),
-                ],
-            )
-            .with_text("Training"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks_with_greater_power(),
+            vec![
+                crate::effect::Effect::put_counters(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    1,
+                    crate::target::ChooseSpec::Source,
+                ),
+                crate::effect::Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::Train,
+                    1,
+                ),
+            ],
+        ))
     }
 
     pub fn enlist(self) -> Self {
@@ -870,13 +787,10 @@ impl CardDefinitionBuilder {
                 crate::effect::Until::EndOfTurn,
             ),
         ];
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks(),
-                vec![crate::effect::Effect::may(effects)],
-            )
-            .with_text("Enlist"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            vec![crate::effect::Effect::may(effects)],
+        ))
     }
 
     pub fn crew(
@@ -924,59 +838,48 @@ impl CardDefinitionBuilder {
                 vec![crate::effect::Effect::grant_object_ability_to_source(
                     crate::ability::Ability::static_ability(
                         crate::static_abilities::StaticAbility::haste(),
-                    )
-                    .with_text("Haste"),
+                    ),
                 )],
             ),
         ];
 
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![crate::effect::Effect::choose_one(modes)],
-            )
-            .with_text("Riot"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![crate::effect::Effect::choose_one(modes)],
+        ))
     }
 
     pub fn unleash(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![crate::effect::Effect::may(vec![
-                    crate::effect::Effect::put_counters(
-                        crate::object::CounterType::PlusOnePlusOne,
-                        1,
-                        crate::target::ChooseSpec::Source,
-                    ),
-                ])],
-            )
-            .with_text("Unleash"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![crate::effect::Effect::may(vec![
+                crate::effect::Effect::put_counters(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    1,
+                    crate::target::ChooseSpec::Source,
+                ),
+            ])],
+        ))
         .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::unleash(),
         ))
     }
 
     pub fn outlast(self, cost: ManaCost) -> Self {
-        let text = format!("Outlast {}", cost.to_oracle());
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
             crate::costs::Cost::tap(),
         ]);
 
-        self.with_ability(
-            crate::ability::Ability::activated_with_timing(
-                total_cost,
-                vec![crate::effect::Effect::put_counters(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    1,
-                    crate::target::ChooseSpec::Source,
-                )],
-                crate::ability::ActivationTiming::SorcerySpeed,
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::activated_with_timing(
+            total_cost,
+            vec![crate::effect::Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                1,
+                crate::target::ChooseSpec::Source,
+            )],
+            crate::ability::ActivationTiming::SorcerySpeed,
+        ))
     }
 
     pub fn scavenge(self, cost: ManaCost) -> Self {
@@ -1009,7 +912,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn unearth(self, cost: ManaCost) -> Self {
-        let text = format!("Unearth {}", cost.to_oracle());
         let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
 
         self.with_ability(
@@ -1018,13 +920,11 @@ impl CardDefinitionBuilder {
                 vec![crate::effect::Effect::unearth()],
                 crate::ability::ActivationTiming::SorcerySpeed,
             )
-            .in_zones(vec![crate::zone::Zone::Graveyard])
-            .with_text(&text),
+            .in_zones(vec![crate::zone::Zone::Graveyard]),
         )
     }
 
     pub fn ninjutsu(self, cost: ManaCost) -> Self {
-        let text = format!("Ninjutsu {}", cost.to_oracle());
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
             crate::costs::Cost::effect(crate::effect::Effect::new(
@@ -1038,35 +938,27 @@ impl CardDefinitionBuilder {
                 vec![crate::effect::Effect::ninjutsu()],
                 crate::ability::ActivationTiming::DuringCombat,
             )
-            .in_zones(vec![crate::zone::Zone::Hand])
-            .with_text(&text),
+            .in_zones(vec![crate::zone::Zone::Hand]),
         )
     }
 
     pub fn renown(self, amount: u32) -> Self {
-        let text = format!("Renown {amount}");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_deals_combat_damage_to_player(),
-                vec![crate::effect::Effect::renown_source(amount)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            vec![crate::effect::Effect::renown_source(amount)],
+        ))
     }
 
     pub fn soulbond(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::enters_battlefield(
-                    crate::target::ObjectFilter::creature().you_control(),
-                    None,
-                ),
-                vec![crate::effect::Effect::new(
-                    crate::effects::SoulbondPairEffect::new(),
-                )],
-            )
-            .with_text("Soulbond"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::enters_battlefield(
+                crate::target::ObjectFilter::creature().you_control(),
+                None,
+            ),
+            vec![crate::effect::Effect::new(
+                crate::effects::SoulbondPairEffect::new(),
+            )],
+        ))
     }
 
     pub fn soulshift(self, amount: u32) -> Self {
@@ -1093,21 +985,15 @@ impl CardDefinitionBuilder {
 
     pub fn backup(self, amount: u32) -> Self {
         let text = format!("Backup {amount}");
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::keyword_marker(text.clone()),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker(text.clone()),
+        ))
     }
 
     pub fn cipher(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::keyword_marker("Cipher"),
-            )
-            .with_text("Cipher"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker("Cipher"),
+        ))
     }
 
     pub fn dash(mut self, cost: ManaCost) -> Self {
@@ -1213,18 +1099,15 @@ impl CardDefinitionBuilder {
         self
     }
 
-    pub fn echo(self, total_cost: TotalCost, text: String) -> Self {
+    pub fn echo(self, total_cost: TotalCost) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::Echo,
-                    1.into(),
-                ),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::Echo,
+                1.into(),
+            ),
+        ))
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
@@ -1257,7 +1140,7 @@ impl CardDefinitionBuilder {
         })
     }
 
-    pub fn cumulative_upkeep(self, total_cost: TotalCost, _text: String) -> Self {
+    pub fn cumulative_upkeep(self, total_cost: TotalCost) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
         self.with_ability(crate::ability::Ability {
@@ -1284,7 +1167,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn casualty(self, power: u32) -> Self {
-        let text = format!("Casualty {power}");
         let mut creature_filter = crate::target::ObjectFilter::creature().you_control();
         creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
 
@@ -1305,8 +1187,7 @@ impl CardDefinitionBuilder {
                     ),
                 ])],
             )
-            .in_zones(vec![crate::zone::Zone::Stack])
-            .with_text(&text),
+            .in_zones(vec![crate::zone::Zone::Stack]),
         )
     }
 
@@ -1349,15 +1230,12 @@ impl CardDefinitionBuilder {
     }
 
     pub fn ravenous(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    crate::effect::Value::X,
-                ),
-            )
-            .with_text("Ravenous"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                crate::effect::Value::X,
+            ),
+        ))
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_enters_battlefield(),
@@ -1420,14 +1298,14 @@ impl CardDefinitionBuilder {
     }
 
     pub fn daybound(self) -> Self {
-        self.day_nightbound("Daybound")
+        self.day_nightbound()
     }
 
     pub fn nightbound(self) -> Self {
-        self.day_nightbound("Nightbound")
+        self.day_nightbound()
     }
 
-    fn day_nightbound(self, _text: &str) -> Self {
+    fn day_nightbound(self) -> Self {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
@@ -1533,7 +1411,6 @@ impl CardDefinitionBuilder {
             crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::new(
                 reduction,
             ))
-            .with_text("Undaunted")
             .in_zones(vec![crate::zone::Zone::Stack, crate::zone::Zone::Hand]),
         )
     }
@@ -1586,21 +1463,15 @@ impl CardDefinitionBuilder {
     }
 
     pub fn partner(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::partner(),
-            )
-            .with_text("Partner"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::partner(),
+        ))
     }
 
     pub fn assist(self) -> Self {
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::assist(),
-            )
-            .with_text("Assist"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::assist(),
+        ))
     }
 
     pub fn split_second(self) -> Self {
@@ -1608,8 +1479,7 @@ impl CardDefinitionBuilder {
             crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::split_second(),
             )
-            .in_zones(vec![crate::zone::Zone::Stack])
-            .with_text("Split second"),
+            .in_zones(vec![crate::zone::Zone::Stack]),
         )
     }
 
@@ -1618,8 +1488,7 @@ impl CardDefinitionBuilder {
             crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::cascade(),
             )
-            .in_zones(vec![crate::zone::Zone::Stack])
-            .with_text("Cascade"),
+            .in_zones(vec![crate::zone::Zone::Stack]),
         )
     }
 
@@ -1628,8 +1497,7 @@ impl CardDefinitionBuilder {
             crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::rebound(),
             )
-            .in_zones(vec![crate::zone::Zone::Stack])
-            .with_text("Rebound"),
+            .in_zones(vec![crate::zone::Zone::Stack]),
         )
     }
 
@@ -1647,49 +1515,36 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::keyword_marker("Sunburst"),
         ))
-        .with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    counter_type,
-                    crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
-                ),
-            )
-            .with_text("Sunburst"),
-        )
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                counter_type,
+                crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
+            ),
+        ))
     }
 
     pub fn for_mirrodin(self) -> Self {
         let created_tag = crate::tag::TagKey::from("for_mirrodin_created");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![
-                    crate::effect::Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
-                        .tag(created_tag.clone()),
-                    crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
-                        created_tag,
-                    )),
-                ],
-            )
-            .with_text("For Mirrodin!"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![
+                crate::effect::Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
+                    .tag(created_tag.clone()),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
     }
 
     pub fn living_weapon(self) -> Self {
         let created_tag = crate::tag::TagKey::from("living_weapon_created");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_enters_battlefield(),
-                vec![
-                    crate::effect::Effect::create_tokens(Self::living_weapon_germ_token(), 1)
-                        .tag(created_tag.clone()),
-                    crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
-                        created_tag,
-                    )),
-                ],
-            )
-            .with_text("Living weapon"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![
+                crate::effect::Effect::create_tokens(Self::living_weapon_germ_token(), 1)
+                    .tag(created_tag.clone()),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
     }
 
     pub fn myriad(self) -> Self {
@@ -1697,33 +1552,29 @@ impl CardDefinitionBuilder {
             crate::target::PlayerFilter::Opponent,
             crate::target::PlayerFilter::Defending,
         );
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks(),
-                vec![crate::effect::Effect::for_players(
-                    opponent_other_than_defending,
-                    vec![crate::effect::Effect::may(vec![
-                        crate::effect::Effect::new(
-                            crate::effects::CreateTokenCopyEffect::new(
-                                crate::target::ChooseSpec::Source,
-                                1,
-                                crate::target::PlayerFilter::You,
-                            )
-                            .enters_tapped(true)
-                            .attacking_player_or_planeswalker_controlled_by(
-                                crate::target::PlayerFilter::IteratedPlayer,
-                            )
-                            .exile_at_eoc(true),
-                        ),
-                    ])],
-                )],
-            )
-            .with_text("Myriad"),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            vec![crate::effect::Effect::for_players(
+                opponent_other_than_defending,
+                vec![crate::effect::Effect::may(vec![
+                    crate::effect::Effect::new(
+                        crate::effects::CreateTokenCopyEffect::new(
+                            crate::target::ChooseSpec::Source,
+                            1,
+                            crate::target::PlayerFilter::You,
+                        )
+                        .enters_tapped(true)
+                        .attacking_player_or_planeswalker_controlled_by(
+                            crate::target::PlayerFilter::IteratedPlayer,
+                        )
+                        .exile_at_eoc(true),
+                    ),
+                ])],
+            )],
+        ))
     }
 
     pub fn mobilize(self, amount: u32) -> Self {
-        let text = format!("Mobilize {amount}");
         let effect = crate::effects::CreateTokenEffect::new(
             Self::mobilize_warrior_token(),
             amount,
@@ -1733,26 +1584,19 @@ impl CardDefinitionBuilder {
         .attacking()
         .sacrifice_at_next_end_step();
 
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks(),
-                vec![crate::effect::Effect::new(effect)],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            vec![crate::effect::Effect::new(effect)],
+        ))
     }
 
     pub fn fading(self, amount: u32) -> Self {
-        let text = format!("Fading {amount}");
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::Fade,
-                    (amount as i32).into(),
-                ),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::Fade,
+                (amount as i32).into(),
+            ),
+        ))
         .with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
             vec![crate::effect::Effect::remove_counters(
@@ -1781,55 +1625,35 @@ impl CardDefinitionBuilder {
     }
 
     pub fn vanishing(self, amount: u32) -> Self {
-        let text = if amount == 0 {
-            "Vanishing".to_string()
-        } else {
-            format!("Vanishing {amount}")
-        };
-
         let mut builder = self;
         if amount > 0 {
-            builder = builder.with_ability(
-                crate::ability::Ability::static_ability(
-                    crate::static_abilities::StaticAbility::enters_with_counters_value(
-                        crate::object::CounterType::Time,
-                        amount.into(),
-                    ),
-                )
-                .with_text(&text),
-            );
+            builder = builder.with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::Time,
+                    amount.into(),
+                ),
+            ));
         }
 
         builder
-            .with_ability(
-                crate::ability::Ability::triggered(
-                    crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
-                    vec![crate::effect::Effect::remove_counters(
-                        crate::object::CounterType::Time,
-                        1,
-                        crate::target::ChooseSpec::Source,
-                    )],
-                )
-                .with_text(
-                    "At the beginning of your upkeep, remove a time counter from this permanent.",
+            .with_ability(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
+                vec![crate::effect::Effect::remove_counters(
+                    crate::object::CounterType::Time,
+                    1,
+                    crate::target::ChooseSpec::Source,
+                )],
+            ))
+            .with_ability(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::custom(
+                    "vanishing-last-time-counter-removed",
+                    "when the last time counter is removed".to_string(),
                 ),
-            )
-            .with_ability(
-                crate::ability::Ability::triggered(
-                    crate::triggers::Trigger::custom(
-                        "vanishing-last-time-counter-removed",
-                        "when the last time counter is removed".to_string(),
-                    ),
-                    vec![crate::effect::Effect::sacrifice_source()],
-                )
-                .with_text(
-                    "When the last time counter is removed from this permanent, sacrifice it.",
-                ),
-            )
+                vec![crate::effect::Effect::sacrifice_source()],
+            ))
     }
 
     pub fn modular(self, amount: u32) -> Self {
-        let text = format!("Modular {amount}");
         let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
             crate::target::ObjectFilter::default()
                 .with_all_type(CardType::Artifact)
@@ -1844,15 +1668,12 @@ impl CardDefinitionBuilder {
             Some(crate::object::CounterType::PlusOnePlusOne),
         );
 
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    (amount as i32).into(),
-                ),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                (amount as i32).into(),
+            ),
+        ))
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_dies(),
@@ -1886,15 +1707,12 @@ impl CardDefinitionBuilder {
             Some(crate::object::CounterType::PlusOnePlusOne),
         );
 
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
-                ),
-            )
-            .with_text("Modular—Sunburst"),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
+            ),
+        ))
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_dies(),
@@ -1914,18 +1732,14 @@ impl CardDefinitionBuilder {
     }
 
     pub fn graft(self, amount: u32) -> Self {
-        let text = format!("Graft {amount}");
         let entered_tag = crate::tag::TagKey::from("graft_entered_creature");
 
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(
-                    crate::object::CounterType::PlusOnePlusOne,
-                    (amount as i32).into(),
-                ),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::PlusOnePlusOne,
+                (amount as i32).into(),
+            ),
+        ))
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::enters_battlefield(
@@ -1951,68 +1765,55 @@ impl CardDefinitionBuilder {
     }
 
     pub fn rampage(self, amount: u32) -> Self {
-        let text = format!("Rampage {amount}");
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::keyword_marker(format!("rampage {amount}")),
-            )
-            .with_text(&text),
-        )
-        .with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_becomes_blocked(),
-                vec![crate::effect::Effect::pump(
-                    crate::effect::Value::EventValue(
-                        crate::effect::EventValueSpec::BlockersBeyondFirst {
-                            multiplier: amount as i32,
-                        },
-                    ),
-                    crate::effect::Value::EventValue(
-                        crate::effect::EventValueSpec::BlockersBeyondFirst {
-                            multiplier: amount as i32,
-                        },
-                    ),
-                    crate::target::ChooseSpec::Source,
-                    crate::effect::Until::EndOfTurn,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker(format!("rampage {amount}")),
+        ))
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_becomes_blocked(),
+            vec![crate::effect::Effect::pump(
+                crate::effect::Value::EventValue(
+                    crate::effect::EventValueSpec::BlockersBeyondFirst {
+                        multiplier: amount as i32,
+                    },
+                ),
+                crate::effect::Value::EventValue(
+                    crate::effect::EventValueSpec::BlockersBeyondFirst {
+                        multiplier: amount as i32,
+                    },
+                ),
+                crate::target::ChooseSpec::Source,
+                crate::effect::Until::EndOfTurn,
+            )],
+        ))
     }
 
     pub fn bushido(self, amount: u32) -> Self {
-        let text = format!("Bushido {amount}");
-        self.with_ability(
-            crate::ability::Ability::triggered(
-                crate::triggers::Trigger::either(
-                    crate::triggers::Trigger::this_blocks(),
-                    crate::triggers::Trigger::this_becomes_blocked(),
-                ),
-                vec![crate::effect::Effect::pump(
-                    amount as i32,
-                    amount as i32,
-                    crate::target::ChooseSpec::Source,
-                    crate::effect::Until::EndOfTurn,
-                )],
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::either(
+                crate::triggers::Trigger::this_blocks(),
+                crate::triggers::Trigger::this_becomes_blocked(),
+            ),
+            vec![crate::effect::Effect::pump(
+                amount as i32,
+                amount as i32,
+                crate::target::ChooseSpec::Source,
+                crate::effect::Until::EndOfTurn,
+            )],
+        ))
     }
 
     pub fn protection_from(self, colors: ColorSet) -> Self {
         let protection = crate::static_abilities::StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
         );
-        let text = protection.display();
-        self.with_ability(crate::ability::Ability::static_ability(protection).with_text(&text))
+        self.with_ability(crate::ability::Ability::static_ability(protection))
     }
 
     pub fn protection_from_card_type(self, card_type: CardType) -> Self {
         let protection = crate::static_abilities::StaticAbility::protection(
             crate::ability::ProtectionFrom::CardType(card_type),
         );
-        let text = protection.display();
-        self.with_ability(crate::ability::Ability::static_ability(protection).with_text(&text))
+        self.with_ability(crate::ability::Ability::static_ability(protection))
     }
 
     pub fn protection_from_subtype(self, subtype: Subtype) -> Self {
@@ -2021,8 +1822,7 @@ impl CardDefinitionBuilder {
                 crate::target::ObjectFilter::default().with_subtype(subtype),
             ),
         );
-        let text = protection.display();
-        self.with_ability(crate::ability::Ability::static_ability(protection).with_text(&text))
+        self.with_ability(crate::ability::Ability::static_ability(protection))
     }
 
     pub fn devoid(self) -> Self {
@@ -2040,8 +1840,7 @@ impl CardDefinitionBuilder {
                 crate::zone::Zone::Graveyard,
                 crate::zone::Zone::Exile,
                 crate::zone::Zone::Command,
-            ])
-            .with_text("Devoid"),
+            ]),
         )
     }
 
@@ -2064,13 +1863,9 @@ impl CardDefinitionBuilder {
     }
 
     pub fn bloodthirst(self, amount: u32) -> Self {
-        let text = format!("Bloodthirst {amount}");
-        self.with_ability(
-            crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::bloodthirst(amount),
-            )
-            .with_text(&text),
-        )
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::bloodthirst(amount),
+        ))
     }
 
     pub fn undying(self) -> Self {

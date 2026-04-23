@@ -2018,11 +2018,7 @@ fn try_parse_quoted_token_rules_text(
     }
 
     let normalized = normalize_token_self_reference_for_parser(&quoted, self_reference);
-    let base_ability_count = builder.clone().build().abilities.len();
     let parsed = builder.clone().parse_text(&normalized).ok()?;
-    if parsed.abilities.len() == base_ability_count + 1 {
-        let _ = quoted;
-    }
     Some(parsed)
 }
 
@@ -3078,12 +3074,10 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             || has_construct_plus_words
             || is_zero_zero_construct)
     {
-        let construct_scaling_text = "This token gets +1/+1 for each artifact you control.";
         let scaling_ability = Ability::static_ability(StaticAbility::characteristic_defining_pt(
             Value::Count(ObjectFilter::artifact().you_control()),
             Value::Count(ObjectFilter::artifact().you_control()),
-        ))
-        .with_text(construct_scaling_text);
+        ));
         let builder = CardDefinitionBuilder::new(CardId::new(), "Construct")
             .token()
             .card_types(vec![CardType::Artifact, CardType::Creature])
@@ -3541,13 +3535,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     crate::static_abilities::AnthemValue::scaled(1, count.clone()),
                     crate::static_abilities::AnthemValue::scaled(1, count),
                 );
-                let reminder_text = format!(
-                    "This token gets +1/+1 for each card named {card_name} in each graveyard."
-                );
-                builder = builder.with_ability(
-                    Ability::static_ability(StaticAbility::new(anthem))
-                        .with_text(reminder_text.as_str()),
-                );
+                builder = builder.with_ability(Ability::static_ability(StaticAbility::new(anthem)));
             }
         }
 

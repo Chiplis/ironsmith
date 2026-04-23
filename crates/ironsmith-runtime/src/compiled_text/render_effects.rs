@@ -6284,13 +6284,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(rest) = filtered[idx + 3]
                 .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
             )
-            && let Some(compact) =
-                describe_look_at_top_then_put_one_hand_other_bottom(
-                    look_at_top,
-                    choose,
-                    move_to_hand,
-                    rest,
-                )
+            && let Some(compact) = describe_look_at_top_then_put_one_hand_other_bottom(
+                look_at_top,
+                choose,
+                move_to_hand,
+                rest,
+            )
         {
             parts.push(compact);
             idx += 4;
@@ -20170,11 +20169,15 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
             {
                 parts.push(format!("Pay {} life", describe_value(&lose_life.amount)));
             }
-        } else if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+        } else if let Some(put_counters) =
+            effect.downcast_ref::<crate::effects::PutCountersEffect>()
         {
             parts.push(cumulative_upkeep_put_counters_text(put_counters)?);
         } else if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
-            parts.push(cumulative_upkeep_sacrifice_text(&sacrifice.filter, &sacrifice.count)?);
+            parts.push(cumulative_upkeep_sacrifice_text(
+                &sacrifice.filter,
+                &sacrifice.count,
+            )?);
         }
     }
     if parts.is_empty() {
@@ -20285,10 +20288,9 @@ fn describe_structural_riot_keyword(
     {
         return None;
     }
-    let has_counter_mode = choose
-        .modes
-        .iter()
-        .any(|mode| matches!(mode.effects.as_slice(), [effect] if is_plus_one_counter_on_source(effect)));
+    let has_counter_mode = choose.modes.iter().any(
+        |mode| matches!(mode.effects.as_slice(), [effect] if is_plus_one_counter_on_source(effect)),
+    );
     let has_haste_mode = choose
         .modes
         .iter()
@@ -20957,89 +20959,9 @@ pub(super) fn describe_ability(
                     describe_cost_list(activated.mana_cost.costs())
                 )];
             }
-            fn has_keyword_label_prefix(text: &str, keyword: &str) -> bool {
-                if text.eq_ignore_ascii_case(keyword) {
-                    return true;
-                }
-                let lower = text.to_ascii_lowercase();
-                let Some(rest) = lower.strip_prefix(keyword) else {
-                    return false;
-                };
-                rest.is_empty()
-                    || rest
-                        .chars()
-                        .next()
-                        .is_some_and(|ch| ch.is_ascii_whitespace() || ch == '—' || ch == '-')
-            }
-            fn format_reinforce_label(text: &str) -> String {
-                let trimmed = text.trim();
-                let Some(rest) = trimmed.strip_prefix("Reinforce ") else {
-                    return trimmed.to_string();
-                };
-                let Some((amount, cost)) = rest.trim().split_once(' ') else {
-                    return trimmed.to_string();
-                };
-                format!("Reinforce {amount}—{}", cost.trim())
-            }
-
             let mut line = format!("Activated ability {index}");
             let mut pre = Vec::new();
-            let ability_label: Option<&str> = None;
-            let has_boast_label =
-                ability_label.is_some_and(|text| has_keyword_label_prefix(text, "boast"));
-            let has_renew_label =
-                ability_label.is_some_and(|text| has_keyword_label_prefix(text, "renew"));
-            let has_channel_label =
-                ability_label.is_some_and(|text| has_keyword_label_prefix(text, "channel"));
-            let reinforce_label =
-                ability_label.filter(|text| has_keyword_label_prefix(text, "reinforce"));
-            let scavenge_label =
-                ability_label.filter(|text| has_keyword_label_prefix(text, "scavenge"));
-            let transmute_label = ability_label.filter(|text| {
-                text.get(..10)
-                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("transmute "))
-            });
-            if let Some(label) = reinforce_label {
-                let costs = describe_cost_list(activated.mana_cost.costs());
-                let effects = super::ast_render::describe_resolution_program(&activated.effects);
-                return vec![format!(
-                    "Activated ability {index}: {} ({}: {}.)",
-                    format_reinforce_label(label),
-                    costs,
-                    rewrite_damage_phrases_for_permanent_abilities(
-                        &effects,
-                        subject,
-                        rewrite_it_deals,
-                    )
-                )];
-            }
-            if let Some(label) = scavenge_label {
-                return vec![format!("Activated ability {index}: {label}")];
-            }
-            if has_boast_label {
-                let mut label = "Boast".to_string();
-                if !activated.mana_cost.costs().is_empty() {
-                    label.push(' ');
-                    label.push_str(&describe_cost_list(activated.mana_cost.costs()));
-                }
-                pre.push(label);
-            } else if has_renew_label {
-                let mut label = "Renew".to_string();
-                if !activated.mana_cost.costs().is_empty() {
-                    label.push_str(" \u{2014} ");
-                    label.push_str(&describe_cost_list(activated.mana_cost.costs()));
-                }
-                pre.push(label);
-            } else if has_channel_label {
-                let mut label = "Channel".to_string();
-                if !activated.mana_cost.costs().is_empty() {
-                    label.push_str(" \u{2014} ");
-                    label.push_str(&describe_cost_list(activated.mana_cost.costs()));
-                }
-                pre.push(label);
-            } else if let Some(label) = transmute_label {
-                pre.push(label.to_string());
-            } else if !activated.mana_cost.costs().is_empty() {
+            if !activated.mana_cost.costs().is_empty() {
                 pre.push(describe_cost_list(activated.mana_cost.costs()));
             }
             if !activated.choices.is_empty()

@@ -239,10 +239,7 @@ fn parse_attached_nonstatic_keyword_ability(
     Ok(Some((parsed, display)))
 }
 
-pub(crate) fn cumulative_upkeep_granted_ability(
-    total_cost: TotalCost,
-    _text: String,
-) -> Ability {
+pub(crate) fn cumulative_upkeep_granted_ability(total_cost: TotalCost) -> Ability {
     let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
     Ability {
@@ -295,10 +292,7 @@ pub(crate) fn parse_equipped_creature_has_line(
         if let KeywordAction::CumulativeUpkeep { total_cost, text } = action
         {
             extra_grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {
-                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(
-                    total_cost,
-                    text.clone(),
-                )),
+                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(total_cost)),
                 display: format!("equipped creature has {}", text.to_ascii_lowercase()),
                 condition: None,
             });
@@ -410,10 +404,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
         {
             let ability_text = format!("{subject} has {}", text.to_ascii_lowercase());
             out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
-                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(
-                    total_cost,
-                    text,
-                )),
+                ability: parsed_ability_from_ability(cumulative_upkeep_granted_ability(total_cost)),
                 display: ability_text,
                 condition: condition.clone(),
             });

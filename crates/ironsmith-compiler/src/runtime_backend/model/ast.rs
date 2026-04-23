@@ -82,7 +82,6 @@ pub(crate) enum StaticAbilityAst {
     },
     SoulbondSharedObjectAbility {
         ability: ParsedAbility,
-        display: String,
     },
 }
 

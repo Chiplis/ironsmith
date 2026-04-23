@@ -1033,8 +1033,7 @@ fn rewrite_lower_attached_keyword_action_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    let granted = Ability::static_ability(rewrite_lower_keyword_action_or_err(action)?)
-        .with_text(display.as_str());
+    let granted = Ability::static_ability(rewrite_lower_keyword_action_or_err(action)?);
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
@@ -1077,8 +1076,7 @@ fn rewrite_lower_attached_static_ability_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    let granted = Ability::static_ability(rewrite_lower_static_ability_ast(ability)?)
-        .with_text(display.as_str());
+    let granted = Ability::static_ability(rewrite_lower_static_ability_ast(ability)?);
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
@@ -1189,9 +1187,8 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             }
             Ok(StaticAbility::new(grant))
         }
-        StaticAbilityAst::SoulbondSharedObjectAbility { ability, display } => {
+        StaticAbilityAst::SoulbondSharedObjectAbility { ability } => {
             let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
-            let _ = display;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
     }
