@@ -535,7 +535,8 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
     max_triggers_per_turn: Option<u32>,
     chosen_option_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
-    let max_condition = max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn);
+    let max_condition =
+        crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
     let combined_condition = match (chosen_option_label, max_condition.clone()) {
         (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
             Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),
@@ -554,7 +555,9 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
         } => {
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)
-                .map(crate::ConditionExpr::MaxTimesEachTurn);
+                .and_then(|count| {
+                    crate::runtime_backend::trigger_frequency_condition(Some(full_text), Some(count))
+                });
             let merged_condition = match (chosen_option_label, merged_max_condition) {
                 (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
                     Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),

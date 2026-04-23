@@ -54,17 +54,27 @@ fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
 fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
     let raw = line.info.raw_line.trim();
     let full = line.full_text.trim();
-    if raw != full && raw_label_prefix_preserves_triggered_source(raw, full) {
+    if raw != full && raw_preserves_triggered_source(raw, full) {
         raw
     } else {
         full
     }
 }
 
+fn raw_preserves_triggered_source(raw: &str, full: &str) -> bool {
+    raw_label_prefix_preserves_triggered_source(raw, full)
+        || normalize_triggered_source_text(raw) == normalize_triggered_source_text(full)
+}
+
 fn raw_label_prefix_preserves_triggered_source(raw: &str, full: &str) -> bool {
-    let Some((label, body)) = raw.split_once('—').or_else(|| raw.split_once(" - ")) else {
+    let Some((_, body)) = raw_label_prefix_parts(raw) else {
         return false;
     };
+    normalize_triggered_source_text(body) == normalize_triggered_source_text(full)
+}
+
+fn raw_label_prefix_parts(raw: &str) -> Option<(&str, &str)> {
+    let (label, body) = raw.split_once('—').or_else(|| raw.split_once(" - "))?;
     let label = label.trim();
     if label.is_empty()
         || label.len() > 40
@@ -72,7 +82,7 @@ fn raw_label_prefix_preserves_triggered_source(raw: &str, full: &str) -> bool {
         || label.contains(':')
         || label.contains('\n')
     {
-        return false;
+        return None;
     }
 
     let body = body.trim();
@@ -81,16 +91,33 @@ fn raw_label_prefix_preserves_triggered_source(raw: &str, full: &str) -> bool {
         || str_starts_with(body_lower.as_str(), "when ")
         || str_starts_with(body_lower.as_str(), "at "))
     {
-        return false;
+        return None;
     }
 
-    let normalize = |text: &str| {
-        text.trim()
-            .trim_end_matches('.')
-            .to_ascii_lowercase()
-            .replace(char::is_whitespace, " ")
-    };
-    normalize(body).eq(normalize(full).as_str())
+    Some((label, body))
+}
+
+fn normalize_triggered_source_text(text: &str) -> String {
+    let normalized = text
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase()
+        .replace(char::is_whitespace, " ");
+    strip_trigger_cap_suffix_from_normalized_source(normalized.as_str()).to_string()
+}
+
+fn strip_trigger_cap_suffix_from_normalized_source(text: &str) -> &str {
+    for suffix in [
+        ". this ability triggers only once each turn",
+        ". this ability triggers only twice each turn",
+        ". do this only once each turn",
+        ". do this only twice each turn",
+    ] {
+        if let Some(stripped) = text.strip_suffix(suffix) {
+            return stripped.trim_end_matches('.').trim_end();
+        }
+    }
+    text
 }
 
 pub(crate) fn lower_rewrite_statement_token_groups_to_chunks(
@@ -821,6 +848,54 @@ fn strip_exert_reminder_suffix_for_lowering(text: &str) -> &str {
         }
     }
     trimmed
+}
+
+#[cfg(test)]
+fn test_line_info(raw_line: &str) -> LineInfo {
+    LineInfo {
+        line_index: 0,
+        display_line_index: 0,
+        raw_line: raw_line.to_string(),
+        normalized: NormalizedLine {
+            original: raw_line.to_string(),
+            normalized: raw_line.to_ascii_lowercase(),
+            char_map: Vec::new(),
+        },
+    }
+}
+
+#[cfg(test)]
+fn test_rewrite_triggered_line(raw_line: &str, full_text: &str) -> RewriteTriggeredLine {
+    RewriteTriggeredLine {
+        info: test_line_info(raw_line),
+        full_text: full_text.to_string(),
+        full_parse_tokens: Vec::new(),
+        trigger_text: String::new(),
+        trigger_parse_tokens: Vec::new(),
+        effect_text: String::new(),
+        effect_parse_tokens: Vec::new(),
+        intervening_if: None,
+        max_triggers_per_turn: Some(1),
+        chosen_option_label: None,
+    }
+}
+
+#[test]
+fn triggered_line_source_text_keeps_raw_do_this_only_once_suffix() {
+    let raw_line = "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.";
+    let full_text = "whenever pantlaza or another dinosaur you control enters, you may discover x, where x is that creature's toughness";
+    let line = test_rewrite_triggered_line(raw_line, full_text);
+
+    assert_eq!(triggered_line_source_text(&line), raw_line);
+}
+
+#[test]
+fn triggered_line_source_text_keeps_labelled_raw_do_this_only_once_suffix() {
+    let raw_line = "Mold Earth — Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle. Do this only once each turn.";
+    let full_text = "whenever one or more lands enter under an opponent's control without being played, you may search your library for a plains card, put it onto the battlefield tapped, then shuffle";
+    let line = test_rewrite_triggered_line(raw_line, full_text);
+
+    assert_eq!(triggered_line_source_text(&line), raw_line);
 }
 
 pub(super) fn normalize_exert_followup_source_reference_tokens(

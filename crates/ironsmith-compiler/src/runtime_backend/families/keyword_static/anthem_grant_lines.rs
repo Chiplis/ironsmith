@@ -3267,7 +3267,10 @@ fn parse_triggered_granted_ability(
         } => {
             let (effects, trigger_condition) =
                 triggered_grant_effects_and_condition(&trigger, &effects)?;
-            let max_condition = max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn);
+            let max_condition = crate::runtime_backend::trigger_frequency_condition(
+                Some(&token_words(&trigger_tokens).join(" ")),
+                max_triggers_per_turn,
+            );
             let intervening_if = match (trigger_condition, max_condition) {
                 (Some(left), Some(right)) => Some(crate::ConditionExpr::And(
                     Box::new(left),

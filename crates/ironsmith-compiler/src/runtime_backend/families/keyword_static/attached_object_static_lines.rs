@@ -1381,7 +1381,10 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
                 effects,
                 vec![Zone::Battlefield],
                 Some(token_words(&trigger_tokens).join(" ")),
-                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+                crate::runtime_backend::trigger_frequency_condition(
+                    Some(&token_words(&trigger_tokens).join(" ")),
+                    max_triggers_per_turn,
+                ),
                 ReferenceImports::default(),
             ),
             _ => {
@@ -1639,7 +1642,10 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             effects,
             vec![Zone::Battlefield],
             Some(token_words(&ability_tokens).join(" ")),
-            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            crate::runtime_backend::trigger_frequency_condition(
+                Some(&token_words(&ability_tokens).join(" ")),
+                max_triggers_per_turn,
+            ),
             ReferenceImports::default(),
         );
         if parsed_triggered_ability_is_empty(&parsed) {

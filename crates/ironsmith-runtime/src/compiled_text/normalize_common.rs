@@ -9001,6 +9001,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::MaxTimesEachTurn(limit) => {
             format!("this ability has triggered fewer than {limit} times this turn")
         }
+        Condition::DoThisMaxTimesEachTurn(limit) => {
+            format!("this effect has been used fewer than {limit} times this turn")
+        }
         Condition::TriggeringObjectWasEnchanted => "the triggering object was enchanted".to_string(),
         Condition::TriggeringObjectHadCounters {
             counter_type,

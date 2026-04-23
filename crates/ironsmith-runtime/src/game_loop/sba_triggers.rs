@@ -573,7 +573,9 @@ pub(super) fn can_stack_trigger_this_turn(
     };
 
     match condition {
-        crate::ConditionExpr::FirstTimeThisTurn | crate::ConditionExpr::MaxTimesEachTurn(_) => {
+        crate::ConditionExpr::FirstTimeThisTurn
+        | crate::ConditionExpr::MaxTimesEachTurn(_)
+        | crate::ConditionExpr::DoThisMaxTimesEachTurn(_) => {
             verify_intervening_if(
                 game,
                 condition,

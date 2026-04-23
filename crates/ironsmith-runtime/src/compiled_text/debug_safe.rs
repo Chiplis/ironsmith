@@ -104,7 +104,6 @@ fn normalize_debug_safe_sentence_surface(line: &str) -> String {
 fn compact_unprocessed_surface_markers(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     lines.into_iter()
         .map(|line| {
-            let line = compact_first_time_each_turn_trigger_line(&line).unwrap_or(line);
             let line = compact_scored_token_with_quoted_ability_line(&line).unwrap_or(line);
             if has_structural_undaunted(def) {
                 let compact = compact_whitespace(line.trim());
@@ -179,21 +178,30 @@ fn normalize_modal_header_surface(line: &str) -> Option<String> {
 
 fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str) -> String {
     let subject = subject_for_card(&def.card);
+    let source_name = def
+        .card
+        .name
+        .split(',')
+        .next()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| capitalize_first(subject));
     let mut normalized = line
         .replace("this source", subject)
         .replace("This source", &capitalize_first(subject))
         .replace("this permanent", subject)
         .replace("This permanent", &capitalize_first(subject));
+    normalized = normalized
+        .replace(
+            "Whenever this creature or another ",
+            &format!("Whenever {source_name} or another "),
+        )
+        .replace(
+            "When this creature or another ",
+            &format!("When {source_name} or another "),
+        );
     if let Some(keyword) = source_keyword_during_your_turn(&normalized, subject) {
-        let source_name = def
-            .card
-            .name
-            .split(',')
-            .next()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| capitalize_first(subject));
         normalized = format!("During your turn, {source_name} has {keyword}");
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "This enters ") {
@@ -350,24 +358,6 @@ fn normalize_quoted_token_ability_surface(ability: &str) -> String {
         return format!("This token gets +1/+1 for each card named {name} in each graveyard");
     }
     trimmed.to_string()
-}
-
-fn compact_first_time_each_turn_trigger_line(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    let stem = trimmed
-        .strip_suffix(". This ability triggers only once each turn.")
-        .or_else(|| trimmed.strip_suffix(". This ability triggers only once each turn"))?;
-    if let Some((prefix, rest)) = stem.split_once(" — Whenever ") {
-        let (trigger, body) = rest.split_once(", ")?;
-        return Some(format!(
-            "{prefix} — Whenever {trigger} for the first time each turn, {body}."
-        ));
-    }
-    let rest = stem.strip_prefix("Whenever ")?;
-    let (trigger, body) = rest.split_once(", ")?;
-    Some(format!(
-        "Whenever {trigger} for the first time each turn, {body}."
-    ))
 }
 
 fn compact_land_animation_line(line: &str) -> Option<String> {

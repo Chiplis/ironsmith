@@ -175,6 +175,38 @@ fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pantlaza_keeps_do_this_only_once_each_turn_condition() {
+    let oracle = "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pantlaza, Sun-Favored")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dinosaur])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(oracle)
+        .expect("Pantlaza trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    let has_do_this_cap = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if triggered.intervening_if
+                    == Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1))
+        )
+    });
+    assert!(
+        has_do_this_cap,
+        "expected Pantlaza to keep a do-this-once-per-turn condition, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Do this only once each turn"),
+        "expected Pantlaza scored text to preserve the do-this suffix, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn eye_of_doom_keeps_doom_counter_choice_and_destroy_filter() {
     let lines = [
         "When this artifact enters, each player chooses a nonland permanent and puts a doom counter on it.",
@@ -9957,7 +9989,7 @@ fn parse_valiant_rescuer_keeps_another_card_cycle_trigger() {
         matches!(
             &ability.kind,
             AbilityKind::Triggered(triggered)
-                if triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+                if triggered.intervening_if == Some(crate::ConditionExpr::FirstTimeThisTurn)
         )
     });
     assert!(
@@ -32493,8 +32525,8 @@ fn parse_vengeful_warchief_keeps_first_life_loss_trigger_shape() {
     );
     assert_eq!(
         triggered.intervening_if,
-        Some(crate::ConditionExpr::MaxTimesEachTurn(1)),
-        "expected Vengeful Warchief to be capped at once per turn"
+        Some(crate::ConditionExpr::FirstTimeThisTurn),
+        "expected Vengeful Warchief to preserve the first-time-each-turn trigger condition"
     );
     let [segment] = triggered.effects.segments.as_slice() else {
         panic!("expected one resolution segment");
@@ -34491,7 +34523,32 @@ fn parse_oracle_axgard_artisan_keeps_first_time_each_turn_in_scored_text() {
     assert!(
         rendered.contains("for the first time each turn")
             && !rendered.contains("This ability triggers only once each turn"),
-        "expected Axgard Artisan scored text to compact to first-time-each-turn wording, got {rendered}"
+        "expected Axgard Artisan scored text to preserve first-time-each-turn wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_the_sixth_doctor_keeps_once_each_turn_in_scored_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(81_601), "The Sixth Doctor")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .subtypes(vec![crate::types::Subtype::Doctor])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Time Lord's Prerogative — Whenever you cast a historic spell, copy it, except the copy isn't legendary. This ability triggers only once each turn.",
+        )
+        .expect("The Sixth Doctor should parse");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This ability triggers only once each turn")
+            && !rendered.contains("for the first time each turn"),
+        "expected The Sixth Doctor scored text to preserve the once-per-turn suffix, got {rendered}"
     );
 }
 

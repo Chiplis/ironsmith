@@ -214,6 +214,34 @@ pub(crate) fn parse_card_text_allow_unsupported(
     compile_card_text(builder, text, true).map(|compiled| compiled.definition)
 }
 
+pub(crate) fn trigger_frequency_condition(
+    text: Option<&str>,
+    max_triggers_per_turn: Option<u32>,
+) -> Option<crate::ConditionExpr> {
+    max_triggers_per_turn.map(|limit| {
+        let text = text.unwrap_or_default();
+        if limit == 1 && text_uses_first_time_each_turn(text) {
+            crate::ConditionExpr::FirstTimeThisTurn
+        } else if text_uses_do_this_only_each_turn(text) {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
+        } else {
+            crate::ConditionExpr::MaxTimesEachTurn(limit)
+        }
+    })
+}
+
+fn text_uses_first_time_each_turn(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("for the first time each turn")
+        || normalized.contains("for the first time this turn")
+}
+
+fn text_uses_do_this_only_each_turn(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    normalized.contains("do this only once each turn")
+        || normalized.contains("do this only twice each turn")
+}
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

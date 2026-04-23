@@ -1372,7 +1372,10 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
                     effects,
                     vec![Zone::Battlefield],
                     Some(display.clone()),
-                    max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+                    crate::runtime_backend::trigger_frequency_condition(
+                        Some(display.as_str()),
+                        max_triggers_per_turn,
+                    ),
                     ReferenceImports::default(),
                 ),
                 _ => {

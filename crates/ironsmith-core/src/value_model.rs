@@ -557,6 +557,7 @@ pub enum Condition {
     ThisAbilityResolvedThisTurnExactly(u32),
     FirstTimeThisTurn,
     MaxTimesEachTurn(u32),
+    DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
     TriggeringObjectHadCounters {
         counter_type: CounterType,

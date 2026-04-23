@@ -905,7 +905,10 @@ pub(crate) fn parse_until_duration_triggered_clause(
             effects,
             vec![Zone::Battlefield],
             Some(trigger_text.clone()),
-            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            crate::runtime_backend::trigger_frequency_condition(
+                Some(trigger_text.as_str()),
+                max_triggers_per_turn,
+            ),
             ReferenceImports::default(),
         ),
         display: trigger_text,

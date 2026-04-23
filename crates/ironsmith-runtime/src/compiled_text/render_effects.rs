@@ -7860,16 +7860,113 @@ pub(super) fn describe_inline_ability_with_self_subject(
     }
 }
 
+fn rewrite_capped_trigger_surface(
+    triggered: &crate::ability::TriggeredAbility,
+    trigger_frequency: Option<TriggerFrequencySurface>,
+) -> Option<String> {
+    let capped_once = matches!(
+        trigger_frequency,
+        Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(1))
+            | Some(TriggerFrequencySurface::DoThisMaxTimesEachTurn(1))
+    );
+    if !capped_once {
+        return None;
+    }
+
+    if let Some(zone_change) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+        && zone_change.player == crate::triggers::zone_changes::PlayerRelation::Any
+        && zone_change.count_mode == crate::triggers::zone_changes::CountMode::Each
+        && zone_change.from == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        && zone_change.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+        && zone_change.object_filter.card_types.contains(&CardType::Creature)
+    {
+        let subject =
+            pluralize_noun_phrase(strip_leading_article(&zone_change.object_filter.description()));
+        return Some(format!("Whenever one or more {subject} die"));
+    }
+
+    if let Some(sacrifice) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::other::PlayerSacrificesTrigger>()
+    {
+        let subject = pluralize_noun_phrase(strip_leading_article(&sacrifice.filter.description()));
+        return match sacrifice.player {
+            PlayerFilter::You => Some(format!("Whenever you sacrifice one or more {subject}")),
+            PlayerFilter::Opponent => {
+                Some(format!("Whenever one or more opponents sacrifice one or more {subject}"))
+            }
+            PlayerFilter::Any => {
+                Some(format!("Whenever one or more players sacrifice one or more {subject}"))
+            }
+            _ => None,
+        };
+    }
+
+    None
+}
+
+fn describe_trigger_surface_with_frequency(
+    triggered: &crate::ability::TriggeredAbility,
+    trigger_frequency: Option<TriggerFrequencySurface>,
+) -> String {
+    if let Some(rewritten) = rewrite_capped_trigger_surface(triggered, trigger_frequency) {
+        return rewritten;
+    }
+
+    let mut trigger_surface = triggered.trigger.display();
+    if matches!(
+        trigger_frequency,
+        Some(TriggerFrequencySurface::FirstTimeThisTurn)
+    ) {
+        trigger_surface.push_str(" for the first time each turn");
+    }
+    trigger_surface
+}
+
+fn describe_triggered_resolution_text(
+    triggered: &crate::ability::TriggeredAbility,
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> Option<String> {
+    if let Some(keyword) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::KeywordActionTrigger>()
+        && keyword.action == crate::events::KeywordActionKind::Discover
+        && keyword.player == PlayerFilter::You
+        && let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let [effect] = segment.default_effects.as_slice()
+        && let Some(discover) = effect.downcast_ref::<crate::effects::DiscoverEffect>()
+        && discover.player == PlayerFilter::You
+        && matches!(discover.count, crate::effect::Value::EventValue(EventValueSpec::Amount))
+    {
+        return Some("discover again for the same value".to_string());
+    }
+
+    if triggered.effects.is_empty() {
+        return None;
+    }
+
+    let effects = super::ast_render::describe_resolution_program(&triggered.effects);
+    Some(rewrite_damage_phrases_for_permanent_abilities(
+        &effects,
+        subject,
+        rewrite_it_deals,
+    ))
+}
+
 fn describe_triggered_inline_ability(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: &str,
 ) -> String {
-    let (intervening_condition, max_times_each_turn) = triggered
+    let (intervening_condition, trigger_frequency) = triggered
         .intervening_if
         .as_ref()
         .map(split_trigger_intervening_if)
         .unwrap_or((None, None));
-    let mut line = triggered.trigger.display();
+    let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
         line.push_str(&describe_condition(&condition));
@@ -7889,13 +7986,8 @@ fn describe_triggered_inline_ability(
                 .join(", ")
         ));
     }
-    if !triggered.effects.is_empty() {
-        let effects = super::ast_render::describe_resolution_program(&triggered.effects);
-        clauses.push(rewrite_damage_phrases_for_permanent_abilities(
-            &effects,
-            self_subject,
-            true,
-        ));
+    if let Some(effects) = describe_triggered_resolution_text(triggered, self_subject, true) {
+        clauses.push(effects);
     }
 
     if !clauses.is_empty() {
@@ -7917,16 +8009,30 @@ fn describe_triggered_inline_ability(
         }
     }
 
-    if let Some(max) = max_times_each_turn {
-        if max == 1 {
-            line.push_str(". This ability triggers only once each turn");
-        } else if max == 2 {
-            line.push_str(". This ability triggers only twice each turn");
-        } else {
-            line.push_str(". This ability triggers only ");
-            line.push_str(&max.to_string());
-            line.push_str(" times each turn");
+    match trigger_frequency {
+        Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(max)) => {
+            if max == 1 {
+                line.push_str(". This ability triggers only once each turn");
+            } else if max == 2 {
+                line.push_str(". This ability triggers only twice each turn");
+            } else {
+                line.push_str(". This ability triggers only ");
+                line.push_str(&max.to_string());
+                line.push_str(" times each turn");
+            }
         }
+        Some(TriggerFrequencySurface::DoThisMaxTimesEachTurn(max)) => {
+            if max == 1 {
+                line.push_str(". Do this only once each turn");
+            } else if max == 2 {
+                line.push_str(". Do this only twice each turn");
+            } else {
+                line.push_str(". Do this only ");
+                line.push_str(&max.to_string());
+                line.push_str(" times each turn");
+            }
+        }
+        _ => {}
     }
 
     line
@@ -13371,6 +13477,24 @@ pub(super) fn describe_may_have_you_create_tokens(
     Some(format!("{who} may have you create {rest}"))
 }
 
+fn describe_may_discover_from_triggering_toughness(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if may.decider != Some(PlayerFilter::You) {
+        return None;
+    }
+    let [effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let discover = effect.downcast_ref::<crate::effects::DiscoverEffect>()?;
+    if discover.player != PlayerFilter::You {
+        return None;
+    }
+    matches!(&discover.count, crate::effect::Value::ToughnessOf(target)
+        if matches!(target.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
+    .then(|| "You may discover X, where X is that creature's toughness".to_string())
+}
+
 pub(super) fn describe_may_enlist(may: &crate::effects::MayEffect) -> Option<String> {
     fn unwrap_effect(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -18213,6 +18337,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_may_enlist(may) {
             return compact;
         }
+        if let Some(compact) = describe_may_discover_from_triggering_toughness(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_have_you_create_tokens(may) {
             return compact;
         }
@@ -21869,16 +21996,37 @@ pub(super) fn fold_condition_exprs(
     }))
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum TriggerFrequencySurface {
+    FirstTimeThisTurn,
+    AbilityMaxTimesEachTurn(u32),
+    DoThisMaxTimesEachTurn(u32),
+}
+
 pub(super) fn split_trigger_intervening_if(
     condition: &crate::ConditionExpr,
-) -> (Option<crate::ConditionExpr>, Option<u32>) {
+) -> (
+    Option<crate::ConditionExpr>,
+    Option<TriggerFrequencySurface>,
+) {
     let mut flat = Vec::new();
     flatten_condition_and_expr(condition, &mut flat);
 
     let mut non_limit = Vec::new();
+    let mut first_time_this_turn = false;
+    let mut do_this_max_times_each_turn: Option<u32> = None;
     let mut max_times_each_turn: Option<u32> = None;
     for item in flat {
         match item {
+            crate::ConditionExpr::FirstTimeThisTurn => {
+                first_time_this_turn = true;
+            }
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => {
+                do_this_max_times_each_turn = Some(match do_this_max_times_each_turn {
+                    Some(existing) => existing.min(limit),
+                    None => limit,
+                });
+            }
             crate::ConditionExpr::MaxTimesEachTurn(limit) => {
                 max_times_each_turn = Some(match max_times_each_turn {
                     Some(existing) => existing.min(limit),
@@ -21889,7 +22037,15 @@ pub(super) fn split_trigger_intervening_if(
         }
     }
 
-    (fold_condition_exprs(non_limit), max_times_each_turn)
+    let frequency = if first_time_this_turn {
+        Some(TriggerFrequencySurface::FirstTimeThisTurn)
+    } else if let Some(limit) = do_this_max_times_each_turn {
+        Some(TriggerFrequencySurface::DoThisMaxTimesEachTurn(limit))
+    } else {
+        max_times_each_turn.map(TriggerFrequencySurface::AbilityMaxTimesEachTurn)
+    };
+
+    (fold_condition_exprs(non_limit), frequency)
 }
 
 fn describe_zone_change_triggering_card_to_your_library(
@@ -22014,12 +22170,12 @@ pub(super) fn describe_ability(
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
-            let (intervening_condition, max_times_each_turn) = triggered
+            let (intervening_condition, trigger_frequency) = triggered
                 .intervening_if
                 .as_ref()
                 .map(split_trigger_intervening_if)
                 .unwrap_or((None, None));
-            let trigger_surface = triggered.trigger.display();
+            let trigger_surface = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
@@ -22038,13 +22194,10 @@ pub(super) fn describe_ability(
                     .join(", ");
                 clauses.push(format!("choose {choices}"));
             }
-            if !triggered.effects.is_empty() {
-                let effects = super::ast_render::describe_resolution_program(&triggered.effects);
-                clauses.push(rewrite_damage_phrases_for_permanent_abilities(
-                    &effects,
-                    subject,
-                    rewrite_it_deals,
-                ));
+            if let Some(effects) =
+                describe_triggered_resolution_text(triggered, subject, rewrite_it_deals)
+            {
+                clauses.push(effects);
             }
             if !clauses.is_empty() {
                 // Oracle-style: "Whenever ..., if ..., ..." rather than "Whenever ...: If ..."
@@ -22076,23 +22229,38 @@ pub(super) fn describe_ability(
                     1,
                 );
             }
-            if let Some(max) = max_times_each_turn {
-                if max == 1
-                    && line
-                        .to_ascii_lowercase()
-                        .contains("you may cast target instant or sorcery card from your graveyard")
-                {
-                    line.push_str(". Do this only once each turn");
-                } else if max == 1 {
-                    line.push_str(". This ability triggers only once each turn");
-                } else if max == 2 {
-                    line.push_str(". This ability triggers only twice each turn");
-                } else {
-                    line.push_str(". This ability triggers only ");
-                    line.push_str(&max.to_string());
-                    line.push_str(" times");
-                    line.push_str(" each turn");
+            match trigger_frequency {
+                Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(max)) => {
+                    if max == 1
+                        && line.to_ascii_lowercase().contains(
+                            "you may cast target instant or sorcery card from your graveyard",
+                        )
+                    {
+                        line.push_str(". Do this only once each turn");
+                    } else if max == 1 {
+                        line.push_str(". This ability triggers only once each turn");
+                    } else if max == 2 {
+                        line.push_str(". This ability triggers only twice each turn");
+                    } else {
+                        line.push_str(". This ability triggers only ");
+                        line.push_str(&max.to_string());
+                        line.push_str(" times");
+                        line.push_str(" each turn");
+                    }
                 }
+                Some(TriggerFrequencySurface::DoThisMaxTimesEachTurn(max)) => {
+                    if max == 1 {
+                        line.push_str(". Do this only once each turn");
+                    } else if max == 2 {
+                        line.push_str(". Do this only twice each turn");
+                    } else {
+                        line.push_str(". Do this only ");
+                        line.push_str(&max.to_string());
+                        line.push_str(" times");
+                        line.push_str(" each turn");
+                    }
+                }
+                _ => {}
             }
             vec![line]
         }

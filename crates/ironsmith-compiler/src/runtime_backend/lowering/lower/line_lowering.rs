@@ -1029,7 +1029,10 @@ fn lower_triggered_chunk(
         prepared.prepared.effects.clone(),
         functional_zones,
         Some(info.raw_line.clone()),
-        max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+        crate::runtime_backend::trigger_frequency_condition(
+            Some(info.raw_line.as_str()),
+            max_triggers_per_turn,
+        ),
         prepared.prepared.imports.clone(),
     );
     let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
