@@ -395,9 +395,21 @@ mod tests {
     fn test_oracle_text() {
         let def = tainted_field();
 
-        assert!(def.card.oracle_text.contains("Add {C}"));
-        assert!(def.card.oracle_text.contains("Add {W} or {B}"));
-        assert!(def.card.oracle_text.contains("control a Swamp"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {C}")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {W} or {B}")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("control Swamp")
+        );
     }
 
     // ========================================

@@ -416,11 +416,14 @@ mod tests {
     #[test]
     fn test_chrome_mox_oracle_text() {
         let def = chrome_mox();
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
 
-        assert!(def.card.oracle_text.contains("Imprint"));
-        assert!(def.card.oracle_text.contains("nonartifact"));
-        assert!(def.card.oracle_text.contains("nonland"));
-        assert!(def.card.oracle_text.contains("exile"));
-        assert!(def.card.oracle_text.contains("colors"));
+        assert!(rendered.contains("imprint"));
+        assert!(rendered.contains("nonartifact"));
+        assert!(rendered.contains("nonland"));
+        assert!(rendered.contains("exile"));
+        assert!(rendered.contains("colors"));
     }
 }

@@ -205,9 +205,21 @@ mod tests {
     #[test]
     fn test_phyrexian_tower_oracle_text() {
         let def = phyrexian_tower();
-        assert!(def.card.oracle_text.contains("Add {C}"));
-        assert!(def.card.oracle_text.contains("Sacrifice a creature"));
-        assert!(def.card.oracle_text.contains("Add {B}{B}"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {C}")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Sacrifice a creature")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {B}{B}")
+        );
     }
 
     // ========================================

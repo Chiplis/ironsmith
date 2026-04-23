@@ -847,9 +847,9 @@ pub(crate) fn rewrite_parsed_triggered_ability(
                 intervening_if,
             }),
             functional_zones,
-            text,
         }
         .into(),
+        text,
         effects_ast: Some(effects_ast),
         trigger_spec: Some(trigger),
         reference_imports: reference_imports.into(),
@@ -1169,8 +1169,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
-            lowered.text = Some(display.clone());
+            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             let mut grant =
                 crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
             if let Some(condition) = condition {
@@ -1183,8 +1182,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
-            lowered.text = Some(display.clone());
+            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
             let mut grant = crate::static_abilities::AttachedAbilityGrant::new(lowered, display);
             if let Some(condition) = condition {
                 grant = grant.with_condition(condition);
@@ -1192,10 +1190,8 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             Ok(StaticAbility::new(grant))
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability, display } => {
-            let mut lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
-            if lowered.text.is_none() {
-                lowered.text = Some(display);
-            }
+            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
+            let _ = display;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
     }

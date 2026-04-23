@@ -495,7 +495,6 @@ where
             Ok(Ability {
                 kind,
                 functional_zones: ability.functional_zones,
-                text: ability.text,
             })
         }
 
@@ -1962,10 +1961,10 @@ impl<
         }
     }
     pub fn soulbond_shared_object_ability(ability: AbilityModel<T, E, C, Cond>) -> Self {
-        let text = ability
-            .text
-            .clone()
-            .unwrap_or_else(|| "an ability".to_string());
+        let text = match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.label.clone(),
+            AbilityKind::Triggered(_) | AbilityKind::Activated(_) => "an ability".to_string(),
+        };
         Self {
             id: Some(StaticAbilityId::SoulbondSharedBonus),
             label: format!(

@@ -2518,8 +2518,6 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 {
                     if mana_ability.has_tap_cost() {
                         format!("Tap {}", name)
-                    } else if let Some(text) = &ability.text {
-                        format!("{}: {}", name, text)
                     } else {
                         format!("Activate {}", name)
                     }

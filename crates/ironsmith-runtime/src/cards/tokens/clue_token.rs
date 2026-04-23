@@ -29,7 +29,6 @@ pub fn clue_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some("{2}, Sacrifice this artifact: Draw a card.".to_string()),
     };
 
     CardDefinitionBuilder::new(CardId::new(), "Clue")

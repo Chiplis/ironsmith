@@ -115,6 +115,7 @@ pub struct FaceDownCastState {
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     pub oracle_text: String,
+    pub rules_text_color_identity: ColorSet,
     pub base_power: Option<PtValue>,
     pub base_toughness: Option<PtValue>,
     pub base_loyalty: Option<u32>,
@@ -152,6 +153,7 @@ pub struct Object {
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     pub oracle_text: String,
+    pub rules_text_color_identity: ColorSet,
     /// Optional reference to another face for flip/DFC style cards.
     ///
     /// This is copied from `Card::other_face` when the object is created.
@@ -220,6 +222,10 @@ pub struct Object {
 }
 
 impl Object {
+    fn compiled_display_text(def: &crate::cards::CardDefinition) -> String {
+        crate::compiled_text::debug_compiled_lines(def).join("\n")
+    }
+
     fn extend_unique<T: PartialEq + Clone>(base: &mut Vec<T>, extra: &[T]) {
         for item in extra {
             if !base.contains(item) {
@@ -254,7 +260,8 @@ impl Object {
             supertypes: card.supertypes.clone(),
             card_types: card.card_types.clone(),
             subtypes: card.subtypes.clone(),
-            oracle_text: card.oracle_text.clone(),
+            oracle_text: String::new(),
+            rules_text_color_identity: card.rules_text_color_identity,
             other_face: card.other_face,
             other_face_name: card.other_face_name.clone(),
             linked_face_layout: card.linked_face_layout,
@@ -290,6 +297,7 @@ impl Object {
         zone: Zone,
     ) -> Self {
         let mut obj = Self::from_card(id, &def.card, owner, zone);
+        obj.oracle_text = Self::compiled_display_text(def);
         obj.abilities = def.abilities.clone();
         obj.spell_effect = def.spell_effect.clone();
         obj.aura_attach_filter = def.aura_attach_filter.clone();
@@ -320,7 +328,8 @@ impl Object {
         self.supertypes = def.card.supertypes.clone();
         self.card_types = def.card.card_types.clone();
         self.subtypes = def.card.subtypes.clone();
-        self.oracle_text = def.card.oracle_text.clone();
+        self.oracle_text = Self::compiled_display_text(def);
+        self.rules_text_color_identity = def.card.rules_text_color_identity;
         self.other_face = def.card.other_face;
         self.other_face_name = def.card.other_face_name.clone();
         self.linked_face_layout = def.card.linked_face_layout;
@@ -366,11 +375,9 @@ impl Object {
         Self::extend_unique(&mut self.supertypes, &other.card.supertypes);
         Self::extend_unique(&mut self.card_types, &other.card.card_types);
         Self::extend_unique(&mut self.subtypes, &other.card.subtypes);
-        if self.oracle_text.is_empty() {
-            self.oracle_text = other.card.oracle_text.clone();
-        } else if !other.card.oracle_text.is_empty() {
-            self.oracle_text = format!("{}\n//\n{}", self.oracle_text, other.card.oracle_text);
-        }
+        self.rules_text_color_identity = self
+            .rules_text_color_identity
+            .union(other.card.rules_text_color_identity);
         self.base_power = None;
         self.base_toughness = None;
         self.base_loyalty = None;
@@ -403,7 +410,7 @@ impl Object {
                 supertypes: self.supertypes.clone(),
                 card_types: self.card_types.clone(),
                 subtypes: self.subtypes.clone(),
-                oracle_text: self.oracle_text.clone(),
+                rules_text_color_identity: self.rules_text_color_identity,
                 power_toughness,
                 loyalty: self.base_loyalty,
                 defense: self.base_defense,
@@ -450,6 +457,7 @@ impl Object {
             card_types,
             subtypes,
             oracle_text: String::new(),
+            rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
@@ -497,6 +505,7 @@ impl Object {
             card_types: source.card_types.clone(),
             subtypes: source.subtypes.clone(),
             oracle_text: source.oracle_text.clone(),
+            rules_text_color_identity: source.rules_text_color_identity,
             other_face: source.other_face,
             other_face_name: source.other_face_name.clone(),
             linked_face_layout: source.linked_face_layout,
@@ -561,6 +570,7 @@ impl Object {
             card_types: snapshot.card_types.clone(),
             subtypes: snapshot.subtypes.clone(),
             oracle_text: snapshot.oracle_text.clone(),
+            rules_text_color_identity: ColorSet::COLORLESS,
             other_face: snapshot.other_face,
             other_face_name: snapshot.other_face_name.clone(),
             linked_face_layout: snapshot.linked_face_layout,
@@ -618,6 +628,7 @@ impl Object {
             card_types: Vec::new(),
             subtypes: Vec::new(),
             oracle_text: String::new(),
+            rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,
@@ -657,6 +668,7 @@ impl Object {
         self.card_types = source.card_types.clone();
         self.subtypes = source.subtypes.clone();
         self.oracle_text = source.oracle_text.clone();
+        self.rules_text_color_identity = source.rules_text_color_identity;
         self.other_face = source.other_face;
         self.other_face_name = source.other_face_name.clone();
         self.linked_face_layout = source.linked_face_layout;
@@ -749,6 +761,7 @@ impl Object {
             card_types: self.card_types.clone(),
             subtypes: self.subtypes.clone(),
             oracle_text: self.oracle_text.clone(),
+            rules_text_color_identity: self.rules_text_color_identity,
             base_power: self.base_power,
             base_toughness: self.base_toughness,
             base_loyalty: self.base_loyalty,
@@ -796,6 +809,7 @@ impl Object {
         self.card_types = restore.card_types;
         self.subtypes = restore.subtypes;
         self.oracle_text = restore.oracle_text;
+        self.rules_text_color_identity = restore.rules_text_color_identity;
         self.base_power = restore.base_power;
         self.base_toughness = restore.base_toughness;
         self.base_loyalty = restore.base_loyalty;
@@ -878,43 +892,9 @@ impl Object {
             identity = identity.union(override_colors);
         }
 
-        // Parse oracle text for mana symbols
-        identity = identity.union(Self::parse_colors_from_text(&self.oracle_text));
+        identity = identity.union(self.rules_text_color_identity);
 
         identity
-    }
-
-    /// Parses mana symbols from rules text and returns the colors found.
-    fn parse_colors_from_text(text: &str) -> ColorSet {
-        use crate::color::Color;
-
-        let mut colors = ColorSet::COLORLESS;
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
-
-        while i < chars.len() {
-            if chars[i] == '{' {
-                // Find the closing brace
-                if let Some(end) = chars[i..].iter().position(|&c| c == '}') {
-                    let symbol: String = chars[i + 1..i + end].iter().collect();
-                    // Check for color symbols (including in hybrid like "W/U")
-                    for c in symbol.chars() {
-                        match c {
-                            'W' => colors = colors.with(Color::White),
-                            'U' => colors = colors.with(Color::Blue),
-                            'B' => colors = colors.with(Color::Black),
-                            'R' => colors = colors.with(Color::Red),
-                            'G' => colors = colors.with(Color::Green),
-                            _ => {}
-                        }
-                    }
-                    i += end + 1;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        colors
     }
 
     /// Returns the current power of this creature.
@@ -1184,7 +1164,8 @@ impl Object {
             supertypes: def.card.supertypes.clone(),
             card_types: def.card.card_types.clone(),
             subtypes: def.card.subtypes.clone(),
-            oracle_text: def.card.oracle_text.clone(),
+            oracle_text: Self::compiled_display_text(def),
+            rules_text_color_identity: def.card.rules_text_color_identity,
             other_face: def.card.other_face,
             other_face_name: def.card.other_face_name.clone(),
             linked_face_layout: def.card.linked_face_layout,
@@ -1493,21 +1474,23 @@ mod tests {
 
     #[test]
     fn test_token_copy_of() {
-        let card = CardBuilder::new(CardId::from_raw(1), "Serra Angel")
-            .mana_cost(ManaCost::from_pips(vec![
-                vec![ManaSymbol::Generic(3)],
-                vec![ManaSymbol::White],
-                vec![ManaSymbol::White],
-            ]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Angel])
-            .oracle_text("Flying, vigilance")
-            .power_toughness(crate::card::PowerToughness::fixed(4, 4))
-            .build();
+        let definition =
+            crate::cards::CardDefinitionBuilder::new(CardId::from_raw(1), "Serra Angel")
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(3)],
+                    vec![ManaSymbol::White],
+                    vec![ManaSymbol::White],
+                ]))
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Angel])
+                .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+                .flying()
+                .vigilance()
+                .build();
 
-        let mut original = Object::from_card(
+        let mut original = Object::from_card_definition(
             ObjectId::from_raw(1),
-            &card,
+            &definition,
             PlayerId::from_index(0),
             Zone::Battlefield,
         );
@@ -1525,7 +1508,12 @@ mod tests {
         assert_eq!(token.base_power, Some(PtValue::Fixed(4)));
         assert_eq!(token.base_toughness, Some(PtValue::Fixed(4)));
         assert!(token.has_subtype(Subtype::Angel));
-        assert_eq!(token.oracle_text, "Flying, vigilance");
+        assert_eq!(token.oracle_text, original.oracle_text);
+        assert!(
+            token.oracle_text.contains("Flying") && token.oracle_text.contains("vigilance"),
+            "token copy should preserve the AST-rendered text box, got {}",
+            token.oracle_text
+        );
 
         // Non-copiable state should NOT be copied
         assert_eq!(token.counters.get(&CounterType::PlusOnePlusOne), None);

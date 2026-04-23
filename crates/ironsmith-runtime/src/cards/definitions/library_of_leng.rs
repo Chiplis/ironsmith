@@ -106,9 +106,21 @@ mod tests {
     fn test_library_of_leng_oracle_text() {
         let def = library_of_leng();
 
-        assert!(def.card.oracle_text.contains("no maximum hand size"));
-        assert!(def.card.oracle_text.contains("discard"));
-        assert!(def.card.oracle_text.contains("top of your library"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("no maximum hand size")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("discard")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("top of your library")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

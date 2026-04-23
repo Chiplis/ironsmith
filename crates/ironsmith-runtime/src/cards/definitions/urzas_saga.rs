@@ -138,10 +138,9 @@ mod tests {
         );
         assert!(
             static_abilities[0]
-                .0
-                .text
-                .as_deref()
-                .is_some_and(|text| text.contains("artifact you control")),
+                .1
+                .display()
+                .contains("artifact you control"),
             "Token should keep the artifact-scaling text"
         );
     }

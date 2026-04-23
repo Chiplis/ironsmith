@@ -324,11 +324,15 @@ mod tests {
     fn test_oracle_text() {
         let def = amulet_of_vigor();
         assert!(
-            def.card
-                .oracle_text
-                .contains("enters the battlefield tapped")
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("enters tapped")
         );
-        assert!(def.card.oracle_text.contains("untap it"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("untap it")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

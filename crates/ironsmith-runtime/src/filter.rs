@@ -3919,9 +3919,10 @@ fn ability_text_has_marker(ability: &crate::ability::Ability, marker: &str) -> b
     if marker.is_empty() {
         return false;
     }
-    let Some(text) = ability.text.as_deref() else {
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
+    let text = static_ability.display();
 
     let words = text
         .split_whitespace()

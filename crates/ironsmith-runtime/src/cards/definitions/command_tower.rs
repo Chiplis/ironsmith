@@ -363,8 +363,16 @@ mod tests {
     fn test_command_tower_oracle_text() {
         let def = command_tower();
 
-        assert!(def.card.oracle_text.contains("Add one mana"));
-        assert!(def.card.oracle_text.contains("commander's color identity"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add one mana")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("commander's color identity")
+        );
     }
 
     // =========================================================================

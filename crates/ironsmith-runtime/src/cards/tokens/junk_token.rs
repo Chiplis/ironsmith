@@ -54,9 +54,6 @@ pub fn junk_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "{T}, Sacrifice this token: Exile the top card of your library. You may play that card this turn. Activate only as a sorcery.".to_string(),
-        ),
     };
 
     CardDefinitionBuilder::new(CardId::new(), "Junk")

@@ -55,9 +55,9 @@ mod tests {
             "expected battlefield, stack, and one disjunctive off-battlefield zone effect"
         );
         assert!(
-            def.abilities.iter().any(|ability| {
-                matches!(&ability.kind, AbilityKind::Activated(_) if ability.text.as_deref().is_some_and(|text| text.contains("Create a 2/2 blue Shapeshifter creature token")))
-            }),
+            unprocessed_compiled_lines(&def)
+                .join(" ")
+                .contains("Create a 2/2 blue Shapeshifter creature token"),
             "expected activated token ability"
         );
 

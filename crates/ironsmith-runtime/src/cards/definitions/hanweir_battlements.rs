@@ -209,12 +209,11 @@ mod tests {
     #[test]
     fn test_hanweir_battlements_oracle_text_includes_meld_ability() {
         let def = hanweir_battlements();
-        assert!(def.card.oracle_text.contains("Target creature gains haste"));
-        assert!(def.card.oracle_text.contains("Hanweir Garrison"));
-        assert!(
-            def.card
-                .oracle_text
-                .contains("Hanweir, the Writhing Township")
-        );
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("target creature gains haste"));
+        assert!(rendered.contains("hanweir garrison"));
+        assert!(rendered.contains("hanweir") && rendered.contains("writhing township"));
     }
 }

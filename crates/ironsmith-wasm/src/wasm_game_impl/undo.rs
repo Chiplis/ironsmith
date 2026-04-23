@@ -1024,7 +1024,7 @@ impl WasmGame {
                 .iter()
                 .map(|value| format!("{value:?}"))
                 .collect(),
-            oracle_text: definition.card.oracle_text.clone(),
+            oracle_text: Self::definition_display_oracle_text(definition),
             power: definition
                 .card
                 .power_toughness
@@ -1036,6 +1036,10 @@ impl WasmGame {
             loyalty: definition.card.loyalty,
             defense: definition.card.defense,
         }
+    }
+
+    fn definition_display_oracle_text(definition: &CardDefinition) -> String {
+        ironsmith::compiled_text::debug_compiled_lines(definition).join("\n")
     }
 
     fn definition_type_line(definition: &CardDefinition) -> String {
@@ -1069,13 +1073,20 @@ impl WasmGame {
         line
     }
 
-    fn definition_to_custom_preview_face(definition: &CardDefinition) -> CustomCardPreviewFace {
+    fn definition_to_custom_preview_face(
+        definition: &CardDefinition,
+        source_oracle_text: Option<&str>,
+    ) -> CustomCardPreviewFace {
         CustomCardPreviewFace {
             name: definition.card.name.clone(),
             mana_cost: definition.card.mana_cost.as_ref().map(ManaCost::to_oracle),
             color_indicator: Self::color_indicator_codes(definition.card.color_indicator),
             type_line: Self::definition_type_line(definition),
-            oracle_text: definition.card.oracle_text.clone(),
+            oracle_text: source_oracle_text
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| Self::definition_display_oracle_text(definition)),
             power: definition
                 .card
                 .power_toughness
@@ -1102,7 +1113,13 @@ impl WasmGame {
             has_fuse: draft.layout == CustomCardLayoutInput::Split && draft.has_fuse,
             faces: definitions
                 .iter()
-                .map(Self::definition_to_custom_preview_face)
+                .enumerate()
+                .map(|(index, definition)| {
+                    Self::definition_to_custom_preview_face(
+                        definition,
+                        draft.faces.get(index).map(|face| face.oracle_text.as_str()),
+                    )
+                })
                 .collect(),
             can_create: true,
         })
@@ -1284,13 +1301,14 @@ impl WasmGame {
                     .as_ref()
                     .map(|(source_name, _)| source_name.clone())
             });
-        let oracle_text = compiled_definition
+        let oracle_text = parse_source
             .as_ref()
-            .map(|definition| definition.card.oracle_text.clone())
+            .and_then(|(_, parse_block)| Self::extract_oracle_text_from_parse_block(parse_block))
             .or_else(|| {
-                parse_source.as_ref().and_then(|(_, parse_block)| {
-                    Self::extract_oracle_text_from_parse_block(parse_block)
-                })
+                compiled_definition
+                    .as_ref()
+                    .map(Self::definition_display_oracle_text)
+                    .filter(|text| !text.trim().is_empty())
             });
         let compiled_text = compiled_definition
             .as_ref()

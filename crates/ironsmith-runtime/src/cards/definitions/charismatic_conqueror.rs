@@ -150,28 +150,44 @@ mod tests {
     #[test]
     fn test_oracle_text_mentions_may_tap() {
         let def = charismatic_conqueror();
-        assert!(def.card.oracle_text.contains("may tap"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("may tap")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_artifact_or_creature() {
         let def = charismatic_conqueror();
-        assert!(def.card.oracle_text.contains("artifact or creature"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("artifact or creature")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_opponent_controls() {
         let def = charismatic_conqueror();
-        assert!(def.card.oracle_text.contains("opponent controls"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("opponent's artifact or creature")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_oracle_text_mentions_untapped() {
         let def = charismatic_conqueror();
-        assert!(def.card.oracle_text.contains("untapped"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("untapped")
+        );
     }
 
     // ========================================

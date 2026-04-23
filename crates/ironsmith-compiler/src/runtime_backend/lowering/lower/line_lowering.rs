@@ -252,22 +252,10 @@ fn lower_abilities_chunk(
     } else {
         ", "
     };
-    let line_text = if actions
-        .iter()
-        .any(|action| matches!(action, crate::cards::builders::KeywordAction::Crew { .. }))
-    {
-        Some(keyword_segment.trim().to_string())
-    } else {
-        super::keyword_actions_line_text(&actions, separator)
-    };
+    let _ = keyword_segment;
+    let _ = separator;
     for action in actions {
-        let ability_count_before = builder.abilities.len();
         builder = builder.apply_keyword_action(action);
-        if let Some(line_text) = line_text.as_ref() {
-            for ability in &mut builder.abilities[ability_count_before..] {
-                ability.text = Some(line_text.clone());
-            }
-        }
     }
     Ok(builder)
 }
@@ -453,10 +441,7 @@ fn lower_parsed_ability_chunk(
             &info.normalized,
         );
     }
-    let mut ability = parsed_ability.into_runtime();
-    if ability.text.is_none() {
-        ability = ability.with_text(info.raw_line.as_str());
-    }
+    let ability = parsed_ability.into_runtime();
     builder = builder.with_ability(ability);
     Ok(builder)
 }

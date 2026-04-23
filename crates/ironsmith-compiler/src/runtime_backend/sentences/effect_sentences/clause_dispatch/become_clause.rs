@@ -264,6 +264,9 @@ pub(crate) fn parse_become_clause(
             let mut colors = crate::color::ColorSet::new();
             let mut all_prefix_words_supported = true;
             for word in &become_words[1..creature_idx] {
+                if *word == "and" {
+                    continue;
+                }
                 if let Some(color) = parse_color(word) {
                     colors = colors.union(color);
                     continue;

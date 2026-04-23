@@ -33,3 +33,11 @@ pub(crate) use self::normalize_common::describe_value;
 pub use self::oracle_style::canonical_compiled_lines;
 pub use self::oracle_style::normalized_oracle_lines;
 pub use self::render_effects::compile_effect_list;
+
+#[cfg(test)]
+pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> String {
+    if let Some(keyword) = self::render_effects::describe_keyword_ability(ability) {
+        return keyword;
+    }
+    self::render_effects::describe_inline_ability(ability)
+}

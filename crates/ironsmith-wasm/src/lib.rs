@@ -573,6 +573,48 @@ fn first_matching_stack_line(lines: &[String], wants_triggered: bool) -> Option<
         .and_then(|line| normalize_stack_display_text(line))
 }
 
+fn stack_display_lines_from_abilities(
+    abilities: &[ironsmith::ability::Ability],
+    wants_triggered: bool,
+) -> Vec<String> {
+    abilities
+        .iter()
+        .filter_map(|ability| match (&ability.kind, wants_triggered) {
+            (ironsmith::ability::AbilityKind::Triggered(triggered), true) => {
+                let trigger = triggered.trigger.display();
+                let effects = ironsmith::compiled_text::compile_effect_list(&triggered.effects);
+                if effects.trim().is_empty() {
+                    Some(trigger)
+                } else {
+                    Some(format!("{trigger}: {effects}"))
+                }
+            }
+            (ironsmith::ability::AbilityKind::Activated(activated), false) => {
+                let cost = activated.mana_cost.display();
+                let effects = if let Some(mana) = &activated.mana_output {
+                    if mana.is_empty() {
+                        ironsmith::compiled_text::compile_effect_list(&activated.effects)
+                    } else {
+                        format!(
+                            "Add {}",
+                            ironsmith::mana::ManaCost::from_symbols(mana.clone()).to_oracle()
+                        )
+                    }
+                } else {
+                    ironsmith::compiled_text::compile_effect_list(&activated.effects)
+                };
+                Some(match (cost.trim().is_empty(), effects.trim().is_empty()) {
+                    (true, true) => "Activated ability".to_string(),
+                    (false, true) => cost,
+                    (true, false) => effects,
+                    (false, false) => format!("{cost}: {effects}"),
+                })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn fallback_stack_entry_ability_text(
     entry: &ironsmith::game_state::StackEntry,
     obj: Option<&ironsmith::object::Object>,
@@ -580,16 +622,9 @@ fn fallback_stack_entry_ability_text(
     let wants_triggered = entry.triggering_event.is_some();
 
     if let Some(source_obj) = obj {
-        let ability_texts: Vec<String> = source_obj
-            .abilities
-            .iter()
-            .filter_map(|ability| match (&ability.kind, wants_triggered) {
-                (ironsmith::ability::AbilityKind::Triggered(_), true) => ability.text.clone(),
-                (ironsmith::ability::AbilityKind::Activated(_), false) => ability.text.clone(),
-                _ => None,
-            })
-            .collect();
-        if let Some(text) = first_matching_stack_line(&ability_texts, wants_triggered) {
+        let compiled_lines =
+            ironsmith::compiled_text::debug_compiled_lines(&source_obj.to_card_definition());
+        if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
             return Some(text);
         }
 
@@ -601,23 +636,14 @@ fn fallback_stack_entry_ability_text(
         if let Some(text) = first_matching_stack_line(&oracle_lines, wants_triggered) {
             return Some(text);
         }
-
-        let compiled_lines =
-            ironsmith::compiled_text::debug_compiled_lines(&source_obj.to_card_definition());
-        if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
-            return Some(text);
-        }
     }
 
     let snapshot_ability_texts: Vec<String> = entry
         .source_snapshot
         .as_ref()
         .into_iter()
-        .flat_map(|snapshot| snapshot.abilities.iter())
-        .filter_map(|ability| match (&ability.kind, wants_triggered) {
-            (ironsmith::ability::AbilityKind::Triggered(_), true) => ability.text.clone(),
-            (ironsmith::ability::AbilityKind::Activated(_), false) => ability.text.clone(),
-            _ => None,
+        .flat_map(|snapshot| {
+            stack_display_lines_from_abilities(&snapshot.abilities, wants_triggered)
         })
         .collect();
     first_matching_stack_line(&snapshot_ability_texts, wants_triggered)

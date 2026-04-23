@@ -94,8 +94,15 @@ mod tests {
     #[test]
     fn test_village_rites_oracle_text() {
         let def = village_rites();
-        assert!(def.card.oracle_text.contains("sacrifice a creature"));
-        assert!(def.card.oracle_text.contains("Draw two cards"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("sacrifice a creature"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Draw two cards")
+        );
     }
 
     // ========================================

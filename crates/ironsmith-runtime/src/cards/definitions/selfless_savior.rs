@@ -318,14 +318,13 @@ mod tests {
     #[test]
     fn test_selfless_savior_oracle_text() {
         let def = selfless_savior();
-        assert!(def.card.oracle_text.contains("Sacrifice"));
-        assert!(
-            def.card
-                .oracle_text
-                .contains("Another target creature you control")
-        );
-        assert!(def.card.oracle_text.contains("indestructible"));
-        assert!(def.card.oracle_text.contains("until end of turn"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("sacrifice"));
+        assert!(rendered.contains("another target creature you control"));
+        assert!(rendered.contains("indestructible"));
+        assert!(rendered.contains("until end of turn"));
     }
 
     // ========================================

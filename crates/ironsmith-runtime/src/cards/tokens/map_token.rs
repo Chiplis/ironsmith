@@ -26,9 +26,9 @@ pub fn map_token_definition() -> CardDefinition {
                 Cost::tap(),
                 Cost::sacrifice_self(),
             ]),
-            effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::explore(target.clone()),
-            ]),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::explore(
+                target.clone(),
+            )]),
             choices: vec![target],
             timing: ActivationTiming::SorcerySpeed,
             additional_restrictions: vec![],
@@ -38,9 +38,6 @@ pub fn map_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery.".to_string(),
-        ),
     };
 
     CardDefinitionBuilder::new(CardId::new(), "Map")

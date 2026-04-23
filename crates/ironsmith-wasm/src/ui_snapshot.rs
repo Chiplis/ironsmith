@@ -120,12 +120,7 @@ fn color_signature(colors: ironsmith::color::ColorSet) -> String {
 fn ability_signature(abilities: &[ironsmith::ability::Ability]) -> String {
     let mut parts = abilities
         .iter()
-        .map(|ability| {
-            ability
-                .text
-                .clone()
-                .unwrap_or_else(|| format!("{:?}", ability.kind))
-        })
+        .map(|ability| format!("{:?}", ability.kind))
         .collect::<Vec<_>>();
     parts.sort_unstable();
     if parts.is_empty() {
@@ -1096,9 +1091,6 @@ pub(super) fn build_object_details_snapshot(
     let current_subtypes = game
         .current_subtypes(id)
         .unwrap_or_else(|| obj.subtypes.clone());
-    let current_abilities = game
-        .current_abilities(id)
-        .unwrap_or_else(|| obj.abilities.clone());
     let (power, toughness) = if obj.zone == Zone::Battlefield {
         (
             game.calculated_power(id).or_else(|| obj.power()),
@@ -1138,10 +1130,7 @@ pub(super) fn build_object_details_snapshot(
         tapped: game.is_tapped(obj.id),
         counters,
         compiled_text,
-        abilities: current_abilities
-            .iter()
-            .filter_map(|ability| ability.text.clone())
-            .collect(),
+        abilities: ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition()),
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
         semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })

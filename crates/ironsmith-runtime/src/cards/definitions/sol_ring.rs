@@ -237,8 +237,16 @@ mod tests {
     fn test_sol_ring_oracle_text() {
         let def = sol_ring();
 
-        assert!(def.card.oracle_text.contains("Add"));
-        assert!(def.card.oracle_text.contains("{C}{C}"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("{C}{C}")
+        );
     }
 
     // =========================================================================

@@ -341,6 +341,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
+            KeywordAction::ModularSunburst => self.modular_sunburst(),
             KeywordAction::Graft(amount) => self.graft(amount),
             KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
@@ -736,7 +737,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
-            text: Some("Storm".to_string()),
         })
     }
 
@@ -827,7 +827,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some("Mentor".to_string()),
         })
     }
 
@@ -907,7 +906,6 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some(format!("Crew {amount}")),
         })
     }
 
@@ -982,7 +980,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn scavenge(self, cost: ManaCost) -> Self {
-        let text = format!("Scavenge {}", cost.to_oracle());
         let total_cost = TotalCost::from_costs(vec![
             crate::costs::Cost::mana(cost),
             crate::costs::Cost::exile_self(),
@@ -1008,7 +1005,6 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: Vec::new(),
             }),
             functional_zones: vec![crate::zone::Zone::Graveyard],
-            text: Some(text),
         })
     }
 
@@ -1074,7 +1070,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn soulshift(self, amount: u32) -> Self {
-        let text = format!("Soulshift {amount}");
         let filter = crate::target::ObjectFilter::default()
             .with_subtype(Subtype::Spirit)
             .owned_by(crate::target::PlayerFilter::You)
@@ -1093,7 +1088,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some(text),
         })
     }
 
@@ -1157,7 +1151,6 @@ impl CardDefinitionBuilder {
                 }),
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
-            text: None,
         })
         .with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -1180,7 +1173,6 @@ impl CardDefinitionBuilder {
                 )),
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
-            text: None,
         })
     }
 
@@ -1262,11 +1254,10 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         })
     }
 
-    pub fn cumulative_upkeep(self, total_cost: TotalCost, text: String) -> Self {
+    pub fn cumulative_upkeep(self, total_cost: TotalCost, _text: String) -> Self {
         let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
         self.with_ability(crate::ability::Ability {
@@ -1289,7 +1280,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some(text),
         })
     }
 
@@ -1355,7 +1345,6 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label)),
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
-            text: None,
         })
     }
 
@@ -1379,7 +1368,6 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::XValueAtLeast(5)),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         })
     }
 
@@ -1428,7 +1416,6 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(bless_condition),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some("Ascend".to_string()),
         })
     }
 
@@ -1440,7 +1427,7 @@ impl CardDefinitionBuilder {
         self.day_nightbound("Nightbound")
     }
 
-    fn day_nightbound(self, text: &str) -> Self {
+    fn day_nightbound(self, _text: &str) -> Self {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
@@ -1467,7 +1454,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some(text.to_string()),
         })
     }
 
@@ -1508,7 +1494,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones,
-            text: Some("Haunt".to_string()),
         })
     }
 
@@ -1536,7 +1521,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some("Provoke".to_string()),
         })
     }
 
@@ -1598,7 +1582,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some("Extort".to_string()),
         })
     }
 
@@ -1661,7 +1644,10 @@ impl CardDefinitionBuilder {
             crate::object::CounterType::Charge
         };
 
-        self.with_ability(
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker("Sunburst"),
+        ))
+        .with_ability(
             crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::enters_with_counters_value(
                     counter_type,
@@ -1791,7 +1777,6 @@ impl CardDefinitionBuilder {
                 )),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         })
     }
 
@@ -1846,7 +1831,9 @@ impl CardDefinitionBuilder {
     pub fn modular(self, amount: u32) -> Self {
         let text = format!("Modular {amount}");
         let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-            crate::target::ObjectFilter::artifact().with_all_type(CardType::Creature),
+            crate::target::ObjectFilter::default()
+                .with_all_type(CardType::Artifact)
+                .with_all_type(CardType::Creature),
         ));
         let trigger_tag = crate::tag::TagKey::from("modular_triggering_object");
         let dead_source_filter = crate::target::ObjectFilter::default()
@@ -1881,7 +1868,48 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
+        })
+    }
+
+    pub fn modular_sunburst(self) -> Self {
+        let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+            crate::target::ObjectFilter::default()
+                .with_all_type(CardType::Artifact)
+                .with_all_type(CardType::Creature),
+        ));
+        let trigger_tag = crate::tag::TagKey::from("modular_triggering_object");
+        let dead_source_filter = crate::target::ObjectFilter::default()
+            .in_zone(crate::zone::Zone::Graveyard)
+            .same_stable_id_as_tagged(trigger_tag.clone());
+        let transfer_count = crate::effect::Value::CountersOn(
+            Box::new(crate::target::ChooseSpec::All(dead_source_filter)),
+            Some(crate::object::CounterType::PlusOnePlusOne),
+        );
+
+        self.with_ability(
+            crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
+                ),
+            )
+            .with_text("Modular—Sunburst"),
+        )
+        .with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_dies(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::tag_triggering_object(trigger_tag),
+                    crate::effect::Effect::may(vec![crate::effect::Effect::put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        transfer_count,
+                        target.clone(),
+                    )]),
+                ]),
+                choices: vec![target],
+                intervening_if: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
 
@@ -1919,7 +1947,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         })
     }
 
@@ -2019,7 +2046,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn annihilator(self, amount: u32) -> Self {
-        let text = format!("Annihilator {amount}");
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_attacks(),
@@ -2034,7 +2060,6 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: Some(text),
         })
     }
 
@@ -2093,7 +2118,6 @@ impl CardDefinitionBuilder {
                 ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
-            text: Some("Undying".to_string()),
         })
     }
 
@@ -2142,7 +2166,6 @@ impl CardDefinitionBuilder {
                 ))),
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
-            text: Some("Persist".to_string()),
         })
     }
 

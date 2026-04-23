@@ -115,11 +115,15 @@ mod tests {
     #[test]
     fn test_shattered_sanctum_oracle_text() {
         let def = shattered_sanctum();
-        assert!(def.card.oracle_text.contains("two or more other lands"));
         assert!(
-            def.card
-                .oracle_text
-                .contains("enters the battlefield tapped")
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("two or more other lands")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("enters tapped")
         );
     }
 

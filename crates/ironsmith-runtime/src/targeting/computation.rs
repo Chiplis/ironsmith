@@ -557,7 +557,6 @@ mod tests {
         obj.abilities.push(Ability {
             kind: AbilityKind::Static(ability),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
     }
 

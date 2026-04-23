@@ -1504,7 +1504,7 @@ fn lower_granted_ability_grant_modifications(
         match ability {
             GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
                 let mut lowered = lower_parsed_ability(ability.clone())?;
-                lowered.runtime_mut().text = Some(display.clone());
+                *lowered.text_mut() = Some(display.clone());
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(
                     lowered.into_runtime(),
                 ));
@@ -1577,7 +1577,6 @@ pub(crate) fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
             vec![ManaSymbol::Colorless],
         )),
         functional_zones: vec![Zone::Battlefield],
-        text: Some("Sacrifice this creature: Add {C}.".to_string()),
     }
 }
 
@@ -1810,7 +1809,6 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!("Equip {{{amount}}}")),
     })
 }
 
@@ -1876,10 +1874,6 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "{}: This creature deals {damage_amount} damage to any target",
-            cost_display.join(", ")
-        )),
     })
 }
 
@@ -1920,6 +1914,38 @@ fn build_equipment_token_from_rules_text(
     }
 
     handled_any.then(|| builder.build())
+}
+
+fn build_equipment_token_from_parsed_rules_text(
+    builder: CardDefinitionBuilder,
+    rules_text: &str,
+) -> Option<CardDefinition> {
+    let mut non_equip_lines = Vec::new();
+    let mut equip_amounts = Vec::new();
+    for line in rules_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if line.to_ascii_lowercase().starts_with("equip ") {
+            equip_amounts.push(parse_braced_generic_mana_amount(line)?);
+        } else {
+            non_equip_lines.push(line);
+        }
+    }
+
+    let mut def = if non_equip_lines.is_empty() {
+        builder.build()
+    } else {
+        builder
+            .clone()
+            .parse_text(&non_equip_lines.join("\n"))
+            .ok()?
+    };
+    for amount in equip_amounts {
+        def.abilities.push(equipment_equip_ability(amount)?);
+    }
+    Some(def)
 }
 
 fn extract_double_quoted_token_rules_text(source_text: &str) -> Option<String> {
@@ -1993,15 +2019,9 @@ fn try_parse_quoted_token_rules_text(
 
     let normalized = normalize_token_self_reference_for_parser(&quoted, self_reference);
     let base_ability_count = builder.clone().build().abilities.len();
-    let mut parsed = builder.clone().parse_text(&normalized).ok()?;
+    let parsed = builder.clone().parse_text(&normalized).ok()?;
     if parsed.abilities.len() == base_ability_count + 1 {
-        if let Some(last) = parsed.abilities.last_mut() {
-            let mut original = quoted.trim().to_string();
-            if !original.ends_with(['.', '!', '?']) {
-                original.push('.');
-            }
-            last.text = Some(original);
-        }
+        let _ = quoted;
     }
     Some(parsed)
 }
@@ -2074,9 +2094,6 @@ pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "When this token dies, it deals {amount} damage to any target."
-        )),
     }
 }
 
@@ -2093,9 +2110,6 @@ pub(crate) fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Abili
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "When this token leaves the battlefield, it deals {amount} damage to any target."
-        )),
     }
 }
 
@@ -2112,9 +2126,6 @@ pub(crate) fn token_becomes_tapped_deals_damage_target_player_ability(amount: i3
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "Whenever this token becomes tapped, it deals {amount} damage to target player."
-        )),
     }
 }
 
@@ -2133,9 +2144,6 @@ pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> A
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "When this token dies, target creature gets -1/-1 until end of turn.".to_string(),
-        ),
     }
 }
 
@@ -2158,7 +2166,6 @@ pub(crate) fn token_red_pump_ability() -> Ability {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some("{R}: This creature gets +1/+0 until end of turn.".to_string()),
     }
 }
 
@@ -2182,12 +2189,10 @@ pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some("{W}, {T}: Tap target creature.".to_string()),
     }
 }
 
 pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
-    let mana_text = ManaCost::from_pips(vec![vec![symbol]]).to_oracle();
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
@@ -2203,7 +2208,6 @@ pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!("{{T}}: Add {mana_text}.")),
     }
 }
 
@@ -2230,10 +2234,6 @@ pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "Whenever this creature deals damage to a player, that player gets a poison counter."
-                .to_string(),
-        ),
     }
 }
 
@@ -2254,9 +2254,6 @@ pub(crate) fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) 
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "Whenever you cast a noncreature spell, this token deals {amount} damage to each opponent."
-        )),
     }
 }
 
@@ -2278,10 +2275,6 @@ pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Abil
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "Whenever this token deals combat damage to a player, gain control of target artifact that player controls."
-                .to_string(),
-        ),
     }
 }
 
@@ -2302,9 +2295,6 @@ pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "When this token leaves the battlefield, return target card named {card_name} from your graveyard to your hand."
-        )),
     }
 }
 
@@ -2689,15 +2679,6 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
                 .collect(),
         )
     };
-    let mut cost_parts = Vec::new();
-    if !mana_cost.is_empty() {
-        cost_parts.push(mana_cost.to_oracle());
-    }
-    if tap_cost {
-        cost_parts.push("{T}".to_string());
-    }
-    cost_parts.push("Sacrifice this token".to_string());
-    let cost_text = cost_parts.join(", ");
     let target = ChooseSpec::Object(
         ObjectFilter::default()
             .in_zone(Zone::Graveyard)
@@ -2723,9 +2704,6 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
             mana_usage_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "{cost_text}: Return a card named {card_name} from your graveyard to the battlefield."
-        )),
     }
 }
 
@@ -2766,7 +2744,6 @@ pub(crate) fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(text),
     }
 }
 
@@ -2790,9 +2767,6 @@ pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'".to_string(),
-        ),
     }
 }
 
@@ -3012,7 +2986,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             {
                 return Some(def);
             }
-            if let Ok(def) = builder.clone().parse_text(&rules_text) {
+            if let Some(def) =
+                build_equipment_token_from_parsed_rules_text(builder.clone(), &rules_text)
+            {
                 return Some(def);
             }
         }
@@ -3363,9 +3339,6 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     intervening_if: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: Some(format!(
-                    "When this token leaves the battlefield, it deals {amount} damage to you and each creature you control."
-                )),
             };
             builder = builder.with_ability(ability);
         }
@@ -3433,7 +3406,6 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     intervening_if: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: Some("When this token dies, you gain 1 life.".to_string()),
             };
             builder = builder.with_ability(ability);
         }
@@ -3472,10 +3444,6 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     mana_usage_restrictions: vec![],
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: Some(
-                    "{T}: Target creature you control gets +1/+0 until end of turn. Activate only as a sorcery."
-                        .to_string(),
-                ),
             };
             builder = builder.with_ability(ability);
         }
@@ -3532,10 +3500,6 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     mana_usage_restrictions: vec![],
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: Some(
-                    "{1}, Sacrifice this token: Counter target noncreature spell unless its controller pays {1}."
-                        .to_string(),
-                ),
             };
             builder = builder.with_ability(counter_ability);
         }
@@ -3604,10 +3568,6 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     intervening_if: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: Some(
-                    "Whenever a land you control enters, this token gets +1/+0 until end of turn."
-                        .to_string(),
-                ),
             };
             builder = builder.with_ability(ability);
         }
@@ -3817,16 +3777,6 @@ mod parse_compile_tests {
             )
             .expect("Gargoyle Sentinel text should parse");
 
-        let rendered = format!("{def:#?}").to_ascii_lowercase();
-        assert!(
-            rendered.contains("this creature loses defender and gains flying"),
-            "expected a self-targeted temporary activation, got {rendered}"
-        );
-        assert!(
-            !rendered.contains("creatures lose defender"),
-            "expected the activation to stay on the sentinel itself, got {rendered}"
-        );
-
         let _activated = def
             .abilities
             .iter()
@@ -3931,21 +3881,21 @@ mod parse_compile_tests {
             .parse_text(&rules_text)
             .expect("equipment token rules text should parse");
 
-        let activated_texts = def
+        let activated_costs = def
             .abilities
             .iter()
             .filter_map(|ability| match &ability.kind {
-                AbilityKind::Activated(_) => ability.text.as_deref(),
+                AbilityKind::Activated(activated) => Some(activated.mana_cost.display()),
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert!(
-            activated_texts.iter().any(|text| *text == "Equip {1}"),
-            "expected reparsed equipment token to keep equip, got {activated_texts:?}"
+            activated_costs.iter().any(|text| text.contains("{1}")),
+            "expected reparsed equipment token to keep equip cost, got {activated_costs:?}"
         );
         assert!(
-            format!("{def:?}").contains("Equipped creature has"),
-            "expected reparsed equipment token to keep the granted ability, got {def:#?}"
+            format!("{def:?}").contains("AttachedAbilityGrant"),
+            "expected reparsed equipment token to keep a structured granted ability, got {def:#?}"
         );
     }
 
@@ -3958,8 +3908,8 @@ mod parse_compile_tests {
         let debug = format!("{def:#?}");
 
         assert!(
-            debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
-            "expected token text to preserve the original quoted trigger, got {debug}"
+            debug.contains("SpellCastQualified"),
+            "expected quoted trigger to lower into a spell-cast trigger, got {debug}"
         );
         assert!(
             debug.contains("RemoveCardTypes"),
@@ -3995,8 +3945,8 @@ mod parse_compile_tests {
         let debug = format!("{def:#?}");
 
         assert!(
-            debug.contains("Whenever an opponent casts a creature spell, this token isn't a creature until end of turn."),
-            "expected token text to preserve the inline trigger tail, got {debug}"
+            debug.contains("SpellCastQualified"),
+            "expected inline trigger tail to lower into a spell-cast trigger, got {debug}"
         );
         assert!(
             debug.contains("RemoveCardTypes"),

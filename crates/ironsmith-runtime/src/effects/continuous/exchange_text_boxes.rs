@@ -121,13 +121,12 @@ mod tests {
         controller: PlayerId,
     ) -> ObjectId {
         let object_id = game.new_object_id();
-        let mut object = crate::object::Object::from_card(
+        let object = crate::object::Object::from_card_definition(
             object_id,
-            &definition.card,
+            definition,
             controller,
             Zone::Battlefield,
         );
-        object.abilities = definition.abilities.clone();
         game.add_object(object);
         game.effect_store.continuous_effects.record_entry(object_id);
         object_id
@@ -197,8 +196,14 @@ mod tests {
             .calculated_characteristics(raid_bear)
             .expect("trigger creature should have characteristics");
 
-        assert_eq!(mana_chars.oracle_text, trigger_def.card.oracle_text);
-        assert_eq!(raid_chars.oracle_text, mana_def.card.oracle_text);
+        assert_eq!(
+            mana_chars.oracle_text,
+            crate::compiled_text::debug_compiled_lines(&trigger_def).join("\n")
+        );
+        assert_eq!(
+            raid_chars.oracle_text,
+            crate::compiled_text::debug_compiled_lines(&mana_def).join("\n")
+        );
         assert!(
             mana_chars
                 .abilities

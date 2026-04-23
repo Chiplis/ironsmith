@@ -179,7 +179,7 @@ pub(super) fn rewrite_apply_pending_mechanic_linkages(
     };
 
     for ability in &mut builder.abilities {
-        if ability.text.as_deref() == Some("Haunt")
+        if is_haunt_placeholder_ability(ability)
             && let crate::ability::AbilityKind::Triggered(ref mut triggered) = ability.kind
         {
             triggered.effects = crate::resolution::ResolutionProgram::from_effects(vec![
@@ -192,60 +192,20 @@ pub(super) fn rewrite_apply_pending_mechanic_linkages(
     builder
 }
 
+fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    triggered.effects.to_vec().iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .is_some_and(|exile| exile.spec == ChooseSpec::Source)
+    })
+}
+
 pub(super) fn rewrite_normalize_spell_delayed_trigger_effects(
-    mut builder: CardDefinitionBuilder,
+    builder: CardDefinitionBuilder,
 ) -> CardDefinitionBuilder {
-    let is_spell = builder
-        .card_builder
-        .card_types_ref()
-        .iter()
-        .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery));
-    if !is_spell {
-        return builder;
-    }
-
-    let mut delayed = Vec::new();
-    builder.abilities.retain(|ability| {
-        let AbilityKind::Triggered(triggered) = &ability.kind else {
-            return true;
-        };
-        let ability_text = ability
-            .text
-            .as_deref()
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if !str_contains(ability_text.as_str(), "this turn") {
-            return true;
-        }
-
-        let Some(trigger) = delayed_trigger_spec_from_label(
-            triggered.trigger.display().as_str(),
-            Some(ability_text.as_str()),
-        ) else {
-            return true;
-        };
-
-        delayed.push(crate::effect::Effect::new(
-            crate::effects::ScheduleDelayedTriggerEffect::new(
-                trigger,
-                triggered.effects.clone().to_vec(),
-                false,
-                Vec::new(),
-                PlayerFilter::You,
-            )
-            .until_end_of_turn(),
-        ));
-        false
-    });
-
-    if delayed.is_empty() {
-        return builder;
-    }
-
-    builder
-        .spell_effect
-        .get_or_insert_with(crate::resolution::ResolutionProgram::default)
-        .extend(crate::resolution::ResolutionProgram::from_effects(delayed));
     builder
 }
 

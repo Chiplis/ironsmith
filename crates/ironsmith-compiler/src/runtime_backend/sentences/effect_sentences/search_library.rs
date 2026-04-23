@@ -123,6 +123,13 @@ fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
         && is_source_reference_duration_tokens(tokens)
 }
 
+fn is_source_remains_battlefield_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
+        && token_slice_contains_word(tokens, "remains")
+        && token_slice_contains_word(tokens, "battlefield")
+        && is_source_reference_duration_tokens(tokens)
+}
+
 fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut cleaned = Vec::new();
     let mut idx = 0usize;
@@ -236,6 +243,10 @@ pub(crate) fn parse_restriction_duration_lexed(
     if let Some((token_idx, _)) = find_phrase_token_bounds(tokens, &["for", "as", "long", "as"]) {
         let suffix_tokens = &tokens[token_idx..];
         if is_source_remains_tapped_duration_tokens(suffix_tokens) {
+            let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
+            return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
+        }
+        if is_source_remains_battlefield_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
         }

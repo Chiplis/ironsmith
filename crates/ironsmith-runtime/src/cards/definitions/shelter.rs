@@ -209,10 +209,30 @@ mod tests {
     #[test]
     fn test_shelter_oracle_text() {
         let def = shelter();
-        assert!(def.card.oracle_text.contains("Target creature you control"));
-        assert!(def.card.oracle_text.contains("protection"));
-        assert!(def.card.oracle_text.contains("color of your choice"));
-        assert!(def.card.oracle_text.contains("until end of turn"));
-        assert!(def.card.oracle_text.contains("Draw a card"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Target creature you control")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("protection")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("color of your choice")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("until end of turn")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Draw a card")
+        );
     }
 }

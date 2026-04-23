@@ -2972,12 +2972,12 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Activated(_) => ability.text.as_deref(),
+            AbilityKind::Activated(_) => crate::ability::ability_surface_text_for_tests(ability),
             _ => None,
         })
         .collect::<Vec<_>>();
     assert!(
-        activated_texts.iter().any(|text| *text == "Equip {1}"),
+        activated_texts.iter().any(|text| text == "Equip {1}"),
         "Rock should keep its equip ability, got {activated_texts:?}"
     );
     assert!(
@@ -3006,7 +3006,7 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Activated(_) => ability.text.as_deref(),
+            AbilityKind::Activated(_) => crate::ability::ability_surface_text_for_tests(ability),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -3852,7 +3852,8 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
         .calculated_characteristics(ornithopter_id)
         .expect("Ornithopter should still have calculated characteristics after the exchange");
     assert_eq!(
-        ornithopter_chars.oracle_text, myr_def.card.oracle_text,
+        ornithopter_chars.oracle_text,
+        crate::compiled_text::debug_compiled_lines(&myr_def).join("\n"),
         "Ornithopter should now carry Myr Moonvessel's text box"
     );
     assert!(
@@ -4145,11 +4146,13 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         .expect("Yawgmoth should still have calculated characteristics");
 
     assert_eq!(
-        ornithopter_chars.oracle_text, fixture.yawgmoth.card.oracle_text,
+        ornithopter_chars.oracle_text,
+        crate::compiled_text::debug_compiled_lines(&fixture.yawgmoth).join("\n"),
         "Ornithopter should pick up Yawgmoth's text box after the exchange"
     );
     assert_eq!(
-        yawgmoth_chars.oracle_text, fixture.ornithopter.card.oracle_text,
+        yawgmoth_chars.oracle_text,
+        crate::compiled_text::debug_compiled_lines(&fixture.ornithopter).join("\n"),
         "Yawgmoth should pick up Ornithopter's text box after the exchange"
     );
     assert!(
@@ -5246,7 +5249,6 @@ fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_abili
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(1)),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -5293,7 +5295,6 @@ fn test_apply_blocker_declarations_enforces_maximum_blockers() {
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::cant_be_blocked_by_more_than(1)),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -9554,7 +9555,6 @@ fn test_once_per_turn_ability_tracking() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     // Remove summoning sickness
@@ -9599,7 +9599,6 @@ fn test_activate_no_more_than_twice_each_turn_restriction() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     let ability = match &game
@@ -9655,7 +9654,6 @@ fn test_non_mana_activation_condition_max_activations_per_turn_is_enforced() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     let ability = match &game
@@ -9948,7 +9946,6 @@ fn test_undying_trigger_generation() {
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: Some("Undying".to_string()),
         });
 
     // Create a snapshot of the creature (no +1/+1 counters)
@@ -10007,7 +10004,6 @@ fn test_undying_does_not_trigger_with_plus_counters() {
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: Some("Undying".to_string()),
         });
     game.object_mut(creature_id)
         .unwrap()
@@ -10068,7 +10064,6 @@ fn test_persist_trigger_generation() {
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: Some("Persist".to_string()),
         });
 
     // Create a snapshot (no -1/-1 counters)
@@ -10199,7 +10194,6 @@ fn test_once_per_turn_in_legal_actions() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
     game.remove_summoning_sickness(creature_id);
 
@@ -10266,7 +10260,6 @@ fn test_nonactive_player_keeps_priority_after_activating_ability() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
     let actions = compute_legal_actions(&game, alice);
@@ -10347,7 +10340,6 @@ fn test_once_per_turn_restriction_survives_control_change() {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
     game.remove_summoning_sickness(creature_id);
 
@@ -14670,10 +14662,10 @@ fn test_cipher_resolution_encodes_and_combat_damage_casts_a_copy() {
             .expect("encoded creature exists")
             .abilities
             .iter()
-            .any(|ability| ability
-                .text
-                .as_deref()
-                .is_some_and(|text| text.contains("encoded card"))),
+            .any(
+                |ability| crate::ability::ability_surface_text_for_tests(ability)
+                    .is_some_and(|text| text.contains("encoded card"))
+            ),
         "encoded creature should gain the cipher combat-damage trigger"
     );
 

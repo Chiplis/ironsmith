@@ -136,11 +136,15 @@ mod tests {
     #[test]
     fn test_godless_shrine_oracle_text() {
         let def = godless_shrine();
-        assert!(def.card.oracle_text.contains("pay 2 life"));
         assert!(
-            def.card
-                .oracle_text
-                .contains("enters the battlefield tapped")
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("pay 2 life")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("enters tapped")
         );
     }
 

@@ -44,7 +44,6 @@ pub struct RestrictedManaUnit {
 pub struct Ability<SA, T, E, C> {
     pub kind: AbilityKind<SA, T, E, C>,
     pub functional_zones: Vec<Zone>,
-    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,7 +103,6 @@ where
         Self {
             kind: AbilityKind::Static(effect),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
@@ -117,7 +115,6 @@ where
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
@@ -147,7 +144,6 @@ where
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
@@ -171,7 +167,6 @@ where
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
@@ -193,7 +188,6 @@ where
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
@@ -213,24 +207,22 @@ where
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         }
     }
 
     pub fn basic_land_mana(subtype: Subtype) -> Option<Self> {
-        let (symbol, text) = match subtype {
-            Subtype::Plains => (ManaSymbol::White, "{T}: Add {W}."),
-            Subtype::Island => (ManaSymbol::Blue, "{T}: Add {U}."),
-            Subtype::Swamp => (ManaSymbol::Black, "{T}: Add {B}."),
-            Subtype::Mountain => (ManaSymbol::Red, "{T}: Add {R}."),
-            Subtype::Forest => (ManaSymbol::Green, "{T}: Add {G}."),
+        let symbol = match subtype {
+            Subtype::Plains => ManaSymbol::White,
+            Subtype::Island => ManaSymbol::Blue,
+            Subtype::Swamp => ManaSymbol::Black,
+            Subtype::Mountain => ManaSymbol::Red,
+            Subtype::Forest => ManaSymbol::Green,
             _ => return None,
         };
 
         Some(Self {
             kind: AbilityKind::Activated(ActivatedAbility::basic_mana(symbol)),
             functional_zones: vec![Zone::Battlefield],
-            text: Some(text.to_string()),
         })
     }
 
@@ -239,8 +231,8 @@ where
         self
     }
 
-    pub fn with_text(mut self, text: &str) -> Self {
-        self.text = Some(text.to_string());
+    pub fn with_text(self, text: &str) -> Self {
+        let _ = text;
         self
     }
 
@@ -286,7 +278,6 @@ where
         Ok(Ability {
             kind,
             functional_zones: self.functional_zones,
-            text: self.text,
         })
     }
 }

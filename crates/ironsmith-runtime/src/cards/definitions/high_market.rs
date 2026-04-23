@@ -243,9 +243,21 @@ mod tests {
     fn test_high_market_oracle_text() {
         let def = high_market();
 
-        assert!(def.card.oracle_text.contains("Add {C}"));
-        assert!(def.card.oracle_text.contains("Sacrifice a creature"));
-        assert!(def.card.oracle_text.contains("gain 1 life"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {C}")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Sacrifice a creature")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("gain 1 life")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

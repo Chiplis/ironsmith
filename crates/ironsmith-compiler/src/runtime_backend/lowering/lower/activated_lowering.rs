@@ -466,9 +466,9 @@ fn lower_rewrite_activated_to_chunk_impl(
                 } else {
                     functional_zones
                 },
-                text: ability_text.clone(),
             }
             .into(),
+            text: ability_text.clone(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -517,9 +517,9 @@ fn lower_rewrite_activated_to_chunk_impl(
                     } else {
                         functional_zones
                     },
-                    text: ability_text.clone(),
                 }
                 .into(),
+                text: ability_text.clone(),
                 effects_ast: Some(effects_ast),
                 reference_imports,
                 trigger_spec: None,
@@ -570,9 +570,9 @@ fn lower_rewrite_activated_to_chunk_impl(
             } else {
                 functional_zones
             },
-            text: ability_text,
         }
         .into(),
+        text: ability_text,
         effects_ast: Some(effects_ast),
         reference_imports,
         trigger_spec: None,

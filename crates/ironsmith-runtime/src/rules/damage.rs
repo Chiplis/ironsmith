@@ -509,6 +509,7 @@ mod tests {
             card_types: vec![CardType::Creature],
             subtypes: vec![],
             oracle_text: String::new(),
+            rules_text_color_identity: crate::color::ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,
             linked_face_layout: crate::card::LinkedFaceLayout::None,

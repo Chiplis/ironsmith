@@ -79,7 +79,7 @@ pub(crate) fn parse_hand_keyword_activated_body_lexed(
     let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens, None)? else {
         return Ok(None);
     };
-    parsed.runtime_mut().text = Some(display_label.to_string());
+    *parsed.text_mut() = Some(display_label.to_string());
     *parsed.functional_zones_mut() = vec![Zone::Hand];
     Ok(Some(parsed))
 }
@@ -106,14 +106,6 @@ pub(crate) fn parse_activated_line_with_raw(
     }
     let loyalty_shorthand_cost = parse_loyalty_shorthand_activation_cost(cost_tokens, raw_line);
     let ability_label = parse_prefixed_activated_ability_label(tokens, cost_start);
-    let apply_ability_label = |ability: &mut Ability| {
-        if ability.text.is_none() {
-            if let Some(label) = &ability_label {
-                ability.text = Some(label.clone());
-            }
-        }
-    };
-
     let mut effect_sentences = grammar::split_lexed_slices_on_period(effect_tokens);
     let functional_zones = infer_activated_functional_zones_lexed(cost_tokens, &effect_sentences);
     let mut timing = ActivationTiming::AnyTime;
@@ -230,7 +222,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     primary_sentence,
                     x_defined_by_cost,
                 )?;
-                let mut ability = Ability {
+                let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
                         effects: crate::resolution::ResolutionProgram::default(),
@@ -243,13 +235,12 @@ pub(crate) fn parse_activated_line_with_raw(
                         mana_usage_restrictions: mana_usage_restrictions.clone(),
                     }),
                     functional_zones: functional_zones.clone(),
-                    text: None,
                 };
-                apply_ability_label(&mut ability);
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
+                    text: ability_label.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports.clone(),
                     trigger_spec: None,
@@ -265,7 +256,7 @@ pub(crate) fn parse_activated_line_with_raw(
 
             if !mana.is_empty() {
                 if dynamic_amount.is_none() && extra_effects_ast.is_empty() {
-                    let mut ability = Ability {
+                    let ability = Ability {
                         kind: AbilityKind::Activated(ActivatedAbility {
                             mana_cost,
                             effects: crate::resolution::ResolutionProgram::default(),
@@ -278,11 +269,10 @@ pub(crate) fn parse_activated_line_with_raw(
                             mana_usage_restrictions: mana_usage_restrictions.clone(),
                         }),
                         functional_zones: functional_zones.clone(),
-                        text: None,
                     };
-                    apply_ability_label(&mut ability);
                     return Ok(Some(ParsedAbility {
                         ability: ability.into(),
+                        text: ability_label.clone(),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,
@@ -294,7 +284,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     primary_sentence,
                     x_defined_by_cost,
                 )?;
-                let mut ability = Ability {
+                let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
                         effects: crate::resolution::ResolutionProgram::default(),
@@ -307,13 +297,12 @@ pub(crate) fn parse_activated_line_with_raw(
                         mana_usage_restrictions: mana_usage_restrictions.clone(),
                     }),
                     functional_zones: functional_zones.clone(),
-                    text: None,
                 };
-                apply_ability_label(&mut ability);
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
+                    text: ability_label.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports,
                     trigger_spec: None,
@@ -340,7 +329,7 @@ pub(crate) fn parse_activated_line_with_raw(
     {
         return Ok(Some(ParsedAbility {
             ability: {
-                let mut ability = Ability {
+                let ability = Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
                         mana_cost,
                         effects: crate::resolution::ResolutionProgram::default(),
@@ -353,12 +342,11 @@ pub(crate) fn parse_activated_line_with_raw(
                         mana_usage_restrictions,
                     }),
                     functional_zones,
-                    text: None,
                 };
-                apply_ability_label(&mut ability);
                 ability
             }
             .into(),
+            text: ability_label.clone(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -391,7 +379,7 @@ pub(crate) fn parse_activated_line_with_raw(
 
     Ok(Some(ParsedAbility {
         ability: {
-            let mut ability = Ability {
+            let ability = Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
                     mana_cost,
                     effects: crate::resolution::ResolutionProgram::default(),
@@ -404,12 +392,11 @@ pub(crate) fn parse_activated_line_with_raw(
                     mana_usage_restrictions,
                 }),
                 functional_zones,
-                text: None,
             };
-            apply_ability_label(&mut ability);
             ability
         }
         .into(),
+        text: ability_label,
         effects_ast: Some(effects_ast),
         reference_imports,
         trigger_spec: None,

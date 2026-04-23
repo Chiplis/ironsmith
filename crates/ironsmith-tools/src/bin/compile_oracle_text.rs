@@ -108,7 +108,7 @@ fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
 }
 
 fn payload_from_definition(definition: &CardDefinition) -> ironsmith_tools::CardPayload {
-    let raw_oracle_text = definition.card.oracle_text.clone();
+    let raw_oracle_text = compiled_text_lines(definition).join("\n");
     let oracle_text = ironsmith_tools::postprocess_oracle_text(&raw_oracle_text);
     let metadata_lines = metadata_lines_from_definition(definition);
     let parse_input = build_parse_input(&metadata_lines, &raw_oracle_text);
@@ -257,13 +257,7 @@ fn write_compiled_job<W: Write>(
         .map_err(|err| format!("parse failed for {}: {err:?}", job.name))?;
         &parsed_definition
     };
-    let mut display_def = def.clone();
-    display_def.card.oracle_text = job.oracle_text.clone();
-    for ability in &mut display_def.abilities {
-        if let Some(text) = ability.text.as_mut() {
-            *text = ironsmith_tools::postprocess_oracle_text(text);
-        }
-    }
+    let display_def = def;
 
     outln!("Name: {}", display_def.card.name);
     if detailed {

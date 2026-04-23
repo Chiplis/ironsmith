@@ -27,6 +27,8 @@ pub fn wall_of_roots() -> CardDefinition {
 #[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::StaticAbilityId;
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
@@ -46,7 +48,7 @@ mod tests {
         assert!(
             def.abilities
                 .iter()
-                .any(|ability| ability.text.as_deref() == Some("Defender"))
+                .any(|ability| matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.id() == StaticAbilityId::Defender))
         );
         assert!(
             def.abilities

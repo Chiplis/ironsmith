@@ -74,7 +74,7 @@ impl EffectExecutor for BackupEffect {
                     _ => crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
                         crate::target::ObjectFilter::source(),
                         ability.clone(),
-                        ability.text.clone().unwrap_or_default(),
+                        "an ability".to_string(),
                     ),
                 };
                 outcomes.push(

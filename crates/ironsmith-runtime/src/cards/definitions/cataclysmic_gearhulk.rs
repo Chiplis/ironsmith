@@ -374,7 +374,11 @@ mod tests {
     #[test]
     fn test_gearhulk_oracle_mentions_nonland() {
         let def = cataclysmic_gearhulk();
-        assert!(def.card.oracle_text.contains("nonland"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("artifact, a creature, an enchantment, and a planeswalker"));
+        assert!(!rendered.contains("land"));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -382,7 +386,11 @@ mod tests {
     fn test_gearhulk_oracle_mentions_planeswalker() {
         // Unlike Cataclysm, Gearhulk includes planeswalker
         let def = cataclysmic_gearhulk();
-        assert!(def.card.oracle_text.contains("planeswalker"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("planeswalker")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

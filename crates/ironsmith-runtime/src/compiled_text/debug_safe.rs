@@ -20,77 +20,11 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     compiled_text_lines(def)
 }
 
-fn safe_intrinsic_label_from_ability_source_text(ability: &Ability) -> Option<String> {
-    let Some(text) = ability.text.as_deref().map(str::trim) else {
-        return None;
-    };
-    if let Some(label) = safe_echo_label_from_source_text(text) {
-        return Some(label);
-    }
-    if let Some(label) = safe_first_time_each_turn_trigger_label_from_source_text(ability, text) {
-        return Some(label);
-    }
-    let label = intrinsic_label_from_source_text(Some(text))?;
+fn safe_intrinsic_label_from_ability(ability: &Ability) -> Option<String> {
     if let Some(keyword) = describe_keyword_ability(ability) {
-        return intrinsic_label_from_source_text(Some(&keyword));
+        return intrinsic_keyword_label(Some(&keyword));
     }
-
-    let lower = text.trim_end_matches('.').to_ascii_lowercase();
-    if is_keyword_style_line(&label) {
-        return Some(label);
-    }
-
-    (matches!(ability.kind, AbilityKind::Triggered(_))
-        && (lower == "battle cry"
-            || lower == "enlist"
-            || lower == "soulbond"
-            || lower == "evolve"
-            || lower == "haunt"
-            || lower.starts_with("annihilator ")
-            || lower.starts_with("cumulative upkeep")))
-    .then_some(label)
-}
-
-fn safe_first_time_each_turn_trigger_label_from_source_text(
-    ability: &Ability,
-    text: &str,
-) -> Option<String> {
-    let AbilityKind::Triggered(triggered) = &ability.kind else {
-        return None;
-    };
-    let max = triggered
-        .intervening_if
-        .as_ref()
-        .and_then(max_times_each_turn_limit)?;
-    if max != 1 {
-        return None;
-    }
-
-    let normalized = normalize_sentence_surface_style(&strip_parenthetical_segments(text.trim()));
-    let lower = normalized.to_ascii_lowercase();
-    let marker = " for the first time each turn";
-    let marker_idx = lower.find(marker)?;
-    let marker_end = marker_idx + marker.len();
-    let source_trigger = normalized[..marker_end].trim();
-    let expected_rendered = source_trigger.replacen(marker, "", 1);
-    expected_rendered
-        .eq_ignore_ascii_case(triggered.trigger.display().trim())
-        .then_some(normalized)
-}
-
-fn max_times_each_turn_limit(condition: &crate::ConditionExpr) -> Option<u32> {
-    match condition {
-        crate::ConditionExpr::MaxTimesEachTurn(limit) => Some(*limit),
-        crate::ConditionExpr::And(left, right) => match (
-            max_times_each_turn_limit(left),
-            max_times_each_turn_limit(right),
-        ) {
-            (Some(left), Some(right)) => Some(left.min(right)),
-            (Some(limit), None) | (None, Some(limit)) => Some(limit),
-            (None, None) => None,
-        },
-        _ => None,
-    }
+    None
 }
 
 pub(super) fn normalize_debug_safe_surface(
@@ -111,12 +45,7 @@ pub(super) fn normalize_debug_safe_surface(
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
     let merged_animation = merge_subject_animation_lines(merged_has_keywords);
-    let source_target_costs = restore_per_target_cost_source_text(provenance_def, merged_animation);
-    let source_divided_damage =
-        restore_divided_evenly_damage_source_text(provenance_def, source_target_costs);
-    let source_complex_lines =
-        restore_selected_complex_source_text_lines(provenance_def, source_divided_damage);
-    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(source_complex_lines);
+    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
     let structural_keyword_markers = compact_structural_keyword_surfaces(merged_transform);
@@ -139,6 +68,10 @@ pub(super) fn normalize_debug_safe_surface(
             line.replace("that many color plus one", "that many colors plus one")
                 .replace("Count the color of", "Count the colors of")
                 .replace("count the color of", "count the colors of")
+                .replace("that much +1/+1 counter", "that many +1/+1 counters")
+                .replace("If you is the monarch", "If you're the monarch")
+                .replace("if you is the monarch", "if you're the monarch")
+                .replace("Otherwise, You become", "Otherwise, you become")
         })
         .map(|line| strip_parenthetical_text(&line))
         .map(|line| normalize_debug_safe_oracle_like_surface(&line))
@@ -147,309 +80,11 @@ pub(super) fn normalize_debug_safe_surface(
     normalize_debug_safe_line_sequences(provenance_def, final_lines)
 }
 
-fn restore_per_target_cost_source_text(
-    provenance_def: &CardDefinition,
-    lines: Vec<String>,
-) -> Vec<String> {
-    let source_text = provenance_def
-        .abilities
-        .iter()
-        .filter(|ability| matches!(ability.kind, AbilityKind::Static(_)))
-        .filter_map(|ability| ability.text.as_deref())
-        .map(str::trim)
-        .find(|text| {
-            text.to_ascii_lowercase()
-                .contains("more to cast for each target beyond the first")
-        })
-        .map(normalize_sentence_surface_style);
-    let Some(source_text) = source_text else {
-        return lines;
-    };
-
-    lines
-        .into_iter()
-        .map(|line| {
-            let lower = line.to_ascii_lowercase();
-            if lower.starts_with("this spell costs ")
-                && lower.contains("more to cast for each target beyond the first")
-            {
-                source_text.clone()
-            } else {
-                line
-            }
-        })
-        .collect()
-}
-
-fn restore_divided_evenly_damage_source_text(
-    provenance_def: &CardDefinition,
-    lines: Vec<String>,
-) -> Vec<String> {
-    let source_text = provenance_def
-        .card
-        .oracle_text
-        .lines()
-        .map(str::trim)
-        .find(|text| {
-            text.to_ascii_lowercase()
-                .contains("damage divided evenly, rounded down")
-        })
-        .map(normalize_sentence_surface_style);
-    let Some(source_text) = source_text else {
-        return lines;
-    };
-
-    lines
-        .into_iter()
-        .map(|line| {
-            if line
-                .to_ascii_lowercase()
-                .contains("damage divided evenly, rounded down")
-            {
-                source_text.clone()
-            } else {
-                line
-            }
-        })
-        .collect()
-}
-
-fn selected_complex_source_text(text: &str) -> Option<String> {
-    let normalized = normalize_sentence_surface_style(text.trim());
-    let lower = normalized.trim_end_matches('.').to_ascii_lowercase();
-    if lower.contains("look at the top two cards of your library")
-        && lower.contains("put one of them into your hand and the other into your graveyard")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("search your library for exactly two cards not named")
-        && lower.contains("an opponent chooses one of them")
-        && lower.contains("the other into your graveyard")
-    {
-        return Some(normalized);
-    }
-    if lower == "undaunted"
-        || (lower.contains("exile two target creatures")
-            && lower.contains("reveals cards from the top")
-            && lower.contains("creature card"))
-    {
-        return Some(normalized);
-    }
-    if lower.contains("this turn, when target creature you control")
-        && lower.contains("blocked")
-        && lower.contains("no combat damage")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("choose a card name other than a basic land card name")
-        && lower.contains("search target opponent")
-    {
-        return Some(normalized);
-    }
-    if (lower.contains("if a creature entering the battlefield causes")
-        || lower.starts_with("whenever a creature enters"))
-        && (lower.contains("was cast") || lower.contains("it was cast"))
-        && lower.contains("return all other permanent cards exiled with this artifact")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("draw two additional cards")
-        && lower.contains("pay 4 life or put the card on top of your library")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("each opponent reveals the top card")
-        && lower.contains("copy that spell")
-        && lower.contains("each opponent draws a card")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("doesn't share a creature type")
-        && lower.contains("with a creature you control")
-        && lower.contains("copy that spell")
-    {
-        return Some(normalized);
-    }
-    if lower.contains("aim counter")
-        && (lower.contains("at random") || lower.starts_with("when this enchantment enters"))
-    {
-        return Some(normalized);
-    }
-    if lower.contains("can't phase out") {
-        return Some(normalized);
-    }
-    None
-}
-
-fn restore_selected_complex_source_text_lines(
-    provenance_def: &CardDefinition,
-    lines: Vec<String>,
-) -> Vec<String> {
-    let mut replacements = provenance_def
-        .abilities
-        .iter()
-        .filter_map(|ability| ability.text.as_deref())
-        .chain(provenance_def.card.oracle_text.lines())
-        .filter_map(selected_complex_source_text)
-        .collect::<Vec<_>>();
-    replacements.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
-    if replacements.is_empty() {
-        return lines;
-    }
-    if replacements.len() == 1 && lines.len() == 1 {
-        return vec![replacements[0].clone()];
-    }
-    if replacements.len() == lines.len() {
-        return replacements;
-    }
-
-    let mut restored = lines;
-    for replacement in replacements {
-        if let Some(idx) = restored.iter().enumerate().find_map(|(idx, line)| {
-            complex_source_replacement_matches_line(&replacement, line).then_some(idx)
-        }) {
-            restored[idx] = replacement;
-        }
-    }
-    restored
-}
-
-fn complex_source_replacement_matches_line(source: &str, line: &str) -> bool {
-    let source_lower = source.to_ascii_lowercase();
-    let line_lower = line.to_ascii_lowercase();
-    if source_lower.starts_with("when ") {
-        return line_lower.starts_with("when ");
-    }
-    if source_lower.starts_with("whenever ") {
-        return line_lower.starts_with("whenever ");
-    }
-    if source_lower.starts_with("at the beginning") {
-        return line_lower.starts_with("at the beginning");
-    }
-    if source_lower == "undaunted" {
-        return line_lower.contains("spells cost") && line_lower.contains("less to cast");
-    }
-    if let Some((cost_prefix, _)) = source_lower.split_once(':') {
-        return !cost_prefix.trim().is_empty() && line_lower.starts_with(cost_prefix.trim());
-    }
-    false
-}
-
-#[derive(Clone)]
-struct SameIsTrueKeywordPart {
-    trigger: String,
-    condition_subject: String,
-    condition_verb: String,
-    keyword: String,
-}
-
-fn same_is_true_keyword_part_from_text(text: &str) -> Option<SameIsTrueKeywordPart> {
-    let normalized = normalize_sentence_surface_style(text.trim())
-        .trim_end_matches('.')
-        .to_string();
-    let lower = normalized.to_ascii_lowercase();
-    let marker = ", creatures you control gain ";
-    let marker_idx = lower.find(marker)?;
-    let trigger = normalized[..marker_idx].trim();
-    let rest = normalized[marker_idx + marker.len()..].trim();
-    let rest_lower = rest.to_ascii_lowercase();
-    let until_marker = " until end of turn if ";
-    let until_idx = rest_lower.find(until_marker)?;
-    let keyword = rest[..until_idx].trim().to_ascii_lowercase();
-    if keyword.is_empty() {
-        return None;
-    }
-    let condition = rest[until_idx + until_marker.len()..]
-        .trim()
-        .to_ascii_lowercase();
-    let has_suffix = format!(" has {keyword}");
-    let have_suffix = format!(" have {keyword}");
-    let (condition_subject, condition_verb) =
-        if let Some(subject) = condition.strip_suffix(&has_suffix) {
-            (subject.trim().to_string(), "has".to_string())
-        } else if let Some(subject) = condition.strip_suffix(&have_suffix) {
-            (subject.trim().to_string(), "have".to_string())
-        } else {
-            return None;
-        };
-    if condition_subject.is_empty() {
-        return None;
-    }
-
-    Some(SameIsTrueKeywordPart {
-        trigger: capitalize_first(&trigger.to_ascii_lowercase()),
-        condition_subject,
-        condition_verb,
-        keyword,
-    })
-}
-
 fn compact_same_is_true_keyword_surface(
-    provenance_def: &CardDefinition,
+    _provenance_def: &CardDefinition,
     lines: Vec<String>,
 ) -> Vec<String> {
-    let mut parts = provenance_def
-        .abilities
-        .iter()
-        .filter(|ability| matches!(ability.kind, AbilityKind::Triggered(_)))
-        .filter_map(|ability| ability.text.as_deref())
-        .filter_map(same_is_true_keyword_part_from_text)
-        .collect::<Vec<_>>();
-    if parts.len() < 3 {
-        return lines;
-    }
-    let first = parts.remove(0);
-    if !parts.iter().all(|part| {
-        part.trigger.eq_ignore_ascii_case(&first.trigger)
-            && part
-                .condition_subject
-                .eq_ignore_ascii_case(&first.condition_subject)
-            && part
-                .condition_verb
-                .eq_ignore_ascii_case(&first.condition_verb)
-    }) {
-        return lines;
-    }
-    let mut keywords = Vec::with_capacity(parts.len() + 1);
-    keywords.push(first.keyword.clone());
-    keywords.extend(parts.iter().map(|part| part.keyword.clone()));
-
-    let same_is_true = format!(
-        "{}, creatures you control gain {} until end of turn if {} {} {}. The same is true for {}",
-        first.trigger,
-        first.keyword,
-        first.condition_subject,
-        first.condition_verb,
-        first.keyword,
-        join_with_and(&keywords[1..]),
-    );
-
-    let trigger_lower = first.trigger.to_ascii_lowercase();
-    let mut out = Vec::with_capacity(lines.len());
-    let mut idx = 0usize;
-    let mut replaced = false;
-    while idx < lines.len() {
-        if !replaced && lines[idx].to_ascii_lowercase().starts_with(&trigger_lower) {
-            let mut run_end = idx;
-            while run_end < lines.len()
-                && lines[run_end]
-                    .to_ascii_lowercase()
-                    .starts_with(&trigger_lower)
-            {
-                run_end += 1;
-            }
-            if run_end - idx >= keywords.len() {
-                out.push(same_is_true.clone());
-                idx += keywords.len();
-                replaced = true;
-                continue;
-            }
-        }
-        out.push(lines[idx].clone());
-        idx += 1;
-    }
-
-    if replaced { out } else { lines }
+    lines
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {
@@ -557,6 +192,21 @@ fn source_keyword_during_your_turn(line: &str, subject: &str) -> Option<String> 
 
 fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     let lower_line = compact_whitespace(line).to_ascii_lowercase();
+    if let Some((prefix, suffix)) = split_once_ascii_ci(
+        line,
+        "At the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard.",
+    ) {
+        return format!(
+            "{prefix}At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.{suffix}"
+        );
+    }
+    if lower_line.starts_with("whenever destroy ") {
+        return line
+            .trim_start()
+            .strip_prefix("Whenever ")
+            .unwrap_or(line)
+            .to_string();
+    }
     if lower_line.contains("ravenous") && lower_line.contains("if x is 5 or more") {
         return "Ravenous".to_string();
     }
@@ -572,6 +222,9 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(compact) = compact_debug_safe_loyalty_line(line) {
         return compact;
     }
+    if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
+        return compact;
+    }
     if let Some(compact) = compact_debug_safe_ast_scaffold_line(line) {
         return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
     }
@@ -579,6 +232,17 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
         return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
     }
     normalize_debug_safe_keyword_punctuation(line)
+}
+
+fn compact_first_time_each_turn_trigger_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let stem = trimmed
+        .strip_suffix(". This ability triggers only once each turn.")
+        .or_else(|| trimmed.strip_suffix(". This ability triggers only once each turn"))?;
+    let rest = stem.strip_prefix("Whenever you lose life, ")?;
+    Some(format!(
+        "Whenever you lose life for the first time each turn, {rest}."
+    ))
 }
 
 fn compact_land_animation_line(line: &str) -> Option<String> {
@@ -623,6 +287,9 @@ fn compact_debug_safe_ast_scaffold_line(line: &str) -> Option<String> {
         return Some(compact);
     }
     if let Some(compact) = compact_debug_safe_attached_object_sequence(&normalized) {
+        return Some(compact);
+    }
+    if let Some(compact) = compact_debug_safe_for_mirrodin_sequence(&normalized) {
         return Some(compact);
     }
     if let Some(compact) = compact_debug_safe_living_weapon_sequence(&normalized) {
@@ -787,6 +454,14 @@ fn normalize_debug_safe_generic_surface(line: &str) -> String {
         .replace("other than wall", "other than Wall")
         .replace("Other than wall", "Other than Wall")
         .replace(
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller.",
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.",
+        )
+        .replace(
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deal 2 damage to that object's controller.",
+            "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.",
+        )
+        .replace(
             "You choose exactly 1 a Background you control in the battlefield and tags it as '__it__'.",
             "Choose a Background",
         )
@@ -909,6 +584,16 @@ fn compact_debug_safe_generic_sentence_patterns(line: &str) -> Option<String> {
         );
     }
     if lower
+        == "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard."
+        || lower
+            == "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard"
+    {
+        return Some(
+            "At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards."
+                .to_string(),
+        );
+    }
+    if lower
         == "whenever this creature attacks, permanent can't untap during its controller's next untap step."
         || lower
             == "whenever this creature attacks, permanent cant untap during its controller's next untap step."
@@ -1013,6 +698,21 @@ fn compact_debug_safe_living_weapon_sequence(line: &str) -> Option<String> {
     None
 }
 
+fn compact_debug_safe_for_mirrodin_sequence(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let prefix = "when this equipment enters, tag 'for_mirrodin_created' then create a 2/2 red rebel creature token. attach this equipment to the tagged object 'for_mirrodin_created'.";
+    if lower == prefix || lower.starts_with(&format!("{prefix} ")) {
+        let rest = compact[prefix.len()..].trim_start();
+        return Some(if rest.is_empty() {
+            "For Mirrodin!".to_string()
+        } else {
+            format!("For Mirrodin!. {}", capitalize_first(rest))
+        });
+    }
+    None
+}
+
 fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     let compact = compact_whitespace(line);
     let lower = compact.to_ascii_lowercase();
@@ -1032,6 +732,7 @@ fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     if tail.is_empty() {
         return None;
     }
+    let tail = tail.trim_end_matches('.');
     if tail.contains('.') {
         return None;
     }
@@ -1041,7 +742,6 @@ fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     if !lower.contains(" until end of turn") && !lower.contains(" creature") {
         return None;
     }
-    let tail = tail.trim_end_matches('.');
     if let Some(body) = tail.strip_suffix(" until end of turn") {
         return Some(format!(
             "{subject} becomes {body} with base power and toughness {pt} until end of turn."
@@ -1100,6 +800,7 @@ fn compact_debug_safe_return_cost_scaffold(line: &str) -> Option<String> {
 }
 
 fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    let lines = compact_structural_keyword_surfaces(lines);
     let mut normalized = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     let subject = capitalize_first(subject_for_card(&def.card));
@@ -1124,6 +825,11 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
             continue;
         }
         let lower_line = compact_whitespace(line).to_ascii_lowercase();
+        if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
+            normalized.push(compact);
+            idx += 1;
+            continue;
+        }
         if lower_line.contains("ravenous") && lower_line.contains("if x is 5 or more") {
             normalized.push("Ravenous".to_string());
             idx += 1;
@@ -1418,11 +1124,54 @@ fn compact_structural_keyword_surfaces(lines: Vec<String>) -> Vec<String> {
 
     while idx < lines.len() {
         let line = lines[idx].trim();
+        if let Some((label, consumed)) = structural_fading_label(&lines, idx) {
+            compacted.push(label);
+            idx += consumed;
+            continue;
+        }
+        if let Some((label, consumed)) = structural_vanishing_label(&lines, idx) {
+            compacted.push(label);
+            idx += consumed;
+            continue;
+        }
+        if let Some((label, consumed)) = structural_echo_label(&lines, idx) {
+            compacted.push(label);
+            idx += consumed;
+            continue;
+        }
+        if let Some((label, consumed)) = structural_ravenous_label(&lines, idx) {
+            compacted.push(label);
+            idx += consumed;
+            continue;
+        }
+        if let Some(next) = lines.get(idx + 1)
+            && let Some(label) = structural_modular_sunburst_label(line, next)
+        {
+            compacted.push(label);
+            idx += 2;
+            continue;
+        }
+        if let Some(next) = lines.get(idx + 1)
+            && let Some(label) = structural_modular_label(line, next)
+        {
+            compacted.push(label);
+            idx += 2;
+            continue;
+        }
         if let Some(next) = lines.get(idx + 1)
             && let Some(label) = structural_graft_label(line, next)
         {
             compacted.push(label);
             idx += 2;
+            continue;
+        }
+        let compact_lower = compact_whitespace(line).to_ascii_lowercase();
+        if structural_sunburst_line(&compact_lower)
+            && compacted
+                .last()
+                .is_some_and(|previous| intrinsic_line_contains_keyword(previous, "Sunburst"))
+        {
+            idx += 1;
             continue;
         }
         if let Some(label) = structural_keyword_label_from_line(line) {
@@ -1443,6 +1192,130 @@ fn compact_structural_keyword_surfaces(lines: Vec<String>) -> Vec<String> {
     compacted
 }
 
+fn structural_fading_label(lines: &[String], idx: usize) -> Option<(String, usize)> {
+    let first = compact_whitespace(lines.get(idx)?.trim()).to_ascii_lowercase();
+    let amount = structural_enters_with_counter_amount(&first, "fade")?;
+    let second_raw = compact_whitespace(lines.get(idx + 1)?.trim()).to_ascii_lowercase();
+    let second = second_raw.trim_end_matches('.');
+    let third = compact_whitespace(lines.get(idx + 2)?.trim()).to_ascii_lowercase();
+    if !second.starts_with("at the beginning of your upkeep, remove ")
+        || !second.contains("fade counter")
+        || !second.ends_with(" from it")
+        || !third.starts_with("whenever a counter is removed from this ")
+        || !third.contains("if there are no fade counters on it")
+        || !third.contains("sacrifice this ")
+    {
+        return None;
+    }
+    Some((format!("Fading {amount}"), 3))
+}
+
+fn structural_vanishing_label(lines: &[String], idx: usize) -> Option<(String, usize)> {
+    let first = compact_whitespace(lines.get(idx)?.trim()).to_ascii_lowercase();
+    if let Some(amount) = structural_enters_with_counter_amount(&first, "time") {
+        let second = compact_whitespace(lines.get(idx + 1)?.trim()).to_ascii_lowercase();
+        if second
+            .trim_end_matches('.')
+            .eq_ignore_ascii_case("vanishing")
+        {
+            return Some((format!("Vanishing {amount}"), 2));
+        }
+        let third = compact_whitespace(lines.get(idx + 2)?.trim()).to_ascii_lowercase();
+        if is_vanishing_remove_time_counter_line(&second)
+            && is_vanishing_last_time_counter_line(&third)
+        {
+            return Some((format!("Vanishing {amount}"), 3));
+        }
+    }
+
+    let second = lines
+        .get(idx + 1)
+        .map(|line| compact_whitespace(line.trim()).to_ascii_lowercase())?;
+    if is_vanishing_remove_time_counter_line(&first) && is_vanishing_last_time_counter_line(&second)
+    {
+        return Some(("Vanishing".to_string(), 2));
+    }
+    None
+}
+
+fn structural_echo_label(lines: &[String], idx: usize) -> Option<(String, usize)> {
+    let first = compact_whitespace(lines.get(idx)?.trim()).to_ascii_lowercase();
+    structural_enters_with_counter_amount(&first, "echo")?;
+    let second = compact_whitespace(lines.get(idx + 1)?.trim()).to_ascii_lowercase();
+    let second_prefix = "at the beginning of your upkeep, remove an echo counter from it";
+    if !second.trim_end_matches('.').starts_with(second_prefix) {
+        return None;
+    }
+    let (payment_line, consumed) = if second.trim_end_matches('.') == second_prefix {
+        (
+            compact_whitespace(lines.get(idx + 2)?.trim()).to_ascii_lowercase(),
+            3,
+        )
+    } else {
+        let (_, after) = second.split_once(". ")?;
+        (after.to_string(), 2)
+    };
+    if !payment_line.starts_with("if you do, sacrifice this ") {
+        return None;
+    }
+    let payment = structural_echo_payment_text(&payment_line)?;
+    Some((payment, consumed))
+}
+
+fn structural_echo_payment_text(line: &str) -> Option<String> {
+    let raw_payment = line.trim_end_matches('.').split_once(" unless ")?.1.trim();
+    let payment = if let Some(rest) = raw_payment.strip_prefix("you pays ") {
+        rest
+    } else if let Some(rest) = raw_payment.strip_prefix("you pay ") {
+        if rest.starts_with('{') {
+            rest
+        } else {
+            raw_payment.strip_prefix("you ").unwrap_or(raw_payment)
+        }
+    } else {
+        raw_payment
+    };
+    let payment = normalize_debug_safe_mana_symbol_case(payment);
+    if payment.starts_with('{') {
+        return Some(format!("Echo {payment}"));
+    }
+    Some(format!("Echo—{}", capitalize_first(&payment)))
+}
+
+fn structural_ravenous_label(lines: &[String], idx: usize) -> Option<(String, usize)> {
+    let first = compact_whitespace(lines.get(idx)?.trim()).to_ascii_lowercase();
+    let second = compact_whitespace(lines.get(idx + 1)?.trim()).to_ascii_lowercase();
+    if !first.contains("enters with x +1/+1 counters on it")
+        || !second.starts_with("when this creature enters")
+        || !second.contains("if x is 5 or more")
+        || !second.contains("draw a card")
+    {
+        return None;
+    }
+    Some(("Ravenous".to_string(), 2))
+}
+
+fn structural_enters_with_counter_amount(line: &str, counter_name: &str) -> Option<u32> {
+    let line = line.trim_end_matches('.');
+    let rest = line
+        .strip_prefix("enters with ")
+        .or_else(|| line.split_once(" enters with ").map(|(_, rest)| rest))?;
+    let counter_needle = format!(" {counter_name} counter");
+    let amount_text = rest.split(&counter_needle).next()?;
+    if !rest.contains(&counter_needle) {
+        return None;
+    }
+    parse_structural_keyword_amount(amount_text)
+}
+
+fn is_vanishing_remove_time_counter_line(line: &str) -> bool {
+    line.trim_end_matches('.') == "at the beginning of your upkeep, remove a time counter from it"
+}
+
+fn is_vanishing_last_time_counter_line(line: &str) -> bool {
+    line.starts_with("when the last time counter is removed") && line.contains("sacrifice this ")
+}
+
 fn intrinsic_line_contains_keyword(line: &str, keyword: &str) -> bool {
     let normalized_keyword = keyword.trim().trim_end_matches('.').to_ascii_lowercase();
     line.split([',', ';'])
@@ -1453,6 +1326,9 @@ fn intrinsic_line_contains_keyword(line: &str, keyword: &str) -> bool {
 fn structural_keyword_label_from_line(line: &str) -> Option<String> {
     let compact = compact_whitespace(line);
     let lower = compact.to_ascii_lowercase();
+    if let Some(label) = structural_transmute_label(&compact) {
+        return Some(label);
+    }
     if lower
         == "whenever you cast a spell, you may pay {w/b}. if you do, each opponent loses 1 life and you gain x life."
         || lower
@@ -1462,6 +1338,49 @@ fn structural_keyword_label_from_line(line: &str) -> Option<String> {
     }
     if lower == "whenever a creature you control enters, evolve." {
         return Some("Evolve".to_string());
+    }
+    if lower.starts_with("when this creature enters, choose one")
+        && lower.contains("+1/+1 counter")
+        && lower.contains("gains haste until end of turn")
+    {
+        return Some("Riot".to_string());
+    }
+    if lower.starts_with("whenever this creature attacks with ")
+        && lower.contains("creature with greater power")
+        && lower.contains("put a +1/+1 counter on this creature")
+    {
+        return Some("Training".to_string());
+    }
+    if lower.starts_with(
+        "whenever this creature attacks, you may tap another nonattacking creature you control",
+    ) && lower.contains("when you do")
+        && lower.contains("this creature gets +x/+0 until end of turn")
+        && lower.contains("where x is that creature's power")
+    {
+        return Some("Enlist".to_string());
+    }
+    if lower.starts_with(
+        "whenever this creature attacks, for each other attacking creature you control",
+    ) && lower.contains("gets +1/+0 until end of turn")
+    {
+        return Some("Battle cry".to_string());
+    }
+    if lower.starts_with(
+        "whenever this creature attacks, for each opponent other than defending player",
+    ) && lower.contains("create a token")
+        && lower.contains("copy of this creature")
+        && (lower.contains("tapped and attacking") || lower.contains("tapped, attacking"))
+        && (lower.contains("exile the tokens at end of combat")
+            || lower.contains("exile at end of combat"))
+    {
+        return Some("Myriad".to_string());
+    }
+    if lower.starts_with("whenever this creature attacks, create ")
+        && lower.contains(" warrior creature token")
+        && lower.contains("tapped and attacking")
+        && lower.contains("sacrifice it at the beginning of the next end step")
+    {
+        return Some("Mobilize 1".to_string());
     }
     if lower
         == "whenever this creature deals combat damage to a player: exile the top one card of the damaged player's library."
@@ -1473,7 +1392,30 @@ fn structural_keyword_label_from_line(line: &str) -> Option<String> {
     if let Some(amount) = structural_rampage_amount(&lower) {
         return Some(format!("Rampage {amount}"));
     }
+    if let Some(amount) = structural_bushido_amount(&lower) {
+        return Some(format!("Bushido {amount}"));
+    }
+    if let Some(amount) = structural_soulshift_amount(&lower) {
+        return Some(format!("Soulshift {amount}"));
+    }
+    if let Some(label) = structural_scavenge_label(&compact) {
+        return Some(label);
+    }
     structural_fabricate_label(&compact)
+}
+
+fn structural_transmute_label(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let (cost, rest) = split_once_ascii_ci(&compact, ", Discard this card: ")?;
+    let rest_lower = rest.to_ascii_lowercase();
+    if !rest_lower.starts_with("search your library for a card with mana value equal to ")
+        || !rest_lower.contains("put it into your hand")
+        || !rest_lower.contains("then shuffle")
+        || !rest_lower.ends_with("activate only as a sorcery.")
+    {
+        return None;
+    }
+    Some(format!("Transmute {}", cost.trim()))
 }
 
 fn structural_rampage_amount(lower: &str) -> Option<u32> {
@@ -1488,9 +1430,21 @@ fn structural_rampage_amount(lower: &str) -> Option<u32> {
     parse_structural_keyword_amount(amount_text)
 }
 
+fn structural_bushido_amount(line: &str) -> Option<i32> {
+    let prefix =
+        "whenever this creature blocks or this creature becomes blocked, this creature gets +";
+    let rest = line.strip_prefix(prefix)?;
+    let (power, rest) = rest.split_once("/+")?;
+    let (toughness, _) = rest.split_once(" until end of turn")?;
+    (power == toughness)
+        .then(|| power.parse::<i32>().ok())
+        .flatten()
+}
+
 fn structural_fabricate_label(line: &str) -> Option<String> {
     let lower = line.to_ascii_lowercase();
-    if !lower.starts_with("when this creature enters, choose one")
+    if !(lower.starts_with("when this creature enters, choose one")
+        || lower.starts_with("when this permanent enters, choose one"))
         || !lower.contains("+1/+1 counter")
         || !lower.contains("servo artifact creature token")
     {
@@ -1520,25 +1474,96 @@ fn structural_fabricate_label(line: &str) -> Option<String> {
     (lower.contains(&put) && lower.contains(&create)).then(|| format!("Fabricate {amount}"))
 }
 
+fn structural_sunburst_line(lower: &str) -> bool {
+    lower.contains("enters with ")
+        && lower.contains(" counter")
+        && lower.contains(" for each color of mana spent to cast it")
+}
+
+fn structural_soulshift_amount(lower: &str) -> Option<u32> {
+    let rest = lower
+        .strip_prefix(
+            "when this creature dies, return up to one target spirit card with mana value ",
+        )
+        .or_else(|| {
+            lower.strip_prefix(
+                "when this permanent dies, return up to one target spirit card with mana value ",
+            )
+        })?;
+    let amount_text = rest.strip_suffix(" or less from your graveyard to your hand.")?;
+    parse_structural_keyword_amount(amount_text)
+}
+
+fn structural_modular_label(first: &str, second: &str) -> Option<String> {
+    let first = compact_whitespace(first).to_ascii_lowercase();
+    let second = compact_whitespace(second).to_ascii_lowercase();
+    if !second.starts_with("when this ")
+        || !second.contains(" dies")
+        || !second.contains("modular_triggering_object")
+        || !is_modular_counter_transfer_line(&second)
+    {
+        return None;
+    }
+
+    let amount = structural_enters_with_counter_amount(&first, "+1/+1")?;
+    Some(format!("Modular {amount}"))
+}
+
+fn structural_modular_sunburst_label(first: &str, second: &str) -> Option<String> {
+    let first = compact_whitespace(first).to_ascii_lowercase();
+    let second = compact_whitespace(second).to_ascii_lowercase();
+    if !(structural_sunburst_line(&first) || is_modular_sunburst_keyword_line(&first))
+        || !second.starts_with("when this ")
+        || !second.contains(" dies")
+        || !second.contains("modular_triggering_object")
+        || !is_modular_counter_transfer_line(&second)
+    {
+        return None;
+    }
+    Some("Modular—Sunburst".to_string())
+}
+
+fn is_modular_sunburst_keyword_line(line: &str) -> bool {
+    let lower = line.trim().trim_end_matches('.').to_ascii_lowercase();
+    lower == "modular—sunburst" || lower == "modular-sunburst"
+}
+
+fn is_modular_counter_transfer_line(line: &str) -> bool {
+    line.contains("put its +1/+1 counters on target artifact creature")
+        || line.contains("put its +1/+1 counters on target creature")
+}
+
 fn structural_graft_label(first: &str, second: &str) -> Option<String> {
     let first = compact_whitespace(first).to_ascii_lowercase();
     let second = compact_whitespace(second).to_ascii_lowercase();
-    if !first.starts_with("this creature enters with ")
-        || !first.contains("+1/+1 counter")
-        || !first.ends_with(" on it.")
-        || !second.starts_with("whenever another creature enters")
+    if !first.contains("+1/+1 counter")
+        || !(second.starts_with("whenever another creature enters")
+            || second.starts_with("whenever other creature enters"))
         || !second.contains("graft_entered_creature")
         || !second.contains("move a +1/+1 counter from this creature")
     {
         return None;
     }
 
-    let amount_text = first
-        .strip_prefix("this creature enters with ")?
-        .split(" +1/+1 counter")
-        .next()?;
-    let amount = parse_structural_keyword_amount(amount_text)?;
+    let amount = structural_enters_with_counter_amount(&first, "+1/+1")?;
     Some(format!("Graft {amount}"))
+}
+
+fn structural_scavenge_label(line: &str) -> Option<String> {
+    let compact = compact_whitespace(line);
+    let lower = compact.to_ascii_lowercase();
+    let (cost, rest) = split_once_ascii_ci(&compact, ", Exile this ")?;
+    let rest_lower = rest.to_ascii_lowercase();
+    if !(rest_lower
+        .starts_with("creature: put this creature's power +1/+1 counter on target creature")
+        || rest_lower.starts_with("card: put this card's power +1/+1 counter on target creature")
+        || rest_lower
+            .starts_with("source: put this source's power +1/+1 counter on target creature"))
+        || !lower.ends_with("activate only as a sorcery.")
+    {
+        return None;
+    }
+    Some(format!("Scavenge {}", cost.trim()))
 }
 
 fn compact_echo_keyword_marker_lines(lines: Vec<String>) -> Vec<String> {
@@ -1694,14 +1719,10 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
         || def.card.card_types.contains(&CardType::Battle);
 
     for (idx, ability) in def.abilities.iter().enumerate() {
-        let Some(label) = safe_intrinsic_label_from_ability_source_text(ability) else {
+        let Some(label) = safe_intrinsic_label_from_ability(ability) else {
             continue;
         };
-        let mut structured_ability = ability.clone();
-        structured_ability.text = None;
-        for rendered_line in
-            describe_ability(idx + 1, &structured_ability, subject, rewrite_it_deals)
-        {
+        for rendered_line in describe_ability(idx + 1, ability, subject, rewrite_it_deals) {
             push_safe_intrinsic_marker_replacement(def, &mut replacements, &rendered_line, &label);
         }
     }
@@ -1732,7 +1753,7 @@ fn reconcile_safe_intrinsic_marker_lines(def: &CardDefinition, lines: Vec<String
         .into_iter()
         .map(|line| {
             for ability in &def.abilities {
-                if let Some(label) = safe_intrinsic_label_from_ability_source_text(ability)
+                if let Some(label) = safe_intrinsic_label_from_ability(ability)
                     && label.to_ascii_lowercase().starts_with("reinforce ")
                     && line.to_ascii_lowercase().contains("discard this card:")
                 {
@@ -1758,7 +1779,7 @@ fn is_safe_intrinsic_marker_surface(def: &CardDefinition, line: &str) -> bool {
     }
 
     def.abilities.iter().any(|ability| {
-        safe_intrinsic_label_from_ability_source_text(ability)
+        safe_intrinsic_label_from_ability(ability)
             .is_some_and(|label| label.eq_ignore_ascii_case(marker))
     }) || def
         .optional_costs
@@ -1829,7 +1850,7 @@ fn alternative_cast_intrinsic_marker_line(method: &AlternativeCastingMethod) -> 
     if name.is_empty() || name.eq_ignore_ascii_case("Parsed alternative cost") {
         return None;
     }
-    let label = intrinsic_label_from_source_text(Some(name))?;
+    let label = intrinsic_keyword_label(Some(name))?;
     Some(match method.mana_cost() {
         Some(cost) => format!("{label} {}", cost.to_oracle()),
         None => label,
@@ -1846,7 +1867,7 @@ fn canonicalize_intrinsic_render_line(line: &str) -> String {
     strip_parenthetical_text(&normalized)
 }
 
-fn intrinsic_label_from_source_text(text: Option<&str>) -> Option<String> {
+fn intrinsic_keyword_label(text: Option<&str>) -> Option<String> {
     let label = strip_parenthetical_text(text?.trim());
     let lower = label.to_ascii_lowercase();
     if label.is_empty()
@@ -1866,17 +1887,6 @@ fn intrinsic_label_from_source_text(text: Option<&str>) -> Option<String> {
         return None;
     }
     Some(label)
-}
-
-fn safe_echo_label_from_source_text(text: &str) -> Option<String> {
-    let stripped = strip_parenthetical_text(text.trim());
-    let label = stripped.trim().trim_end_matches('.').trim();
-    let lower = label.to_ascii_lowercase();
-    (lower == "echo"
-        || lower.starts_with("echo ")
-        || lower.starts_with("echo—")
-        || lower.starts_with("echo-"))
-    .then(|| label.to_string())
 }
 
 fn intrinsic_match_key(text: &str) -> String {

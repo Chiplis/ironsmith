@@ -77,7 +77,9 @@ pub struct Card {
     pub supertypes: Vec<Supertype>,
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
-    pub oracle_text: String,
+    /// Colors contributed by rules text, computed before source text is stripped
+    /// from the runtime card definition.
+    pub rules_text_color_identity: ColorSet,
     pub power_toughness: Option<PowerToughness>,
     /// Starting loyalty for planeswalkers
     pub loyalty: Option<u32>,
@@ -124,7 +126,7 @@ impl Card {
     /// Color identity includes colors from:
     /// - Mana cost
     /// - Color indicator
-    /// - Mana symbols in rules text (e.g., "{T}: Add {G}")
+    /// - Mana symbols in rules text captured during card-definition construction
     /// - Characteristic-defining abilities that set color
     pub fn color_identity(&self) -> ColorSet {
         let mut identity = ColorSet::COLORLESS;
@@ -150,8 +152,7 @@ impl Card {
             identity = identity.union(indicator);
         }
 
-        // Parse oracle text for mana symbols
-        identity = identity.union(Self::parse_colors_from_text(&self.oracle_text));
+        identity = identity.union(self.rules_text_color_identity);
 
         identity
     }
@@ -388,7 +389,7 @@ impl CardBuilder {
             supertypes: self.supertypes,
             card_types: self.card_types,
             subtypes: self.subtypes,
-            oracle_text: self.oracle_text,
+            rules_text_color_identity: Card::parse_colors_from_text(&self.oracle_text),
             power_toughness: self.power_toughness,
             loyalty: self.loyalty,
             defense: self.defense,

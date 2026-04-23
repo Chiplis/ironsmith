@@ -94,8 +94,15 @@ mod tests {
     #[test]
     fn test_culling_the_weak_oracle_text() {
         let def = culling_the_weak();
-        assert!(def.card.oracle_text.contains("sacrifice a creature"));
-        assert!(def.card.oracle_text.contains("Add {B}{B}{B}{B}"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("sacrifice a creature"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {B}{B}{B}{B}")
+        );
     }
 
     // ========================================

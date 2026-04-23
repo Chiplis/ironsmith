@@ -374,7 +374,6 @@ mod tests {
             obj.abilities.push(Ability {
                 kind: AbilityKind::Static(crate::static_abilities::StaticAbility::uncounterable()),
                 functional_zones: vec![Zone::Stack],
-                text: Some("can't be countered".to_string()),
             });
         }
 
@@ -429,12 +428,24 @@ mod tests {
     #[test]
     fn test_dawn_charm_oracle_text() {
         let def = dawn_charm();
-        assert!(def.card.oracle_text.contains("Choose one"));
-        assert!(def.card.oracle_text.contains("Prevent all combat damage"));
-        assert!(def.card.oracle_text.contains("Regenerate target creature"));
         assert!(
-            def.card
-                .oracle_text
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Choose one")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Prevent all combat damage")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Regenerate target creature")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
                 .contains("Counter target spell that targets you")
         );
     }

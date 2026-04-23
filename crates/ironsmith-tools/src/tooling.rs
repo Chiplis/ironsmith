@@ -17,7 +17,7 @@ use ironsmith::cards::{
     CardDefinition, generated_definition_has_unimplemented_content,
     generated_definition_unsupported_mechanics_message,
 };
-use ironsmith::compiled_text::{compiled_text_lines, normalized_oracle_lines};
+use ironsmith::compiled_text::compiled_text_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
 use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder, parse_trace};
@@ -268,6 +268,22 @@ pub fn postprocess_oracle_text(text: &str) -> String {
     strip_parenthetical_text(text)
 }
 
+fn normalized_oracle_source_lines(text: &str) -> Vec<String> {
+    strip_parenthetical_text(text)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(normalize_canonical_oracle_line)
+        .collect()
+}
+
+fn normalize_canonical_oracle_line(line: &str) -> String {
+    line.replace(
+        "At the beginning of each player's end step,",
+        "At the beginning of each end step,",
+    )
+}
+
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
     let raw = fs::read_to_string(path)?;
     let cards: Vec<Value> = serde_json::from_str(&raw)?;
@@ -406,7 +422,7 @@ impl CompilationSnapshot {
             semantic_mismatch,
             has_unimplemented,
         ) = if let Some(definition) = definition {
-            let normalized_oracle = normalized_oracle_lines(definition);
+            let normalized_oracle = normalized_oracle_source_lines(oracle_text);
             let normalized_oracle_text = normalized_oracle.join("\n");
             let compiled = compiled_text_lines(definition);
             let compiled_text = compiled.join("\n");
@@ -2022,11 +2038,7 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 fn stable_compiled_definition_snapshot(definition: &CardDefinition) -> String {
     let mut sanitized = definition.clone();
     sanitized.card.id = CardId::from_raw(FIXED_SNAPSHOT_CARD_ID);
-    sanitized.card.oracle_text.clear();
     sanitized.card.other_face = sanitized.card.other_face.map(|_| CardId::from_raw(2));
-    for ability in &mut sanitized.abilities {
-        ability.text = None;
-    }
     normalize_debug_card_ids(&format!("{sanitized:#?}"))
 }
 
@@ -2133,7 +2145,6 @@ fn linked_face_layout_from_card(card: &Value) -> Option<LinkedFaceLayout> {
 }
 
 fn decorate_definition_from_payload(definition: &mut CardDefinition, payload: &CardPayload) {
-    definition.card.oracle_text = payload.oracle_text.clone();
     let Some(layout) = payload.linked_face_layout else {
         return;
     };
@@ -2329,6 +2340,21 @@ CardDefinition {
         }
     }
 
+    fn semantic_mismatch_payload() -> CardPayload {
+        CardPayload {
+            name: "Mismatch Fixture".to_string(),
+            parse_name: None,
+            oracle_text: "Destroy target creature an opponent controls.".to_string(),
+            raw_oracle_text: "Destroy target creature an opponent controls.".to_string(),
+            metadata_lines: vec!["Mana cost: {1}{B}".to_string(), "Type: Sorcery".to_string()],
+            parse_input:
+                "Mana cost: {1}{B}\nType: Sorcery\nDestroy target creature an opponent controls."
+                    .to_string(),
+            other_face_name: None,
+            linked_face_layout: None,
+        }
+    }
+
     fn battle_cry_payload() -> CardPayload {
         CardPayload {
             name: "Accorder Paladin".to_string(),
@@ -2407,14 +2433,15 @@ CardDefinition {
         );
         assert_eq!(
             fallback_snapshot.compiled_text.as_deref(),
-            Some("Reach\nYou draw a card.")
+            Some(
+                "Reach\nWhenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn."
+            )
         );
     }
 
     #[test]
     fn authoritative_snapshot_keeps_semantic_mismatch_as_strict_compiled() {
-        let snapshot =
-            compile_authoritative_snapshot_from_payload(&pseudo_oracle_fallback_payload());
+        let snapshot = compile_authoritative_snapshot_from_payload(&semantic_mismatch_payload());
 
         assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
         assert!(
@@ -2744,7 +2771,10 @@ CardDefinition {
                 |row| row.get(0),
             )
             .expect("stored compiled text");
-        assert_eq!(compiled, "Reach\nYou draw a card.");
+        assert_eq!(
+            compiled,
+            "Reach\nWhenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn."
+        );
         let _ = fs::remove_file(path);
     }
 

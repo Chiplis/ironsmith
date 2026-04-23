@@ -96,11 +96,15 @@ mod tests {
     fn test_stroke_of_midnight_oracle_text() {
         let def = stroke_of_midnight();
         assert!(
-            def.card
-                .oracle_text
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
                 .contains("Destroy target nonland permanent")
         );
-        assert!(def.card.oracle_text.contains("1/1 white Human"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("1/1 white Human")
+        );
     }
 
     // ========================================

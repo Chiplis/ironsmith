@@ -13,7 +13,6 @@ pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(format!("Annihilator {amount}")),
     }
 }
 
@@ -202,9 +201,9 @@ fn parse_nonstatic_keyword_action_as_object_ability(
                         mana_usage_restrictions: vec![],
                     }),
                     functional_zones: vec![Zone::Battlefield],
-                    text: Some(format!("Crew {amount}")),
                 }
                 .into(),
+                text: Some(format!("Crew {amount}")),
                 effects_ast: None,
                 reference_imports: ReferenceImports::default(),
                 trigger_spec: None,
@@ -242,7 +241,7 @@ fn parse_attached_nonstatic_keyword_ability(
 
 pub(crate) fn cumulative_upkeep_granted_ability(
     total_cost: TotalCost,
-    text: String,
+    _text: String,
 ) -> Ability {
     let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
@@ -261,7 +260,6 @@ pub(crate) fn cumulative_upkeep_granted_ability(
             intervening_if: None,
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: Some(text),
     }
 }
 

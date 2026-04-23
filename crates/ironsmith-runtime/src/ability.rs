@@ -32,6 +32,13 @@ pub fn extract_static_abilities(abilities: &[Ability]) -> Vec<NewStaticAbility> 
         .collect()
 }
 
+#[cfg(test)]
+pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> Option<String> {
+    Some(crate::compiled_text::ability_surface_text_for_tests(
+        ability,
+    ))
+}
+
 pub trait ActivatedAbilityRuntimeExt {
     fn inferred_mana_symbols(
         &self,
@@ -178,7 +185,10 @@ mod tests {
         } else {
             panic!("Expected static ability");
         }
-        assert_eq!(ability.text, Some("Flying".to_string()));
+        assert_eq!(
+            ability_surface_text_for_tests(&ability).as_deref(),
+            Some("Flying")
+        );
     }
 
     #[test]

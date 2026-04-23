@@ -66,7 +66,11 @@ mod tests {
     #[test]
     fn test_innocent_blood_oracle_text() {
         let def = innocent_blood();
-        assert!(def.card.oracle_text.contains("sacrifices a creature"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("sacrifices a creature")
+        );
     }
 
     // ========================================

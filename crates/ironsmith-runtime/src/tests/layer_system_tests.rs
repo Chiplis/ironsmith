@@ -538,8 +538,7 @@ fn test_manascape_refractor_copies_squirrel_nest_ability() {
         .expect("should calculate characteristics");
 
     let has_squirrel_ability = chars.abilities.iter().any(|a| {
-        a.text
-            .as_deref()
+        crate::ability::ability_surface_text_for_tests(a)
             .is_some_and(|t| t.to_ascii_lowercase().contains("squirrel creature token"))
     });
 

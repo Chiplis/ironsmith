@@ -373,14 +373,6 @@ fn runtime_ability_from_core_model(
         }
         ironsmith::ability::AbilityKind::Static(_) => {}
     }
-    if converted.text.is_none() {
-        converted.text = match &converted.kind {
-            ironsmith::ability::AbilityKind::Static(static_ability) => {
-                Some(static_ability.display())
-            }
-            _ => None,
-        };
-    }
     Ok(converted)
 }
 
@@ -461,11 +453,7 @@ pub fn compile_builder_to_runtime_definition(
     let text = text.into();
     let compiled =
         compile_builder_to_runtime_compiled_card_text(builder, text.clone(), allow_unsupported)?;
-    let mut runtime = compiled.definition;
-    if runtime.card.oracle_text.is_empty() {
-        runtime.card.oracle_text = text;
-    }
-    Ok(runtime)
+    Ok(compiled.definition)
 }
 
 #[derive(Debug, Clone)]
@@ -489,7 +477,6 @@ impl RuntimeBuilderSnapshot {
             .supertypes(self.card.supertypes)
             .card_types(self.card.card_types)
             .subtypes(self.card.subtypes)
-            .oracle_text(self.card.oracle_text)
             .linked_face_layout(self.card.linked_face_layout);
         if let Some(pt) = self.card.power_toughness {
             builder = builder.power_toughness(pt);

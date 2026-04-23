@@ -1510,10 +1510,13 @@ impl StaticAbilityKind for SoulbondSharedBonus {
                 ability.display()
             ),
             SoulbondSharedMode::ObjectAbility(ability) => {
-                let text = ability
-                    .text
-                    .clone()
-                    .unwrap_or_else(|| "an ability".to_string());
+                let text = match &ability.kind {
+                    AbilityKind::Static(static_ability) => static_ability.display(),
+                    AbilityKind::Triggered(triggered) => {
+                        format!("a triggered ability ({})", triggered.trigger.display())
+                    }
+                    AbilityKind::Activated(_) => "an activated ability".to_string(),
+                };
                 format!(
                     "As long as this creature is paired with another creature, both creatures have \"{}\"",
                     text
@@ -1572,6 +1575,13 @@ impl StaticAbilityKind for SoulbondSharedBonus {
         };
         ability.apply_restrictions(game, source, controller);
         ability.apply_restrictions(game, partner, controller);
+    }
+
+    fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        match &self.mode {
+            SoulbondSharedMode::ObjectAbility(ability) => Some(ability),
+            _ => None,
+        }
     }
 }
 
@@ -3133,11 +3143,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        let mut ability_text = self
-            .ability
-            .text
-            .clone()
-            .unwrap_or_else(|| self.display.clone());
+        let mut ability_text = self.display.clone();
         if let Some((head, tail)) = ability_text.split_once(": ")
             && let Some(first) = tail.chars().next()
             && first.is_ascii_lowercase()

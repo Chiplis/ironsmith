@@ -454,7 +454,11 @@ mod tests {
     fn test_cataclysm_is_symmetrical() {
         // The oracle text says "Each player" - this is symmetrical
         let def = cataclysm();
-        assert!(def.card.oracle_text.contains("Each player"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Each player")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -463,7 +467,7 @@ mod tests {
         // Cataclysm only lets you keep artifact, creature, enchantment, land
         // Planeswalkers and Battles are NOT on that list, so they all get sacrificed
         let def = cataclysm();
-        let text = &def.card.oracle_text;
+        let text = &crate::compiled_text::debug_compiled_lines(&def).join("\n");
 
         assert!(text.contains("artifact"));
         assert!(text.contains("creature"));

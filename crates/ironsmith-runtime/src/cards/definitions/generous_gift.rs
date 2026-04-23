@@ -97,8 +97,16 @@ mod tests {
     #[test]
     fn test_generous_gift_oracle_text() {
         let def = generous_gift();
-        assert!(def.card.oracle_text.contains("Destroy target permanent"));
-        assert!(def.card.oracle_text.contains("3/3 green Elephant"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Destroy target permanent")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("3/3 green Elephant")
+        );
     }
 
     // ========================================

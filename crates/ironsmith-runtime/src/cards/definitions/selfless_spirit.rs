@@ -378,10 +378,26 @@ mod tests {
     #[test]
     fn test_selfless_spirit_oracle_text() {
         let def = selfless_spirit();
-        assert!(def.card.oracle_text.contains("Flying"));
-        assert!(def.card.oracle_text.contains("Sacrifice"));
-        assert!(def.card.oracle_text.contains("indestructible"));
-        assert!(def.card.oracle_text.contains("until end of turn"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Flying")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Sacrifice")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("indestructible")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("until end of turn")
+        );
     }
 
     // ========================================

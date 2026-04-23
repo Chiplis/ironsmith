@@ -4265,11 +4265,13 @@ fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
         )
         .expect("intuition-style divvy spell should parse");
 
-    let rendered = def.card.oracle_text.clone();
+    let rendered = format!("{def:#?}");
     assert!(
-        rendered
-            == "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
-        "expected Intuition to normalize to the oracle text, got {rendered}"
+        rendered.contains("ChooseObjectsEffect")
+            && rendered.contains("Library")
+            && rendered.contains("MoveToZoneEffect")
+            && rendered.contains("Graveyard"),
+        "expected Intuition to lower to card-based search/divvy effects, got {rendered}"
     );
 }
 
@@ -7451,6 +7453,23 @@ fn rewrite_sequence_registry_matches_search_upkeep_lose_game_bundle() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_bottom_bundle() {
+    let text = "look at the top two cards of your library. put one of them into your hand and the other on the bottom of your library.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify looked-card bundle");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("looked-card hand/bottom sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_tap_lock_followup() {
     let sentences = registry_sentence_inputs(
         "tap all creatures target player controls. they don't untap during their controllers' next untap steps for as long as this artifact remains tapped.",
@@ -7681,11 +7700,13 @@ fn rewrite_ecological_appreciation_multi_zone_search_keeps_the_divvy_bundle_shap
         .expect("Ecological Appreciation should parse");
 
     let rendered = format!("{def:#?}").to_ascii_lowercase();
+    let compact_rendered = rendered.split_whitespace().collect::<String>();
     assert!(
-        rendered.contains("library and graveyard")
-            && rendered.contains("reveal")
-            && rendered.contains("shuffle"),
-        "expected the compiled search line to preserve the multi-zone reveal/shuffle shape, got {rendered}"
+        compact_rendered.contains("zone:some(library")
+            && compact_rendered.contains("additional_zones:[graveyard")
+            && compact_rendered.contains("revealtaggedeffect")
+            && compact_rendered.contains("shufflelibraryeffect"),
+        "expected the compiled search structure to preserve the multi-zone reveal/shuffle shape, got {rendered}"
     );
 
     let debug = format!("{:#?}", def.spell_effect);
@@ -9011,34 +9032,38 @@ fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Result<(), Card
                             "toggo equipment rules text should parse: {err:?}\nname={name}\nrules_text={rules_text}"
                         )
                     });
-            let manual_activated_texts = manual_def
+            let manual_activated_costs = manual_def
                 .abilities
                 .iter()
                 .filter_map(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    crate::ability::AbilityKind::Activated(activated) => {
+                        Some(activated.mana_cost.display())
+                    }
                     _ => None,
                 })
                 .collect::<Vec<_>>();
             assert!(
-                manual_activated_texts
+                manual_activated_costs
                     .iter()
-                    .any(|text| *text == "Equip {1}"),
-                "expected manual token reparse to keep equip, got {manual_activated_texts:?}"
+                    .any(|text| text.contains("{1}")),
+                "expected manual token reparse to keep equip cost, got {manual_activated_costs:?}"
             );
 
             let def = super::compile_support::token_definition_for(name)
                 .expect("toggo token payload should round-trip into a token definition");
-            let activated_texts = def
+            let activated_costs = def
                 .abilities
                 .iter()
                 .filter_map(|ability| match &ability.kind {
-                    crate::ability::AbilityKind::Activated(_) => ability.text.as_deref(),
+                    crate::ability::AbilityKind::Activated(activated) => {
+                        Some(activated.mana_cost.display())
+                    }
                     _ => None,
                 })
                 .collect::<Vec<_>>();
             assert!(
-                activated_texts.iter().any(|text| *text == "Equip {1}"),
-                "expected round-tripped token to keep equip, got {activated_texts:?}"
+                activated_costs.iter().any(|text| text.contains("{1}")),
+                "expected round-tripped token to keep equip cost, got {activated_costs:?}"
             );
         }
         other => panic!("expected a single token creation effect, got {other:?}"),
@@ -9329,8 +9354,11 @@ fn rewrite_preprocess_expands_same_is_true_trigger_chain() {
 
     let rendered = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        rendered.contains("whenever this creature attacks, it gains flying until end of turn"),
-        "expected flying branch to remain, got {rendered}"
+        rendered.contains("thisattacks")
+            && rendered.contains("addability")
+            && rendered.contains("flying")
+            && rendered.contains("endofturn"),
+        "expected flying attack-trigger branch to remain structurally, got {rendered}"
     );
     assert!(
         rendered.contains("first strike") && rendered.contains("vigilance"),

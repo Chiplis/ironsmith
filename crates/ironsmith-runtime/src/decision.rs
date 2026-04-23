@@ -2966,7 +2966,6 @@ mod tests {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         };
         game.object_mut(creature_id)
             .unwrap()
@@ -3147,7 +3146,6 @@ mod tests {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         };
         game.object_mut(creature_id)
             .expect("creature exists")
@@ -3272,7 +3270,6 @@ mod tests {
                         mana_usage_restrictions: vec![],
                     }),
                     functional_zones: vec![Zone::Hand],
-                    text: Some("Hand ability".to_string()),
                 },
                 Ability::static_ability(StaticAbility::reduce_activated_ability_costs_for_each(
                     ObjectFilter::source(),
@@ -3557,7 +3554,6 @@ mod tests {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-            text: None,
         };
         game.object_mut(creature_id)
             .unwrap()
@@ -3622,7 +3618,6 @@ mod tests {
                     mana_usage_restrictions: vec![],
                 }),
                 functional_zones: vec![Zone::Hand],
-                text: Some("Hand ability".to_string()),
             });
 
         let actions = compute_legal_actions(&game, alice);

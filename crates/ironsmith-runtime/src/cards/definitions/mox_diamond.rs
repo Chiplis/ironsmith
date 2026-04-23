@@ -185,9 +185,21 @@ mod tests {
     fn test_mox_diamond_oracle_text() {
         let def = mox_diamond();
 
-        assert!(def.card.oracle_text.contains("discard a land card"));
-        assert!(def.card.oracle_text.contains("graveyard"));
-        assert!(def.card.oracle_text.contains("any color"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("discard a land card")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("graveyard")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("any color")
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

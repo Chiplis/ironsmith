@@ -3239,6 +3239,7 @@ fn grant_object_ability_for_anthem_subject(
 fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
     ParsedAbility {
         ability: ability.into(),
+        text: None,
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3481,6 +3482,7 @@ pub(crate) fn parse_heterogeneous_granted_tail(
                             text.clone(),
                         )
                         .into(),
+                        text: Some(display_text_for_tokens(&segment, false)),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,

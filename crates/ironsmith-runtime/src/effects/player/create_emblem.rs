@@ -105,7 +105,6 @@ mod tests {
         let ability = Ability {
             kind: AbilityKind::Static(StaticAbility::hexproof()),
             functional_zones: vec![Zone::Battlefield], // Will be converted to Command
-            text: Some("You have hexproof.".to_string()),
         };
         let emblem =
             EmblemDescription::new("Teferi Emblem", "You have hexproof.").with_ability(ability);

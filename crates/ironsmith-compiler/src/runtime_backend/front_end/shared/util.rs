@@ -3090,9 +3090,9 @@ pub(crate) fn parse_level_up_line(
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: Some(level_up_text),
         }
         .into(),
+        text: Some(level_up_text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3553,6 +3553,7 @@ pub(crate) fn parse_morph_keyword_line(
         ability: Ability::static_ability(static_ability)
             .with_text(&text)
             .into(),
+        text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3863,9 +3864,9 @@ pub(crate) fn parse_transmute_line(
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Hand],
-            text: Some(text),
         }
         .into(),
+        text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -3953,9 +3954,9 @@ pub(crate) fn parse_reinforce_line(
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Hand],
-            text: Some(render_text),
         }
         .into(),
+        text: Some(render_text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,

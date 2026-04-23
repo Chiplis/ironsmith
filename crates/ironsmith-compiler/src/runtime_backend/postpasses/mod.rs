@@ -58,11 +58,12 @@ fn finalize_overload_definitions(
 }
 
 fn parse_backup_placeholder_amount(ability: &Ability) -> Option<u32> {
-    let AbilityKind::Static(_) = &ability.kind else {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
     };
 
-    let text = ability.text.as_deref()?.trim();
+    let text = static_ability.display();
+    let text = text.trim();
     let mut parts = text.split_whitespace();
     if !parts
         .next()
@@ -82,14 +83,14 @@ fn backup_granted_abilities_from_slice(abilities: &[Ability]) -> Vec<Ability> {
 }
 
 fn is_cipher_placeholder(ability: &Ability) -> bool {
-    let AbilityKind::Static(_) = &ability.kind else {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
 
-    ability
-        .text
-        .as_deref()
-        .is_some_and(|text| text.trim().eq_ignore_ascii_case("Cipher"))
+    static_ability
+        .display()
+        .trim()
+        .eq_ignore_ascii_case("Cipher")
 }
 
 pub(crate) fn finalize_backup_abilities(mut definition: CardDefinition) -> CardDefinition {
@@ -115,12 +116,6 @@ pub(crate) fn finalize_backup_abilities(mut definition: CardDefinition) -> CardD
             Ability::triggered(
                 Trigger::this_enters_battlefield(),
                 vec![Effect::backup(amount, granted_abilities)],
-            )
-            .with_text(
-                ability
-                    .text
-                    .as_deref()
-                    .unwrap_or_else(|| original_abilities[idx].text.as_deref().unwrap_or("Backup")),
             )
         })
         .collect();
@@ -187,7 +182,6 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
             intervening_if: Some(Condition::ThisSpellPaidLabel("Offspring".to_string())),
         }),
         functional_zones: vec![Zone::Battlefield],
-        text: None,
     };
     definition.abilities.push(offspring_trigger);
     definition
@@ -231,6 +225,7 @@ fn spell_battlefield_trigger_text_implies_delayed_schedule(
 
 fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     ability: &Ability,
+    original_text: &str,
 ) -> Option<Effect> {
     if ability.functional_zones.as_slice() != [Zone::Battlefield] {
         return None;
@@ -243,9 +238,12 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
         return None;
     }
 
-    let ability_text = ability.text.as_deref()?;
-    let start_next_turn =
-        spell_battlefield_trigger_text_implies_delayed_schedule(ability_text, &triggered.trigger)?;
+    let (ability_text, start_next_turn) = original_text.lines().find_map(|line| {
+        let line = line.trim();
+        let start_next_turn =
+            spell_battlefield_trigger_text_implies_delayed_schedule(line, &triggered.trigger)?;
+        Some((line, start_next_turn))
+    })?;
     let trigger =
         delayed_trigger_spec_from_label(triggered.trigger.display().as_str(), Some(ability_text))?;
 
@@ -301,6 +299,7 @@ fn delayed_trigger_spec_from_label(
 
 fn finalize_nonpermanent_delayed_triggered_abilities(
     mut definition: CardDefinition,
+    original_text: &str,
 ) -> CardDefinition {
     if !definition.card.is_instant() && !definition.card.is_sorcery() {
         return definition;
@@ -310,7 +309,7 @@ fn finalize_nonpermanent_delayed_triggered_abilities(
     let mut remaining_abilities = Vec::with_capacity(definition.abilities.len());
     for ability in std::mem::take(&mut definition.abilities) {
         if let Some(effect) =
-            convert_nonpermanent_delayed_triggered_ability_to_spell_effect(&ability)
+            convert_nonpermanent_delayed_triggered_ability_to_spell_effect(&ability, original_text)
         {
             rewritten_effects.push(effect);
         } else {
@@ -340,5 +339,6 @@ pub(crate) fn apply(
     let definition = finalize_offspring_abilities(definition);
     Ok(finalize_nonpermanent_delayed_triggered_abilities(
         definition,
+        original_text,
     ))
 }

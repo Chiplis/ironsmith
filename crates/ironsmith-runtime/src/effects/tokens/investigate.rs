@@ -142,9 +142,9 @@ mod tests {
             1,
             "Clue should have one activated ability"
         );
-        assert_eq!(
-            clue.abilities[0].text.as_deref(),
-            Some("{2}, Sacrifice this artifact: Draw a card."),
+        assert!(
+            crate::ability::ability_surface_text_for_tests(&clue.abilities[0])
+                .is_some_and(|text| text.to_ascii_lowercase().contains("draw a card")),
             "Clue should carry the predefined draw ability"
         );
     }

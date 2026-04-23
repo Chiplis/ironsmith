@@ -143,9 +143,21 @@ mod tests {
     #[test]
     fn test_vault_of_champions_oracle_text() {
         let def = vault_of_champions();
-        assert!(def.card.oracle_text.contains("enters tapped"));
-        assert!(def.card.oracle_text.contains("two or more opponents"));
-        assert!(def.card.oracle_text.contains("Add {W} or {B}"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("enters tapped")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("two or more opponents")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add {W} or {B}")
+        );
     }
 
     // ========================================

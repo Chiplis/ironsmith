@@ -33,10 +33,7 @@ impl GrantObjectAbilityEffect {
     }
 
     fn ability_fingerprint(ability: &Ability) -> String {
-        format!(
-            "{:?}|{:?}|{:?}",
-            ability.kind, ability.functional_zones, ability.text
-        )
+        format!("{:?}|{:?}", ability.kind, ability.functional_zones)
     }
 }
 

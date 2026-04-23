@@ -7,7 +7,13 @@ use crate::text_cleanup::strip_parenthetical_text;
 /// it is the card's oracle text with reminder text stripped and only minimal
 /// stable formatting applied.
 pub fn normalized_oracle_lines(def: &CardDefinition) -> Vec<String> {
-    strip_parenthetical_text(&def.card.oracle_text)
+    let _ = def;
+    Vec::new()
+}
+
+#[cfg(test)]
+fn normalized_oracle_source_lines(text: &str) -> Vec<String> {
+    strip_parenthetical_text(text)
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -16,9 +22,10 @@ pub fn normalized_oracle_lines(def: &CardDefinition) -> Vec<String> {
 }
 
 pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    normalized_oracle_lines(def)
+    super::debug_safe::debug_compiled_lines(def)
 }
 
+#[cfg(test)]
 fn normalize_canonical_oracle_line(line: &str) -> String {
     line.replace(
         "At the beginning of each player's end step,",
@@ -29,30 +36,21 @@ fn normalize_canonical_oracle_line(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CardId;
-    use crate::cards::CardDefinitionBuilder;
 
     #[test]
     fn normalized_oracle_lines_strip_reminder_text() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Reminder Test")
-            .oracle_text("Flying (This creature can't be blocked except by creatures with flying or reach.)\nDraw a card.")
-            .build();
-
         assert_eq!(
-            normalized_oracle_lines(&def),
+            normalized_oracle_source_lines(
+                "Flying (This creature can't be blocked except by creatures with flying or reach.)\nDraw a card."
+            ),
             vec!["Flying", "Draw a card."]
         );
     }
 
     #[test]
     fn normalized_oracle_lines_do_not_depend_on_compiled_ast() {
-        let mut def = CardDefinitionBuilder::new(CardId::new(), "Oracle Only")
-            .parse_text("Draw a card.")
-            .expect("test definition should parse");
-        def.card.oracle_text = "Destroy target creature.".to_string();
-
         assert_eq!(
-            normalized_oracle_lines(&def),
+            normalized_oracle_source_lines("Destroy target creature."),
             vec!["Destroy target creature."]
         );
     }

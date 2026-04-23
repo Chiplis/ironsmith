@@ -91,6 +91,7 @@ impl From<Ability> for ParsedAbilityRuntime {
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedAbility {
     pub(crate) ability: ParsedAbilityRuntime,
+    pub(crate) text: Option<String>,
     pub(crate) effects_ast: Option<Vec<EffectAst>>,
     pub(crate) reference_imports: ReferenceImports,
     pub(crate) trigger_spec: Option<TriggerSpec>,
@@ -105,6 +106,7 @@ impl ParsedAbility {
     ) -> Self {
         Self {
             ability: ability.into(),
+            text: None,
             effects_ast,
             reference_imports,
             trigger_spec,
@@ -132,11 +134,11 @@ impl ParsedAbility {
     }
 
     pub(crate) fn text(&self) -> &Option<String> {
-        &self.runtime().text
+        &self.text
     }
 
     pub(crate) fn text_mut(&mut self) -> &mut Option<String> {
-        &mut self.runtime_mut().text
+        &mut self.text
     }
 
     pub(crate) fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {

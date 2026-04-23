@@ -259,11 +259,7 @@ fn definition_has_semantics(definition: &CardDefinition) -> bool {
 fn sanitize_definition_for_semantic_compare(definition: &CardDefinition) -> CardDefinition {
     let mut sanitized = definition.clone();
     sanitized.card.id = CardId::from_raw(1);
-    sanitized.card.oracle_text.clear();
     sanitized.card.other_face = sanitized.card.other_face.map(|_| CardId::from_raw(2));
-    for ability in &mut sanitized.abilities {
-        ability.text = None;
-    }
     sanitized
 }
 

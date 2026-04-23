@@ -202,10 +202,30 @@ mod tests {
     #[test]
     fn test_gods_willing_oracle_text() {
         let def = gods_willing();
-        assert!(def.card.oracle_text.contains("Target creature you control"));
-        assert!(def.card.oracle_text.contains("protection"));
-        assert!(def.card.oracle_text.contains("color of your choice"));
-        assert!(def.card.oracle_text.contains("until end of turn"));
-        assert!(def.card.oracle_text.contains("Scry 1"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Target creature you control")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("protection")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("color of your choice")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("until end of turn")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Scry 1")
+        );
     }
 }

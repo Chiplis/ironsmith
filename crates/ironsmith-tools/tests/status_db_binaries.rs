@@ -74,12 +74,10 @@ fn write_cards_with_semantic_mismatch_json(path: &Path) {
         path,
         r#"[
   {
-    "name":"G'raha Tia Variant",
-    "oracle_text":"Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.",
-    "mana_cost":"{2}{G}",
-    "type_line":"Creature — Cat Wizard",
-    "power":"2",
-    "toughness":"3"
+    "name":"Mismatch Fixture",
+    "oracle_text":"Destroy target creature an opponent controls.",
+    "mana_cost":"{1}{B}",
+    "type_line":"Sorcery"
   }
 ]"#,
     )
@@ -914,7 +912,7 @@ fn sync_card_status_db_records_semantic_mismatch_status() {
         .query_row(
             "SELECT parse_status, semantic_mismatch, parse_error, compiled_text
              FROM latest_card_compilation
-             WHERE card_name = 'G''raha Tia Variant'",
+             WHERE card_name = 'Mismatch Fixture'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )

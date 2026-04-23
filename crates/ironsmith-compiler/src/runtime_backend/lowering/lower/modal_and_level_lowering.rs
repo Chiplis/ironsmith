@@ -292,7 +292,6 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: activated.functional_zones,
-            text: Some(line_text),
         });
     } else if let Some(ref mut existing) = builder.spell_effect {
         existing.extend(combined_effects);

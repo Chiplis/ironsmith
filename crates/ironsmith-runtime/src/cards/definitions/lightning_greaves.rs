@@ -413,9 +413,12 @@ mod tests {
     #[test]
     fn test_oracle_text_contains_abilities() {
         let def = lightning_greaves();
-        assert!(def.card.oracle_text.contains("haste"));
-        assert!(def.card.oracle_text.contains("shroud"));
-        assert!(def.card.oracle_text.contains("Equip"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("haste"));
+        assert!(rendered.contains("shroud"));
+        assert!(rendered.contains("equip"));
     }
 
     // ========================================

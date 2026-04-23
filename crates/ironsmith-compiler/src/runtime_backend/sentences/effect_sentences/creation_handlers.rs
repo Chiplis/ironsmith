@@ -881,7 +881,8 @@ pub(crate) fn parse_create(
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
             let has_equipment_rules_subject =
-                word_slice_contains_sequence(with_words, &["equipped", "creature", "has"]);
+                word_slice_contains_sequence(with_words, &["equipped", "creature", "has"])
+                    || word_slice_contains_sequence(with_words, &["equipped", "creature", "gets"]);
             let rules_text_start = find_word_index(with_words, |word| {
                 matches!(
                     word,

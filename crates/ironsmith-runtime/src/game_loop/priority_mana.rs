@@ -3988,7 +3988,6 @@ mod priority_mana_tests {
                     mana_usage_restrictions: vec![restriction.clone()],
                 }),
                 functional_zones: vec![Zone::Battlefield],
-                text: None,
             });
         game.set_chosen_creature_type(cavern_id, Subtype::Giant);
 

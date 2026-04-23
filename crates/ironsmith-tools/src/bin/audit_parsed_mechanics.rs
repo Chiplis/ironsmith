@@ -530,13 +530,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         parse_successes += 1;
 
-        for ability in &def.abilities {
-            if let Some(text) = ability.text.as_deref()
-                && let Some(named) = implemented_named_mechanic_from_text(text)
-            {
+        for text in ironsmith::compiled_text::debug_compiled_lines(&def) {
+            if let Some(named) = implemented_named_mechanic_from_text(&text) {
                 add_tally(&mut implemented, named, &card_input.name);
             }
+        }
 
+        for ability in &def.abilities {
             if let AbilityKind::Static(static_ability) = &ability.kind {
                 let id = static_ability.id();
                 if id == StaticAbilityId::UnsupportedParserLine {

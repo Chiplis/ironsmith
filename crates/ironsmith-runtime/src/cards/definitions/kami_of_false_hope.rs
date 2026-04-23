@@ -291,9 +291,21 @@ mod tests {
     #[test]
     fn test_kami_of_false_hope_oracle_text() {
         let def = kami_of_false_hope();
-        assert!(def.card.oracle_text.contains("Sacrifice"));
-        assert!(def.card.oracle_text.contains("Prevent all combat damage"));
-        assert!(def.card.oracle_text.contains("this turn"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Sacrifice")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Prevent all combat damage")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("this turn")
+        );
     }
 
     // ========================================

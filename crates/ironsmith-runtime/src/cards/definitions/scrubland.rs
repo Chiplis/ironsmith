@@ -234,9 +234,21 @@ mod tests {
     fn test_scrubland_oracle_text() {
         let def = scrubland();
 
-        assert!(def.card.oracle_text.contains("Add"));
-        assert!(def.card.oracle_text.contains("{W}"));
-        assert!(def.card.oracle_text.contains("{B}"));
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("Add")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("{W}")
+        );
+        assert!(
+            crate::compiled_text::debug_compiled_lines(&def)
+                .join("\n")
+                .contains("{B}")
+        );
     }
 
     // =========================================================================

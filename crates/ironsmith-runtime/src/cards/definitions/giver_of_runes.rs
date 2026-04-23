@@ -255,16 +255,15 @@ mod tests {
     #[test]
     fn test_giver_of_runes_oracle_text() {
         let def = giver_of_runes();
-        assert!(def.card.oracle_text.contains("{T}"));
-        assert!(
-            def.card
-                .oracle_text
-                .contains("Another target creature you control")
-        );
-        assert!(def.card.oracle_text.contains("protection"));
-        assert!(def.card.oracle_text.contains("colorless"));
-        assert!(def.card.oracle_text.contains("color of your choice"));
-        assert!(def.card.oracle_text.contains("until end of turn"));
+        let rendered = crate::compiled_text::debug_compiled_lines(&def)
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(rendered.contains("{t}"));
+        assert!(rendered.contains("another target creature you control"));
+        assert!(rendered.contains("protection"));
+        assert!(rendered.contains("colorless"));
+        assert!(rendered.contains("color of your choice"));
+        assert!(rendered.contains("until end of turn"));
     }
 
     // ========================================

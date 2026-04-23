@@ -3,10 +3,12 @@ use super::super::dispatch_entry::{
     leading_may_actor_to_player, parse_consult_cast_clause, parse_consult_remainder_order,
     parse_consult_traversal_sentence, parse_looked_card_choice_filter,
     parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
+    parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, ObjectFilter, OwnedLexToken,
-    PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryBottomOrderAst,
+    ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
+    TargetAst,
     ZoneReplacementDurationAst,
 };
 use crate::effect::Value;
@@ -125,6 +127,76 @@ pub(super) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
             player: permission_player,
             allow_land,
             allow_any_color_for_cast,
+        },
+    ]))
+}
+
+pub(super) fn parse_look_at_top_then_put_one_hand_other_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let words = sentence_words(&second_tokens);
+    let starts_with_hand_choice = slice_starts_with(
+        &words,
+        &["put", "one", "of", "them", "into", "your", "hand"],
+    ) || slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
+    if !starts_with_hand_choice {
+        return Ok(None);
+    }
+    let content_words = words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    let puts_other_bottom = contains_word_sequence(&content_words, &["other", "on", "bottom"])
+        || contains_word_sequence(&content_words, &["other", "onto", "bottom"])
+        || contains_word_sequence(&content_words, &["rest", "on", "bottom"])
+        || contains_word_sequence(&content_words, &["rest", "onto", "bottom"]);
+    if !puts_other_bottom || !slice_contains(&content_words, &"library") {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let hand_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "hand");
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+
+    Ok(Some(vec![
+        EffectAst::LookAtTopCards {
+            player,
+            count,
+            tag: looked_tag.clone(),
+        },
+        EffectAst::ChooseObjects {
+            filter: hand_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: hand_tag.clone(),
+        },
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(hand_tag.clone(), None),
+            zone: Zone::Hand,
+            to_top: false,
+            battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        },
+        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+            tag: looked_tag,
+            keep_tagged: Some(hand_tag),
+            order: LibraryBottomOrderAst::ChooserChooses,
+            player,
         },
     ]))
 }

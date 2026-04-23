@@ -63,20 +63,12 @@ impl StaticAbilityModelInterpreter {
                 Self::static_model_debug_summary(static_ability)
             ),
             ironsmith_core::AbilityKind::Triggered(triggered) => format!(
-                "TriggeredAbility {{ trigger: {:?}, effects: {:?}, choices: {:?}, intervening_if: {:?}, text: {:?} }}",
-                triggered.trigger,
-                triggered.effects,
-                triggered.choices,
-                triggered.intervening_if,
-                ability.text
+                "TriggeredAbility {{ trigger: {:?}, effects: {:?}, choices: {:?}, intervening_if: {:?} }}",
+                triggered.trigger, triggered.effects, triggered.choices, triggered.intervening_if
             ),
             ironsmith_core::AbilityKind::Activated(activated) => format!(
-                "ActivatedAbility {{ mana_cost: {:?}, effects: {:?}, choices: {:?}, timing: {:?}, text: {:?} }}",
-                activated.mana_cost,
-                activated.effects,
-                activated.choices,
-                activated.timing,
-                ability.text
+                "ActivatedAbility {{ mana_cost: {:?}, effects: {:?}, choices: {:?}, timing: {:?} }}",
+                activated.mana_cost, activated.effects, activated.choices, activated.timing
             ),
         }
     }
@@ -347,7 +339,6 @@ impl StaticAbilityModelInterpreter {
         crate::ability::Ability {
             kind,
             functional_zones: ability.functional_zones.clone(),
-            text: ability.text.clone(),
         }
     }
 
@@ -387,6 +378,9 @@ impl StaticAbilityModelInterpreter {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) => {
                 Some(Self::ability_from_model(&grant.ability))
+            }
+            ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
+                Some(Self::ability_from_model(ability))
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
                 Self::cached_granted_inline_ability(ability)

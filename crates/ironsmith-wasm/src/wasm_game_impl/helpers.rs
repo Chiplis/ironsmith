@@ -251,7 +251,11 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             let name = object_name(game, *source);
             let ability_text = game
                 .current_ability(*source, *ability_index)
-                .and_then(|ability| ability.text)
+                .and_then(|ability| {
+                    stack_display_lines_from_abilities(std::slice::from_ref(&ability), false)
+                        .into_iter()
+                        .next()
+                })
                 .map(|text| normalize_action_text(&text));
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
@@ -265,7 +269,11 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             let name = object_name(game, *source);
             let ability_text = game
                 .current_ability(*source, *ability_index)
-                .and_then(|ability| ability.text)
+                .and_then(|ability| {
+                    stack_display_lines_from_abilities(std::slice::from_ref(&ability), false)
+                        .into_iter()
+                        .next()
+                })
                 .map(|text| normalize_action_text(&text));
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),

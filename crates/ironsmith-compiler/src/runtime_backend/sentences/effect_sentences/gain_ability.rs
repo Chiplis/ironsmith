@@ -121,6 +121,7 @@ fn parsed_static_granted_abilities(
                     ability: Ability::static_ability(static_ability)
                         .with_text(&display)
                         .into(),
+                    text: Some(display.clone()),
                     effects_ast: None,
                     reference_imports: ReferenceImports::default(),
                     trigger_spec: None,
@@ -1880,13 +1881,16 @@ mod tests {
         );
 
         let rendered = format!("{def:#?}").to_ascii_lowercase();
+        let compact_rendered = rendered.split_whitespace().collect::<String>();
         assert!(
-            string_contains(
-                &rendered,
-                "target creature you control gains indestructible"
-            ) && string_contains(&rendered, "whenever this creature is dealt damage")
-                && string_contains(&rendered, "put that many +1/+1 counters on it"),
-            "grant should stay targeted in compiled text: {rendered}"
+            string_contains(&compact_rendered, "targetonlyeffect")
+                && string_contains(&compact_rendered, "controller:some(you")
+                && string_contains(&compact_rendered, "addability")
+                && string_contains(&compact_rendered, "indestructible")
+                && string_contains(&compact_rendered, "addabilitygeneric")
+                && string_contains(&compact_rendered, "isdealtdamage")
+                && string_contains(&compact_rendered, "putcounterseffect"),
+            "grant should stay targeted in the lowered structure: {rendered}"
         );
     }
 }

@@ -2,12 +2,7 @@ use super::*;
 use crate::cards::CardDefinitionRuntimeExt;
 
 pub(super) fn debug_safe_surface_definition(def: &CardDefinition) -> CardDefinition {
-    let mut structured_def = def.clone();
-    structured_def.card.oracle_text.clear();
-    for ability in &mut structured_def.abilities {
-        ability.text = None;
-    }
-    structured_def
+    def.clone()
 }
 
 pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<String> {
@@ -308,7 +303,6 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 && first.additional_restrictions.is_empty()
                 && first.mana_usage_restrictions.is_empty()
                 && first.mana_symbols().len() == 1
-                && ability.text.is_none()
             {
                 let mut symbols = vec![first.mana_symbols()[0]];
                 let mut consumed = 1usize;
@@ -324,7 +318,6 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                         || !next_mana.mana_usage_restrictions.is_empty()
                         || next_mana.mana_symbols().len() != 1
                         || next_mana.mana_cost != first.mana_cost
-                        || next.text.is_some()
                     {
                         break;
                     }

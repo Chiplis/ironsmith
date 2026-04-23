@@ -517,18 +517,14 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                     keyword_texts.push(static_ability.display().to_ascii_lowercase());
                     continue;
                 }
-                if let Some(text) = ability.text.as_ref() {
-                    extra_ability_texts.push(quote_token_granted_ability_text(text));
-                } else {
-                    extra_ability_texts.push(quote_token_granted_ability_text(
-                        static_ability.display().as_str(),
-                    ));
-                }
+                extra_ability_texts.push(quote_token_granted_ability_text(
+                    static_ability.display().as_str(),
+                ));
             }
             AbilityKind::Triggered(_) | AbilityKind::Activated(_) => {
-                if let Some(text) = ability.text.as_ref() {
-                    extra_ability_texts.push(quote_token_granted_ability_text(text));
-                }
+                extra_ability_texts.push(quote_token_granted_ability_text(
+                    describe_inline_ability(ability).as_str(),
+                ));
             }
         }
     }
@@ -586,7 +582,7 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
     }
 
     if !normalized.starts_with('{') {
-        return capitalize_first(&normalized);
+        return normalize_token_self_reference_in_quoted_ability(&capitalize_first(&normalized));
     }
 
     let mut chars: Vec<char> = normalized.chars().collect();
@@ -604,7 +600,17 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
             capitalize_next_alpha = false;
         }
     }
-    chars.into_iter().collect()
+    normalize_token_self_reference_in_quoted_ability(&chars.into_iter().collect::<String>())
+}
+
+fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
+    text.replace("When this creature ", "When this token ")
+        .replace("Whenever this creature ", "Whenever this token ")
+        .replace(
+            "this creature is dealt damage",
+            "this token is dealt damage",
+        )
+        .replace("this creature becomes tapped", "this token becomes tapped")
 }
 
 pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String {
@@ -6753,6 +6759,24 @@ pub(super) fn describe_apply_continuous_target(
     })
 }
 
+fn granted_ability_self_subject_for_apply_continuous(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> &'static str {
+    if let Some(spec) = &effect.target_spec {
+        return granted_ability_self_subject_for_choose_spec(spec);
+    }
+    match &effect.target {
+        crate::continuous::EffectTarget::Filter(filter) => {
+            granted_ability_self_subject_for_filter(filter)
+        }
+        crate::continuous::EffectTarget::AllCreatures => "this creature",
+        crate::continuous::EffectTarget::AllPermanents
+        | crate::continuous::EffectTarget::Specific(_)
+        | crate::continuous::EffectTarget::Source
+        | crate::continuous::EffectTarget::AttachedTo(_) => "this permanent",
+    }
+}
+
 pub(super) fn describe_apply_continuous_clauses(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
@@ -6761,6 +6785,7 @@ pub(super) fn describe_apply_continuous_clauses(
     let has = if plural_target { "have" } else { "has" };
     let gains = if plural_target { "gain" } else { "gains" };
     let loses = if plural_target { "lose" } else { "loses" };
+    let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
 
     let mut clauses = Vec::new();
 
@@ -6895,7 +6920,10 @@ pub(super) fn describe_apply_continuous_clauses(
         }
         crate::continuous::Modification::AddAbility(ability) => {
             if let Some(inline) = ability.granted_inline_ability() {
-                clauses.push(format!("{gains} {}", describe_inline_ability(inline)));
+                clauses.push(format!(
+                    "{gains} {}",
+                    describe_inline_ability_with_self_subject(inline, self_subject)
+                ));
             } else {
                 clauses.push(format!("{gains} {}", lowercase_first(&ability.display())));
             }
@@ -6916,8 +6944,11 @@ pub(super) fn describe_apply_continuous_clauses(
                 crate::ability::AbilityKind::Triggered(_)
                     | crate::ability::AbilityKind::Activated(_)
             ) {
-                let ability_text = capitalize_first(&describe_inline_ability(ability))
-                    .replace(". otherwise,", ". Otherwise,");
+                let ability_text = capitalize_first(&describe_inline_ability_with_self_subject(
+                    ability,
+                    self_subject,
+                ))
+                .replace(". otherwise,", ". Otherwise,");
                 let grant_verb = if plural_target && effect.until == crate::effect::Until::Forever {
                     has
                 } else {
@@ -6925,7 +6956,10 @@ pub(super) fn describe_apply_continuous_clauses(
                 };
                 clauses.push(format!("{grant_verb} \"{ability_text}\""));
             } else {
-                clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
+                clauses.push(format!(
+                    "{gains} {}",
+                    describe_inline_ability_with_self_subject(ability, self_subject)
+                ));
             }
         }
         crate::continuous::Modification::DoesntUntap => {
@@ -7445,8 +7479,6 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
         return None;
     }
     if first.target != second.target
-        || first.until != second.until
-        || first.condition != second.condition
         || apply_continuous_preserves_source_abilities(first)
             != apply_continuous_preserves_source_abilities(second)
     {
@@ -7454,6 +7486,17 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
+    if tagged_apply_pair_preserves_animated_land(first, second)
+        && (first.until == second.until || matches!(second.until, Until::Forever))
+        && (first.condition == second.condition || second.condition.is_none())
+        && let Some(text) = describe_apply_continuous_animation_effect(first, &target, plural_target)
+    {
+        return Some(text);
+    }
+    if first.until != second.until || first.condition != second.condition {
+        return None;
+    }
+
     let mut clauses = describe_apply_continuous_clauses(first, plural_target);
     clauses.extend(describe_apply_continuous_clauses(second, plural_target));
     if clauses.is_empty() {
@@ -7466,6 +7509,23 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
         text.push_str(&tail);
     }
     Some(text)
+}
+
+fn tagged_apply_pair_preserves_animated_land(
+    first: &crate::effects::ApplyContinuousEffect,
+    second: &crate::effects::ApplyContinuousEffect,
+) -> bool {
+    matches!(
+        &first.modification,
+        Some(crate::continuous::Modification::AddCardTypes(card_types))
+            if card_types.contains(&CardType::Creature)
+    ) && matches!(
+        &second.modification,
+        Some(crate::continuous::Modification::AddCardTypes(card_types))
+            if card_types.len() == 1 && card_types.contains(&CardType::Land)
+    ) && second.additional_modifications.is_empty()
+        && second.runtime_modifications.is_empty()
+        && first.target_spec.as_ref().and_then(choose_spec_land_filter).is_some()
 }
 
 pub(super) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
@@ -7553,7 +7613,7 @@ pub(super) fn describe_until(until: &Until) -> String {
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {
-            "while this source remains on the battlefield".to_string()
+            "for as long as this source remains on the battlefield".to_string()
         }
         Until::YouStopControllingThis => "while you control this source".to_string(),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),

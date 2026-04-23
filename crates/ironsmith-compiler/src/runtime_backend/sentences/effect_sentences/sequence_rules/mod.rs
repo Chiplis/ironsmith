@@ -467,6 +467,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: pairs::parse_look_at_top_then_exile_face_down_then_play_while_exiled,
     },
     SequenceRuleDef {
+        name: "look-at-top-put-one-hand-other-bottom",
+        feature_tag: Some("looked-cards-hand-bottom"),
+        priority: 236,
+        consumed_sentences: 2,
+        predicate: first_head_look_at,
+        parser: pairs::parse_look_at_top_then_put_one_hand_other_bottom,
+    },
+    SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand",
         feature_tag: Some("mill-hand-choice"),
         priority: 235,

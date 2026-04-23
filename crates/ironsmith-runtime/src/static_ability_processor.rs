@@ -111,14 +111,6 @@ fn next_static_effect_group_id(next_group_id: &mut u64) -> ContinuousEffectGroup
 
 struct GeneratedStaticEffect {
     effect: ContinuousEffect,
-    ability_text: Option<String>,
-}
-
-fn generated_effects_share_origin(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {
-    match (&a.ability_text, &b.ability_text) {
-        (Some(a_text), Some(b_text)) => a_text == b_text,
-        _ => true,
-    }
 }
 
 fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {
@@ -131,7 +123,6 @@ fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffe
         && a_effect.expires_end_of_turn == b_effect.expires_end_of_turn
         && a_effect.condition == b_effect.condition
         && a_effect.source_type == b_effect.source_type
-        && generated_effects_share_origin(a, b)
 }
 
 fn should_infer_multilayer_static_group(
@@ -274,12 +265,11 @@ pub fn generate_continuous_effects_from_static_abilities(
                             effect.originating_static_ability = Some(static_ability.clone());
                         }
                     }
-                    object_effects.extend(ability_effects.into_iter().map(|effect| {
-                        GeneratedStaticEffect {
-                            effect,
-                            ability_text: ability.text.clone(),
-                        }
-                    }));
+                    object_effects.extend(
+                        ability_effects
+                            .into_iter()
+                            .map(|effect| GeneratedStaticEffect { effect }),
+                    );
                 }
             }
             assign_inferred_static_effect_groups(&mut object_effects, &mut next_group_id);

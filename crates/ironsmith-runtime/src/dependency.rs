@@ -2115,7 +2115,6 @@ mod tests {
                 mana_usage_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: None,
         });
 
         let objects = HashMap::from([(land.id, land.clone())]);
