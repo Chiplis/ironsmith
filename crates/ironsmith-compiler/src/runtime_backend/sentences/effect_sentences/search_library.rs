@@ -1021,6 +1021,54 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             words_all.join(" ")
         )));
     }
+    let effect_words = token_words(&effect_tokens);
+    let reveal_until_prefix = [
+        "its", "controller", "reveals", "cards", "from", "the", "top", "of", "their", "library",
+        "until", "they", "reveal",
+    ];
+    if word_slice_starts_with(&effect_words, &reveal_until_prefix)
+        && let Some(put_word_idx) = word_slice_find_sequence(
+            &effect_words,
+            &["puts", "that", "card", "onto", "the", "battlefield"],
+        )
+        && word_slice_contains_sequence(&effect_words[put_word_idx..], &["then", "shuffles"])
+    {
+        let filter_start = token_index_for_word_index(&effect_tokens, reveal_until_prefix.len())
+            .unwrap_or(effect_tokens.len());
+        let filter_end =
+            token_index_for_word_index(&effect_tokens, put_word_idx).unwrap_or(effect_tokens.len());
+        let reveal_filter_tokens = trim_commas(&effect_tokens[filter_start..filter_end]);
+        if !reveal_filter_tokens.is_empty() {
+            let filter = parse_object_filter_lexed(&reveal_filter_tokens, false)?;
+            let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
+            let matched_tag = helper_tag_for_tokens(tokens, "chosen");
+
+            return Ok(Some(vec![EffectAst::ForEachTagged {
+                tag: IT_TAG.into(),
+                effects: vec![
+                    EffectAst::ConsultTopOfLibrary {
+                        player: PlayerAst::Implicit,
+                        mode: LibraryConsultModeAst::Reveal,
+                        filter,
+                        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+                        all_tag: revealed_tag,
+                        match_tag: matched_tag.clone(),
+                    },
+                    EffectAst::MoveToZone {
+                        target: TargetAst::Tagged(matched_tag, None),
+                        zone: Zone::Battlefield,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    },
+                    EffectAst::ShuffleLibrary {
+                        player: PlayerAst::Implicit,
+                    },
+                ],
+            }]));
+        }
+    }
     let effects = parse_effect_chain(&effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(

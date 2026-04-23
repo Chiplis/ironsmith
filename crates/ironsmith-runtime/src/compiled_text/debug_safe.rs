@@ -12,11 +12,11 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
-    debug_compiled_lines(def)
+    compact_unprocessed_surface_markers(def, debug_compiled_lines(def))
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    compact_unprocessed_surface_markers(def, compiled_text_lines(def))
+    debug_compiled_lines(def)
 }
 
 fn safe_intrinsic_label_from_ability(ability: &Ability) -> Option<String> {
@@ -102,22 +102,40 @@ fn normalize_debug_safe_sentence_surface(line: &str) -> String {
 }
 
 fn compact_unprocessed_surface_markers(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
-    if !has_structural_undaunted(def) {
-        return lines;
-    }
-
     lines.into_iter()
         .map(|line| {
-            let compact = compact_whitespace(line.trim());
-            if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
-                || compact.eq_ignore_ascii_case("Spells cost {X} less to cast")
-            {
-                "Undaunted".to_string()
-            } else {
-                line
+            let line = compact_first_time_each_turn_trigger_line(&line).unwrap_or(line);
+            let line = compact_scored_token_with_quoted_ability_line(&line).unwrap_or(line);
+            if has_structural_undaunted(def) {
+                let compact = compact_whitespace(line.trim());
+                if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
+                    || compact.eq_ignore_ascii_case("Spells cost {X} less to cast")
+                {
+                    return "Undaunted".to_string();
+                }
             }
+            line
         })
         .collect()
+}
+
+fn compact_scored_token_with_quoted_ability_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if let Some((token_text, ability)) = trimmed.split_once(" token. It has \"") {
+        let ability = ability
+            .strip_suffix("\".")
+            .or_else(|| ability.strip_suffix('"'))?
+            .trim();
+        return Some(format!("{token_text} token with \"{ability}\""));
+    }
+    if let Some((token_text, ability)) = trimmed.split_once(" tokens. They have \"") {
+        let ability = ability
+            .strip_suffix("\".")
+            .or_else(|| ability.strip_suffix('"'))?
+            .trim();
+        return Some(format!("{token_text} tokens with \"{ability}\""));
+    }
+    None
 }
 
 fn has_structural_undaunted(def: &CardDefinition) -> bool {
@@ -255,9 +273,6 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(compact) = compact_debug_safe_loyalty_line(line) {
         return compact;
     }
-    if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
-        return compact;
-    }
     if let Some(compact) = compact_constellation_instead_line(line) {
         return compact;
     }
@@ -342,9 +357,16 @@ fn compact_first_time_each_turn_trigger_line(line: &str) -> Option<String> {
     let stem = trimmed
         .strip_suffix(". This ability triggers only once each turn.")
         .or_else(|| trimmed.strip_suffix(". This ability triggers only once each turn"))?;
-    let rest = stem.strip_prefix("Whenever you lose life, ")?;
+    if let Some((prefix, rest)) = stem.split_once(" — Whenever ") {
+        let (trigger, body) = rest.split_once(", ")?;
+        return Some(format!(
+            "{prefix} — Whenever {trigger} for the first time each turn, {body}."
+        ));
+    }
+    let rest = stem.strip_prefix("Whenever ")?;
+    let (trigger, body) = rest.split_once(", ")?;
     Some(format!(
-        "Whenever you lose life for the first time each turn, {rest}."
+        "Whenever {trigger} for the first time each turn, {body}."
     ))
 }
 
@@ -928,11 +950,6 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
             continue;
         }
         let lower_line = compact_whitespace(line).to_ascii_lowercase();
-        if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
-            normalized.push(compact);
-            idx += 1;
-            continue;
-        }
         if let Some(compact) = compact_constellation_instead_line(line) {
             normalized.push(compact);
             idx += 1;
@@ -2027,6 +2044,7 @@ fn alternative_cast_intrinsic_marker_line(method: &AlternativeCastingMethod) -> 
     if matches!(
         method,
         AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+            | AlternativeCastingMethod::Escape { .. }
     ) {
         return None;
     }

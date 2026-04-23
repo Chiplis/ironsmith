@@ -2778,6 +2778,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         .map(|word| match word {
             "can't" | "cannot" => "cant",
             "aren't" => "arent",
+            "that's" => "thats",
             "isn't" => "isnt",
             "they're" => "theyre",
             "it's" => "its",
@@ -3068,7 +3069,10 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let has_construct_plus_words =
         has_words(&["gets", "+1/+1", "for", "each", "artifact", "you", "control"]);
     let is_zero_zero_construct = has_word("construct") && has_text("0/0");
+    let named_non_construct = extract_named_card_name(&words, lower.as_str())
+        .is_some_and(|token_name| !token_name.eq_ignore_ascii_case("Construct"));
     if has_word("construct")
+        && !named_non_construct
         && (!has_explicit_pt
             || has_construct_cda_words
             || has_construct_plus_words
@@ -3939,6 +3943,21 @@ mod parse_compile_tests {
         assert!(
             debug.contains("RemoveCardTypes"),
             "expected inline trigger tail to compile into a real remove-card-types effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn token_definition_named_construct_skips_urza_construct_shell() {
+        let source_text = "0/0 colorless Construct artifact creature token named Twin that's attacking.";
+
+        let def =
+            token_definition_for(source_text).expect("named construct token should still build");
+        let debug = format!("{def:#?}");
+
+        assert_eq!(def.card.name, "Twin");
+        assert!(
+            !debug.contains("CharacteristicDefiningPT"),
+            "named Construct tokens should not pick up the generic artifact-count CDA shell, got {debug}"
         );
     }
 

@@ -935,6 +935,14 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     } else if count_tokens.first().is_some_and(|token| token.is_word("x")) {
         count = ChoiceCount::dynamic_x();
         count_used = 1;
+    } else if count_tokens
+        .first()
+        .is_some_and(|token| token.is_word("exactly"))
+    {
+        if let Some((value, used)) = parse_number(&count_tokens[1..]) {
+            count = ChoiceCount::exactly(value as usize);
+            count_used = 1 + used;
+        }
     } else if let Some((value, used)) = parse_number(count_tokens) {
         count = ChoiceCount::exactly(value as usize);
         count_used = used;

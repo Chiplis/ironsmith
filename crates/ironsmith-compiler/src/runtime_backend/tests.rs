@@ -7633,6 +7633,8 @@ fn rewrite_lexed_effect_sequence_parses_divvy_choose_one_of_them_bundle() {
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("May"), "{debug}");
+    assert!(debug.contains("min: 2"), "{debug}");
+    assert!(debug.contains("distinct_names: true"), "{debug}");
     assert!(debug.contains("divvy_source"), "{debug}");
     assert!(debug.contains("divvy_chosen"), "{debug}");
     assert!(debug.contains("ChooseObjectsAcrossZones"), "{debug}");

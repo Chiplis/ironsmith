@@ -34468,3 +34468,143 @@ fn incriminate_keeps_same_controller_choice_sacrifice() {
         "expected target set, controller choice, and sacrifice, got {debug}"
     );
 }
+
+#[test]
+fn parse_oracle_satyrs_cunning_keeps_escape_exile_clause_in_scored_text() {
+    let def = parse_oracle_card_definition("Satyr's Cunning");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Create a 1/1 red Satyr creature token with \"Can't block.\"")
+            && rendered.contains("Escape")
+            && rendered.contains("{2}{R}")
+            && rendered.contains("Exile two other cards from your graveyard"),
+        "expected Satyr's Cunning scored text to keep the token and escape clauses, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_axgard_artisan_keeps_first_time_each_turn_in_scored_text() {
+    let def = parse_oracle_card_definition("Axgard Artisan");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("for the first time each turn")
+            && !rendered.contains("This ability triggers only once each turn"),
+        "expected Axgard Artisan scored text to compact to first-time-each-turn wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_grasping_current_keeps_named_multi_zone_search_surface() {
+    let def = parse_oracle_card_definition("Grasping Current");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("search your library and/or graveyard for a card named jace ingenious mind mage")
+            && rendered.contains("reveal it")
+            && rendered.contains("put it into your hand")
+            && rendered.contains("if you searched your library this way, shuffle"),
+        "expected Grasping Current scored text to keep the multi-zone search wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("searched_multi_zone") && !rendered.contains("for each tagged"),
+        "expected Grasping Current scored text to avoid internal helper leakage, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_burning_rune_demon_keeps_two_card_divvy_surface() {
+    let def = parse_oracle_card_definition("Burning-Rune Demon");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains(
+            "search your library for exactly two cards not named burning rune demon that have different names"
+        ) && rendered.contains("an opponent chooses one of them")
+            && rendered.contains("put the chosen card into your hand and the other into your graveyard")
+            && (rendered.contains("then shuffle") || rendered.contains("shuffle your library")),
+        "expected Burning-Rune Demon scored text to keep the full divvy wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("divvy_source")
+            && !rendered.contains("divvy_chosen")
+            && !rendered.contains("tags it as"),
+        "expected Burning-Rune Demon scored text to avoid helper-tag leakage, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_gemini_engine_keeps_named_twin_pt_surface() {
+    let def = parse_oracle_card_definition("Gemini Engine");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("token named twin that's attacking")
+            && rendered.contains("its power is equal to this creature's power")
+            && rendered.contains("its toughness is equal to this creature's toughness")
+            && rendered.contains("sacrifice it at end of combat"),
+        "expected Gemini Engine scored text to keep Twin's attacking and dynamic P/T wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("artifact you control")
+            && !rendered.contains("base power and toughness"),
+        "expected Gemini Engine scored text to avoid construct-CDA and raw base-PT leakage, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_consult_the_star_charts_keeps_kicker_choice_override_surface() {
+    let def = parse_oracle_card_definition("Consult the Star Charts");
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("look at the top the number of lands you control cards of your library")
+            && rendered.contains("put one of those cards into your hand")
+            && rendered.contains("if this spell was kicked, put two of those cards into your hand instead")
+            && rendered.contains("put the rest on the bottom of your library"),
+        "expected Consult the Star Charts scored text to keep the kicked count override, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("__sentence_helper") && !rendered.contains("tags it as"),
+        "expected Consult the Star Charts scored text to avoid helper-tag leakage, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_divergent_transformations_keeps_reveal_until_creature_surface() {
+    let def = parse_oracle_card_definition("Divergent Transformations");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected consult-top-of-library lowering, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ShuffleLibraryEffect"),
+        "expected library shuffle follow-up, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("RevealTopEffect"),
+        "expected reveal-until lowering instead of top-card fallback, got {spell_debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile two target creatures")
+            && rendered.contains("for each creature exiled this way")
+            && rendered.contains("until they reveal a creature card")
+            && rendered.contains("puts that card onto the battlefield")
+            && rendered.contains("then shuffles"),
+        "expected oracle-like Divergent Transformations surface, got {rendered}"
+    );
+}
