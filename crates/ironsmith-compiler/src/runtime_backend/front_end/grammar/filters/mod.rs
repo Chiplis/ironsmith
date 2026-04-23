@@ -56,6 +56,7 @@ pub(super) use reference_tag_stage::*;
 pub(super) use spell_filters::*;
 pub(super) use with_without_clauses::*;
 
+pub(crate) use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
 pub(crate) use reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed;
 pub(crate) use spell_filters::{
     parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,

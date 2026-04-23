@@ -195,6 +195,16 @@ fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, Ca
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
+            && tail_words.first().is_some_and(|word| *word == "no")
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&tail_words[1..])
+            && consumed == tail_words.len().saturating_sub(1)
+        {
+            let mut filter = parse_object_filter(&base_tokens, false)?;
+            filter.without_counter = Some(counter_constraint);
+            return Ok(filter);
+        }
+        if !base_tokens.is_empty()
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words)
             && consumed == tail_words.len()

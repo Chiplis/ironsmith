@@ -28,7 +28,7 @@ use crate::cards::builders::{
     LibraryConsultStopRuleAst, ObjectFilter, PlayerAst, PredicateAst, SubjectAst, TagKey,
     TargetAst,
 };
-use crate::effect::Value;
+use crate::effect::{EventValueSpec, Value};
 use crate::zone::Zone;
 
 pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
@@ -155,7 +155,21 @@ pub(crate) fn parse_consult_traversal_sentence(
             return Ok(None);
         }
 
-        let stop_rule = if let Some((count, used)) = parse_number(&filter_tokens) {
+        let stop_rule = if TokenWordView::new(&filter_tokens)
+            .word_refs()
+            .as_slice()
+            .starts_with(&["that", "many"])
+        {
+            let remaining_start = TokenWordView::new(&filter_tokens)
+                .token_index_after_words(2)
+                .unwrap_or(2);
+            let remaining = trim_commas(&filter_tokens[remaining_start..]).to_vec();
+            if remaining.is_empty() {
+                return Ok(None);
+            }
+            filter_tokens = remaining;
+            LibraryConsultStopRuleAst::MatchCount(Value::EventValue(EventValueSpec::Amount))
+        } else if let Some((count, used)) = parse_number(&filter_tokens) {
             let remaining = trim_commas(&filter_tokens[used..]).to_vec();
             if remaining.is_empty() {
                 return Ok(None);

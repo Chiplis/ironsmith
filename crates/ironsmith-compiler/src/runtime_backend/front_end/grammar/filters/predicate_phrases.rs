@@ -1705,6 +1705,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if let Some(amount) = parse_same_color_mana_spent_to_cast_predicate(&filtered) {
+        return Ok(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(
+            amount,
+        ));
+    }
+
     if let Some((amount, symbol)) = parse_mana_spent_to_cast_predicate(&filtered) {
         return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol });
     }

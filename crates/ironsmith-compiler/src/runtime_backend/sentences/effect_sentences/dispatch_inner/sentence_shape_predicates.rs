@@ -49,6 +49,9 @@ fn trailing_counter_constraint(tokens: &[OwnedLexToken]) -> Option<crate::filter
     let words = crate::runtime_backend::token_word_refs(tokens);
     let with_idx = words.iter().position(|word| *word == "with")?;
     let tail = &words[with_idx + 1..];
+    if tail.first().is_some_and(|word| *word == "no") {
+        return None;
+    }
     let (counter_constraint, consumed) = parse_filter_counter_constraint_words(tail)?;
     (consumed == tail.len()).then_some(counter_constraint)
 }

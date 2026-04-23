@@ -1188,20 +1188,30 @@ pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
 
     let after_revealed = &second_word_refs[revealed_idx + 3..];
     let has_hand_clause = contains_word_sequence(after_revealed, &["into", "your", "hand"]);
-    let has_rest_clause =
+    let has_graveyard_rest_clause =
         contains_word_sequence(after_revealed, &["and", "the", "rest", "into", "your"])
             && slice_contains(after_revealed, &"graveyard");
-    if !has_hand_clause || !has_rest_clause {
+    let bottom_order = parse_consult_remainder_order(after_revealed);
+    if !has_hand_clause || (!has_graveyard_rest_clause && bottom_order.is_none()) {
         return Ok(None);
     }
 
-    Ok(Some(vec![
+    let effect = if let Some(order) = bottom_order {
+        EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
+            player: PlayerAst::You,
+            count,
+            filter,
+            order,
+        }
+    } else {
         EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
             player: PlayerAst::You,
             count,
             filter,
-        },
-    ]))
+        }
+    };
+
+    Ok(Some(vec![effect]))
 }
 
 pub(super) fn parse_consult_match_move_and_bottom_remainder(
@@ -1225,6 +1235,40 @@ pub(super) fn parse_consult_match_move_and_bottom_remainder(
 
     let second_tokens = trim_commas(second);
     let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
+    let puts_all_revealed_matching_onto_battlefield =
+        crate::runtime_backend::grammar::primitives::words_match_prefix(
+            &second_tokens,
+            &["put", "all"],
+        )
+        .is_some()
+            && contains_word_sequence(&second_words, &["cards", "revealed", "this", "way"])
+            && (contains_word_sequence(&second_words, &["onto", "the", "battlefield"])
+                || contains_word_sequence(&second_words, &["onto", "battlefield"]))
+            && crate::runtime_backend::grammar::primitives::contains_word(
+                &second_tokens,
+                "shuffle",
+            )
+            && crate::runtime_backend::grammar::primitives::contains_word(&second_tokens, "rest")
+            && crate::runtime_backend::grammar::primitives::contains_word(
+                &second_tokens,
+                "library",
+            );
+    if puts_all_revealed_matching_onto_battlefield {
+        let mut effects = parts.effects;
+        effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(parts.match_tag, None),
+            zone: Zone::Battlefield,
+            to_top: false,
+            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        });
+        effects.push(EffectAst::ShuffleLibrary {
+            player: parts.player,
+        });
+        return Ok(Some(effects));
+    }
+
     let (zone, battlefield_tapped) =
         if crate::runtime_backend::grammar::primitives::words_match_prefix(
             &second_tokens,

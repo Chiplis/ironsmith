@@ -1,6 +1,24 @@
 pub(crate) fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn contains_unquoted_word(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
+        let mut inside_quotes = false;
+        for token in tokens {
+            if token.is_quote() {
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+            if !inside_quotes
+                && token
+                    .as_word()
+                    .is_some_and(|word| words.iter().any(|candidate| word == *candidate))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     let word_view = LexClauseView::from_tokens(tokens);
     let sentence_words = word_view.words.to_word_refs();
     if is_activate_only_restriction_sentence_lexed(tokens) {
@@ -26,12 +44,12 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) =
         parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
     {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
     if tokens.first().is_some_and(|token| token.is_word("exile"))
@@ -60,9 +78,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             },
         }]);
     }
-    if tokens
-        .iter()
-        .any(|token| token.is_word("search") || token.is_word("searches"))
+    if contains_unquoted_word(tokens, &["search", "searches"])
         && let Some(mut effects) = parse_search_library_sentence_lexed(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;

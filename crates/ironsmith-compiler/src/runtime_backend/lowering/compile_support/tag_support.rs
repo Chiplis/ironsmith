@@ -687,6 +687,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ExtraTurnAfterTurn { player, .. }
         | EffectAst::RevealTop { player }
         | EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { player, .. }
+        | EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { player, .. }
         | EffectAst::LookAtTopCards { player, .. }
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }

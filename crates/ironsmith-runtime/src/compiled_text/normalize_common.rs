@@ -557,11 +557,54 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
 }
 
 pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
-    let trimmed = text.trim().trim_end_matches('.').trim();
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-        return trimmed.to_string();
+    let trimmed = text.trim();
+    let unquoted = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+        trimmed[1..trimmed.len() - 1].trim()
+    } else {
+        trimmed
+    };
+    let normalized = normalize_quoted_token_ability_surface(unquoted);
+    format!("\"{normalized}\"")
+}
+
+fn normalize_quoted_token_ability_surface(text: &str) -> String {
+    let normalized = text
+        .trim()
+        .replace("{t}", "{T}")
+        .replace("{q}", "{Q}")
+        .replace("{w}", "{W}")
+        .replace("{u}", "{U}")
+        .replace("{b}", "{B}")
+        .replace("{r}", "{R}")
+        .replace("{g}", "{G}")
+        .replace("{c}", "{C}")
+        .replace("{e}", "{E}")
+        .replace("{s}", "{S}")
+        .replace("{x}", "{X}");
+    if normalized.is_empty() {
+        return normalized;
     }
-    format!("\"{trimmed}\"")
+
+    if !normalized.starts_with('{') {
+        return capitalize_first(&normalized);
+    }
+
+    let mut chars: Vec<char> = normalized.chars().collect();
+    let mut capitalize_next_alpha = false;
+    for idx in 0..chars.len() {
+        let ch = chars[idx];
+        if capitalize_next_alpha && ch.is_ascii_alphabetic() {
+            chars[idx] = ch.to_ascii_uppercase();
+            capitalize_next_alpha = false;
+            continue;
+        }
+        if ch == ',' || ch == ':' {
+            capitalize_next_alpha = true;
+        } else if capitalize_next_alpha && !ch.is_ascii_whitespace() {
+            capitalize_next_alpha = false;
+        }
+    }
+    chars.into_iter().collect()
 }
 
 pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String {
@@ -6620,6 +6663,14 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
             "{target} {gets} +X/+X {until_text}, where X is {power_text}"
         ));
     }
+    if power_is_variable
+        && let Value::Scaled(toughness_inner, -1) = toughness
+        && toughness_inner.as_ref() == power
+    {
+        return Some(format!(
+            "{target} {gets} +X/-X {until_text}, where X is {power_text}"
+        ));
+    }
     if power_is_variable && matches!(toughness, Value::Fixed(0)) {
         return Some(format!(
             "{target} {gets} +X/+0 {until_text}, where X is {power_text}"
@@ -6846,14 +6897,14 @@ pub(super) fn describe_apply_continuous_clauses(
             if let Some(inline) = ability.granted_inline_ability() {
                 clauses.push(format!("{gains} {}", describe_inline_ability(inline)));
             } else {
-                clauses.push(format!("{gains} {}", ability.display()));
+                clauses.push(format!("{gains} {}", lowercase_first(&ability.display())));
             }
         }
         crate::continuous::Modification::RemoveAbility(ability) => {
             if let Some(inline) = ability.granted_inline_ability() {
                 clauses.push(format!("{loses} {}", describe_inline_ability(inline)));
             } else {
-                clauses.push(format!("{loses} {}", ability.display()));
+                clauses.push(format!("{loses} {}", lowercase_first(&ability.display())));
             }
         }
         crate::continuous::Modification::RemoveAllAbilities => {
@@ -7186,24 +7237,30 @@ pub(super) fn describe_apply_continuous_animation_effect(
             text.push_str(" in addition to its other types");
         }
     }
-    if let Some(tail) = describe_apply_continuous_tail(effect) {
+    let tail = describe_apply_continuous_tail(effect);
+    if let Some(tail) = &tail {
         text.push(' ');
-        text.push_str(&tail);
+        text.push_str(tail);
     }
     if preserves_land_types && !render_as_addition_to_other_types {
-        if plural_target {
+        if !plural_target && target_text == "target land" && tail.is_none() {
+            text.push_str(" that's still a land");
+        } else if plural_target {
             text.push_str(". They're still lands");
         } else {
             text.push_str(". It's still a land");
         }
     }
-    Some(text)
+    Some(capitalize_first(&text))
 }
 
 pub(super) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     let (target, plural_target) = describe_apply_continuous_target(effect);
+    if let Some(text) = describe_attack_block_if_able_apply_continuous(effect, &target) {
+        return Some(text);
+    }
     if let Some(text) = describe_apply_continuous_animation_effect(effect, &target, plural_target) {
         return Some(text);
     }
@@ -7274,12 +7331,120 @@ pub(super) fn describe_apply_continuous_effect(
     Some(text)
 }
 
+fn describe_attack_block_if_able_apply_continuous(
+    effect: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+) -> Option<String> {
+    if effect.until != Until::EndOfTurn
+        || effect.condition.is_some()
+        || !effect.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+
+    let mut has_must_attack = false;
+    let mut has_must_block = false;
+    let mut saw_ability = false;
+    let mut visit_modification = |modification: &crate::continuous::Modification| match modification
+    {
+        crate::continuous::Modification::AddAbility(ability) => {
+            saw_ability = true;
+            match ability.id() {
+                crate::static_abilities::StaticAbilityId::MustAttack => has_must_attack = true,
+                crate::static_abilities::StaticAbilityId::MustBlock => has_must_block = true,
+                _ => return false,
+            }
+            true
+        }
+        _ => false,
+    };
+
+    if let Some(modification) = &effect.modification
+        && !visit_modification(modification)
+    {
+        return None;
+    }
+    for modification in &effect.additional_modifications {
+        if !visit_modification(modification) {
+            return None;
+        }
+    }
+    if !saw_ability {
+        return None;
+    }
+
+    match (has_must_attack, has_must_block) {
+        (true, true) => Some(format!("{target} attacks or blocks this turn if able")),
+        (true, false) => Some(format!("{target} attacks this turn if able")),
+        (false, true) => Some(format!("{target} blocks this turn if able")),
+        (false, false) => None,
+    }
+}
+
 pub(super) fn describe_compact_apply_continuous_pair(
     first: &crate::effects::ApplyContinuousEffect,
     second: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     if first.target != second.target
         || first.target_spec != second.target_spec
+        || first.until != second.until
+        || first.condition != second.condition
+        || apply_continuous_preserves_source_abilities(first)
+            != apply_continuous_preserves_source_abilities(second)
+    {
+        return None;
+    }
+
+    let (target, plural_target) = describe_apply_continuous_target(first);
+    let mut clauses = describe_apply_continuous_clauses(first, plural_target);
+    clauses.extend(describe_apply_continuous_clauses(second, plural_target));
+    if clauses.is_empty() {
+        return None;
+    }
+
+    let mut text = format!("{target} {}", join_with_and(&clauses));
+    if let Some(tail) = describe_apply_continuous_tail(first) {
+        text.push(' ');
+        text.push_str(&tail);
+    }
+    Some(text)
+}
+
+pub(super) fn describe_compact_tagged_apply_continuous_pair(
+    first_effect: &Effect,
+    second_effect: &Effect,
+) -> Option<String> {
+    let tagged = first_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    if !is_implicit_reference_tag(tagged.tag.as_str()) {
+        return None;
+    }
+
+    let first = tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let second = if let Some(apply) =
+        second_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+    {
+        apply
+    } else if let Some(tagged) = second_effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && is_implicit_reference_tag(tagged.tag.as_str())
+    {
+        tagged
+            .effect
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?
+    } else {
+        return None;
+    };
+
+    let first_spec = first.target_spec.as_ref()?;
+    let second_spec = second.target_spec.as_ref()?;
+    if !choose_spec_references_tag(second_spec, tagged.tag.as_str()) {
+        return None;
+    }
+    if choose_spec_references_tag(first_spec, tagged.tag.as_str()) {
+        return None;
+    }
+    if first.target != second.target
         || first.until != second.until
         || first.condition != second.condition
         || apply_continuous_preserves_source_abilities(first)
@@ -8531,6 +8696,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             } else {
                 format!("at least {amount} mana was spent to cast this spell")
             }
+        }
+        Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
+            let amount_text = small_number_word(*amount)
+                .map(str::to_string)
+                .unwrap_or_else(|| amount.to_string());
+            format!("at least {amount_text} mana of the same color was spent to cast it")
         }
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
             let amount_text = small_number_word(*amount)

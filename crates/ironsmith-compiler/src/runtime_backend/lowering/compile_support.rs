@@ -539,6 +539,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 symbol: *symbol,
             }
         }
+        PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
+            Condition::SameColorManaSpentToCastThisSpellAtLeast(*amount)
+        }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
         PredicateAst::ValueComparison {
             left,
@@ -1252,12 +1255,14 @@ fn try_compile_simultaneous_each_player_scry(
 }
 
 fn compile_emblem_description_from_text(text: &str) -> Result<EmblemDescription, CardTextError> {
-    let definition =
-        CardDefinitionBuilder::new(CardId::new(), "Emblem").parse_text(text.to_string())?;
+    let abilities = CardDefinitionBuilder::new(CardId::new(), "Emblem")
+        .parse_text(text.to_string())
+        .map(|definition| definition.abilities)
+        .unwrap_or_default();
     Ok(EmblemDescription {
         name: "Emblem".to_string(),
         text: text.to_string(),
-        abilities: definition.abilities,
+        abilities,
     })
 }
 
@@ -1935,8 +1940,22 @@ fn extract_inline_token_rules_text(source_text: &str) -> Option<String> {
     let tail = source_text.get(with_idx + " with ".len()..)?.trim();
     let tail_lower = tail.to_ascii_lowercase();
 
+    if tail.contains(':') {
+        return Some(tail.trim_matches('"').trim().to_string());
+    }
+
     let mut starts = Vec::new();
-    for needle in ["whenever ", "when ", "at "] {
+    for needle in [
+        "{t}",
+        "{q}",
+        "t, ",
+        "q, ",
+        "tap ",
+        "sacrifice ",
+        "whenever ",
+        "when ",
+        "at ",
+    ] {
         if let Some(idx) = tail_lower.find(needle) {
             starts.push(idx);
         }
@@ -2983,6 +3002,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
                 ObjectFilter::source(),
             )));
+        }
+        if let Some(parsed) = try_parse_quoted_token_rules_text(&builder, name, "This artifact") {
+            return Some(parsed);
         }
         if let Some(rules_text) = parse_equipment_rules_text(&words, name) {
             if let Some(def) =

@@ -2,6 +2,7 @@ use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::parse_pt_modifier_values;
 use super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
+use super::super::token_primitives::find_window_index as find_word_sequence_index;
 use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
@@ -22,10 +23,8 @@ pub(crate) fn parse_exile_then_meld_sentence(
     if grammar::words_match_prefix(tokens, &["exile", "them"]).is_none() {
         return Ok(None);
     }
-    let Some(meld_idx) = crate::runtime_backend::grammar::primitives::find_phrase_start(
-        tokens,
-        &["then", "meld", "them", "into"],
-    ) else {
+    let Some(meld_idx) = find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
+    else {
         return Ok(None);
     };
     let result_words = &clause_words[meld_idx + 4..];

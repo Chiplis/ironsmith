@@ -298,6 +298,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: triples::parse_top_cards_put_match_into_hand_rest_graveyard,
     },
     SequenceRuleDef {
+        name: "look-at-top-split-hand-bottom-exile-play",
+        feature_tag: Some("looked-cards-split-play-exiled"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: triples::parse_look_at_top_split_hand_bottom_exile_then_play_exiled,
+    },
+    SequenceRuleDef {
         name: "top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard",
         feature_tag: Some("looked-cards-filter-bundle"),
         priority: 335,

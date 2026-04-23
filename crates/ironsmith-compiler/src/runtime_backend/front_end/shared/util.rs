@@ -1030,6 +1030,9 @@ pub(crate) fn parse_filter_counter_constraint_words(
     if descriptor_words.is_empty() {
         return Some((crate::filter::CounterConstraint::Any, consumed));
     }
+    if descriptor_words == ["no"] {
+        return None;
+    }
     let descriptor_tokens = descriptor_words
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))

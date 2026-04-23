@@ -26768,6 +26768,30 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
     );
 }
 
+#[test]
+fn parse_oracle_expressive_iteration_splits_looked_cards_by_destination() {
+    let def = parse_oracle_card_definition("Expressive Iteration");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("put one of them into your hand")
+            && rendered_lower.contains("put one of them on the bottom of your library")
+            && rendered_lower.contains("exile one of them")
+            && rendered_lower.contains("you may play the exiled card this turn"),
+        "expected looked-card split destinations and exiled-card permission, got {rendered}"
+    );
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let choose_count = spell_debug.matches("ChooseObjectsEffect").count();
+    assert!(
+        choose_count >= 3
+            && spell_debug.contains("GrantPlayTaggedEffect")
+            && spell_debug.contains("IsNotTaggedObject"),
+        "expected distinct looked-card choices before destination moves, got {spell_debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_when_this_creature_becomes_blocked_may_untap_and_remove_from_combat() {
@@ -29975,6 +29999,164 @@ fn parse_oracle_mass_polymorph_shuffle_remainder() {
     assert!(
         rendered.contains("shuffle"),
         "expected Mass Polymorph to keep its shuffled remainder, got {rendered}"
+    );
+}
+
+#[test]
+fn debug_surface_keeps_complex_source_text_regressions() {
+    let cases = [
+        (
+            "Divergent Transformations",
+            "Undaunted",
+            "reveals cards from the top of their library until they reveal a creature card",
+        ),
+        (
+            "Delif's Cone",
+            "This turn, when target creature you control attacks and isn't blocked",
+            "assigns no combat damage this turn",
+        ),
+        (
+            "Mirror of Life Trapping",
+            "Whenever a creature enters, if it was cast, exile it",
+            "under their owners' control",
+        ),
+        (
+            "Gandalf, Westward Voyager",
+            "each opponent reveals the top card of their library",
+            "Otherwise, you draw a card",
+        ),
+        (
+            "Necromentia",
+            "Choose a card name other than a basic land card name",
+            "for each card exiled from their hand this way",
+        ),
+    ];
+
+    for (name, first, second) in cases {
+        let def = parse_oracle_card_definition(name);
+        let rendered = debug_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains(first) && rendered.contains(second),
+            "expected {name} debug text to preserve '{first}' and '{second}', got {rendered}"
+        );
+    }
+
+    let demon = parse_oracle_card_definition("Burning-Rune Demon");
+    let rendered = debug_compiled_lines(&demon).join("\n");
+    assert!(
+        rendered.contains("Flying"),
+        "expected Flying, got {rendered}"
+    );
+    assert_eq!(
+        rendered.matches("When this creature enters").count(),
+        1,
+        "expected one Burning-Rune Demon trigger, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_garruk_emblem_search_stays_inside_quoted_text() {
+    let cases = [
+        (
+            "Garruk, Unleashed",
+            "You get an emblem with \"At the beginning of your end step, you may search your library for a creature card, put it onto the battlefield, then shuffle.\"",
+        ),
+        (
+            "Garruk, Caller of Beasts",
+            "You get an emblem with \"Whenever you cast a creature spell, you may search your library for a creature card, put it onto the battlefield, then shuffle.\"",
+        ),
+    ];
+
+    for (name, expected_text) in cases {
+        let def = parse_oracle_card_definition(name);
+        let rendered = debug_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains(expected_text),
+            "expected {name} to keep quoted emblem search text, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("you.\". You may search"),
+            "expected {name} not to split the quoted search clause out of the emblem, got {rendered}"
+        );
+
+        let mut found_emblem = false;
+        for ability in &def.abilities {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                continue;
+            };
+            let default_effects = activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .collect::<Vec<_>>();
+            let emblem_effects = default_effects
+                .iter()
+                .filter_map(|effect| effect.downcast_ref::<crate::effects::CreateEmblemEffect>())
+                .collect::<Vec<_>>();
+            if emblem_effects.is_empty() {
+                continue;
+            }
+
+            found_emblem = true;
+            assert_eq!(
+                emblem_effects.len(),
+                1,
+                "expected one emblem effect for {name}, got {default_effects:#?}"
+            );
+            assert_eq!(
+                default_effects.len(),
+                1,
+                "quoted search should stay in the emblem, not become a sibling effect for {name}: {default_effects:#?}"
+            );
+            let emblem = emblem_effects[0];
+            assert!(
+                emblem.emblem.text.contains("may search your library"),
+                "emblem text should retain search clause for {name}: {:#?}",
+                emblem.emblem
+            );
+            assert!(
+                !emblem.emblem.abilities.is_empty(),
+                "emblem rules text should compile into emblem abilities for {name}: {:#?}",
+                emblem.emblem
+            );
+            assert!(
+                default_effects
+                    .iter()
+                    .all(|effect| effect.downcast_ref::<crate::effects::MayEffect>().is_none()),
+                "parent ability should not contain escaped MayEffect for {name}: {default_effects:#?}"
+            );
+        }
+        assert!(found_emblem, "expected to find emblem effect for {name}");
+    }
+}
+
+#[test]
+fn parse_oracle_garruk_caller_reveal_top_matching_creatures_to_hand() {
+    let def = parse_oracle_card_definition("Garruk, Caller of Beasts");
+    let rendered = debug_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Reveal the top five cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order"
+        ),
+        "expected Garruk Caller +1 to preserve reveal-top matching creature clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_garruk_unleashed_compacts_pump_and_trample() {
+    let def = parse_oracle_card_definition("Garruk, Unleashed");
+    let rendered = debug_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered
+            .contains("Up to one target creature gets +3/+3 and gains trample until end of turn"),
+        "expected Garruk Unleashed +1 to render shared pump/trample duration, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("get +3/+3 until end of turn. it gains Trample"),
+        "expected Garruk Unleashed +1 not to split tagged trample grant, got {rendered}"
     );
 }
 

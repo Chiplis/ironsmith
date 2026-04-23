@@ -1,7 +1,6 @@
 use winnow::combinator::{alt, dispatch, fail, opt, peek};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
-use winnow::token::take_till;
 
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,

@@ -482,6 +482,7 @@ pub(crate) enum PredicateAst {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
     ValueComparison {
         left: Value,
@@ -958,6 +959,12 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         count: u32,
         filter: ObjectFilter,
+    },
+    RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        count: u32,
+        filter: ObjectFilter,
+        order: LibraryBottomOrderAst,
     },
     RevealTagged {
         tag: TagKey,

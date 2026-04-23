@@ -63,6 +63,18 @@ fn is_addition_tail_only(tokens: &[OwnedLexToken]) -> bool {
     !tokens.is_empty() && strip_trailing_addition_tail_tokens(tokens).is_empty()
 }
 
+fn is_still_a_land_suffix(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    matches!(
+        words.as_slice(),
+        ["still", "a", "land"]
+            | ["that", "s", "still", "a", "land"]
+            | ["thats", "still", "a", "land"]
+            | ["it", "s", "still", "a", "land"]
+            | ["its", "still", "a", "land"]
+    )
+}
+
 fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> bool {
     let token_words = TokenWordView::new(tokens).to_word_refs();
     token_words == ["it", "has", "this", "ability"]
@@ -282,6 +294,8 @@ pub(crate) fn parse_become_clause(
             let suffix_supported = if suffix_tokens.is_empty() {
                 true
             } else if is_addition_tail_only(&suffix_tokens) {
+                true
+            } else if is_still_a_land_suffix(&suffix_tokens) {
                 true
             } else if suffix_tokens
                 .first()

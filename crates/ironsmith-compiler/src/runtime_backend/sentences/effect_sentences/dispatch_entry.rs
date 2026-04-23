@@ -114,6 +114,9 @@ fn apply_trailing_counter_constraint_to_destroy_all(
         .copied()
         .filter(|word| !matches!(*word, "a" | "an" | "one" | "or" | "more"))
         .collect::<Vec<_>>();
+    if descriptor_words.first().is_some_and(|word| *word == "no") {
+        return;
+    }
     let counter_constraint = if descriptor_words.is_empty() {
         crate::filter::CounterConstraint::Any
     } else {
@@ -1083,6 +1086,34 @@ mod tests {
                 crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
                     player: crate::cards::builders::PlayerAst::You,
                     count: 3,
+                    ..
+                }
+            ]
+        ));
+    }
+
+    #[test]
+    fn reveal_top_put_all_matching_into_hand_rest_bottom_keeps_order() {
+        let first = lex_line("Reveal the top five cards of your library", 0)
+            .expect("rewrite lexer should classify reveal-top clause");
+        let second = lex_line(
+            "Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order",
+            0,
+        )
+        .expect("rewrite lexer should classify reveal follow-up clause");
+
+        let parsed =
+            parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(&first, &second)
+                .expect("reveal-top follow-up parser should not error")
+                .expect("reveal-top bottom follow-up should parse");
+
+        assert!(matches!(
+            parsed.as_slice(),
+            [
+                crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
+                    player: crate::cards::builders::PlayerAst::You,
+                    count: 5,
+                    order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
                     ..
                 }
             ]

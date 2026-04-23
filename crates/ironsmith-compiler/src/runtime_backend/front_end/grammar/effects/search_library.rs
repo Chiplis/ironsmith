@@ -58,12 +58,6 @@ pub(crate) fn subject_routing_word_refs(tokens: &[OwnedLexToken]) -> Vec<String>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchLibrarySentenceHeadKind {
-    Plain,
-    DirectMay,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SearchLibrarySentenceHeadSplit<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) search_tokens: &'a [OwnedLexToken],
@@ -165,45 +159,45 @@ pub(crate) fn conditional_label_phrase<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn search_library_sentence_head<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<(&'a [OwnedLexToken], SearchLibrarySentenceHeadKind), ErrMode<ContextError>> {
-    let subject_tokens = take_till(0.., |token: &OwnedLexToken| {
-        token.is_word("unless")
-            || token.is_word("may")
-            || token.is_word("search")
-            || token.is_word("searches")
-    })
-    .parse_next(input)?;
-
-    alt((
-        (
-            primitives::kw("may"),
-            alt((primitives::kw("search"), primitives::kw("searches"))),
-        )
-            .value((subject_tokens, SearchLibrarySentenceHeadKind::DirectMay)),
-        alt((primitives::kw("search"), primitives::kw("searches")))
-            .value((subject_tokens, SearchLibrarySentenceHeadKind::Plain)),
-    ))
-    .parse_next(input)
-}
-
 pub(crate) fn split_search_library_sentence_head_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchLibrarySentenceHeadSplit<'_>> {
-    let ((subject_tokens, head_kind), _) =
-        primitives::parse_prefix(tokens, search_library_sentence_head)?;
-    let search_start = subject_tokens.len()
-        + match head_kind {
-            SearchLibrarySentenceHeadKind::Plain => 0,
-            SearchLibrarySentenceHeadKind::DirectMay => 1,
-        };
+    let mut inside_quotes = false;
 
-    Some(SearchLibrarySentenceHeadSplit {
-        subject_tokens,
-        search_tokens: &tokens[search_start..],
-        sentence_has_direct_may: matches!(head_kind, SearchLibrarySentenceHeadKind::DirectMay),
-    })
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes {
+            continue;
+        }
+        if token.is_word("unless") {
+            return None;
+        }
+        if token.is_word("may") {
+            if tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("search") || next.is_word("searches"))
+            {
+                return Some(SearchLibrarySentenceHeadSplit {
+                    subject_tokens: &tokens[..idx],
+                    search_tokens: &tokens[idx + 1..],
+                    sentence_has_direct_may: true,
+                });
+            }
+            return None;
+        }
+        if token.is_word("search") || token.is_word("searches") {
+            return Some(SearchLibrarySentenceHeadSplit {
+                subject_tokens: &tokens[..idx],
+                search_tokens: &tokens[idx..],
+                sentence_has_direct_may: false,
+            });
+        }
+    }
+
+    None
 }
 
 pub(crate) fn search_library_search_verb<'a>(

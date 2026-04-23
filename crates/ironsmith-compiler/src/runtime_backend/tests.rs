@@ -4233,6 +4233,30 @@ fn rewrite_search_library_head_splitter_tracks_direct_may_and_rejects_early_may(
 }
 
 #[test]
+fn rewrite_search_library_head_splitter_ignores_quoted_emblem_search_text() {
+    let tokens = lex_line(
+        r#"You get an emblem with "At the beginning of your end step, you may search your library for a creature card, put it onto the battlefield, then shuffle.""#,
+        0,
+    )
+    .expect("rewrite lexer should classify quoted emblem search text");
+
+    assert!(
+        super::grammar::effects::split_search_library_sentence_head_lexed(&tokens).is_none(),
+        "search-family parsing should ignore search text inside emblem quotes"
+    );
+
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("quoted emblem search text should parse as an emblem effect");
+    match effects.as_slice() {
+        [crate::cards::builders::EffectAst::CreateEmblem { text, .. }] => assert!(
+            text.contains("may search your library"),
+            "emblem text should retain the quoted search clause, got {text}"
+        ),
+        other => panic!("expected a single CreateEmblem effect, got {other:#?}"),
+    }
+}
+
+#[test]
 fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Intuition Variant")
         .card_types(vec![CardType::Instant])

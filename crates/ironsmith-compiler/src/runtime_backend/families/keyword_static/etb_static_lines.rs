@@ -634,6 +634,16 @@ fn parse_enters_with_counter_condition_clause(
         }
     }
 
+    if let Some(amount) =
+        crate::runtime_backend::grammar::filters::parse_same_color_mana_spent_to_cast_predicate(
+            &condition_words,
+        )
+    {
+        return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(
+            amount,
+        ));
+    }
+
     // Cast-time reveal/control checks aren't yet tracked as structured state.
     if etb_word_slice_starts_with(
         &condition_words,

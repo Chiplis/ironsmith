@@ -1253,6 +1253,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
     matches!(
         predicate,
         PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+            | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::ItMatches(_)
             | PredicateAst::PlayerControlsMoreThanYou { .. }
             | PredicateAst::PlayerControls { .. }

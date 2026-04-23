@@ -210,10 +210,10 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
     // explicit "each/a/that player" before falling through to the opponent
     // keyword scan.
     let has_each_player = contains_word_sequence(&normalized_words, &["each", "player"]);
-    if contains_your_team_words(words) || slice_contains(&words, &"your") {
-        PlayerFilter::You
-    } else if has_each_player {
+    if has_each_player {
         PlayerFilter::Any
+    } else if contains_your_team_words(words) || slice_contains(&words, &"your") {
+        PlayerFilter::You
     } else if contains_opponent_word(words) {
         PlayerFilter::Opponent
     } else {

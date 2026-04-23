@@ -408,6 +408,18 @@ fn evaluate_condition_shared_core(
             };
             Some(spent >= *amount)
         }
+        Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Some(false);
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let most_spent_of_one_color =
+                [spent.white, spent.blue, spent.black, spent.red, spent.green]
+                    .into_iter()
+                    .max()
+                    .unwrap_or(0);
+            Some(most_spent_of_one_color >= *amount)
+        }
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
             let Some(source_obj) = game.object(ctx.source) else {
                 return Some(false);
@@ -554,6 +566,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceAttackedOrBlockedThisTurn => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
+        Condition::SameColorManaSpentToCastThisSpellAtLeast(..) => {}
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
         Condition::TaggedObjectMatches(..) => {}
@@ -1330,6 +1343,7 @@ pub fn evaluate_condition_external(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::ValueComparison { .. }
@@ -2002,6 +2016,7 @@ fn evaluate_condition_simple(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::ValueComparison { .. }
@@ -2995,6 +3010,7 @@ fn evaluate_condition(
         | Condition::SourceHasCounterAtLeast { .. }
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
+        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::YouControlCommander

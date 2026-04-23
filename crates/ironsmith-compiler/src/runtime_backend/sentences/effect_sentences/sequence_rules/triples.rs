@@ -16,6 +16,7 @@ use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::lexer::TokenWordView;
+use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
     parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
 };
@@ -981,6 +982,139 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
             order,
         },
     ]))
+}
+
+fn is_put_one_looked_card_hand_one_bottom_exile_one(tokens: &[OwnedLexToken]) -> bool {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed);
+    let word_refs = words.word_refs();
+
+    slice_starts_with(
+        &word_refs,
+        &["put", "one", "of", "them", "into", "your", "hand"],
+    ) && find_word_sequence_start(
+        &word_refs,
+        &[
+            "put", "one", "of", "them", "on", "the", "bottom", "of", "your", "library",
+        ],
+    )
+    .or_else(|| {
+        find_word_sequence_start(
+            &word_refs,
+            &[
+                "put", "one", "of", "them", "on", "bottom", "of", "your", "library",
+            ],
+        )
+    })
+    .is_some()
+        && find_word_sequence_start(&word_refs, &["exile", "one", "of", "them"]).is_some()
+}
+
+pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if !is_put_one_looked_card_hand_one_bottom_exile_one(sentences[sentence_idx + 1].lowered()) {
+        return Ok(None);
+    }
+
+    let Some(permission) = parse_cast_or_play_tagged_clause(sentences[sentence_idx + 2].lowered())?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::GrantPlayTaggedUntilEndOfTurn {
+        player: permission_player,
+        allow_land,
+        without_paying_mana_cost,
+        allow_any_color_for_cast,
+        ..
+    } = permission
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let hand_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "hand");
+    let bottom_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "bottom");
+    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: looked_tag.clone(),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: looked_tag.clone(),
+        });
+    }
+
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+    effects.push(EffectAst::ChooseObjects {
+        filter: hand_filter,
+        count: ChoiceCount::exactly(1),
+        count_value: None,
+        player,
+        tag: hand_tag.clone(),
+    });
+
+    let mut bottom_filter = ObjectFilter::tagged(looked_tag.clone()).not_tagged(hand_tag.clone());
+    bottom_filter.zone = Some(Zone::Library);
+    effects.push(EffectAst::ChooseObjects {
+        filter: bottom_filter,
+        count: ChoiceCount::exactly(1),
+        count_value: None,
+        player,
+        tag: bottom_tag.clone(),
+    });
+
+    let mut exile_filter = ObjectFilter::tagged(looked_tag.clone())
+        .not_tagged(hand_tag.clone())
+        .not_tagged(bottom_tag.clone());
+    exile_filter.zone = Some(Zone::Library);
+    effects.push(EffectAst::ChooseObjects {
+        filter: exile_filter,
+        count: ChoiceCount::exactly(1),
+        count_value: None,
+        player,
+        tag: exiled_tag.clone(),
+    });
+
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(hand_tag, None),
+        zone: Zone::Hand,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(bottom_tag, None),
+        zone: Zone::Library,
+        to_top: false,
+        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    effects.push(EffectAst::Exile {
+        target: TargetAst::Tagged(exiled_tag.clone(), None),
+        face_down: false,
+    });
+    effects.push(EffectAst::GrantPlayTaggedUntilEndOfTurn {
+        tag: exiled_tag,
+        player: permission_player,
+        allow_land,
+        without_paying_mana_cost,
+        allow_any_color_for_cast,
+    });
+
+    Ok(Some(effects))
 }
 
 pub(super) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(

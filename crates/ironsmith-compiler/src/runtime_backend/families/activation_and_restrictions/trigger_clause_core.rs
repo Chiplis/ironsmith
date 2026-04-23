@@ -835,7 +835,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::ThisLeavesBattlefield);
     }
 
-    if let Some(dies_word_idx) = find_index(&words, |word| *word == "dies") {
+    if let Some(dies_word_idx) = find_index(&words, |word| *word == "dies" || *word == "die") {
         let dies_token_idx = word_view
             .token_index_for_word_index(dies_word_idx)
             .unwrap_or(tokens.len());
@@ -2233,7 +2233,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 None => TriggerSpec::ThisBlocks,
             })
         }
-        "dies" => {
+        "dies" | "die" => {
             let dies_word_idx = words.len().saturating_sub(1);
             let dies_token_idx = ActivationRestrictionCompatWords::new(tokens)
                 .token_index_for_word_index(dies_word_idx)
@@ -2287,9 +2287,18 @@ pub(crate) fn parse_trigger_clause_lexed(
             }
 
             let mut other = false;
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
             if subject_tokens
                 .first()
-                .is_some_and(|token| token.is_word("another"))
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+            {
+                other = true;
+                subject_tokens = &subject_tokens[1..];
+            }
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
             {
                 other = true;
                 subject_tokens = &subject_tokens[1..];

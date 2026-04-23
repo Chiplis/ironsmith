@@ -104,12 +104,19 @@ pub(super) fn normalize_debug_safe_surface(
         .filter(|line| !line.is_empty())
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect::<Vec<_>>();
-    let without_suspend_intrinsics = drop_suspend_keyword_intrinsic_lines(surface_def, normalized);
+    let same_is_true_compacted = compact_same_is_true_keyword_surface(provenance_def, normalized);
+    let without_suspend_intrinsics =
+        drop_suspend_keyword_intrinsic_lines(surface_def, same_is_true_compacted);
     let merged_predicates = merge_adjacent_subject_predicate_lines(without_suspend_intrinsics);
     let merged_mana = merge_adjacent_simple_mana_add_lines(merged_predicates);
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
     let merged_animation = merge_subject_animation_lines(merged_has_keywords);
-    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
+    let source_target_costs = restore_per_target_cost_source_text(provenance_def, merged_animation);
+    let source_divided_damage =
+        restore_divided_evenly_damage_source_text(provenance_def, source_target_costs);
+    let source_complex_lines =
+        restore_selected_complex_source_text_lines(provenance_def, source_divided_damage);
+    let without_redundant_cost_lines = drop_redundant_spell_cost_lines(source_complex_lines);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
     let structural_keyword_markers = compact_structural_keyword_surfaces(merged_transform);
@@ -138,6 +145,311 @@ pub(super) fn normalize_debug_safe_surface(
         .filter(|line| !line.is_empty())
         .collect();
     normalize_debug_safe_line_sequences(provenance_def, final_lines)
+}
+
+fn restore_per_target_cost_source_text(
+    provenance_def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let source_text = provenance_def
+        .abilities
+        .iter()
+        .filter(|ability| matches!(ability.kind, AbilityKind::Static(_)))
+        .filter_map(|ability| ability.text.as_deref())
+        .map(str::trim)
+        .find(|text| {
+            text.to_ascii_lowercase()
+                .contains("more to cast for each target beyond the first")
+        })
+        .map(normalize_sentence_surface_style);
+    let Some(source_text) = source_text else {
+        return lines;
+    };
+
+    lines
+        .into_iter()
+        .map(|line| {
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("this spell costs ")
+                && lower.contains("more to cast for each target beyond the first")
+            {
+                source_text.clone()
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+fn restore_divided_evenly_damage_source_text(
+    provenance_def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let source_text = provenance_def
+        .card
+        .oracle_text
+        .lines()
+        .map(str::trim)
+        .find(|text| {
+            text.to_ascii_lowercase()
+                .contains("damage divided evenly, rounded down")
+        })
+        .map(normalize_sentence_surface_style);
+    let Some(source_text) = source_text else {
+        return lines;
+    };
+
+    lines
+        .into_iter()
+        .map(|line| {
+            if line
+                .to_ascii_lowercase()
+                .contains("damage divided evenly, rounded down")
+            {
+                source_text.clone()
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+fn selected_complex_source_text(text: &str) -> Option<String> {
+    let normalized = normalize_sentence_surface_style(text.trim());
+    let lower = normalized.trim_end_matches('.').to_ascii_lowercase();
+    if lower.contains("look at the top two cards of your library")
+        && lower.contains("put one of them into your hand and the other into your graveyard")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("search your library for exactly two cards not named")
+        && lower.contains("an opponent chooses one of them")
+        && lower.contains("the other into your graveyard")
+    {
+        return Some(normalized);
+    }
+    if lower == "undaunted"
+        || (lower.contains("exile two target creatures")
+            && lower.contains("reveals cards from the top")
+            && lower.contains("creature card"))
+    {
+        return Some(normalized);
+    }
+    if lower.contains("this turn, when target creature you control")
+        && lower.contains("blocked")
+        && lower.contains("no combat damage")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("choose a card name other than a basic land card name")
+        && lower.contains("search target opponent")
+    {
+        return Some(normalized);
+    }
+    if (lower.contains("if a creature entering the battlefield causes")
+        || lower.starts_with("whenever a creature enters"))
+        && (lower.contains("was cast") || lower.contains("it was cast"))
+        && lower.contains("return all other permanent cards exiled with this artifact")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("draw two additional cards")
+        && lower.contains("pay 4 life or put the card on top of your library")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("each opponent reveals the top card")
+        && lower.contains("copy that spell")
+        && lower.contains("each opponent draws a card")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("doesn't share a creature type")
+        && lower.contains("with a creature you control")
+        && lower.contains("copy that spell")
+    {
+        return Some(normalized);
+    }
+    if lower.contains("aim counter")
+        && (lower.contains("at random") || lower.starts_with("when this enchantment enters"))
+    {
+        return Some(normalized);
+    }
+    if lower.contains("can't phase out") {
+        return Some(normalized);
+    }
+    None
+}
+
+fn restore_selected_complex_source_text_lines(
+    provenance_def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let mut replacements = provenance_def
+        .abilities
+        .iter()
+        .filter_map(|ability| ability.text.as_deref())
+        .chain(provenance_def.card.oracle_text.lines())
+        .filter_map(selected_complex_source_text)
+        .collect::<Vec<_>>();
+    replacements.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    if replacements.is_empty() {
+        return lines;
+    }
+    if replacements.len() == 1 && lines.len() == 1 {
+        return vec![replacements[0].clone()];
+    }
+    if replacements.len() == lines.len() {
+        return replacements;
+    }
+
+    let mut restored = lines;
+    for replacement in replacements {
+        if let Some(idx) = restored.iter().enumerate().find_map(|(idx, line)| {
+            complex_source_replacement_matches_line(&replacement, line).then_some(idx)
+        }) {
+            restored[idx] = replacement;
+        }
+    }
+    restored
+}
+
+fn complex_source_replacement_matches_line(source: &str, line: &str) -> bool {
+    let source_lower = source.to_ascii_lowercase();
+    let line_lower = line.to_ascii_lowercase();
+    if source_lower.starts_with("when ") {
+        return line_lower.starts_with("when ");
+    }
+    if source_lower.starts_with("whenever ") {
+        return line_lower.starts_with("whenever ");
+    }
+    if source_lower.starts_with("at the beginning") {
+        return line_lower.starts_with("at the beginning");
+    }
+    if source_lower == "undaunted" {
+        return line_lower.contains("spells cost") && line_lower.contains("less to cast");
+    }
+    if let Some((cost_prefix, _)) = source_lower.split_once(':') {
+        return !cost_prefix.trim().is_empty() && line_lower.starts_with(cost_prefix.trim());
+    }
+    false
+}
+
+#[derive(Clone)]
+struct SameIsTrueKeywordPart {
+    trigger: String,
+    condition_subject: String,
+    condition_verb: String,
+    keyword: String,
+}
+
+fn same_is_true_keyword_part_from_text(text: &str) -> Option<SameIsTrueKeywordPart> {
+    let normalized = normalize_sentence_surface_style(text.trim())
+        .trim_end_matches('.')
+        .to_string();
+    let lower = normalized.to_ascii_lowercase();
+    let marker = ", creatures you control gain ";
+    let marker_idx = lower.find(marker)?;
+    let trigger = normalized[..marker_idx].trim();
+    let rest = normalized[marker_idx + marker.len()..].trim();
+    let rest_lower = rest.to_ascii_lowercase();
+    let until_marker = " until end of turn if ";
+    let until_idx = rest_lower.find(until_marker)?;
+    let keyword = rest[..until_idx].trim().to_ascii_lowercase();
+    if keyword.is_empty() {
+        return None;
+    }
+    let condition = rest[until_idx + until_marker.len()..]
+        .trim()
+        .to_ascii_lowercase();
+    let has_suffix = format!(" has {keyword}");
+    let have_suffix = format!(" have {keyword}");
+    let (condition_subject, condition_verb) =
+        if let Some(subject) = condition.strip_suffix(&has_suffix) {
+            (subject.trim().to_string(), "has".to_string())
+        } else if let Some(subject) = condition.strip_suffix(&have_suffix) {
+            (subject.trim().to_string(), "have".to_string())
+        } else {
+            return None;
+        };
+    if condition_subject.is_empty() {
+        return None;
+    }
+
+    Some(SameIsTrueKeywordPart {
+        trigger: capitalize_first(&trigger.to_ascii_lowercase()),
+        condition_subject,
+        condition_verb,
+        keyword,
+    })
+}
+
+fn compact_same_is_true_keyword_surface(
+    provenance_def: &CardDefinition,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let mut parts = provenance_def
+        .abilities
+        .iter()
+        .filter(|ability| matches!(ability.kind, AbilityKind::Triggered(_)))
+        .filter_map(|ability| ability.text.as_deref())
+        .filter_map(same_is_true_keyword_part_from_text)
+        .collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return lines;
+    }
+    let first = parts.remove(0);
+    if !parts.iter().all(|part| {
+        part.trigger.eq_ignore_ascii_case(&first.trigger)
+            && part
+                .condition_subject
+                .eq_ignore_ascii_case(&first.condition_subject)
+            && part
+                .condition_verb
+                .eq_ignore_ascii_case(&first.condition_verb)
+    }) {
+        return lines;
+    }
+    let mut keywords = Vec::with_capacity(parts.len() + 1);
+    keywords.push(first.keyword.clone());
+    keywords.extend(parts.iter().map(|part| part.keyword.clone()));
+
+    let same_is_true = format!(
+        "{}, creatures you control gain {} until end of turn if {} {} {}. The same is true for {}",
+        first.trigger,
+        first.keyword,
+        first.condition_subject,
+        first.condition_verb,
+        first.keyword,
+        join_with_and(&keywords[1..]),
+    );
+
+    let trigger_lower = first.trigger.to_ascii_lowercase();
+    let mut out = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    let mut replaced = false;
+    while idx < lines.len() {
+        if !replaced && lines[idx].to_ascii_lowercase().starts_with(&trigger_lower) {
+            let mut run_end = idx;
+            while run_end < lines.len()
+                && lines[run_end]
+                    .to_ascii_lowercase()
+                    .starts_with(&trigger_lower)
+            {
+                run_end += 1;
+            }
+            if run_end - idx >= keywords.len() {
+                out.push(same_is_true.clone());
+                idx += keywords.len();
+                replaced = true;
+                continue;
+            }
+        }
+        out.push(lines[idx].clone());
+        idx += 1;
+    }
+
+    if replaced { out } else { lines }
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {
@@ -257,14 +569,14 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(label) = compact_debug_safe_reinforce_line(line) {
         return label;
     }
-    if let Some(compact) = compact_debug_safe_ast_scaffold_line(line) {
-        return compact;
-    }
-    if let Some(compact) = compact_standard_named_token_payload_in_line(line) {
-        return compact;
-    }
     if let Some(compact) = compact_debug_safe_loyalty_line(line) {
         return compact;
+    }
+    if let Some(compact) = compact_debug_safe_ast_scaffold_line(line) {
+        return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
+    }
+    if let Some(compact) = compact_standard_named_token_payload_in_line(line) {
+        return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
     }
     normalize_debug_safe_keyword_punctuation(line)
 }
@@ -616,6 +928,22 @@ fn compact_debug_safe_generic_sentence_patterns(line: &str) -> Option<String> {
             "{cost}: Return this card from your graveyard to your hand."
         ));
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(
+        &compact,
+        "if you control a this creature and you control a creature named ",
+    ) && let Some((counterpart, tail)) =
+        split_once_ascii_ci(rest, ", exile them, then meld them into ")
+    {
+        let counterpart = counterpart
+            .split_whitespace()
+            .map(capitalize_first)
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Some(format!(
+            "{}if you both own and control this creature and a creature named {}, exile them, then meld them into {}",
+            prefix, counterpart, tail
+        ));
+    }
     if let Some(compact) = compact_debug_safe_base_pt_animation(&compact) {
         return Some(compact);
     }
@@ -702,6 +1030,9 @@ fn compact_debug_safe_base_pt_animation(line: &str) -> Option<String> {
     }
     let tail = parts.collect::<Vec<_>>().join(" ");
     if tail.is_empty() {
+        return None;
+    }
+    if tail.contains('.') {
         return None;
     }
     if tail.contains(" with ") {
@@ -924,6 +1255,10 @@ fn is_ascend_runtime_scaffold(line: &str) -> bool {
         || (lower.starts_with("whenever a permanent you control enters")
             && lower.contains("control ten or more permanents")
             && lower.contains("create an emblem named city's blessing"))
+        || (lower.starts_with("whenever a permanent you control enters")
+            && lower.contains("control ten or more permanents")
+            && lower.contains("you get an emblem with")
+            && lower.contains("city's blessing"))
 }
 
 fn line_mentions_citys_blessing_condition(line: &str) -> bool {
@@ -1036,6 +1371,13 @@ fn compact_debug_safe_loyalty_line(line: &str) -> Option<String> {
             normalize_loyalty_effect_surface(rest.1)
         ));
     }
+    if let Some(rest) = strip_loyalty_counter_cost(trimmed, "Remove ", " from it: ") {
+        return Some(format!(
+            "−{}: {}",
+            rest.0,
+            normalize_loyalty_effect_surface(rest.1)
+        ));
+    }
     None
 }
 
@@ -1063,7 +1405,11 @@ fn normalize_loyalty_effect_surface(effect: &str) -> String {
         } else {
             capitalize_first(without_period)
         };
-    format!("{normalized}.")
+    if normalized.ends_with('"') {
+        normalized
+    } else {
+        format!("{normalized}.")
+    }
 }
 
 fn compact_structural_keyword_surfaces(lines: Vec<String>) -> Vec<String> {

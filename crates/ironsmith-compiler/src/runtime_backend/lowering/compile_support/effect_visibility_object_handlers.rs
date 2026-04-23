@@ -224,6 +224,71 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
             ctx.last_object_tag = Some(looked_tag);
             (vec![reveal, reveal_tagged, distribute], choices)
         }
+        EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
+            player,
+            count,
+            filter,
+            order,
+        } => {
+            use crate::effect::Value;
+            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let looked_tag = ctx.next_tag("revealed");
+            let matched_tag = ctx.next_tag("matched");
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            resolved_filter.zone = None;
+            resolved_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(looked_tag.as_str()),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+
+            let reveal = Effect::look_at_top_cards(
+                player_filter.clone(),
+                Value::Fixed(*count as i32),
+                TagKey::from(looked_tag.as_str()),
+            );
+            let reveal_tagged =
+                Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
+            let tag_matching = Effect::new(
+                crate::effects::TagMatchingObjectsEffect::new(
+                    resolved_filter,
+                    matched_tag.clone(),
+                )
+                .in_zones(vec![Zone::Library]),
+            );
+            let move_matching = Effect::for_each_tagged(
+                matched_tag.clone(),
+                vec![Effect::move_to_zone(
+                    ChooseSpec::Iterated,
+                    Zone::Hand,
+                    false,
+                )],
+            );
+            let resolved_order = match order {
+                crate::cards::builders::LibraryBottomOrderAst::Random => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random
+                }
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                }
+            };
+            let move_rest = Effect::put_tagged_remainder_on_library_bottom(
+                TagKey::from(looked_tag.as_str()),
+                Some(TagKey::from(matched_tag.as_str())),
+                resolved_order,
+                player_filter,
+            );
+
+            ctx.last_object_tag = Some(looked_tag);
+            (
+                vec![reveal, reveal_tagged, tag_matching, move_matching, move_rest],
+                choices,
+            )
+        }
         EffectAst::RevealTagged { tag } => {
             let resolved_tag = if tag.as_str() == IT_TAG {
                 if let Some(existing) = ctx.last_object_tag.clone() {

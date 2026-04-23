@@ -91,11 +91,91 @@ fn parse_next_spell_subject_filter(words: &[&str]) -> Result<Option<ObjectFilter
     Ok(Some(filter))
 }
 
+fn parse_when_next_cast_grant_sentence(
+    clause_words: &[&str],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !clause_words.starts_with(&["when"]) {
+        return Ok(None);
+    }
+    let Some(next_idx) = find_word_index(clause_words, |word| word == "next") else {
+        return Ok(None);
+    };
+    if next_idx == 0 || clause_words.get(next_idx + 1) != Some(&"cast") {
+        return Ok(None);
+    }
+    let caster_words = &clause_words[1..next_idx];
+    let player = match caster_words {
+        ["you"] => PlayerAst::You,
+        ["an", "opponent"] | ["opponent"] => PlayerAst::Opponent,
+        ["that", "player"] => PlayerAst::That,
+        ["target", "player"] => PlayerAst::Target,
+        ["target", "opponent"] => PlayerAst::TargetOpponent,
+        _ => return Ok(None),
+    };
+    let cast_by_words: &[&str] = match caster_words {
+        ["you"] => &["you", "cast"],
+        ["an", "opponent"] | ["opponent"] => &["opponent", "cast"],
+        ["that", "player"] => &["that", "player", "cast"],
+        ["target", "player"] => &["target", "player", "cast"],
+        ["target", "opponent"] => &["target", "opponent", "cast"],
+        _ => return Ok(None),
+    };
+
+    let Some(this_turn_idx) = find_phrase_start(clause_words, &["this", "turn"]) else {
+        return Ok(None);
+    };
+    if this_turn_idx <= next_idx + 2 {
+        return Ok(None);
+    }
+    let mut subject_words = &clause_words[next_idx + 2..this_turn_idx];
+    while matches!(subject_words.first(), Some(&"a" | &"an" | &"the")) {
+        subject_words = &subject_words[1..];
+    }
+    if subject_words.is_empty() {
+        return Ok(None);
+    }
+
+    let after_turn = &clause_words[this_turn_idx + 2..];
+    let ability_words = if after_turn.starts_with(&["it", "gains"]) {
+        &after_turn[2..]
+    } else if after_turn.starts_with(&["it", "has"]) {
+        &after_turn[2..]
+    } else {
+        return Ok(None);
+    };
+    let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
+        return Ok(None);
+    };
+
+    let filter_words = if let Some(from_idx) = find_phrase_start(subject_words, &["from"]) {
+        [
+            &subject_words[..from_idx],
+            cast_by_words,
+            &subject_words[from_idx..],
+        ]
+        .concat()
+    } else {
+        [subject_words, cast_by_words].concat()
+    };
+    let Some(filter) = parse_next_spell_subject_filter(&filter_words)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::GrantNextSpellAbilityThisTurn {
+        player,
+        filter,
+        ability,
+    }]))
+}
+
 pub(crate) fn parse_next_spell_grant_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.word_refs();
+    if let Some(effects) = parse_when_next_cast_grant_sentence(&clause_words)? {
+        return Ok(Some(effects));
+    }
     if !clause_words.starts_with(&["the", "next"]) {
         return Ok(None);
     }

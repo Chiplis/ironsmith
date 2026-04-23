@@ -532,6 +532,7 @@ pub enum Condition {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+    SameColorManaSpentToCastThisSpellAtLeast(u32),
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,
     TaggedObjectMatches(TagKey, ObjectFilter),

@@ -133,6 +133,40 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
     None
 }
 
+pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> Option<u32> {
+    if words.len() < 12 || words[0] != "at" || words[1] != "least" {
+        return None;
+    }
+
+    let amount_tokens = vec![OwnedLexToken::word(
+        words[2].to_string(),
+        TextSpan::synthetic(),
+    )];
+    let (amount, _) = parse_number(&amount_tokens)?;
+
+    let mut idx = 3;
+    if words.get(idx).copied() != Some("mana") || words.get(idx + 1).copied() != Some("of") {
+        return None;
+    }
+    idx += 2;
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if words.get(idx).copied() != Some("same") || words.get(idx + 1).copied() != Some("color") {
+        return None;
+    }
+    idx += 2;
+
+    let tail = &words[idx..];
+    let it_tail = ["was", "spent", "to", "cast", "it"];
+    let this_spell_tail = ["was", "spent", "to", "cast", "this", "spell"];
+    if tail == it_tail || tail == this_spell_tail {
+        return Some(amount);
+    }
+
+    None
+}
+
 pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
     parse_mana_symbol_word_flexible(word)
 }

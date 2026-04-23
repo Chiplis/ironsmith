@@ -396,20 +396,39 @@ pub(crate) fn parse_get(
                 clause_words.join(" ")
             )));
         }
-        let text = if slice_starts_with(&text_words, &["at", "the", "beginning", "of"])
-            && let Some(this_idx) = find_index(&text_words, |word| *word == "this")
-        {
-            let head = text_words[..this_idx].join(" ");
-            let tail = text_words[this_idx..].join(" ");
-            format!(
-                "{}{}, {}.",
-                head[..1].to_ascii_uppercase(),
-                &head[1..],
-                tail
-            )
+        let text = crate::runtime_backend::token_index_for_word_index(tokens, prefix.len())
+            .and_then(|start| {
+                let rendered = crate::runtime_backend::lexer::render_token_slice(&tokens[start..]);
+                let rendered = rendered
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('“')
+                    .trim_matches('”')
+                    .trim()
+                    .to_string();
+                (!rendered.is_empty()).then_some(rendered)
+            })
+            .unwrap_or_else(|| {
+                if slice_starts_with(&text_words, &["at", "the", "beginning", "of"])
+                    && let Some(this_idx) = find_index(&text_words, |word| *word == "this")
+                {
+                    let head = text_words[..this_idx].join(" ");
+                    let tail = text_words[this_idx..].join(" ");
+                    format!(
+                        "{}{}, {}.",
+                        head[..1].to_ascii_uppercase(),
+                        &head[1..],
+                        tail
+                    )
+                } else {
+                    let joined = text_words.join(" ");
+                    format!("{}{}.", joined[..1].to_ascii_uppercase(), &joined[1..])
+                }
+            });
+        let text = if text.ends_with(['.', '!', '?']) {
+            text
         } else {
-            let joined = text_words.join(" ");
-            format!("{}{}.", joined[..1].to_ascii_uppercase(), &joined[1..])
+            format!("{text}.")
         };
         return Ok(EffectAst::CreateEmblem { player, text });
     }
