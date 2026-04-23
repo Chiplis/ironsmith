@@ -2210,6 +2210,18 @@ impl StaticAbility {
         Self::new(ActivatedAbilityCostIncrease::new(filter, increase))
     }
 
+    pub fn increase_activated_ability_costs_for_activator(
+        activator: crate::target::PlayerFilter,
+        increase: crate::cost::TotalCost,
+        non_mana_only: bool,
+    ) -> Self {
+        Self::new(ActivatedAbilityCostIncrease::for_activator(
+            activator,
+            increase,
+            non_mana_only,
+        ))
+    }
+
     pub fn delve() -> Self {
         Self::new(Delve)
     }

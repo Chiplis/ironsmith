@@ -37,6 +37,20 @@ fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) 
         .is_some()
 }
 
+fn word_refs_contain_sequence(words: &[&str], sequence: &[&str]) -> bool {
+    !sequence.is_empty()
+        && words
+            .windows(sequence.len())
+            .any(|window| window == sequence)
+}
+
+fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
+    (words.contains(&"spell") || words.contains(&"spells"))
+        && word_refs_contain_sequence(words, &["and", "abilities"])
+        && word_refs_contain_sequence(words, &["activate", "cost"])
+        && word_refs_contain_sequence(words, &["more", "to", "activate"])
+}
+
 fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
     let raw = line.info.raw_line.trim();
     let full = line.full_text.trim();
@@ -735,6 +749,14 @@ fn lower_rewrite_static_to_chunk_impl(
     }
     if let Some(chunk) = lower_compound_buff_and_unblockable_static_chunk(line, parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
+    }
+    if looks_like_combined_spell_and_activation_tax(token_words.as_slice())
+        && let Some(abilities) = parse_static_ability_ast_line_lexed(&lexed)?
+    {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbilities(abilities),
+            chosen_option_label,
+        );
     }
     if !should_skip_keyword_action_static_probe(&line.text)
         && let Some(actions) = parse_ability_line_lexed(&lexed)

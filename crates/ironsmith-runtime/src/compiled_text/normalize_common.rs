@@ -518,7 +518,8 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                     continue;
                 }
                 extra_ability_texts.push(quote_token_granted_ability_text(
-                    static_ability.display().as_str(),
+                    normalize_token_granted_static_ability_text(static_ability.display().as_str())
+                        .as_str(),
                 ));
             }
             AbilityKind::Triggered(_) | AbilityKind::Activated(_) => {
@@ -4803,6 +4804,9 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     if let Some(subject) = describe_commander_zone_union_subject(filter) {
         return subject;
     }
+    if describe_tagged_this_way_action(filter) == Some("revealed") {
+        return pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+    }
 
     let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -4957,7 +4961,11 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
                 }
             }
         } else if action == "revealed" {
-            if let Some(head) = subject.strip_suffix(" permanent") {
+            if subject == "permanent" {
+                subject = "card".to_string();
+            } else if subject == "permanents" {
+                subject = "cards".to_string();
+            } else if let Some(head) = subject.strip_suffix(" permanent") {
                 subject = format!("{} card", head.trim());
             } else if let Some(head) = subject.strip_suffix(" permanents") {
                 subject = format!("{} cards", head.trim());

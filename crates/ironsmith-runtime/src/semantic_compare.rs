@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
 pub struct EmbeddingConfig {
@@ -164,6 +161,8 @@ fn looks_like_reminder_quote(content: &str) -> bool {
         .to_ascii_lowercase();
     lower.starts_with("{t}, sacrifice this artifact: add one mana of any color")
         || lower.starts_with("sacrifice this artifact: add one mana of any color")
+        || lower.starts_with("{t}, sacrifice this token, exile the top card of your library")
+        || lower.starts_with("sacrifice this token, exile the top card of your library")
         || lower.starts_with("sacrifice this token: add {c}")
         || lower.starts_with("sacrifice this creature: add {c}")
         || lower.starts_with("{2}, {t}, sacrifice this token: you gain 3 life")
@@ -581,6 +580,12 @@ fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
     }
 
     if lower.contains("tag the object") || lower.contains("tags it as '") {
+        return true;
+    }
+    if lower.contains("optional cost 'squad' was paid")
+        || lower.contains("optional cost 'offspring' was paid")
+        || lower.contains("offspring cost was paid")
+    {
         return true;
     }
 
@@ -2688,7 +2693,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             let cost = normalized_trimmed[idx + " unless you ".len()..]
                 .trim()
                 .trim_end_matches('.');
-            normalized = format!("Echo—{cost}");
+            if let Some(mana_cost) = cost
+                .strip_prefix("pay ")
+                .or_else(|| cost.strip_prefix("Pay "))
+                .filter(|cost| cost.starts_with('{'))
+            {
+                normalized = format!("Echo {mana_cost}");
+            } else {
+                normalized = format!("Echo—{cost}");
+            }
         }
     }
 
@@ -2818,403 +2831,6 @@ fn normalize_target_count_wording(text: &str) -> String {
         normalized = normalized.replace(&format!("Target {token} "), &format!("{token} "));
     }
     normalized
-}
-
-fn oracle_reconciliation_lines(oracle_text: &str) -> Vec<String> {
-    oracle_text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(strip_parenthetical)
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .collect()
-}
-
-fn find_oracle_line(
-    oracle_lines: &[String],
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<String> {
-    oracle_lines
-        .iter()
-        .find(|line| predicate(&line.to_ascii_lowercase()))
-        .cloned()
-}
-
-fn regression_reconciliation_tokens(text: &str) -> BTreeSet<String> {
-    const LOW_SIGNAL: &[&str] = &[
-        "a",
-        "an",
-        "and",
-        "as",
-        "at",
-        "card",
-        "cards",
-        "control",
-        "controller",
-        "it",
-        "its",
-        "may",
-        "object",
-        "objects",
-        "of",
-        "on",
-        "or",
-        "owner",
-        "player",
-        "that",
-        "the",
-        "their",
-        "them",
-        "this",
-        "to",
-        "under",
-        "up",
-        "you",
-        "your",
-    ];
-    let low_signal = LOW_SIGNAL.iter().copied().collect::<BTreeSet<_>>();
-    comparison_tokens(text)
-        .into_iter()
-        .filter(|token| token.len() > 1)
-        .filter(|token| !low_signal.contains(token.as_str()))
-        .filter(|token| !token.starts_with("__sentence_helper"))
-        .filter(|token| !token.starts_with("l0"))
-        .filter(|token| !token.starts_with("s0"))
-        .filter(|token| !token.starts_with("e0"))
-        .collect()
-}
-
-fn find_oracle_line_by_overlap(
-    oracle_lines: &[String],
-    line: &str,
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<String> {
-    let line_tokens = regression_reconciliation_tokens(line);
-    if line_tokens.len() < 3 {
-        return None;
-    }
-
-    oracle_lines
-        .iter()
-        .filter_map(|oracle| {
-            let lower = oracle.to_ascii_lowercase();
-            if !predicate(&lower) {
-                return None;
-            }
-            let oracle_tokens = regression_reconciliation_tokens(oracle);
-            if oracle_tokens.len() < 3 {
-                return None;
-            }
-            let common = line_tokens.intersection(&oracle_tokens).count();
-            let ratio = common as f32 / line_tokens.len().min(oracle_tokens.len()) as f32;
-            (common >= 3 && ratio >= 0.34).then_some((common, ratio, oracle.clone()))
-        })
-        .max_by(|left, right| {
-            left.0
-                .cmp(&right.0)
-                .then_with(|| left.1.total_cmp(&right.1))
-        })
-        .map(|(_, _, oracle)| oracle)
-}
-
-fn reconcile_known_render_regression_line(line: &str, oracle_lines: &[String]) -> Option<String> {
-    let stripped = strip_compiled_prefix(line).trim();
-    if stripped.is_empty() {
-        return None;
-    }
-
-    let lower = stripped.to_ascii_lowercase();
-
-    if lower == "this creature enters with an echo counter on it"
-        || lower == "this artifact enters with an echo counter on it"
-        || lower == "this permanent enters with an echo counter on it"
-    {
-        return Some(String::new());
-    }
-    if lower.starts_with("at the beginning of your upkeep, remove an echo counter from this ")
-        && lower.contains(" unless you ")
-        && let Some(echo) = find_oracle_line(oracle_lines, |oracle| oracle.starts_with("echo"))
-    {
-        return Some(echo);
-    }
-
-    for keyword in ["morph", "megamorph", "impending", "offspring", "squad"] {
-        if lower.starts_with(keyword)
-            && let Some(oracle) =
-                find_oracle_line(oracle_lines, |oracle| oracle.starts_with(keyword))
-        {
-            return Some(oracle);
-        }
-    }
-
-    if (lower.contains("optional cost 'offspring'") || lower.contains("offspring cost was paid"))
-        && oracle_lines
-            .iter()
-            .any(|line| line.to_ascii_lowercase().starts_with("offspring"))
-    {
-        return Some(String::new());
-    }
-    if lower.contains("optional cost 'squad'")
-        && oracle_lines
-            .iter()
-            .any(|line| line.to_ascii_lowercase().starts_with("squad"))
-    {
-        return Some(String::new());
-    }
-    if lower.contains("junk token")
-        && lower.contains(" token with ")
-        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("junk token") || oracle.contains("junk tokens")
-        })
-    {
-        return Some(oracle);
-    }
-
-    if (lower == "remove supertypes." || lower == "remove supertypes")
-        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("no longer ") && oracle.contains("snow")
-        })
-    {
-        return Some(oracle);
-    }
-
-    if lower == "has all activated abilities of matching objects."
-        || lower == "has all activated abilities of matching objects"
-    {
-        if let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            (oracle.contains("has all activated abilities of")
-                || oracle.contains("have all activated abilities of"))
-                && !oracle.contains("matching objects")
-        }) {
-            return Some(oracle);
-        }
-    }
-    if lower.contains("has all activated abilities of matching objects")
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("activated abilities of")
-        })
-    {
-        return Some(oracle);
-    }
-
-    if lower == "suppress matching triggered abilities."
-        || lower == "suppress matching triggered abilities"
-    {
-        if let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("cause abilities to trigger")
-                && (oracle.contains("don't") || oracle.contains("doesn't"))
-        }) {
-            return Some(oracle);
-        }
-    }
-    if lower.contains("suppress matching triggered abilities")
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("cause abilities to trigger")
-        })
-    {
-        return Some(oracle);
-    }
-
-    if lower == "conditional spell keyword." || lower == "conditional spell keyword" {
-        if let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("this spell has ") && oracle.contains(" as long as ")
-        }) {
-            return Some(oracle);
-        }
-    }
-
-    if lower.contains("protection from ")
-        && let Some(oracle) =
-            find_oracle_line(oracle_lines, |oracle| oracle.contains("protection from "))
-    {
-        return Some(oracle);
-    }
-    if lower.contains("loses all abilities and is is ") {
-        return Some(String::new());
-    }
-
-    if lower == "choose color as enters." || lower == "choose color as enters" {
-        if let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("choose a color") && oracle.contains(" enters")
-        }) {
-            return Some(oracle);
-        }
-    }
-    if lower == "add chosen creature type." || lower == "add chosen creature type" {
-        if oracle_lines.iter().any(|line| {
-            let oracle = line.to_ascii_lowercase();
-            oracle.contains("choose a creature type") || oracle.contains("chosen type")
-        }) {
-            return Some(String::new());
-        }
-    }
-
-    if (lower.contains("__sentence_helper")
-        || (lower.contains(" tags it as ")
-            && (lower.contains("look at the top") || lower.contains("reveal the top"))))
-        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            (lower.contains("look at the top")
-                && (oracle.contains("look at the top") || oracle.contains("reveal the top")))
-                || (lower.contains("reveal the top") && oracle.contains("reveal the top"))
-        })
-    {
-        return Some(oracle);
-    }
-    if (lower.contains("__sentence_helper")
-        || lower.contains("tagged '__sentence_helper")
-        || lower.contains("tags it as '__sentence_helper"))
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |_| true)
-    {
-        return Some(oracle);
-    }
-
-    if lower.contains("return it to its owner's hand")
-        && (lower.contains("look at the top") || lower.contains("reveal the top"))
-        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            (lower.contains("look at the top")
-                && (oracle.contains("look at the top") || oracle.contains("reveal the top")))
-                || (lower.contains("reveal the top") && oracle.contains("reveal the top"))
-        })
-    {
-        return Some(oracle);
-    }
-    if lower.contains("put it onto the battlefield")
-        && (lower.starts_with("exile ") || lower.contains(". put it onto the battlefield"))
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("exile") && oracle.contains("return") && oracle.contains("battlefield")
-        })
-    {
-        let mut replacement = oracle.clone();
-        if lower.contains("draw a card")
-            && let Some(draw_line) =
-                find_oracle_line(oracle_lines, |oracle| oracle == "draw a card.")
-        {
-            replacement = format!("{replacement} {draw_line}");
-        }
-        return Some(replacement);
-    }
-    if lower.contains("put them onto the battlefield")
-        && (lower.starts_with("exile ") || lower.contains(". put them onto the battlefield"))
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("exile") && oracle.contains("return") && oracle.contains("battlefield")
-        })
-    {
-        return Some(oracle);
-    }
-    if lower.contains("at the beginning of the next end step, put it onto the battlefield")
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("beginning of the next end step")
-                && oracle.contains("return")
-                && oracle.contains("battlefield")
-        })
-    {
-        return Some(oracle);
-    }
-    if lower.contains("create a token attached")
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("create") && oracle.contains("token") && oracle.contains("attached")
-        })
-    {
-        if let Some(idx) = lower.find("create a token attached") {
-            let prefix = stripped[..idx].trim_end();
-            if !prefix.is_empty() {
-                return Some(format!("{prefix} {oracle}"));
-            }
-        }
-        return Some(oracle);
-    }
-    if lower.contains("if you control your commander")
-        && lower.contains("choose up to two")
-        && oracle_lines
-            .iter()
-            .any(|oracle| oracle.to_ascii_lowercase().contains("choose both instead"))
-    {
-        return Some(oracle_lines.join(" "));
-    }
-    if lower.contains("choose up to ")
-        && lower.contains('•')
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("choose") && oracle.contains('•')
-        })
-    {
-        return Some(oracle);
-    }
-    if lower.contains("choose up to ")
-        && (lower.contains(" - ") || lower.contains(" — "))
-        && !(lower.contains("choose up to two")
-            && oracle_lines
-                .iter()
-                .any(|oracle| oracle.to_ascii_lowercase().contains("choose one or both")))
-        && oracle_lines
-            .iter()
-            .any(|oracle| oracle.to_ascii_lowercase().contains("choose"))
-    {
-        return Some(oracle_lines.join(" "));
-    }
-    if lower.contains("prevent damage")
-        && lower.contains("put counters instead")
-        && let Some(oracle) = find_oracle_line_by_overlap(oracle_lines, stripped, |oracle| {
-            oracle.contains("prevent") && oracle.contains("damage") && oracle.contains("counter")
-        })
-    {
-        return Some(oracle);
-    }
-    if lower.matches("deal ").count() >= 2 && lower.contains("if ") && lower.contains(" damage ") {
-        let damage_lines = oracle_lines
-            .iter()
-            .filter(|oracle| oracle.to_ascii_lowercase().contains("damage"))
-            .cloned()
-            .collect::<Vec<_>>();
-        if damage_lines
-            .iter()
-            .any(|oracle| oracle.to_ascii_lowercase().contains("instead"))
-        {
-            return Some(damage_lines.join(" "));
-        }
-    }
-    if lower.starts_with("for each player, shuffle ")
-        && let Some(rest) = stripped
-            .strip_prefix("For each player, Shuffle ")
-            .or_else(|| stripped.strip_prefix("for each player, shuffle "))
-    {
-        return Some(format!("Each player shuffles {rest}"));
-    }
-
-    if lower.contains("cant be blocked as long as defending controls card types")
-        && let Some(oracle) = find_oracle_line(oracle_lines, |oracle| {
-            oracle.contains("can't be blocked as long as defending player controls")
-        })
-    {
-        return Some(oracle);
-    }
-
-    if lower.contains("can attack as though no defender") {
-        return Some(stripped.replace(
-            "can attack as though no defender",
-            "can attack as though it didn't have defender",
-        ));
-    }
-
-    None
-}
-
-fn reconcile_known_render_regression_lines(
-    oracle_text: &str,
-    compiled_lines: &[String],
-) -> Vec<String> {
-    let oracle_lines = oracle_reconciliation_lines(oracle_text);
-    if oracle_lines.is_empty() {
-        return compiled_lines.to_vec();
-    }
-
-    compiled_lines
-        .iter()
-        .map(|line| {
-            reconcile_known_render_regression_line(line, &oracle_lines)
-                .unwrap_or_else(|| line.clone())
-        })
-        .collect()
 }
 
 fn normalize_for_each_player_conditional_for_compare(line: &str) -> String {
@@ -3601,6 +3217,120 @@ fn expand_return_list_clause(text: &str) -> String {
     out
 }
 
+fn split_sentence_helper_parts(line: &str) -> Vec<String> {
+    line.split(". ")
+        .map(|part| part.trim().trim_end_matches('.').trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+fn sentence_helper_choice_text(part: &str) -> Option<String> {
+    let lower = part.to_ascii_lowercase();
+    let rest = lower
+        .strip_prefix("you choose ")
+        .or_else(|| lower.strip_prefix("choose "))?;
+    let marker = " card in library and tags it as ";
+    let marker_idx = rest.find(marker)?;
+    let mut choice = rest[..marker_idx].trim();
+    choice = choice.strip_prefix("up to one other ").unwrap_or(choice);
+    let choice = if let Some(rest) = choice.strip_prefix("up to one ") {
+        format!("up to one {rest} card from among them")
+    } else {
+        format!("{choice} card from among them")
+    };
+    Some(choice)
+}
+
+fn sentence_helper_destination_text(action: &str) -> Option<String> {
+    let trimmed = action.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("put it onto the battlefield") {
+        let rest = rest.trim();
+        return Some(if rest.is_empty() {
+            "onto the battlefield".to_string()
+        } else {
+            format!("onto the battlefield {rest}")
+        });
+    }
+    if lower.starts_with("return it to ") && lower.contains("owner") && lower.contains("hand") {
+        return Some("into your hand".to_string());
+    }
+    if let Some(rest) = lower.strip_prefix("put it into ") {
+        return Some(format!("into {rest}"));
+    }
+    None
+}
+
+fn normalize_sentence_helper_remainder(part: &str) -> String {
+    part.replace("remaining tagged cards", "rest")
+        .replace("Remaining tagged cards", "Rest")
+}
+
+fn normalize_sentence_helper_line_for_compare(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if !lower.contains("__sentence_helper") {
+        return line.to_string();
+    }
+
+    let parts = split_sentence_helper_parts(line);
+    if parts.is_empty() {
+        return line.to_string();
+    }
+
+    let mut idx = 0usize;
+    let mut out = Vec::new();
+    let first_lower = parts[0].to_ascii_lowercase();
+    if first_lower.starts_with("look at the top ") {
+        if parts
+            .get(1)
+            .is_some_and(|part| part.eq_ignore_ascii_case("Reveal it"))
+        {
+            out.push(format!("Reveal{}", &parts[0]["Look at".len()..]));
+            idx = 2;
+        } else {
+            out.push(parts[0].clone());
+            idx = 1;
+        }
+    } else if first_lower.starts_with("reveal the top ") {
+        out.push(parts[0].clone());
+        idx = 1;
+    }
+
+    let mut choice_actions = Vec::new();
+    while idx + 1 < parts.len() {
+        let Some(choice) = sentence_helper_choice_text(&parts[idx]) else {
+            break;
+        };
+        let Some(destination) = sentence_helper_destination_text(&parts[idx + 1]) else {
+            break;
+        };
+        choice_actions.push(format!("{choice} {destination}"));
+        idx += 2;
+    }
+
+    if !choice_actions.is_empty() {
+        out.push(format!("You may put {}", choice_actions.join(" and ")));
+    }
+
+    out.extend(
+        parts[idx..]
+            .iter()
+            .map(|part| normalize_sentence_helper_remainder(part)),
+    );
+
+    if out.len() <= 1 {
+        line.to_string()
+    } else {
+        out.into_iter()
+            .map(|part| {
+                let trimmed = part.trim().trim_end_matches('.');
+                format!("{trimmed}.")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 fn semantic_clauses(text: &str) -> Vec<String> {
     let mut clauses = Vec::new();
     for raw_line in text.lines() {
@@ -3622,6 +3352,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
             let no_inline_reminder = strip_inline_token_reminders(&no_parenthetical);
             strip_reminder_like_quotes(&no_inline_reminder)
         };
+        let line = normalize_sentence_helper_line_for_compare(&line);
         let line = normalize_trigger_subject_for_compare(&line);
         let line = strip_modal_option_labels(&line);
         let line = normalize_for_each_player_conditional_for_compare(&line);
@@ -5358,9 +5089,7 @@ pub fn compare_semantics_scored(
         .filter(|clause| !is_ignorable_semantic_clause(clause))
         .collect::<Vec<_>>();
     let reminder_clauses = reminder_clauses(oracle_text);
-    let reconciled_compiled_lines =
-        reconcile_known_render_regression_lines(oracle_text, compiled_lines);
-    let stripped_lines = reconciled_compiled_lines
+    let stripped_lines = compiled_lines
         .iter()
         .map(|line| strip_compiled_prefix(line).to_string())
         .collect::<Vec<_>>();

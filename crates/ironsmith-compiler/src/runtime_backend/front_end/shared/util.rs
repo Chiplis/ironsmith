@@ -620,6 +620,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         SubtypeFamily::Enchantment,
         SubtypeFamily::Spell,
         SubtypeFamily::Planeswalker,
+        SubtypeFamily::Battle,
     ] {
         for subtype in family.all_subtypes() {
             if subtype_display_matches_word(*subtype, candidate.as_str()) {

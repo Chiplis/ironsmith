@@ -43,7 +43,9 @@ pub(super) fn normalize_debug_safe_surface(
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
     let merged_animation = merge_subject_animation_lines(merged_has_keywords);
     let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_animation);
-    let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
+    let merged_cost_tax =
+        merge_conditioned_spell_and_activation_tax_lines(without_redundant_cost_lines);
+    let merged_blockability = merge_blockability_lines(merged_cost_tax);
     let merged_transform = merge_lose_all_transform_lines(merged_blockability);
     let structural_keyword_markers = compact_structural_keyword_surfaces(merged_transform);
     let merged_keyword_markers =
@@ -215,13 +217,71 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
         return compact;
     }
+    if let Some(compact) = compact_constellation_instead_line(line) {
+        return compact;
+    }
     if let Some(compact) = compact_debug_safe_ast_scaffold_line(line) {
         return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
     }
     if let Some(compact) = compact_standard_named_token_payload_in_line(line) {
         return compact_debug_safe_loyalty_line(&compact).unwrap_or(compact);
     }
+    if let Some(compact) = compact_create_token_with_quoted_ability_line(line) {
+        return compact;
+    }
+    if let Some(compact) = compact_defending_player_block_bonus_line(line) {
+        return compact;
+    }
     normalize_debug_safe_keyword_punctuation(line)
+}
+
+fn compact_defending_player_block_bonus_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let rest = trimmed.strip_prefix("Target defending player's creature gets ")?;
+    let (pt_bonus, block_clause) = rest.split_once(" and gains can block ")?;
+    let count = block_clause.strip_suffix(" additional creatures each combat until end of turn")?;
+    let count = match count {
+        "1" | "one" => "one",
+        "2" | "two" => "two",
+        "3" | "three" => "three",
+        other => other,
+    };
+    Some(format!(
+        "Target creature defending player controls gets {pt_bonus} until end of turn. That creature can block up to {count} additional creatures this turn"
+    ))
+}
+
+fn compact_constellation_instead_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let trigger = "Whenever an enchantment you control enters, ";
+    let rest = trimmed.strip_prefix(trigger)?;
+    let conditional_prefix = "if ";
+    let rest = rest.strip_prefix(conditional_prefix)?;
+    let (condition, choices) = rest.split_once(", ")?;
+    let (instead_choice, otherwise_choice) = choices.split_once(". Otherwise, ")?;
+    let base_choice = otherwise_choice.trim();
+    let replacement_choice = instead_choice.trim();
+    Some(format!(
+        "Constellation — {trigger}{base_choice}. If {condition}, instead {replacement_choice}"
+    ))
+}
+
+fn compact_create_token_with_quoted_ability_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (token_text, ability) = trimmed.split_once(" token with \"")?;
+    if !token_text.starts_with("Create ") {
+        return None;
+    }
+    let ability = ability.strip_suffix('"')?.trim();
+    if ability.is_empty() {
+        return None;
+    }
+    let ability = if ability.ends_with('.') {
+        ability.to_string()
+    } else {
+        format!("{ability}.")
+    };
+    Some(format!("{token_text} token. It has \"{ability}\""))
 }
 
 fn compact_first_time_each_turn_trigger_line(line: &str) -> Option<String> {
@@ -816,6 +876,11 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
         }
         let lower_line = compact_whitespace(line).to_ascii_lowercase();
         if let Some(compact) = compact_first_time_each_turn_trigger_line(line) {
+            normalized.push(compact);
+            idx += 1;
+            continue;
+        }
+        if let Some(compact) = compact_constellation_instead_line(line) {
             normalized.push(compact);
             idx += 1;
             continue;
@@ -1676,12 +1741,74 @@ fn push_intrinsic_keyword_bundle(keywords: &mut Vec<String>, merged: &mut Vec<St
     if keywords.is_empty() {
         return;
     }
-    if keywords.len() == 1 {
-        merged.push(keywords[0].clone());
+    let bundled = compact_protection_keywords_in_bundle(keywords);
+    if bundled.len() == 1 {
+        merged.push(bundled[0].clone());
     } else {
-        merged.push(keywords.join(", "));
+        merged.push(bundled.join(", "));
     }
     keywords.clear();
+}
+
+fn compact_protection_keywords_in_bundle(keywords: &[String]) -> Vec<String> {
+    let mut compacted = Vec::with_capacity(keywords.len());
+    let mut idx = 0usize;
+
+    while idx < keywords.len() {
+        let Some(first_from) = protection_from_tail(&keywords[idx]) else {
+            compacted.push(keywords[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut from = vec![first_from.to_string()];
+        let mut end = idx + 1;
+        while end < keywords.len() {
+            let Some(next_from) = protection_from_tail(&keywords[end]) else {
+                break;
+            };
+            from.push(next_from.to_string());
+            end += 1;
+        }
+
+        if from.len() == 1 {
+            compacted.push(keywords[idx].clone());
+        } else {
+            compacted.push(format!(
+                "protection from {}",
+                join_protection_from_tails(&from)
+            ));
+        }
+        idx = end;
+    }
+
+    compacted
+}
+
+fn protection_from_tail(keyword: &str) -> Option<&str> {
+    keyword
+        .trim()
+        .trim_end_matches('.')
+        .strip_prefix("protection from ")
+}
+
+fn join_protection_from_tails(from: &[String]) -> String {
+    match from {
+        [] => String::new(),
+        [only] => only.clone(),
+        [first, second] => format!("{first} and from {second}"),
+        _ => {
+            let mut parts = from[..from.len() - 1]
+                .iter()
+                .map(|part| format!("from {part}"))
+                .collect::<Vec<_>>();
+            parts.push(format!(
+                "and from {}",
+                from.last().expect("protection tail exists")
+            ));
+            parts.join(", ").trim_start_matches("from ").to_string()
+        }
+    }
 }
 
 fn is_intrinsic_keyword_marker_line(line: &str) -> bool {
@@ -1964,10 +2091,13 @@ fn drop_suspend_keyword_intrinsic_lines(def: &CardDefinition, lines: Vec<String>
 
             let is_suspend_upkeep_line = lower.starts_with(
                 "at the beginning of your upkeep, if there are 1 or more time counters on this ",
-            ) && lower.contains(", remove a time counter from this ");
+            ) && (lower
+                .contains(", remove a time counter from this ")
+                || lower.contains(", remove a time counter from it"));
             let is_suspend_cast_line = lower
                 .starts_with("whenever a counter is removed from this ")
-                && lower.contains("if there are no time counters on this ")
+                && (lower.contains("if there are no time counters on this ")
+                    || lower.contains("if there are no time counters on it"))
                 && lower.contains("you may cast this card from exile without paying its mana cost");
 
             !(is_suspend_upkeep_line || is_suspend_cast_line)

@@ -12626,6 +12626,41 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_spell_and_activation_tax_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Tithe Taker Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "During your turn, spells your opponents cast cost {1} more to cast and abilities your opponents activate cost {1} more to activate unless they're mana abilities.",
+            )
+            .expect("combined spell and activated-ability tax line should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::CostIncrease)
+                && static_ids.contains(
+                    &crate::static_abilities::StaticAbilityId::ActivatedAbilityCostIncrease
+                ),
+            "expected both spell and activation tax static abilities, got {static_ids:?}"
+        );
+
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(
+                "During your turn, spells your opponents cast cost {1} more to cast and abilities your opponents activate cost {1} more to activate unless they're mana abilities"
+            ),
+            "expected combined conditioned tax clauses, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_self_activated_ability_cost_reduction_for_each_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Channel Reducer Variant")
             .parse_text(

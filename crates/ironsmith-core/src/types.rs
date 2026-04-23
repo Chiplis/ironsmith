@@ -109,6 +109,7 @@ pub enum SubtypeFamily {
     Enchantment,
     Spell,
     Planeswalker,
+    Battle,
 }
 
 impl SubtypeFamily {
@@ -120,6 +121,7 @@ impl SubtypeFamily {
             SubtypeFamily::Enchantment => "enchantment type",
             SubtypeFamily::Spell => "spell type",
             SubtypeFamily::Planeswalker => "planeswalker type",
+            SubtypeFamily::Battle => "battle type",
         }
     }
 
@@ -131,6 +133,7 @@ impl SubtypeFamily {
             SubtypeFamily::Enchantment => Subtype::all_enchantment_types(),
             SubtypeFamily::Spell => Subtype::all_spell_types(),
             SubtypeFamily::Planeswalker => Subtype::all_planeswalker_types(),
+            SubtypeFamily::Battle => Subtype::all_battle_types(),
         }
     }
 }
@@ -403,6 +406,9 @@ pub enum Subtype {
     Tyvar,
     Ugin,
     Vraska,
+
+    // Battle subtypes
+    Siege,
 }
 
 impl Subtype {
@@ -681,6 +687,10 @@ impl Subtype {
             Subtype::Ugin,
             Subtype::Vraska,
         ]
+    }
+
+    pub const fn all_battle_types() -> &'static [Subtype] {
+        &[Subtype::Siege]
     }
 
     pub fn display_name(self) -> String {
@@ -998,7 +1008,12 @@ impl Subtype {
             SubtypeFamily::Enchantment => self.is_enchantment_subtype(),
             SubtypeFamily::Spell => self.is_spell_subtype(),
             SubtypeFamily::Planeswalker => self.is_planeswalker_subtype(),
+            SubtypeFamily::Battle => self.is_battle_subtype(),
         }
+    }
+
+    pub fn is_battle_subtype(&self) -> bool {
+        matches!(self, Subtype::Siege)
     }
 }
 

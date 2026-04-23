@@ -64,7 +64,11 @@ fn describe_resolution_program_for_card(
         .iter()
         .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
     if !has_visible_gift_line {
-        return describe_resolution_program(program);
+        let rendered = describe_resolution_program(program);
+        if def.card.is_instant() || def.card.is_sorcery() {
+            return rewrite_damage_phrases_for_permanent_abilities(&rendered, &def.card.name, true);
+        }
+        return rendered;
     }
 
     let mut rendered_segments = Vec::new();

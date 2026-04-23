@@ -434,7 +434,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         return Some(filter);
     }
     if matches!(
-        words_all_refs.as_slice(),
+        non_article_words.as_slice(),
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
         let mut filter = ObjectFilter::permanent_card();

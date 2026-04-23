@@ -1135,6 +1135,54 @@ pub(super) fn drop_redundant_spell_cost_lines(lines: Vec<String>) -> Vec<String>
         .collect()
 }
 
+pub(super) fn merge_conditioned_spell_and_activation_tax_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(line) =
+                merge_conditioned_spell_and_activation_tax_pair(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(line);
+            idx += 2;
+            continue;
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
+}
+
+fn merge_conditioned_spell_and_activation_tax_pair(first: &str, second: &str) -> Option<String> {
+    let first = compact_merge_pass_whitespace(first)
+        .trim_end_matches('.')
+        .to_string();
+    let second = compact_merge_pass_whitespace(second)
+        .trim_end_matches('.')
+        .to_string();
+    let (first_prefix, first_body) = first.split_once(", ")?;
+    let (second_prefix, second_body) = second.split_once(", ")?;
+    if first_prefix != second_prefix {
+        return None;
+    }
+    let first_lower = first_body.to_ascii_lowercase();
+    let second_lower = second_body.to_ascii_lowercase();
+    if !first_lower.contains("spells ")
+        || !first_lower.contains(" cost ")
+        || !first_lower.ends_with(" to cast")
+        || !second_lower.starts_with("abilities ")
+        || !second_lower.contains(" cost ")
+        || !second_lower.contains(" to activate")
+    {
+        return None;
+    }
+    Some(format!("{first_prefix}, {first_body} and {second_body}"))
+}
+
+fn compact_merge_pass_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 pub(super) fn is_keyword_style_line(line: &str) -> bool {
     let trimmed = line.trim();
     if trimmed.is_empty() {

@@ -217,6 +217,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         supertypes: Vec<Supertype>,
     },
+    RemoveSupertypes {
+        filter: ObjectFilter,
+        supertypes: Vec<Supertype>,
+    },
     MaxCreaturesCanAttackEachCombat(usize),
     MaxCreaturesCanBlockEachCombat(usize),
     ChooseBasicLandTypeAsEnters(String),
@@ -306,6 +310,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ActivatedAbilityCostIncrease {
         filter: ObjectFilter,
         increase: TotalCost<C>,
+        activator: Option<PlayerFilter>,
+        non_mana_only: bool,
+        condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
@@ -763,6 +770,9 @@ where
             StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
                 StaticAbilityPayload::AddSupertypes { filter, supertypes }
             }
+            StaticAbilityPayload::RemoveSupertypes { filter, supertypes } => {
+                StaticAbilityPayload::RemoveSupertypes { filter, supertypes }
+            }
             StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum)
             }
@@ -919,12 +929,19 @@ where
                 per_basic_land_types_among,
                 minimum_total_mana,
             },
-            StaticAbilityPayload::ActivatedAbilityCostIncrease { filter, increase } => {
-                StaticAbilityPayload::ActivatedAbilityCostIncrease {
-                    filter,
-                    increase: map_total_cost(increase, map_cost)?,
-                }
-            }
+            StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter,
+                increase,
+                activator,
+                non_mana_only,
+                condition,
+            } => StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter,
+                increase: map_total_cost(increase, map_cost)?,
+                activator,
+                non_mana_only,
+                condition,
+            },
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
             }
@@ -1654,6 +1671,37 @@ impl<
 
     pub fn with_condition(self, condition: Condition) -> Self {
         match self.payload {
+            StaticAbilityPayload::CostIncrease(mut increase) => {
+                increase.condition = Some(match increase.condition {
+                    Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+                    None => condition,
+                });
+                StaticAbility {
+                    id: self.id,
+                    label: self.label,
+                    payload: StaticAbilityPayload::CostIncrease(increase),
+                }
+            }
+            StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter,
+                increase,
+                activator,
+                non_mana_only,
+                condition: existing,
+            } => StaticAbility {
+                id: self.id,
+                label: self.label,
+                payload: StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                    filter,
+                    increase,
+                    activator,
+                    non_mana_only,
+                    condition: Some(match existing {
+                        Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+                        None => condition,
+                    }),
+                },
+            },
             StaticAbilityPayload::Conditional {
                 ability,
                 condition: existing,
@@ -2236,7 +2284,30 @@ impl<
         Self {
             id: Some(StaticAbilityId::ActivatedAbilityCostIncrease),
             label: "increase activated ability costs".to_string(),
-            payload: StaticAbilityPayload::ActivatedAbilityCostIncrease { filter, increase },
+            payload: StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter,
+                increase,
+                activator: None,
+                non_mana_only: false,
+                condition: None,
+            },
+        }
+    }
+    pub fn increase_activated_ability_costs_for_activator(
+        activator: PlayerFilter,
+        increase: TotalCost<C>,
+        non_mana_only: bool,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ActivatedAbilityCostIncrease),
+            label: "increase activated ability costs".to_string(),
+            payload: StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                filter: ObjectFilter::default(),
+                increase,
+                activator: Some(activator),
+                non_mana_only,
+                condition: None,
+            },
         }
     }
     pub fn cant_be_blocked_by_lower_power_than_source() -> Self {
@@ -2486,11 +2557,11 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn remove_supertypes(_filter: ObjectFilter, _types: Vec<Supertype>) -> Self {
+    pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveSupertypes),
             label: "remove supertypes".into(),
-            payload: StaticAbilityPayload::None,
+            payload: StaticAbilityPayload::RemoveSupertypes { filter, supertypes },
         }
     }
     pub fn prevent_all_damage_dealt_to_creatures() -> Self {
@@ -2998,13 +3069,19 @@ impl CostReductionManaCost {
 pub struct CostIncrease {
     pub filter: ObjectFilter,
     pub amount: Value,
+    pub condition: Option<Condition>,
 }
 
 impl CostIncrease {
     pub fn new(filter: ObjectFilter, amount: Value) -> Self {
-        Self { filter, amount }
+        Self {
+            filter,
+            amount,
+            condition: None,
+        }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Condition) -> Self {
+        self.condition = Some(condition);
         self
     }
 }

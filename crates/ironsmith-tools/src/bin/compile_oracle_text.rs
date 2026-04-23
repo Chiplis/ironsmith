@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Read, Write};
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
 use ironsmith::compiled_text::compiled_text_lines;
+use ironsmith::semantic_compare::compare_semantics_scored;
 use ironsmith_compiler::parse_trace as card_parse_trace;
 use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
@@ -133,6 +134,15 @@ struct CompileJob {
     compiled_definition: Option<CardDefinition>,
 }
 
+fn compile_definition_for_job(job: &CompileJob) -> Result<CardDefinition, String> {
+    if let Some(definition) = job.compiled_definition.as_ref() {
+        return Ok(definition.clone());
+    }
+    let _scope = card_parse_trace::scope("display definition");
+    parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
+        .map_err(|err| format!("parse failed for {}: {err:?}", job.name))
+}
+
 fn compile_job_for_name(
     cards_path: &str,
     name: &str,
@@ -246,18 +256,7 @@ fn write_compiled_job<W: Write>(
         ));
     }
 
-    let parsed_definition;
-    let def = if let Some(definition) = job.compiled_definition.as_ref() {
-        definition
-    } else {
-        parsed_definition = {
-            let _scope = card_parse_trace::scope("display definition");
-            parse_card_definition_with_runtime_builder(&job.name, job.parse_input.clone(), false)
-        }
-        .map_err(|err| format!("parse failed for {}: {err:?}", job.name))?;
-        &parsed_definition
-    };
-    let display_def = def;
+    let display_def = compile_definition_for_job(job)?;
 
     outln!("Name: {}", display_def.card.name);
     if detailed {
@@ -291,7 +290,47 @@ fn write_compiled_job<W: Write>(
     }
     if show_definition {
         outln!("Compiled card definition:");
-        outln!("{:#?}", display_def);
+        outln!("{:#?}", &display_def);
+    }
+    Ok(())
+}
+
+fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(), String> {
+    macro_rules! outln {
+        ($($arg:tt)*) => {
+            writeln!(out, $($arg)*)
+                .map_err(|err| format!("failed to write compile output: {err}"))?
+        };
+    }
+
+    if let Some(snapshot) = job.authoritative_snapshot.as_ref()
+        && snapshot.parse_status == ParseStatus::ParseFailed
+    {
+        return Err(format!(
+            "parse failed for {}: {}",
+            job.name,
+            snapshot
+                .parse_error
+                .as_deref()
+                .unwrap_or("unknown authoritative parse failure"),
+        ));
+    }
+
+    let display_def = compile_definition_for_job(job)?;
+    let compiled_lines = compiled_text_lines(&display_def);
+    let (similarity, _, _, _, semantic_mismatch) =
+        compare_semantics_scored(&job.oracle_text, &compiled_lines, None);
+
+    outln!("Name: {}", display_def.card.name);
+    outln!("Similarity: {:.4}", similarity);
+    outln!("Semantic mismatch: {}", semantic_mismatch);
+    outln!("Original oracle text:");
+    outln!("{}", job.oracle_text.trim());
+    outln!("Compiled oracle text:");
+    if compiled_lines.is_empty() {
+        outln!("<none>");
+    } else {
+        outln!("{}", compiled_lines.join("\n").trim());
     }
     Ok(())
 }
@@ -306,6 +345,7 @@ fn main() -> Result<(), String> {
     let mut detailed = false;
     let mut raw = false;
     let mut show_definition = DEFAULT_SHOW_DEFINITION;
+    let mut compare_text = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -359,9 +399,12 @@ fn main() -> Result<(), String> {
             "--show-definition" => {
                 show_definition = true;
             }
+            "--compare-text" => {
+                compare_text = true;
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --compare-text, and/or --stacktrace"
                 ));
             }
         }
@@ -412,7 +455,11 @@ fn main() -> Result<(), String> {
             card_parse_trace::event(format!("Trace: {name}"));
             let job = compile_job_for_name(&cards_path, name, input_text.as_deref())?;
             let mut output = Vec::new();
-            write_compiled_job(&mut output, &job, detailed, raw, show_definition)?;
+            if compare_text {
+                write_compare_text_job(&mut output, &job)?;
+            } else {
+                write_compiled_job(&mut output, &job, detailed, raw, show_definition)?;
+            }
             Ok(output)
         };
 

@@ -63,7 +63,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     view: &DerivedGameView<'_>,
 ) -> crate::cost::TotalCost {
     use crate::ability::AbilityKind;
-    use crate::filter::FilterContext;
+    use crate::filter::{FilterContext, player_filter_matches_game};
 
     fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
         game.turn_store
@@ -141,6 +141,11 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
             }
 
             if let Some(increase) = static_ability.activated_ability_cost_increase() {
+                if let Some(activator_filter) = &increase.activator
+                    && !player_filter_matches_game(activator_filter, activator, game, &filter_ctx)
+                {
+                    continue;
+                }
                 if !increase
                     .filter
                     .matches(ability_source_object, &filter_ctx, game)

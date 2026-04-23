@@ -543,6 +543,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             {
                 subject = subject.replace(" in a graveyard", " in all graveyards");
                 subject = subject.replace(" in graveyard", " in all graveyards");
+                if !subject.contains("graveyard") {
+                    subject.push_str(" in all graveyards");
+                }
             }
             subject
         }
@@ -585,6 +588,17 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
     match expr {
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
+        }
+        AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Graveyard) => {
+            let mut subject = strip_article(filter.description());
+            if filter.owner.is_none() && !filter.single_graveyard {
+                subject = subject.replace(" in a graveyard", " in each graveyard");
+                subject = subject.replace(" in graveyard", " in each graveyard");
+                if !subject.contains("graveyard") {
+                    subject.push_str(" in each graveyard");
+                }
+            }
+            Some(subject)
         }
         AnthemCountExpression::AttachedToAffected(filter) => Some(format!(
             "{} attached to it",
@@ -2641,10 +2655,7 @@ impl StaticAbilityKind for AddSupertypesForFilter {
     }
 
     fn display(&self) -> String {
-        let mut subject = pluralized_subject_text(&self.filter);
-        if subject == "lands" {
-            subject = "land".to_string();
-        }
+        let subject = pluralized_subject_text(&self.filter);
         let singular = subject.starts_with("enchanted ")
             || subject.starts_with("equipped ")
             || subject.starts_with("this ")
@@ -2696,10 +2707,11 @@ impl StaticAbilityKind for RemoveSupertypesForFilter {
     }
 
     fn display(&self) -> String {
-        let mut subject = pluralized_subject_text(&self.filter);
-        if subject == "lands" {
-            subject = "land".to_string();
-        }
+        let subject = if self.filter == ObjectFilter::land() {
+            "All lands".to_string()
+        } else {
+            pluralized_subject_text(&self.filter)
+        };
         let singular = subject.starts_with("enchanted ")
             || subject.starts_with("equipped ")
             || subject.starts_with("this ")
@@ -3304,7 +3316,7 @@ mod tests {
     #[test]
     fn test_remove_supertypes_display_mentions_scope_and_supertype() {
         let remove = RemoveSupertypesForFilter::new(ObjectFilter::land(), vec![Supertype::Snow]);
-        assert_eq!(remove.display(), "land is no longer snow");
+        assert_eq!(remove.display(), "All lands are no longer snow");
     }
 
     #[test]

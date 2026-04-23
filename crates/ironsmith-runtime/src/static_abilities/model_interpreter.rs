@@ -532,12 +532,27 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease {
                 filter,
                 increase,
-            } => Some(super::ActivatedAbilityCostIncrease::new(
-                filter.clone(),
-                increase.clone(),
-            )),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+                activator,
+                non_mana_only,
+                condition,
+            } => {
+                let mut parsed = if let Some(activator) = activator.clone() {
+                    super::ActivatedAbilityCostIncrease::for_activator(
+                        activator,
+                        increase.clone(),
+                        *non_mana_only,
+                    )
+                } else {
+                    super::ActivatedAbilityCostIncrease::new(filter.clone(), increase.clone())
+                };
+                if let Some(condition) = condition.clone() {
+                    parsed = parsed.with_condition(condition);
+                }
+                Some(parsed)
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_activated_ability_cost_increase(ability)
+                    .map(|increase| increase.with_condition(condition.clone()))
             }
             _ => None,
         }
@@ -545,9 +560,14 @@ impl StaticAbilityModelInterpreter {
 
     fn cached_cost_increase(model: &CompiledStaticAbility) -> Option<super::CostIncrease> {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CostIncrease(increase) => Some(
-                super::CostIncrease::new(increase.filter.clone(), increase.amount.clone()),
-            ),
+            ironsmith_core::StaticAbilityPayload::CostIncrease(increase) => {
+                let mut parsed =
+                    super::CostIncrease::new(increase.filter.clone(), increase.amount.clone());
+                if let Some(condition) = increase.condition.clone() {
+                    parsed = parsed.with_condition(condition);
+                }
+                Some(parsed)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_increase(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
@@ -862,6 +882,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
                 StaticAbility::add_supertypes(filter.clone(), supertypes.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::RemoveSupertypes { filter, supertypes } => {
+                StaticAbility::remove_supertypes(filter.clone(), supertypes.clone())
             }
             ironsmith_core::StaticAbilityPayload::MaxCreaturesCanAttackEachCombat(maximum) => {
                 StaticAbility::max_attackers_each_combat(*maximum)

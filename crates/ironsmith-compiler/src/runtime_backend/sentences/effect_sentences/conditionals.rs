@@ -330,6 +330,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "tyvar" => Some(Subtype::Tyvar),
         "ugin" => Some(Subtype::Ugin),
         "vraska" => Some(Subtype::Vraska),
+        "siege" | "sieges" => Some(Subtype::Siege),
         _ => None,
     }
 }

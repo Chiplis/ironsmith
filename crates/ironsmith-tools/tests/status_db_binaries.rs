@@ -748,6 +748,44 @@ fn compile_oracle_text_never_interacts_with_status_db() {
 }
 
 #[test]
+fn compile_oracle_text_compare_text_outputs_only_text_and_score() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    let names_path = dir.path().join("names.txt");
+    write_cards_json(&cards_path);
+    fs::write(&names_path, "Lightning Bolt\nCounterspell\n").expect("write names file");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .current_dir(dir.path())
+        .arg("--names")
+        .arg(&names_path)
+        .arg("--cards")
+        .arg(&cards_path)
+        .arg("--compare-text")
+        .output()
+        .expect("run compile_oracle_text --compare-text");
+    assert!(
+        output.status.success(),
+        "compare-text compile_oracle_text should succeed"
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(stdout.contains("Name: Lightning Bolt"), "{stdout}");
+    assert!(stdout.contains("Name: Counterspell"), "{stdout}");
+    assert!(stdout.contains("Similarity:"), "{stdout}");
+    assert!(stdout.contains("Semantic mismatch:"), "{stdout}");
+    assert!(stdout.contains("Original oracle text:"), "{stdout}");
+    assert!(stdout.contains("Compiled oracle text:"), "{stdout}");
+    assert!(
+        !stdout.contains("Compiled abilities/effects")
+            && !stdout.contains("Compiled card definition:")
+            && !stdout.contains("Type:"),
+        "compare-text mode should not print full definitions, got {stdout}"
+    );
+}
+
+#[test]
 fn compile_oracle_text_rejects_obsolete_db_flags() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");

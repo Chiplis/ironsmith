@@ -717,11 +717,39 @@ impl ActivatedAbilityCostReduction {
 pub struct ActivatedAbilityCostIncrease {
     pub filter: ObjectFilter,
     pub increase: crate::cost::TotalCost,
+    pub activator: Option<PlayerFilter>,
+    pub non_mana_only: bool,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl ActivatedAbilityCostIncrease {
     pub fn new(filter: ObjectFilter, increase: crate::cost::TotalCost) -> Self {
-        Self { filter, increase }
+        Self {
+            filter,
+            increase,
+            activator: None,
+            non_mana_only: false,
+            condition: None,
+        }
+    }
+
+    pub fn for_activator(
+        activator: PlayerFilter,
+        increase: crate::cost::TotalCost,
+        non_mana_only: bool,
+    ) -> Self {
+        Self {
+            filter: ObjectFilter::default(),
+            increase,
+            activator: Some(activator),
+            non_mana_only,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -861,7 +889,29 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
     }
 
     fn display(&self) -> String {
-        if self.filter == ObjectFilter::source() {
+        if let Some(activator) = &self.activator {
+            let mut line = match activator {
+                PlayerFilter::Opponent => format!(
+                    "abilities your opponents activate cost {} more to activate",
+                    self.increase.display()
+                ),
+                PlayerFilter::You => format!(
+                    "abilities you activate cost {} more to activate",
+                    self.increase.display()
+                ),
+                _ => format!(
+                    "abilities {} activate cost {} more to activate",
+                    describe_player_filter_for_spell_target(activator),
+                    self.increase.display()
+                ),
+            };
+            if self.non_mana_only {
+                line.push_str(" unless they're mana abilities");
+            }
+            return describe_cost_modifier_with_condition(line, &self.condition);
+        }
+
+        let line = if self.filter == ObjectFilter::source() {
             format!(
                 "This ability costs an additional {} to activate",
                 self.increase.display()
@@ -872,7 +922,16 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
                 self.filter.description(),
                 self.increase.display()
             )
-        }
+        };
+        describe_cost_modifier_with_condition(line, &self.condition)
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.condition, game, source)
     }
 
     fn modifies_costs(&self) -> bool {

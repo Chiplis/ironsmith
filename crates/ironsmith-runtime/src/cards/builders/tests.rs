@@ -5501,6 +5501,75 @@ fn unprocessed_compiled_lines_render_bannerhide_krushok_keywords_and_clear_simil
     );
 }
 
+#[test]
+fn unprocessed_compiled_lines_compact_expanded_mechanic_asts() {
+    let storm = CardDefinitionBuilder::new(CardId::from_raw(1), "Storm Probe")
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::gain_life(3)])
+        .storm()
+        .build();
+    let storm_rendered = unprocessed_compiled_lines(&storm).join("\n");
+    assert!(
+        storm_rendered.contains("Storm")
+            && !storm_rendered.contains("copy this spell for each spell cast before it this turn"),
+        "expected storm AST to render as the compact keyword, got {storm_rendered}"
+    );
+
+    let mobilize = CardDefinitionBuilder::new(CardId::from_raw(2), "Mobilize Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .vigilance()
+        .mobilize(3)
+        .build();
+    let mobilize_rendered = unprocessed_compiled_lines(&mobilize).join("\n");
+    assert!(
+        mobilize_rendered
+            .to_ascii_lowercase()
+            .contains("mobilize 3")
+            && !mobilize_rendered.contains("Warrior creature tokens that are tapped and attacking"),
+        "expected mobilize AST to render as the compact keyword, got {mobilize_rendered}"
+    );
+
+    let soulbond = CardDefinitionBuilder::new(CardId::from_raw(3), "Soulbond Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .soulbond()
+        .build();
+    let soulbond_rendered = unprocessed_compiled_lines(&soulbond).join("\n");
+    assert_eq!(
+        soulbond_rendered, "Soulbond",
+        "expected soulbond AST to render as the compact keyword"
+    );
+
+    let undaunted = CardDefinitionBuilder::new(CardId::from_raw(4), "Undaunted Probe")
+        .card_types(vec![CardType::Instant])
+        .undaunted()
+        .build();
+    let undaunted_rendered = unprocessed_compiled_lines(&undaunted).join("\n");
+    assert_eq!(
+        undaunted_rendered, "Undaunted",
+        "expected undaunted AST to render as the compact keyword"
+    );
+
+    let suspend = CardDefinitionBuilder::new(CardId::from_raw(5), "Suspend Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .suspend(5, ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .build();
+    let suspend_rendered = unprocessed_compiled_lines(&suspend).join("\n");
+    assert!(
+        suspend_rendered.contains("Suspend 5")
+            && suspend_rendered.contains("{G}")
+            && !suspend_rendered
+                .to_ascii_lowercase()
+                .contains("time counter")
+            && !suspend_rendered
+                .to_ascii_lowercase()
+                .contains("cast this card from exile"),
+        "expected suspend AST to render only the compact keyword line, got {suspend_rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_mobilize_keyword_line_compiles_to_attack_trigger() {

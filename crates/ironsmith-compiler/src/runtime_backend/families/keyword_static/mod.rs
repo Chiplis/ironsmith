@@ -512,6 +512,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
         single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
+        multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
         single_static_ability_ast_passthrough_rule!(parse_trigger_duplication_line_ast),
         single_static_ability_ast_rule!(
@@ -735,6 +736,11 @@ fn parse_static_ability_ast_line_early_lexed(
         return Ok(Some(vec![
             StaticAbility::krrik_black_mana_may_be_paid_with_life().into(),
         ]));
+    }
+    if let Some(abilities) = parse_spell_and_player_activated_ability_cost_modifier_line(tokens)? {
+        return Ok(Some(
+            abilities.into_iter().map(StaticAbilityAst::from).collect(),
+        ));
     }
 
     if let Some(spec) = split_untap_each_other_players_untap_step_line_lexed(tokens) {
@@ -4061,6 +4067,119 @@ pub(crate) fn parse_spells_cost_modifier_line(
         ability = ability.with_condition(condition);
     }
     Ok(Some(StaticAbility::new(ability)))
+}
+
+pub(crate) fn parse_spell_and_player_activated_ability_cost_modifier_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let Some(and_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        if token.is_word("and")
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("abilities"))
+        {
+            Some(idx)
+        } else {
+            None
+        }
+    }) else {
+        return Ok(None);
+    };
+
+    let left_tokens = trim_commas(&tokens[..and_idx]);
+    let right_tokens = trim_commas(&tokens[and_idx + 1..]);
+    let Some(spell_cost_ability) = parse_spells_cost_modifier_line(&left_tokens)? else {
+        return Ok(None);
+    };
+    let Some(mut activated_cost_ability) =
+        parse_player_activated_ability_cost_modifier_clause(&right_tokens)?
+    else {
+        return Ok(None);
+    };
+
+    if let Some(spells_idx) = find_index(tokens, |token| {
+        token.is_word("spell") || token.is_word("spells")
+    }) {
+        let (prefix_condition, _) = parse_cost_modifier_prefix_condition(tokens, spells_idx)?;
+        if let Some(condition) = prefix_condition {
+            activated_cost_ability = activated_cost_ability.with_condition(condition);
+        }
+    }
+
+    Ok(Some(vec![spell_cost_ability, activated_cost_ability]))
+}
+
+fn parse_player_activated_ability_cost_modifier_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.len() < 7 || clause_words.first().copied() != Some("abilities") {
+        return Ok(None);
+    }
+
+    let Some(activate_idx) = find_index(&clause_words, |word| {
+        *word == "activate" || *word == "activates"
+    }) else {
+        return Ok(None);
+    };
+    let activator_words = &clause_words[1..activate_idx];
+    let activator = match activator_words {
+        ["you"] => PlayerFilter::You,
+        ["your", "opponents"] | ["opponents"] => PlayerFilter::Opponent,
+        _ => return Ok(None),
+    };
+
+    let Some(cost_idx) = find_index(&clause_words[activate_idx + 1..], |word| {
+        *word == "cost" || *word == "costs"
+    })
+    .map(|idx| idx + activate_idx + 1) else {
+        return Ok(None);
+    };
+    let cost_token_idx = crate::runtime_backend::token_index_for_word_index(tokens, cost_idx)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unable to map activated-ability cost modifier amount (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+
+    let amount_tokens = &tokens[cost_token_idx + 1..];
+    let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+    let (increase, used) = if let Some((mana_cost, used)) = parsed_mana_cost {
+        (TotalCost::mana(mana_cost), used)
+    } else if let Some((Value::Fixed(amount), used)) = parsed_amount {
+        if amount < 0 {
+            return Ok(None);
+        }
+        let generic = amount.min(u8::MAX as i32) as u8;
+        (
+            TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(generic)])),
+            used,
+        )
+    } else {
+        return Ok(None);
+    };
+    let remaining_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
+    if parse_cost_modifier_direction(&remaining_words) != Some(CostModifierDirection::More)
+        || !contains_keyword_static_phrase(&remaining_words, &["to", "activate"])
+    {
+        return Ok(None);
+    }
+
+    let non_mana_only = contains_keyword_static_phrase(
+        &remaining_words,
+        &["unless", "theyre", "mana", "abilities"],
+    ) || contains_keyword_static_phrase(
+        &remaining_words,
+        &["unless", "they're", "mana", "abilities"],
+    );
+    Ok(Some(
+        StaticAbility::increase_activated_ability_costs_for_activator(
+            activator,
+            increase,
+            non_mana_only,
+        ),
+    ))
 }
 
 fn strip_relative_target_clause(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
