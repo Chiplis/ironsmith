@@ -11870,7 +11870,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
         && reveal.is_none()
     {
         let chosen = match n {
-            1 => "one of them".to_string(),
+            1 => "one of those cards".to_string(),
             n => format!(
                 "{} of them",
                 small_number_word(n as u32)
@@ -11884,7 +11884,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
     }
     let chosen = if base_filter == crate::filter::ObjectFilter::default() {
         match exact_count {
-            Some(1) => "one of them".to_string(),
+            Some(1) => "one of those cards".to_string(),
             Some(n) => format!(
                 "{} of them",
                 small_number_word(n as u32)
@@ -20281,9 +20281,6 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
     };
-    if let Some(undaunted) = describe_structural_undaunted_keyword(static_ability) {
-        return Some(undaunted);
-    }
     let raw_text = static_ability.display();
     let raw_text = raw_text.trim();
     let text = raw_text.to_ascii_lowercase();
@@ -21212,19 +21209,6 @@ fn describe_structural_mobilize_keyword(
         return None;
     }
     Some(format!("Mobilize {amount}"))
-}
-
-fn describe_structural_undaunted_keyword(
-    static_ability: &crate::static_abilities::StaticAbility,
-) -> Option<String> {
-    let reduction = static_ability.cost_reduction()?;
-    if reduction.condition.is_some()
-        || reduction.filter != ObjectFilter::default()
-        || reduction.reduction != Value::CountPlayers(PlayerFilter::Opponent)
-    {
-        return None;
-    }
-    Some("Undaunted".to_string())
 }
 
 fn describe_structural_casualty_keyword(

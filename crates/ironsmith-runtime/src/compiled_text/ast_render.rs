@@ -65,10 +65,7 @@ fn describe_resolution_program_for_card(
         .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
     if !has_visible_gift_line {
         let rendered = describe_resolution_program(program);
-        if def.card.is_instant() || def.card.is_sorcery() {
-            return rewrite_damage_phrases_for_permanent_abilities(&rendered, &def.card.name, true);
-        }
-        return rendered;
+        return rewrite_revealed_count_damage_for_spell(def, &rendered);
     }
 
     let mut rendered_segments = Vec::new();
@@ -79,23 +76,39 @@ fn describe_resolution_program_for_card(
 
         if segment.self_replacements.len() == 1 {
             let branch = &segment.self_replacements[0];
-            rendered_segments.push(describe_effect_list(&[Effect::conditional(
+            let rendered = describe_effect_list(&[Effect::conditional(
                 branch.condition.clone(),
                 branch.replacement_effects.clone(),
                 segment.default_effects.clone(),
-            )]));
+            )]);
+            rendered_segments.push(rewrite_revealed_count_damage_for_spell(def, &rendered));
             continue;
         }
 
         if !segment.default_effects.is_empty() {
-            rendered_segments.push(describe_effect_list(&segment.default_effects));
+            let rendered = describe_effect_list(&segment.default_effects);
+            rendered_segments.push(rewrite_revealed_count_damage_for_spell(def, &rendered));
         }
         for branch in &segment.self_replacements {
-            rendered_segments.push(describe_effect_list(&branch.replacement_effects));
+            let rendered = describe_effect_list(&branch.replacement_effects);
+            rendered_segments.push(rewrite_revealed_count_damage_for_spell(def, &rendered));
         }
     }
 
     rendered_segments.join(". ")
+}
+
+fn rewrite_revealed_count_damage_for_spell(def: &CardDefinition, rendered: &str) -> String {
+    if !(def.card.is_instant() || def.card.is_sorcery()) {
+        return rendered.to_string();
+    }
+    let lower = rendered.to_ascii_lowercase();
+    if !lower.contains("revealed this way")
+        || (!lower.contains("deal ") && !lower.contains(". deal ") && !lower.contains(", deal "))
+    {
+        return rendered.to_string();
+    }
+    rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
 }
 
 pub(super) fn describe_alternative_cast_line(

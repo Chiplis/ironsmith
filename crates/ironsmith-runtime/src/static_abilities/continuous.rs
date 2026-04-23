@@ -589,17 +589,6 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
         }
-        AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Graveyard) => {
-            let mut subject = strip_article(filter.description());
-            if filter.owner.is_none() && !filter.single_graveyard {
-                subject = subject.replace(" in a graveyard", " in each graveyard");
-                subject = subject.replace(" in graveyard", " in each graveyard");
-                if !subject.contains("graveyard") {
-                    subject.push_str(" in each graveyard");
-                }
-            }
-            Some(subject)
-        }
         AnthemCountExpression::AttachedToAffected(filter) => Some(format!(
             "{} attached to it",
             strip_article(filter.description())

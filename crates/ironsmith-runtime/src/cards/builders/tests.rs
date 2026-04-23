@@ -7025,6 +7025,28 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_scent_of_cinder_uses_source_damage_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scent of Cinder")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal any number of red cards in your hand. Scent of Cinder deals X damage to any target, where X is the number of cards revealed this way.",
+        )
+        .expect("Scent of Cinder should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("reveal any number of red cards in your hand")
+            && rendered.contains(
+                "scent of cinder deals x damage to any target, where x is the number of cards revealed this way"
+            ),
+        "expected Scent of Cinder to keep its source-linked reveal-count damage text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_merfolk_spy_keeps_random_hand_reveal_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Merfolk Spy")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
@@ -18192,8 +18214,12 @@ fn parse_sound_the_call_token_does_not_misread_named_card_reference_as_token_nam
         "token name should remain subtype-derived Wolf, got {rendered}"
     );
     assert!(
-        rendered.contains("number of cards named sound the call"),
-        "expected token to keep +1/+1-for-each-named-card ability, got {rendered}"
+        rendered.contains("card named sound the call"),
+        "expected token to keep its named-card scaling ability, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each card named sound the call in each graveyard"),
+        "expected token ability to keep each-graveyard oracle wording, got {rendered}"
     );
 }
 

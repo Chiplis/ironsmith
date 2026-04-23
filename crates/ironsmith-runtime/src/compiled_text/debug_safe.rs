@@ -16,7 +16,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    compiled_text_lines(def)
+    compact_unprocessed_surface_markers(def, compiled_text_lines(def))
 }
 
 fn safe_intrinsic_label_from_ability(ability: &Ability) -> Option<String> {
@@ -99,6 +99,47 @@ fn normalize_debug_safe_sentence_surface(line: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn compact_unprocessed_surface_markers(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+    if !has_structural_undaunted(def) {
+        return lines;
+    }
+
+    lines.into_iter()
+        .map(|line| {
+            let compact = compact_whitespace(line.trim());
+            if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
+                || compact.eq_ignore_ascii_case("Spells cost {X} less to cast")
+            {
+                "Undaunted".to_string()
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+fn has_structural_undaunted(def: &CardDefinition) -> bool {
+    def.abilities.iter().any(|ability| {
+        if ability.functional_zones.len() != 2
+            || !ability.functional_zones.contains(&Zone::Hand)
+            || !ability.functional_zones.contains(&Zone::Stack)
+        {
+            return false;
+        }
+
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(reduction) = static_ability.cost_reduction() else {
+            return false;
+        };
+
+        reduction.condition.is_none()
+            && reduction.filter == ObjectFilter::default()
+            && reduction.reduction == Value::CountPlayers(PlayerFilter::Opponent)
+    })
 }
 
 fn normalize_modal_header_surface(line: &str) -> Option<String> {
@@ -276,12 +317,24 @@ fn compact_create_token_with_quoted_ability_line(line: &str) -> Option<String> {
     if ability.is_empty() {
         return None;
     }
+    let ability = normalize_quoted_token_ability_surface(ability);
     let ability = if ability.ends_with('.') {
-        ability.to_string()
+        ability
     } else {
         format!("{ability}.")
     };
     Some(format!("{token_text} token. It has \"{ability}\""))
+}
+
+fn normalize_quoted_token_ability_surface(ability: &str) -> String {
+    let trimmed = ability.trim();
+    if let Some(name) = trimmed
+        .strip_prefix("This token gets +X/+X, where X is the number of cards named ")
+        .and_then(|rest| rest.strip_suffix(" in all graveyards"))
+    {
+        return format!("This token gets +1/+1 for each card named {name} in each graveyard");
+    }
+    trimmed.to_string()
 }
 
 fn compact_first_time_each_turn_trigger_line(line: &str) -> Option<String> {
@@ -954,6 +1007,7 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
         )
         .replace("a Elf", "an Elf")
         .replace(" hand :", " hand:");
+        let line = normalize_named_card_token_graveyard_surface(&line);
         normalized.push(normalize_citys_blessing_instead_surface(&line));
         idx += 1;
     }
@@ -968,6 +1022,23 @@ fn normalize_citys_blessing_instead_surface(line: &str) -> String {
         return "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
     }
     line.to_string()
+}
+
+fn normalize_named_card_token_graveyard_surface(line: &str) -> String {
+    let Some((prefix, rest)) = line
+        .split_once("It has \"This token gets +X/+X, where X is the number of cards named ")
+    else {
+        return line.to_string();
+    };
+    let Some(name) = rest
+        .strip_suffix(" in all graveyards.\"")
+        .or_else(|| rest.strip_suffix(" in all graveyards\""))
+    else {
+        return line.to_string();
+    };
+    format!(
+        "{prefix}It has \"This token gets +1/+1 for each card named {name} in each graveyard.\""
+    )
 }
 
 fn strip_duplicate_gift_card_draw_surface(line: &str) -> String {
