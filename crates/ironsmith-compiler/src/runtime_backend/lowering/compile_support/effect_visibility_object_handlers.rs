@@ -310,6 +310,36 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
                 Vec::new(),
             )
         }
+        EffectAst::RevealCardsFromHand {
+            player,
+            count,
+            count_value,
+            tag,
+        } => {
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let resolved_tag = if tag.as_str() == IT_TAG {
+                TagKey::from(ctx.next_tag("revealed").as_str())
+            } else {
+                tag.clone()
+            };
+            let mut filter = ObjectFilter::default();
+            filter.zone = Some(Zone::Hand);
+            filter.owner = Some(player_filter.clone());
+            let choose = crate::effects::ChooseObjectsEffect::new(
+                filter,
+                *count,
+                player_filter.clone(),
+                resolved_tag.clone(),
+            )
+            .with_count_value_opt(count_value.clone())
+            .in_zone(Zone::Hand)
+            .reveal();
+            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_player_filter = Some(player_filter);
+            (vec![Effect::new(choose)], choices)
+        }
         EffectAst::LookAtTopCards { player, count, tag } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
@@ -985,9 +1015,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 });
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             if references_revealed_hand && ctx.last_player_filter.is_some() {
-                resolved_filter.tagged_constraints.retain(|constraint| {
-                    !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                });
+                if ctx.last_object_tag.is_none() {
+                    resolved_filter.tagged_constraints.retain(|constraint| {
+                        !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                    });
+                }
                 resolved_filter.owner = ctx.last_player_filter.clone();
             }
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
@@ -1050,9 +1082,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 });
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             if references_revealed_hand && ctx.last_player_filter.is_some() {
-                resolved_filter.tagged_constraints.retain(|constraint| {
-                    !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                });
+                if ctx.last_object_tag.is_none() {
+                    resolved_filter.tagged_constraints.retain(|constraint| {
+                        !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                    });
+                }
                 resolved_filter.owner = ctx.last_player_filter.clone();
             }
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {

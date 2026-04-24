@@ -213,6 +213,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. } => {}
         EffectAst::RevealTagged { .. } => {}
+        EffectAst::RevealCardsFromHand { .. } => {}
         EffectAst::LookAtTopCards { .. } => {}
         EffectAst::RevealHand { .. } => {}
         EffectAst::PutIntoHand { .. } => {}

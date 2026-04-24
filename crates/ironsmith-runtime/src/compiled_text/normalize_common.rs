@@ -1,4 +1,5 @@
 use super::*;
+use crate::filter::StackObjectKind;
 use crate::TaggedOpbjectRelation;
 
 use std::cell::Cell;
@@ -4640,6 +4641,9 @@ pub(super) fn describe_card_count(value: &Value) -> String {
             }
             format!("{n} cards")
         }
+        Value::CardTypesAmong(_) | Value::CardTypesInGraveyard(_) => {
+            format!("X cards, where X is {}", describe_value(value))
+        }
         _ => {
             if let Some(backref) = describe_effect_count_backref(value) {
                 format!("{backref} cards")
@@ -4825,6 +4829,18 @@ pub(super) fn describe_object_count(value: &Value) -> String {
 pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
     if let Some(subject) = describe_commander_zone_union_subject(filter) {
         return subject;
+    }
+    if filter.stack_kind == Some(StackObjectKind::Spell)
+        && filter.cast_by == Some(PlayerFilter::You)
+        && filter.zone == Some(Zone::Stack)
+    {
+        return "spells you've cast this turn".to_string();
+    }
+    if filter.stack_kind == Some(StackObjectKind::Spell)
+        && filter.cast_by == Some(PlayerFilter::Opponent)
+        && filter.zone == Some(Zone::Stack)
+    {
+        return "spells your opponents have cast this turn".to_string();
     }
     if describe_tagged_this_way_action(filter) == Some("revealed") {
         return pluralize_noun_phrase(&describe_for_each_count_filter(filter));
@@ -6487,7 +6503,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the damage dealt this turn by the chosen spell".to_string()
         }
         Value::CardTypesInGraveyard(filter) => format!(
-            "the number of distinct card types in {} graveyard",
+            "the number of card types among cards in {} graveyard",
             describe_possessive_player_filter(filter)
         ),
         Value::Devotion { player, color } => format!(

@@ -421,6 +421,14 @@ fn advance_reference_frame_for_effect(
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
         }
+        EffectAst::RevealCardsFromHand { player, tag, .. } => {
+            track_effect_player(player.clone(), frame, true, true)?;
+            frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                next_reference_tag(id_gen, "revealed")
+            } else {
+                tag.as_str().to_string()
+            });
+        }
         EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { player, .. }
         | EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;

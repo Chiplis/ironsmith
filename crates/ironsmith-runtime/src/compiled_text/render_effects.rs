@@ -1,5 +1,7 @@
 use super::*;
 use crate::effect::SearchSelectionMode;
+use crate::filter::StackObjectKind;
+use ironsmith_core::LibraryBottomOrder;
 
 /// Compile a list of effects to human-readable text (for stack ability display).
 pub fn compile_effect_list(effects: &[Effect]) -> String {
@@ -210,6 +212,284 @@ fn render_tainted_pact_repeat_process(
 
 fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Zone> {
     choose.filter.zone.or(choose.zone)
+}
+
+fn describe_reveal_hand_subset_choose_then_discard(effects: &[&Effect]) -> Option<String> {
+    let [reveal_effect, choose_effect, discard_effect] = effects else {
+        return None;
+    };
+    let reveal = reveal_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if !reveal.reveal
+        || reveal.is_search
+        || choose.is_search
+        || !choose.count.is_single()
+        || choose_primary_zone(reveal) != Some(Zone::Hand)
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || reveal.filter.owner.as_ref() != Some(&reveal.chooser)
+        || choose.filter.owner.as_ref() != Some(&reveal.chooser)
+        || discard.player != reveal.chooser
+        || discard.count != Value::Fixed(1)
+        || discard.random
+    {
+        return None;
+    }
+    let (count_text, count_suffix) = if reveal.count.dynamic_x {
+        let count_value = reveal.count_value.as_ref()?;
+        (
+            "a number of".to_string(),
+            format!(" equal to {}", describe_value(count_value)),
+        )
+    } else {
+        let reveal_count = reveal.count.max.filter(|max| *max == reveal.count.min)?;
+        (
+            small_number_word(reveal_count as u32)
+                .map(str::to_string)
+                .unwrap_or_else(|| reveal_count.to_string()),
+            String::new(),
+        )
+    };
+    let card_filter = discard.card_filter.as_ref()?;
+    let chooses_revealed = choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == reveal.tag
+    });
+    let discards_chosen = card_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == choose.tag
+    });
+    if !chooses_revealed || !discards_chosen {
+        return None;
+    }
+
+    let player = describe_player_filter(&reveal.chooser);
+    let verb = player_verb(&player, "reveal", "reveals");
+    let followup = if reveal.count.dynamic_x {
+        ". You choose one of those cards"
+    } else {
+        " and you choose one of them"
+    };
+    Some(format!(
+        "{} {} {count_text} cards from their hand{count_suffix}{followup}. That player discards that card",
+        capitalize_first(&player),
+        verb
+    ))
+}
+
+fn describe_reveal_top_two_optional_picks_rest_bottom(effects: &[&Effect]) -> Option<String> {
+    let [look_effect, reveal_effect, first_choose_effect, first_move_effect, second_choose_effect, second_move_effect, rest_effect] =
+        effects
+    else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let first_choose = first_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let first_tagged = first_move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let first_move = first_tagged
+        .effect
+        .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    let second_choose =
+        second_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let second_tagged = second_move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let second_move = second_tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let rest = rest_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    let Value::Fixed(count) = look.count else {
+        return None;
+    };
+    if look.player != PlayerFilter::You
+        || reveal.tag != look.tag
+        || first_choose.count.min != 0
+        || first_choose.count.max != Some(1)
+        || second_choose.count.min != 0
+        || second_choose.count.max != Some(1)
+        || choose_primary_zone(first_choose) != Some(Zone::Library)
+        || choose_primary_zone(second_choose) != Some(Zone::Library)
+        || first_choose.filter.card_types != vec![CardType::Land]
+        || first_choose.filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                || constraint.tag != look.tag
+        })
+        || second_choose.filter.subtypes.len() != 1
+        || second_choose.filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                || constraint.tag != look.tag
+        })
+        || !matches!(&first_move.target, ChooseSpec::Tagged(tag) if tag == &first_choose.tag)
+        || !first_move.tapped
+        || first_move.controller != PlayerFilter::You
+        || !matches!(&second_move.target, ChooseSpec::Tagged(tag) if tag == &second_choose.tag)
+        || second_move.zone != Zone::Hand
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&first_tagged.tag)
+        || second_tagged.tag != first_tagged.tag
+        || rest.order != LibraryBottomOrder::Random
+        || rest.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let count_text = small_number_word(count as u32)
+        .map(str::to_string)
+        .unwrap_or_else(|| count.to_string());
+    let subtype_text = second_choose.filter.subtypes[0].to_string();
+    Some(format!(
+        "Reveal the top {count_text} cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one {subtype_text} card from among them into your hand. Put the rest on the bottom of your library in a random order"
+    ))
+}
+
+fn describe_exile_targets_opponent_piles_return_chosen(effects: &[&Effect]) -> Option<String> {
+    let [exile_effect, tag_source_effect, choose_effect, move_chosen_effect, rest_effect] = effects
+    else {
+        return None;
+    };
+    let exiled = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = exiled
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::WithCount(inner, count) = &exile.spec else {
+        return None;
+    };
+    let ChooseSpec::Target(target) = inner.as_ref() else {
+        return None;
+    };
+    let ChooseSpec::Object(exile_filter) = target.as_ref() else {
+        return None;
+    };
+    let tag_source = tag_source_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let moved = move_chosen_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let move_chosen = moved
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let for_each = rest_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [rest_inner] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let rest_conditional = rest_inner.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [rest_move] = rest_conditional.if_false.as_slice() else {
+        return None;
+    };
+    let rest_move = rest_move.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+
+    if count.min != 0
+        || count.max != Some(5)
+        || exile.face_down
+        || exile_filter.zone != Some(Zone::Graveyard)
+        || exile_filter.card_types != vec![CardType::Creature]
+        || tag_source.tag.as_str() != "divvy_source"
+        || choose.tag.as_str() != "divvy_chosen"
+        || choose.chooser != PlayerFilter::Opponent
+        || choose_primary_zone(choose) != Some(Zone::Exile)
+        || choose.count.min != 0
+        || choose.count.max.is_some()
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == tag_source.tag
+        })
+        || !matches!(&move_chosen.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || move_chosen.zone != Zone::Battlefield
+        || move_chosen.battlefield_controller != crate::effects::BattlefieldController::You
+        || for_each.tag != tag_source.tag
+        || !rest_conditional.if_true.is_empty()
+        || !matches!(&rest_move.target, ChooseSpec::Iterated)
+        || rest_move.zone != Zone::Graveyard
+    {
+        return None;
+    }
+
+    Some("Exile up to five target creature cards from graveyards. An opponent separates those cards into two piles. Put all cards from the pile of your choice onto the battlefield under your control and the rest into their owners' graveyards".to_string())
+}
+
+fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, for_each_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [copy_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let tagged_copy = copy_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let copy = tagged_copy
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !choose.count.dynamic_x
+        || choose.count.up_to_x
+        || choose.count_value.is_some()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.filter.card_types
+            != vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ]
+        || for_each.tag != choose.tag
+        || !matches!(copy.target, ChooseSpec::Iterated)
+        || copy.count != Value::X
+        || copy.controller != PlayerFilter::You
+        || copy.enters_tapped
+        || copy.has_haste
+        || copy.enters_attacking
+        || copy.pt_adjustment.is_some()
+        || !copy.added_card_types.is_empty()
+        || !copy.added_subtypes.is_empty()
+        || !copy.removed_supertypes.is_empty()
+        || copy.set_base_power_toughness.is_some()
+        || copy.set_colors.is_some()
+        || copy.set_card_types.is_some()
+        || copy.set_subtypes.is_some()
+        || !copy.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+    Some("For each of X target permanents, create X tokens that are copies of that permanent".to_string())
+}
+
+fn describe_counter_artifact_ability_destroy_source(effects: &[&Effect]) -> Option<String> {
+    let [counter_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let tagged_counter = counter_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let counter = tagged_counter
+        .effect
+        .downcast_ref::<crate::effects::CounterEffect>()?;
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let ChooseSpec::Target(target) = &counter.target else {
+        return None;
+    };
+    let ChooseSpec::Object(counter_filter) = target.as_ref() else {
+        return None;
+    };
+    let [destroy_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let destroy = destroy_effect.downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::Object(destroy_filter) = &destroy.spec else {
+        return None;
+    };
+    if counter_filter.stack_kind != Some(StackObjectKind::ActivatedAbility)
+        || counter_filter.card_types != vec![CardType::Artifact]
+        || counter_filter.zone != Some(Zone::Stack)
+        || !conditional.if_false.is_empty()
+        || destroy_filter.zone != Some(Zone::Battlefield)
+        || destroy_filter.card_types != vec![CardType::Artifact]
+        || destroy_filter.tagged_constraints.is_empty()
+    {
+        return None;
+    }
+    Some(
+        "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield"
+            .to_string(),
+    )
 }
 
 fn greatest_commander_mana_value_owned_by(filter: &ObjectFilter, owner: PlayerFilter) -> bool {
@@ -1646,6 +1926,39 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if filtered.len() == 2
         && let Some(compact) =
             describe_split_piles_then_choose_attack_or_block_restriction(filtered[0], filtered[1])
+    {
+        return compact;
+    }
+    if filtered.len() == 3
+        && let Some(compact) = describe_reveal_hand_subset_choose_then_discard(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 4
+        && filtered[0]
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+        && let Some(compact) = describe_reveal_hand_subset_choose_then_discard(&filtered[1..])
+    {
+        return compact;
+    }
+    if filtered.len() == 7
+        && let Some(compact) = describe_reveal_top_two_optional_picks_rest_bottom(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 5
+        && let Some(compact) = describe_exile_targets_opponent_piles_return_chosen(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 2
+        && let Some(compact) = describe_choose_x_permanents_create_x_copies(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 2
+        && let Some(compact) = describe_counter_artifact_ability_destroy_source(&filtered)
     {
         return compact;
     }

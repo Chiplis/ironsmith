@@ -4486,7 +4486,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     if has_spell_cast_turn {
         let player = if filter_words
             .iter()
-            .any(|word| matches!(*word, "you" | "your" | "youve"))
+            .any(|word| matches!(*word, "you" | "your" | "youve" | "you've"))
         {
             PlayerFilter::You
         } else if filter_words
@@ -4497,6 +4497,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         } else {
             PlayerFilter::Any
         };
+
+        if contains_keyword_static_phrase(&filter_words, &["card", "type"])
+            || contains_keyword_static_phrase(&filter_words, &["card", "types"])
+        {
+            let mut filter = ObjectFilter::spell();
+            filter.cast_by = Some(player);
+            return Ok(Some(Value::CardTypesAmong(filter)));
+        }
 
         let other_than_first =
             contains_keyword_static_phrase(&filter_words, &["other", "than", "the", "first"]);

@@ -537,6 +537,49 @@ pub(crate) fn parse_reveal(
             || words.as_slice() == ["his", "or", "her", "hand"];
         if !is_full_hand_reveal {
             if grammar::contains_word(tokens, "from") {
+                if let Some(equal_idx) = words.iter().position(|word| *word == "equal") {
+                    let tail = &words[equal_idx..];
+                    let count_value = if tail.starts_with(&[
+                        "equal",
+                        "to",
+                        "the",
+                        "number",
+                        "of",
+                        "creatures",
+                        "in",
+                        "your",
+                        "party",
+                    ]) {
+                        Some(Value::PartySize(PlayerFilter::You))
+                    } else {
+                        parse_dynamic_cost_modifier_value(&tokens[equal_idx..])?
+                    };
+                    if let Some(count_value) = count_value
+                        && (grammar::contains_word(tokens, "card")
+                            || grammar::contains_word(tokens, "cards"))
+                        && (grammar::contains_word(tokens, "their")
+                            || grammar::contains_word(tokens, "your"))
+                    {
+                        return Ok(EffectAst::RevealCardsFromHand {
+                            player,
+                            count: ChoiceCount::dynamic_x(),
+                            count_value: Some(count_value),
+                            tag: TagKey::from(IT_TAG),
+                        });
+                    }
+                }
+                if let Some((count, _used)) = parse_number(tokens)
+                    && grammar::contains_word(tokens, "cards")
+                    && (grammar::contains_word(tokens, "their")
+                        || grammar::contains_word(tokens, "your"))
+                {
+                    return Ok(EffectAst::RevealCardsFromHand {
+                        player,
+                        count: ChoiceCount::exactly(count as usize),
+                        count_value: None,
+                        tag: TagKey::from(IT_TAG),
+                    });
+                }
                 return Ok(EffectAst::RevealTagged {
                     tag: TagKey::from(IT_TAG),
                 });
@@ -730,4 +773,3 @@ fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<
         Some(Value::HalfLifeTotalRoundedUp(player_filter))
     }
 }
-

@@ -971,6 +971,12 @@ pub(crate) enum EffectAst {
     RevealTagged {
         tag: TagKey,
     },
+    RevealCardsFromHand {
+        player: PlayerAst,
+        count: ChoiceCount,
+        count_value: Option<Value>,
+        tag: TagKey,
+    },
     ExileTopOfLibrary {
         count: Value,
         player: PlayerAst,

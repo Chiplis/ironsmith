@@ -15053,6 +15053,25 @@ fn parse_reveal_hand_choose_card_from_it_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_partial_reveal_from_hand_choose_one_of_them_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Blackmail Variant")
+        .parse_text(
+            "Target player reveals three cards from their hand and you choose one of them. That player discards that card.",
+        )
+        .expect("partial hand reveal then choose-one-of-them chain should parse");
+    let joined = format!("{:#?}", def.spell_effect).to_lowercase();
+    let compact = joined.split_whitespace().collect::<String>();
+    assert!(
+        joined.contains("chooseobjectseffect")
+            && joined.contains("reveal: true")
+            && compact.contains("zone:some(hand")
+            && joined.contains("discard"),
+        "expected partial hand reveal, chosen-card link, and discard effect chain, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_trigger_target_opponent_gains_control_of_it_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Control Of It Variant")
         .parse_text("When this creature enters, target opponent gains control of it.")

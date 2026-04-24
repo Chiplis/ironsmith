@@ -257,11 +257,18 @@ pub(crate) fn parse_you_choose_objects_clause(
             clause_words.join(" ")
         )));
     }
-    if matches!(
+    if matches!(choose_words.as_slice(), ["of", "them"] | ["of", "those"]) {
+        references_it = true;
+        references_container_it = true;
+        choose_words = vec!["card"];
+    } else if matches!(
         choose_words.as_slice(),
         ["of", "them", rest @ ..] | ["of", "those", rest @ ..] if !rest.is_empty()
     ) {
         references_it = true;
+        if matches!(choose_words.as_slice(), ["of", "those", "card"] | ["of", "those", "cards"]) {
+            references_container_it = true;
+        }
         choose_words = choose_words[2..].to_vec();
     }
 
@@ -597,6 +604,29 @@ mod tests {
         assert!(
             filter.owner.is_none(),
             "expected no owner pin, got {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_you_choose_objects_clause_supports_one_of_them() {
+        let tokens = tokenize_line("You choose one of them.", 0);
+
+        let (chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse choose-one-of-them clause")
+            .expect("expected choose clause");
+
+        assert_eq!(chooser, PlayerAst::You);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            "expected one-of-them choice to reference the previous object set, got {filter:?}"
+        );
+        assert!(
+            filter.controller.is_none() && filter.owner.is_none(),
+            "expected referenced choice not to default to your permanent, got {filter:?}"
         );
     }
 
