@@ -232,11 +232,16 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
             return false;
         };
 
-        if let Some(obj) = ctx.game.object(damage.source) {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-        } else {
-            false
-        }
+        ctx.game
+            .object(damage.source)
+            .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            || ctx
+                .event_source_snapshot
+                .filter(|snapshot| snapshot.object_id == damage.source)
+                .is_some_and(|snapshot| {
+                    self.filter
+                        .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                })
     }
 
     fn display(&self) -> String {
@@ -355,10 +360,17 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
                 }
             }
             DamageSourceConstraint::Filter(filter) => {
-                let Some(obj) = ctx.game.object(damage.source) else {
-                    return false;
-                };
-                if !filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+                let matches_current = ctx
+                    .game
+                    .object(damage.source)
+                    .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game));
+                let matches_lki = ctx
+                    .event_source_snapshot
+                    .filter(|snapshot| snapshot.object_id == damage.source)
+                    .is_some_and(|snapshot| {
+                        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                    });
+                if !matches_current && !matches_lki {
                     return false;
                 }
             }
@@ -488,10 +500,16 @@ impl ReplacementMatcher for DamageToSelfConstraintMatcher {
         }
 
         if let Some(source_filter) = &self.source_filter {
-            let Some(source_obj) = ctx.game.object(damage.source) else {
-                return false;
-            };
-            if !source_filter.matches(source_obj, &ctx.filter_ctx, ctx.game) {
+            let matches_current = ctx.game.object(damage.source).is_some_and(|source_obj| {
+                source_filter.matches(source_obj, &ctx.filter_ctx, ctx.game)
+            });
+            let matches_lki = ctx
+                .event_source_snapshot
+                .filter(|snapshot| snapshot.object_id == damage.source)
+                .is_some_and(|snapshot| {
+                    source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                });
+            if !matches_current && !matches_lki {
                 return false;
             }
         }
@@ -634,12 +652,16 @@ impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
             return false;
         }
 
-        let Some(source_obj) = ctx.game.object(damage.source) else {
-            return false;
-        };
-
-        self.source_filter
-            .matches(source_obj, &ctx.filter_ctx, ctx.game)
+        ctx.game.object(damage.source).is_some_and(|source_obj| {
+            self.source_filter
+                .matches(source_obj, &ctx.filter_ctx, ctx.game)
+        }) || ctx
+            .event_source_snapshot
+            .filter(|snapshot| snapshot.object_id == damage.source)
+            .is_some_and(|snapshot| {
+                self.source_filter
+                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            })
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -830,5 +852,54 @@ mod tests {
         let unpreventable =
             unpreventable_damage(creature_source, DamageTarget::Object(target), 3, false);
         assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
+    fn test_damage_source_filter_matchers_use_lki_for_departed_source() {
+        let mut game = setup_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+
+        let target_card = CardBuilder::new(CardId::new(), "Protected Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let target = game.create_object_from_card(&target_card, alice, Zone::Battlefield);
+
+        let source_card = CardBuilder::new(CardId::new(), "Departing Creature Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source exists before move"),
+            &game,
+        );
+        let moved_source = game
+            .move_object(
+                source,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+            )
+            .expect("source moved");
+        assert_ne!(source, moved_source);
+
+        let from_creature = damage(source, DamageTarget::Object(target), 3, false);
+        let ctx = EventContext::for_replacement_effect(alice, target, &game)
+            .with_event_source_snapshot(Some(&source_snapshot));
+
+        assert!(DamageFromSourceMatcher::from_creature().matches_event(&from_creature, &ctx));
+        assert!(
+            PreventableDamageConstraintMatcher::from_filter(
+                ObjectFilter::creature(),
+                DamageTargetConstraint::Any,
+            )
+            .matches_event(&from_creature, &ctx)
+        );
+        assert!(
+            DamageToSelfFromSourceFilterMatcher::from_creature()
+                .matches_event(&from_creature, &ctx)
+        );
+        assert!(
+            DamageToSelfConstraintMatcher::from_source_filter(ObjectFilter::creature())
+                .matches_event(&from_creature, &ctx)
+        );
     }
 }

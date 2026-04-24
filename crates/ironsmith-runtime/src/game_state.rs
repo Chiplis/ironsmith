@@ -2794,6 +2794,16 @@ impl GameState {
         new_zone: Zone,
         cause: crate::events::cause::EventCause,
     ) -> Option<ObjectId> {
+        self.move_object_with_snapshot(old_id, new_zone, cause, None)
+    }
+
+    pub(crate) fn move_object_with_snapshot(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) -> Option<ObjectId> {
         let was_face_down = self.is_face_down(old_id);
         let preserved_exile_viewers = if self
             .objects
@@ -2805,9 +2815,36 @@ impl GameState {
             None
         };
         // Capture a full pre-move snapshot for LKI-based trigger matching.
-        let pre_move_snapshot = self.objects.get(&old_id).map(|obj| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, self)
+        let pre_move_snapshot = lki_snapshot.or_else(|| {
+            self.objects.get(&old_id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, self,
+                )
+            })
         });
+        if let Some(snapshot) = pre_move_snapshot.as_ref() {
+            for entry in &mut self.stack {
+                if entry.is_ability
+                    && (entry.object_id == old_id
+                        || entry
+                            .source_stable_id
+                            .is_some_and(|id| id == snapshot.stable_id))
+                {
+                    let should_update_source_lki = entry
+                        .source_snapshot
+                        .as_ref()
+                        .is_none_or(|source_snapshot| source_snapshot.zone == snapshot.zone);
+                    if !should_update_source_lki {
+                        continue;
+                    }
+                    entry.source_stable_id = Some(snapshot.stable_id);
+                    entry
+                        .source_name
+                        .get_or_insert_with(|| snapshot.name.clone());
+                    entry.source_snapshot = Some(snapshot.clone());
+                }
+            }
+        }
 
         let old_object = self.objects.remove(&old_id)?;
         self.stable_id_index.remove(&old_object.stable_id);
@@ -2998,6 +3035,20 @@ impl GameState {
             old_id,
             new_zone,
             crate::events::cause::EventCause::from_sba(),
+        )
+    }
+
+    pub(crate) fn move_object_by_sba_with_snapshot(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) -> Option<ObjectId> {
+        self.move_object_with_snapshot(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::from_sba(),
+            snapshot,
         )
     }
 
@@ -5985,7 +6036,20 @@ impl GameState {
     }
 
     /// Pushes a spell or ability onto the stack.
-    pub fn push_to_stack(&mut self, entry: StackEntry) {
+    pub fn push_to_stack(&mut self, mut entry: StackEntry) {
+        if entry.source_snapshot.is_none()
+            && let Some(source) = self.object(entry.object_id)
+        {
+            let snapshot =
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    source, self,
+                );
+            entry.source_stable_id.get_or_insert(snapshot.stable_id);
+            entry
+                .source_name
+                .get_or_insert_with(|| snapshot.name.clone());
+            entry.source_snapshot = Some(snapshot);
+        }
         self.stack.push(entry);
     }
 
@@ -6966,9 +7030,11 @@ impl GameState {
                         .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
                 })
             });
-        let source_snapshot = event.inner().source_object().and_then(|id| {
-            self.object(id)
-                .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
+        let source_snapshot = event.source_snapshot().cloned().or_else(|| {
+            event.inner().source_object().and_then(|id| {
+                self.object(id)
+                    .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
+            })
         });
         (object_snapshot, source_snapshot)
     }

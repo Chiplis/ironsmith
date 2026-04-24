@@ -1076,6 +1076,28 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_and_view(
     )
 }
 
+fn compute_legal_targets_with_source_snapshot_and_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    tagged_objects: Option<
+        &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
+    crate::targeting::compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+        game,
+        spec,
+        caster,
+        source_id,
+        source_snapshot,
+        tagged_objects,
+        view,
+    )
+}
+
 /// Check if a player matches a PlayerFilter with explicit combat context.
 pub fn player_matches_filter_with_combat(
     player_id: PlayerId,
@@ -1282,11 +1304,12 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut invalid_count = 0usize;
 
         for assignment in &entry.target_assignments {
-            let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
+            let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &assignment.spec,
                 entry.controller,
                 Some(entry.object_id),
+                entry.source_snapshot.as_ref(),
                 if entry.tagged_objects.is_empty() {
                     None
                 } else {
@@ -1321,11 +1344,12 @@ pub(super) fn validate_stack_entry_targets_with_view(
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
         .map(|spec| {
-            compute_legal_targets_with_tagged_objects_and_view(
+            compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 spec,
                 entry.controller,
                 Some(entry.object_id),
+                entry.source_snapshot.as_ref(),
                 None,
                 view,
             )

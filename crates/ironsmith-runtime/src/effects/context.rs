@@ -430,6 +430,26 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
+    /// Refresh target LKI when a target object is about to leave its expected zone.
+    pub fn refresh_target_snapshot(&mut self, snapshot: ObjectSnapshot) {
+        let Some(key) = self.target_snapshots.iter().find_map(|(key, existing)| {
+            (existing.stable_id == snapshot.stable_id && existing.zone == snapshot.zone)
+                .then_some(*key)
+        }) else {
+            return;
+        };
+        self.target_snapshots.insert(key, snapshot);
+    }
+
+    /// Refresh source LKI when the source is about to leave its expected zone.
+    pub fn refresh_source_snapshot(&mut self, snapshot: ObjectSnapshot) {
+        if self.source_snapshot.as_ref().is_none_or(|existing| {
+            existing.stable_id == snapshot.stable_id && existing.zone == snapshot.zone
+        }) {
+            self.source_snapshot = Some(snapshot);
+        }
+    }
+
     /// Set the defending player.
     pub fn with_defending_player(mut self, player: PlayerId) -> Self {
         self.combat.defending_player = Some(player);

@@ -7,6 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::ShuffleLibraryEvent;
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -67,6 +68,8 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
             }
 
             let from_zone = obj.zone;
+            let pre_snapshot =
+                ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
             match process_zone_change_with_additional_effects(
                 game,
                 object_id,
@@ -83,6 +86,10 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
                     let mut result =
                         finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
                     if !result.new_object_ids.is_empty() {
+                        ctx.refresh_target_snapshot(pre_snapshot.clone());
+                        if pre_snapshot.object_id == ctx.source {
+                            ctx.refresh_source_snapshot(pre_snapshot.clone());
+                        }
                         for &new_id in &result.new_object_ids {
                             if let Some(moved) = game.object(new_id) {
                                 if let Some(player) = game.player_mut(moved.owner) {

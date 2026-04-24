@@ -49,7 +49,7 @@ pub enum ReplacementPriority {
 pub fn process_trait_event(game: &mut GameState, event: Event) -> TraitEventResult {
     let event = game.ensure_event_provenance(event);
     let mut state = TraitEventProcessingState::default();
-    process_event_direct(game, event, &mut state, &[])
+    process_event_direct(game, event, &mut state, &[], None)
 }
 
 /// Process an event through the replacement effect system with additional effects.
@@ -66,7 +66,7 @@ pub fn process_trait_event_with_additional_effects(
     let mut state = TraitEventProcessingState::default();
     let mut additional_effects = additional_effects.to_vec();
     assign_ephemeral_effect_ids(&mut additional_effects, u64::MAX / 2);
-    process_event_direct(game, event, &mut state, &additional_effects)
+    process_event_direct(game, event, &mut state, &additional_effects, None)
 }
 
 /// State for tracking trait-based event processing.
@@ -109,6 +109,7 @@ fn process_event_direct(
     event: Event,
     state: &mut TraitEventProcessingState,
     additional_effects: &[ReplacementEffect],
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> TraitEventResult {
     // Safety check for infinite loops
     if state.exceeded_max_iterations() {
@@ -117,7 +118,13 @@ fn process_event_direct(
     state.increment();
 
     // Find all applicable replacement effects using trait-based matchers
-    let applicable = find_applicable_trait_replacements(game, &event, state, additional_effects);
+    let applicable = find_applicable_trait_replacements(
+        game,
+        &event,
+        state,
+        additional_effects,
+        event_source_snapshot,
+    );
 
     if applicable.is_empty() {
         return TraitEventResult::Proceed(event);
@@ -167,9 +174,13 @@ fn process_event_direct(
     consume_one_shot_if_applied(game, effect_id, &result);
 
     match result {
-        TraitApplyResult::Modified(modified_event) => {
-            process_event_direct(game, modified_event, state, additional_effects)
-        }
+        TraitApplyResult::Modified(modified_event) => process_event_direct(
+            game,
+            modified_event,
+            state,
+            additional_effects,
+            event_source_snapshot,
+        ),
         TraitApplyResult::Prevented => TraitEventResult::Prevented,
         TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced { effects, effect_id },
         TraitApplyResult::Unchanged(event) => TraitEventResult::Proceed(event),
@@ -687,6 +698,7 @@ fn find_applicable_trait_replacements(
     event: &Event,
     state: &TraitEventProcessingState,
     additional_effects: &[ReplacementEffect],
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Vec<(ReplacementEffect, ReplacementPriority)> {
     let mut applicable = Vec::new();
 
@@ -698,7 +710,9 @@ fn find_applicable_trait_replacements(
         }
 
         // Check if effect matches using trait-based matcher
-        if let Some(priority) = trait_effect_matches_event(game, effect, event) {
+        if let Some(priority) =
+            trait_effect_matches_event(game, effect, event, event_source_snapshot)
+        {
             applicable.push((effect.clone(), priority));
         }
     }
@@ -711,7 +725,9 @@ fn find_applicable_trait_replacements(
         }
 
         // Check if effect matches
-        if let Some(priority) = trait_effect_matches_event(game, effect, event) {
+        if let Some(priority) =
+            trait_effect_matches_event(game, effect, event, event_source_snapshot)
+        {
             applicable.push((effect.clone(), priority));
         }
     }
@@ -724,13 +740,15 @@ fn trait_effect_matches_event(
     game: &GameState,
     effect: &ReplacementEffect,
     event: &Event,
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Option<ReplacementPriority> {
     use crate::events::ReplacementPriority as TraitPriority;
 
     // All effects should have trait-based matchers
     let matcher = effect.matcher.as_ref()?;
 
-    let ctx = EventContext::for_replacement_effect(effect.controller, effect.source, game);
+    let ctx = EventContext::for_replacement_effect(effect.controller, effect.source, game)
+        .with_event_source_snapshot(event_source_snapshot);
     if !matcher.matches_event(event.inner(), &ctx) {
         return None;
     }
@@ -968,6 +986,26 @@ pub fn process_destroy(
     source: Option<crate::ids::ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> DestroyOutcome {
+    process_destroy_inner(game, permanent, source, dm, None)
+}
+
+pub(crate) fn process_destroy_with_snapshot(
+    game: &mut GameState,
+    permanent: crate::ids::ObjectId,
+    source: Option<crate::ids::ObjectId>,
+    dm: &mut dyn DecisionMaker,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> DestroyOutcome {
+    process_destroy_inner(game, permanent, source, dm, snapshot)
+}
+
+fn process_destroy_inner(
+    game: &mut GameState,
+    permanent: crate::ids::ObjectId,
+    source: Option<crate::ids::ObjectId>,
+    dm: &mut dyn DecisionMaker,
+    lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> DestroyOutcome {
     use crate::effects::{ExecutionContext, execute_effect};
 
     game.update_replacement_effects();
@@ -1014,13 +1052,14 @@ pub fn process_destroy(
 
         TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
             // Destruction proceeds - now process the zone change
-            let zone_result = process_zone_change(
+            let zone_result = process_zone_change_with_snapshot(
                 game,
                 permanent,
                 Zone::Battlefield,
                 Zone::Graveyard,
                 cause.clone(),
                 dm, // Reuse the decision maker for zone change choices
+                lki_snapshot.clone(),
             );
 
             match zone_result {
@@ -1034,7 +1073,12 @@ pub fn process_destroy(
                             stable_id,
                         );
                     }
-                    let moved_id = game.move_object(permanent, final_zone, cause.clone());
+                    let moved_id = game.move_object_with_snapshot(
+                        permanent,
+                        final_zone,
+                        cause.clone(),
+                        lki_snapshot,
+                    );
                     if final_zone == Zone::Graveyard {
                         let mut moved_ids = game.take_zone_change_results(permanent);
                         if moved_ids.is_empty()
@@ -1119,6 +1163,18 @@ pub fn process_zone_change(
     process_zone_change_with_additional_effects(game, object, from, to, cause, dm, &[])
 }
 
+pub(crate) fn process_zone_change_with_snapshot(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> ZoneChangeOutcome {
+    process_zone_change_inner(game, object, from, to, cause, dm, &[], snapshot)
+}
+
 pub fn process_zone_change_with_additional_effects(
     game: &mut GameState,
     object: crate::ids::ObjectId,
@@ -1127,6 +1183,19 @@ pub fn process_zone_change_with_additional_effects(
     cause: crate::events::cause::EventCause,
     dm: &mut dyn DecisionMaker,
     additional_effects: &[ReplacementEffect],
+) -> ZoneChangeOutcome {
+    process_zone_change_inner(game, object, from, to, cause, dm, additional_effects, None)
+}
+
+fn process_zone_change_inner(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn DecisionMaker,
+    additional_effects: &[ReplacementEffect],
+    lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
 ) -> ZoneChangeOutcome {
     use crate::events::{ZoneChangeEvent, downcast_event};
 
@@ -1147,9 +1216,11 @@ pub fn process_zone_change_with_additional_effects(
         requested_to = Zone::Exile;
     }
 
-    let snapshot = game
-        .object(object)
-        .map(|o| crate::snapshot::ObjectSnapshot::from_object(o, game));
+    let snapshot = lki_snapshot.or_else(|| {
+        game.object(object).map(|o| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(o, game)
+        })
+    });
 
     let event = Event::zone_change(object, from, requested_to, cause, snapshot.clone());
     let mut additional_effects = additional_effects.to_vec();
@@ -1279,8 +1350,13 @@ fn process_with_dm_and_additional_effects(
     let mut state = TraitEventProcessingState::default();
 
     loop {
-        let result =
-            process_event_direct(game, current_event.clone(), &mut state, additional_effects);
+        let result = process_event_direct(
+            game,
+            current_event.clone(),
+            &mut state,
+            additional_effects,
+            None,
+        );
 
         match result {
             TraitEventResult::NeedsChoice {
@@ -1532,7 +1608,7 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
     let event = game.ensure_event_provenance(event);
     let event_provenance = event.provenance();
     let mut state = TraitEventProcessingState::default();
-    let result = process_event_direct(game, event, &mut state, &[]);
+    let result = process_event_direct(game, event, &mut state, &[], source_snapshot);
 
     let replaced = match result {
         TraitEventResult::Prevented => {
@@ -1866,7 +1942,10 @@ pub fn process_zone_change_with_event(
 ) -> Option<Zone> {
     use crate::events::{ZoneChangeEvent, downcast_event};
 
-    let event = Event::zone_change(object, from, to, cause, None);
+    let snapshot = game.object(object).map(|o| {
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(o, game)
+    });
+    let event = Event::zone_change(object, from, to, cause, snapshot);
     let result = process_trait_event(game, event);
 
     match result {
@@ -2059,6 +2138,7 @@ pub fn process_etb_with_event_and_dm(
             current_event.clone(),
             &mut state,
             &current_additional_effects,
+            None,
         );
 
         match result {
@@ -2338,9 +2418,9 @@ pub fn process_zone_change_full(
 
     game.update_replacement_effects();
 
-    let snapshot = game
-        .object(object)
-        .map(|o| crate::snapshot::ObjectSnapshot::from_object(o, game));
+    let snapshot = game.object(object).map(|o| {
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(o, game)
+    });
 
     let event = Event::zone_change(object, from, to, cause, snapshot);
     let result = process_trait_event(game, event);
@@ -2465,7 +2545,7 @@ pub fn process_event_with_chosen_replacement_trait(
     match apply_result {
         TraitApplyResult::Modified(modified) => {
             // Continue processing with the modified event
-            process_event_direct(game, modified, &mut state, &[])
+            process_event_direct(game, modified, &mut state, &[], None)
         }
         TraitApplyResult::Prevented => TraitEventResult::Prevented,
         TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
@@ -2474,7 +2554,7 @@ pub fn process_event_with_chosen_replacement_trait(
         },
         TraitApplyResult::Unchanged(unchanged) => {
             // Effect didn't change anything - continue with original event
-            process_event_direct(game, unchanged, &mut state, &[])
+            process_event_direct(game, unchanged, &mut state, &[], None)
         }
         TraitApplyResult::NeedsInteraction {
             decision_ctx,
@@ -2509,6 +2589,8 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::{CounterType, Object};
     use crate::prevention::{PreventionShield, PreventionTarget};
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::static_abilities::{Anthem, StaticAbility};
     use crate::target::ChooseSpec;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -2527,6 +2609,56 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    #[test]
+    fn zone_change_lki_snapshot_uses_calculated_characteristics() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature = create_creature(&mut game, "Anthem Bear", alice);
+        game.object_mut(creature)
+            .expect("creature exists")
+            .abilities
+            .push(crate::ability::Ability::static_ability(StaticAbility::new(
+                Anthem::for_source(2, 0),
+            )));
+
+        let external_source = create_creature(&mut game, "Replacement Source", alice);
+        for destination in [Zone::Exile, Zone::Hand] {
+            game.effect_store.replacement_effects.add_resolution_effect(
+                ReplacementEffect::with_matcher(
+                    external_source,
+                    alice,
+                    crate::events::zones::matchers::WouldGoToGraveyardMatcher::new(
+                        crate::target::ObjectFilter::default()
+                            .controlled_by(crate::target::PlayerFilter::Specific(alice)),
+                    ),
+                    ReplacementAction::ChangeDestination(destination),
+                ),
+            );
+        }
+
+        let result = process_zone_change_full(
+            &mut game,
+            creature,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            EventCause::effect(),
+        );
+
+        let ZoneChangeResult::NeedsChoice { event, .. } = result else {
+            panic!("expected multiple replacements to expose the zone-change event");
+        };
+        let snapshot = event
+            .0
+            .snapshot()
+            .expect("zone-change event should carry object LKI");
+        assert_eq!(
+            snapshot.power,
+            Some(4),
+            "LKI should include continuous effects that modified the creature before it left"
+        );
     }
 
     #[test]
@@ -2568,6 +2700,50 @@ mod tests {
             game.counter_count(protected, CounterType::PlusOnePlusOne),
             3,
             "follow-up should use the prevented amount on the damaged creature"
+        );
+    }
+
+    #[test]
+    fn damage_replacement_source_filter_uses_lki_for_departed_source() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let damage_source = create_creature(&mut game, "Departed Sparkmage", alice);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(damage_source).expect("source exists"),
+            &game,
+        );
+        let replacement_source = create_creature(&mut game, "Damage Doubler", bob);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::double_damage(
+                replacement_source,
+                bob,
+                crate::target::ObjectFilter::creature(),
+            ),
+        );
+
+        game.move_object(damage_source, Zone::Graveyard, EventCause::effect())
+            .expect("source moved");
+
+        let processed = process_damage_assignments_with_event_with_source_snapshot(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            EventCause::effect(),
+            Some(&source_snapshot),
+        );
+
+        let total_damage: u32 = processed
+            .assignments
+            .iter()
+            .map(|assignment| assignment.amount)
+            .sum();
+        assert_eq!(
+            total_damage, 6,
+            "source-filtered damage replacements should match departed sources using LKI"
         );
     }
 }

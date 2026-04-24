@@ -8,7 +8,9 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_destroy};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
+use crate::zone::Zone;
 
 /// Effect that destroys permanents.
 ///
@@ -78,7 +80,20 @@ impl DestroyEffect {
         ctx: &mut ExecutionContext,
         object_id: crate::ids::ObjectId,
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
+        let pre_snapshot = game
+            .object(object_id)
+            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
         let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
+        if let Some(snapshot) = pre_snapshot
+            && !game
+                .object(object_id)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield)
+        {
+            ctx.refresh_target_snapshot(snapshot.clone());
+            if snapshot.object_id == ctx.source {
+                ctx.refresh_source_snapshot(snapshot);
+            }
+        }
 
         match result {
             EventOutcome::Proceed(_) => Ok(None), // Successfully destroyed
@@ -113,8 +128,21 @@ impl EffectExecutor for DestroyEffect {
             &self.spec,
             ObjectApplyResultPolicy::CountApplied,
             |game, ctx, object_id| {
+                let pre_snapshot = game.object(object_id).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                });
                 let result =
                     process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
+                if let Some(snapshot) = pre_snapshot
+                    && !game
+                        .object(object_id)
+                        .is_some_and(|obj| obj.zone == Zone::Battlefield)
+                {
+                    ctx.refresh_target_snapshot(snapshot.clone());
+                    if snapshot.object_id == ctx.source {
+                        ctx.refresh_source_snapshot(snapshot);
+                    }
+                }
                 if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
                     destroyed_objects.extend(game.take_zone_change_results(object_id));
                     return Ok(true);

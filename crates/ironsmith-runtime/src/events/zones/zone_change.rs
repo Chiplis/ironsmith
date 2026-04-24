@@ -149,9 +149,9 @@ impl GameEventType for ZoneChangeEvent {
     fn affected_player(&self, game: &GameState) -> PlayerId {
         // Prefer the pre-change snapshot for LTB-style events, then the
         // destination object, then the event object.
-        self.snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.controller)
+        (self.from == Zone::Battlefield)
+            .then(|| self.snapshot.as_ref().map(|snapshot| snapshot.controller))
+            .flatten()
             .or_else(|| {
                 self.destination_objects()
                     .first()

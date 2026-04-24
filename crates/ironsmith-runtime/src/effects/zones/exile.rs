@@ -11,6 +11,7 @@ use crate::events::processing::EventOutcome;
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
@@ -42,6 +43,7 @@ fn exile_object(
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
     if let Some(obj) = game.object(object_id) {
         let from_zone = obj.zone;
+        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
         let result = apply_zone_change_with_additional_effects(
@@ -57,6 +59,12 @@ fn exile_object(
         match result {
             EventOutcome::Prevented => return Ok(Some(crate::effect::OutcomeStatus::Prevented)),
             EventOutcome::Proceed(result) => {
+                if !result.new_object_ids.is_empty() {
+                    ctx.refresh_target_snapshot(pre_snapshot.clone());
+                    if pre_snapshot.object_id == ctx.source {
+                        ctx.refresh_source_snapshot(pre_snapshot.clone());
+                    }
+                }
                 if result.final_zone == Zone::Exile {
                     for &new_id in &result.new_object_ids {
                         if face_down {
@@ -208,9 +216,12 @@ impl EffectExecutor for ExileEffect {
             &self.spec,
             ObjectApplyResultPolicy::CountApplied,
             |game, ctx, object_id| {
-                let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
+                let Some(obj) = game.object(object_id) else {
                     return Ok(false);
                 };
+                let from_zone = obj.zone;
+                let pre_snapshot =
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                 let additional_effects = ctx.additional_replacement_effects_snapshot();
                 match apply_zone_change_with_additional_effects(
                     game,
@@ -223,6 +234,10 @@ impl EffectExecutor for ExileEffect {
                 ) {
                     EventOutcome::Proceed(result) => {
                         if !result.new_object_ids.is_empty() {
+                            ctx.refresh_target_snapshot(pre_snapshot.clone());
+                            if pre_snapshot.object_id == ctx.source {
+                                ctx.refresh_source_snapshot(pre_snapshot.clone());
+                            }
                             affected_ids.extend(result.new_object_ids.iter().copied());
                             for &new_id in &result.new_object_ids {
                                 if self.face_down && result.final_zone == Zone::Exile {

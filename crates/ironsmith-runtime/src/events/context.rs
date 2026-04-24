@@ -5,6 +5,7 @@
 
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
 use crate::target::FilterContext;
 
 /// Context provided to replacement matchers for determining if they match an event.
@@ -23,6 +24,10 @@ pub struct EventContext<'a> {
 
     /// Reference to the game state for additional lookups.
     pub game: &'a GameState,
+
+    /// Last known information for the event's source, when the source has left
+    /// the zone it was expected to be in before event matching.
+    pub event_source_snapshot: Option<&'a ObjectSnapshot>,
 }
 
 impl<'a> EventContext<'a> {
@@ -38,7 +43,14 @@ impl<'a> EventContext<'a> {
             source,
             filter_ctx,
             game,
+            event_source_snapshot: None,
         }
+    }
+
+    /// Attach LKI for the source of the event being matched.
+    pub fn with_event_source_snapshot(mut self, snapshot: Option<&'a ObjectSnapshot>) -> Self {
+        self.event_source_snapshot = snapshot;
+        self
     }
 
     /// Create an event context for a replacement effect source.

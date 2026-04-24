@@ -573,7 +573,11 @@ pub fn resolve_value(
         }
 
         Value::SourcePower => {
-            if let Some(obj) = game.object(ctx.source) {
+            if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                snapshot.power.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Source had no power".to_string())
+                })
+            } else if let Some(obj) = game.object(ctx.source) {
                 game.calculated_power(ctx.source)
                     .or_else(|| obj.power())
                     .ok_or_else(|| {
@@ -589,7 +593,11 @@ pub fn resolve_value(
         }
 
         Value::SourceToughness => {
-            if let Some(obj) = game.object(ctx.source) {
+            if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                snapshot.toughness.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Source had no toughness".to_string())
+                })
+            } else if let Some(obj) = game.object(ctx.source) {
                 game.calculated_toughness(ctx.source)
                     .or_else(|| obj.toughness())
                     .ok_or_else(|| {
@@ -608,7 +616,13 @@ pub fn resolve_value(
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
             // Try to get current object, fall back to LKI snapshot
-            if let Some(obj) = game.object(target_id) {
+            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+                && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot.power.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no power".to_string())
+                })
+            } else if let Some(obj) = game.object(target_id) {
                 game.calculated_power(target_id)
                     .or_else(|| obj.power())
                     .ok_or_else(|| {
@@ -620,7 +634,7 @@ pub fn resolve_value(
                 snapshot.power.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no power".to_string())
                 })
-            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+            } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {
                 snapshot.power.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no power".to_string())
                 })
@@ -633,7 +647,13 @@ pub fn resolve_value(
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
             // Try to get current object, fall back to LKI snapshot
-            if let Some(obj) = game.object(target_id) {
+            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+                && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot.toughness.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no toughness".to_string())
+                })
+            } else if let Some(obj) = game.object(target_id) {
                 game.calculated_toughness(target_id)
                     .or_else(|| obj.toughness())
                     .ok_or_else(|| {
@@ -645,7 +665,7 @@ pub fn resolve_value(
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
                 })
-            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+            } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
                 })
@@ -657,7 +677,17 @@ pub fn resolve_value(
         Value::ManaValueOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            if let Some(obj) = game.object(target_id) {
+            if matches!(target_spec.as_ref(), ChooseSpec::Source)
+                && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(|cost| cost.mana_value() as i32)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no mana value".to_string())
+                    })
+            } else if let Some(obj) = game.object(target_id) {
                 obj.mana_cost
                     .as_ref()
                     .map(|cost| cost.mana_value() as i32)
@@ -674,7 +704,7 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target had no mana value".to_string())
                     })
-            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+            } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {
                 snapshot
                     .mana_cost
                     .as_ref()
@@ -1114,8 +1144,12 @@ pub fn resolve_value(
         }
         Value::CountersOnSource(counter_type) => {
             // Get the number of counters of the specified type on the source
-            if let Some(source) = game.object(ctx.source) {
+            if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                Ok(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32)
+            } else if let Some(source) = game.object(ctx.source) {
                 Ok(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
+            } else if let Some(snapshot) = &ctx.source_snapshot {
+                Ok(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32)
             } else {
                 Ok(0)
             }
@@ -1124,12 +1158,29 @@ pub fn resolve_value(
             let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
             let total = object_ids
                 .into_iter()
-                .filter_map(|id| game.object(id))
-                .map(|obj| {
-                    if let Some(counter_type) = counter_type {
-                        obj.counters.get(counter_type).copied().unwrap_or(0) as i32
+                .map(|id| {
+                    if matches!(spec.as_ref(), ChooseSpec::Source)
+                        && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+                    {
+                        if let Some(counter_type) = counter_type {
+                            snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                        } else {
+                            snapshot.counters.values().map(|count| *count as i32).sum()
+                        }
+                    } else if let Some(obj) = game.object(id) {
+                        if let Some(counter_type) = counter_type {
+                            obj.counters.get(counter_type).copied().unwrap_or(0) as i32
+                        } else {
+                            obj.counters.values().map(|count| *count as i32).sum()
+                        }
+                    } else if let Some(snapshot) = object_lki_snapshot(ctx, id) {
+                        if let Some(counter_type) = counter_type {
+                            snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                        } else {
+                            snapshot.counters.values().map(|count| *count as i32).sum()
+                        }
                     } else {
-                        obj.counters.values().map(|count| *count as i32).sum()
+                        0
                     }
                 })
                 .sum();
@@ -1153,6 +1204,27 @@ pub fn resolve_value(
             .map(|result| result.count_for_option(option) as i32)
             .unwrap_or(0)),
     }
+}
+
+fn object_lki_snapshot<'a>(
+    ctx: &'a ExecutionContext<'_>,
+    object_id: ObjectId,
+) -> Option<&'a ObjectSnapshot> {
+    ctx.source_snapshot
+        .as_ref()
+        .filter(|snapshot| snapshot.object_id == object_id)
+        .or_else(|| ctx.target_snapshots.get(&object_id))
+}
+
+fn source_lki_for_moved_current_object<'a>(
+    game: &GameState,
+    ctx: &'a ExecutionContext<'_>,
+) -> Option<&'a ObjectSnapshot> {
+    let snapshot = ctx.source_snapshot.as_ref()?;
+    let current = game.object(ctx.source)?;
+    (snapshot.stable_id == current.stable_id
+        && (snapshot.object_id != current.id || snapshot.zone != current.zone))
+        .then_some(snapshot)
 }
 
 fn value_candidate_ids_for_filter(
@@ -1346,6 +1418,8 @@ pub fn resolve_player_from_spec(
         ChooseSpec::SourceOwner => {
             if let Some(obj) = game.object(ctx.source) {
                 Ok(obj.owner)
+            } else if let Some(snapshot) = ctx.source_snapshot.as_ref() {
+                Ok(snapshot.owner)
             } else {
                 Err(ExecutionError::ObjectNotFound(ctx.source))
             }
@@ -1813,6 +1887,8 @@ pub fn validate_target(
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
             if let Some(obj) = game.object(*id) {
                 filter.matches(obj, &filter_ctx, game)
+            } else if let Some(snapshot) = ctx.target_snapshots.get(id) {
+                filter.matches_snapshot(snapshot, &filter_ctx, game)
             } else {
                 false
             }
@@ -1823,15 +1899,26 @@ pub fn validate_target(
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
             player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
-        (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => game
-            .object(*id)
-            .is_some_and(|obj| obj.has_card_type(CardType::Planeswalker)),
-        (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
+        (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
+            game.object(*id)
+                .is_some_and(|obj| obj.has_card_type(CardType::Planeswalker))
+                || ctx
+                    .target_snapshots
+                    .get(id)
+                    .is_some_and(|snapshot| snapshot.card_types.contains(&CardType::Planeswalker))
+        }
+        (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => {
+            game.object(*id).is_some() || ctx.target_snapshots.contains_key(id)
+        }
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
         }
         (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => {
             game.object(*id).is_some_and(|obj| obj.id != ctx.source)
+                || ctx
+                    .target_snapshots
+                    .get(id)
+                    .is_some_and(|snapshot| snapshot.object_id != ctx.source)
         }
         (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
@@ -2498,6 +2585,8 @@ pub fn resolve_players_from_spec(
         ChooseSpec::SourceOwner => {
             if let Some(obj) = game.object(ctx.source) {
                 Ok(vec![obj.owner])
+            } else if let Some(snapshot) = ctx.source_snapshot.as_ref() {
+                Ok(vec![snapshot.owner])
             } else {
                 Err(ExecutionError::ObjectNotFound(ctx.source))
             }
@@ -2747,6 +2836,42 @@ mod tests {
             .power_toughness(PowerToughness::fixed(1, 1))
             .build();
         game.create_object_from_card(&card, owner, Zone::Hand)
+    }
+
+    #[test]
+    fn mana_value_of_source_uses_lki_after_source_moves_from_expected_zone() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_card = CardBuilder::new(crate::ids::CardId::from_raw(400), "Departing Source")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source_id).expect("source should exist"),
+            &game,
+        );
+        let moved_source_id = game
+            .move_object_by_effect(source_id, Zone::Hand)
+            .expect("source should move to hand");
+        game.object_mut(moved_source_id)
+            .expect("moved source should exist")
+            .mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]));
+
+        let ctx = ExecutionContext::new_default(moved_source_id, alice)
+            .with_source_snapshot(source_snapshot);
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::ManaValueOf(Box::new(ChooseSpec::Source)),
+                &ctx
+            )
+            .expect("source mana value should resolve from LKI"),
+            2,
+            "608.2h requires source information to use LKI after the source leaves its expected zone"
+        );
     }
 
     struct SelectIdsDecisionMaker {
@@ -3065,6 +3190,52 @@ mod tests {
 
         let resolved = resolve_single_object_from_spec(&game, &ChooseSpec::Source, &ctx).unwrap();
         assert_eq!(resolved, source_id);
+    }
+
+    #[test]
+    fn counters_on_source_uses_lki_when_source_left_expected_zone() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source = add_battlefield_permanent(
+            &mut game,
+            5004,
+            "Remembered Counterbear",
+            alice,
+            vec![CardType::Creature],
+        );
+        game.object_mut(source)
+            .expect("source should exist")
+            .counters
+            .insert(crate::object::CounterType::PlusOnePlusOne, 3);
+        let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(source).expect("source should still exist"),
+            &game,
+        );
+
+        game.remove_object(source);
+
+        let ctx =
+            ExecutionContext::new_default(source, alice).with_source_snapshot(source_snapshot);
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::CountersOnSource(crate::object::CounterType::PlusOnePlusOne),
+                &ctx
+            )
+            .expect("source counter count should resolve from LKI"),
+            3,
+            "608.2h requires source-referential effects to use LKI if the source is gone"
+        );
+        assert_eq!(
+            resolve_value(
+                &game,
+                &Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                &ctx
+            )
+            .expect("generic source counter count should resolve from LKI"),
+            3,
+            "generic source-counter values should use the same source LKI"
+        );
     }
 
     #[test]

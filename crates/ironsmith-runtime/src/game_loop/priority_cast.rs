@@ -2517,6 +2517,11 @@ pub(super) fn continue_activation_cost_payment(
                     .with_provenance(pending.provenance);
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+            let pre_cost_source_snapshot = game.object(pending.source).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            });
 
             match cost.pay(game, &mut cost_ctx).map_err(|err| {
                 GameLoopError::InvalidState(format!(
@@ -2530,6 +2535,13 @@ pub(super) fn continue_activation_cost_payment(
                         &cost,
                         pending.source,
                     );
+                    pending.source_snapshot = if let Some(obj) = game.object(pending.source) {
+                        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                            obj, game,
+                        )
+                    } else {
+                        pre_cost_source_snapshot.unwrap_or(pending.source_snapshot)
+                    };
                     pending.tagged_objects = cost_ctx.tagged_objects;
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);

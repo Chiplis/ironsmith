@@ -85,7 +85,7 @@ pub(crate) fn apply_processed_damage_outcome(
         total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
         let mut outcome = EffectOutcome::count(assignment.amount as i32);
         if assignment.amount > 0 {
-            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
+            let mut event = TriggerEvent::new_with_provenance(
                 DamageEvent::with_cause(
                     source,
                     assignment.target,
@@ -94,7 +94,13 @@ pub(crate) fn apply_processed_damage_outcome(
                     cause.clone(),
                 ),
                 provenance,
-            ));
+            );
+            if game.object(source).is_none()
+                && let Some(snapshot) = source_snapshot
+            {
+                event = event.with_source_snapshot(snapshot.clone());
+            }
+            outcome = outcome.with_event(event);
         }
 
         if let DamageTarget::Player(player_id) = assignment.target
@@ -417,5 +423,39 @@ mod tests {
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 2);
         assert_eq!(game.damage_on(target), 0);
+    }
+
+    #[test]
+    fn damage_event_history_uses_source_lki_after_source_leaves() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(&mut game, "Departed Pinger", 1, 1, alice, vec![]);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source should exist"),
+            &game,
+        );
+        game.remove_object(source);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)])
+            .with_source_snapshot(source_snapshot);
+
+        let effect = DealDamageEffect::new(1, ChooseSpec::AnyTarget);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("departed source should still deal damage from LKI");
+
+        assert_eq!(outcome.events.len(), 2);
+        game.record_turn_history_event(&outcome.events[0]);
+
+        assert_eq!(
+            game.turn_store
+                .turn_history
+                .total_creature_damage_to_player(bob),
+            1,
+            "damage history should treat the departed source as the creature it last was"
+        );
     }
 }

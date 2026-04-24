@@ -11,6 +11,7 @@ use super::{EventKind, GameEventType};
 pub struct RawEvent {
     inner: Arc<dyn GameEventType>,
     provenance: ProvNodeId,
+    source_snapshot: Option<ObjectSnapshot>,
 }
 
 impl RawEvent {
@@ -18,6 +19,7 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             provenance,
+            source_snapshot: None,
         }
     }
 
@@ -25,6 +27,7 @@ impl RawEvent {
         Self {
             inner: Arc::from(event),
             provenance,
+            source_snapshot: None,
         }
     }
 
@@ -84,6 +87,12 @@ impl RawEvent {
         self.inner().snapshot()
     }
 
+    /// Get last-known information for the event source, if the event source has
+    /// left the public zone it was expected to be in.
+    pub fn source_snapshot(&self) -> Option<&ObjectSnapshot> {
+        self.source_snapshot.as_ref()
+    }
+
     /// Human-readable event description.
     pub fn display(&self) -> String {
         self.inner().display()
@@ -105,6 +114,12 @@ impl RawEvent {
         self
     }
 
+    #[must_use]
+    pub fn with_source_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
+        self.source_snapshot = Some(snapshot);
+        self
+    }
+
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
@@ -115,6 +130,7 @@ impl std::fmt::Debug for RawEvent {
         f.debug_struct("RawEvent")
             .field("kind", &self.kind())
             .field("provenance", &self.provenance)
+            .field("source_snapshot", &self.source_snapshot)
             .field("display", &self.inner().display())
             .finish()
     }

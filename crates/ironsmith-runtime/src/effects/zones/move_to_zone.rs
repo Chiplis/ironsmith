@@ -103,6 +103,7 @@ impl EffectExecutor for MoveToZoneEffect {
         let mut affected_ids = Vec::new();
         let mut any_prevented = false;
         let mut any_replaced = false;
+        let mut moved_source_lki = None;
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -110,6 +111,19 @@ impl EffectExecutor for MoveToZoneEffect {
             };
             let stable_id = obj.stable_id;
             let from_zone = obj.zone;
+            let source_lki_before_move = if moves_source && object_id == ctx.source {
+                Some(
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        obj, game,
+                    ),
+                )
+            } else {
+                None
+            };
+            let target_lki_before_move =
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                );
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             // Process through replacement effects with decision maker
@@ -143,6 +157,10 @@ impl EffectExecutor for MoveToZoneEffect {
                         };
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
+                                ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                                if let Some(snapshot) = source_lki_before_move.clone() {
+                                    moved_source_lki = Some(snapshot);
+                                }
                                 moved_ids.push(new_id);
                             }
                             BattlefieldEntryOutcome::Prevented => {
@@ -154,6 +172,12 @@ impl EffectExecutor for MoveToZoneEffect {
 
                     let mut result =
                         finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
+                    if !result.new_object_ids.is_empty() {
+                        ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                        if let Some(snapshot) = source_lki_before_move.clone() {
+                            moved_source_lki = Some(snapshot);
+                        }
+                    }
                     if !result.new_object_ids.is_empty() {
                         for &new_id in &result.new_object_ids {
                             if final_zone == Zone::Exile {
@@ -206,6 +230,9 @@ impl EffectExecutor for MoveToZoneEffect {
 
         if moves_source && let Some(new_source_id) = moved_ids.first().copied() {
             ctx.source = new_source_id;
+        }
+        if let Some(snapshot) = moved_source_lki {
+            ctx.refresh_source_snapshot(snapshot);
         }
 
         if !moved_ids.is_empty() {

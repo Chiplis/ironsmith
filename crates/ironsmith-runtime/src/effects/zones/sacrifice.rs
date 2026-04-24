@@ -285,6 +285,14 @@ impl EffectExecutor for SacrificeEffect {
                     continue;
                 }
                 EventOutcome::Proceed(result) => {
+                    if let Some(snapshot) = pre_snapshot.clone() {
+                        ctx.refresh_target_snapshot(snapshot);
+                    }
+                    if let Some(snapshot) = pre_snapshot.clone()
+                        && snapshot.object_id == ctx.source
+                    {
+                        ctx.refresh_source_snapshot(snapshot);
+                    }
                     sacrificed_count += 1;
                     let _ = result;
                     sacrificed_objects.push(id);
@@ -584,6 +592,14 @@ fn sacrifice_target_object(
     match result {
         EventOutcome::Prevented => Ok((false, None)),
         EventOutcome::Proceed(result) => {
+            if let Some(snapshot) = pre_snapshot.clone() {
+                ctx.refresh_target_snapshot(snapshot);
+            }
+            if let Some(snapshot) = pre_snapshot.clone()
+                && snapshot.object_id == ctx.source
+            {
+                ctx.refresh_source_snapshot(snapshot);
+            }
             let _ = result;
             let event = Some(TriggerEvent::new_with_provenance(
                 SacrificeEvent::new(object_id, Some(ctx.source))

@@ -6,6 +6,7 @@ use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -38,6 +39,8 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                 continue;
             };
             let from_zone = obj.zone;
+            let pre_snapshot =
+                ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             let result = apply_zone_change_with_additional_effects(
@@ -56,6 +59,10 @@ impl EffectExecutor for MoveToLibraryNthFromTopEffect {
                 }
                 EventOutcome::Proceed(mut result) => {
                     if !result.new_object_ids.is_empty() {
+                        ctx.refresh_target_snapshot(pre_snapshot.clone());
+                        if pre_snapshot.object_id == ctx.source {
+                            ctx.refresh_source_snapshot(pre_snapshot.clone());
+                        }
                         if result.final_zone == Zone::Exile {
                             for &new_id in &result.new_object_ids {
                                 game.add_exiled_with_source_link(ctx.source, new_id);

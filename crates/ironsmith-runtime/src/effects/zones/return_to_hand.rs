@@ -10,6 +10,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -23,6 +24,7 @@ fn return_object_to_hand(
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
     if let Some(obj) = game.object(object_id) {
         let from_zone = obj.zone;
+        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
         let result = apply_zone_change_with_additional_effects(
@@ -37,7 +39,15 @@ fn return_object_to_hand(
 
         return match result {
             EventOutcome::Prevented => Ok(Some(crate::effect::OutcomeStatus::Prevented)),
-            EventOutcome::Proceed(_) => Ok(None),
+            EventOutcome::Proceed(result) => {
+                if result.new_object_id.is_some() {
+                    ctx.refresh_target_snapshot(pre_snapshot.clone());
+                    if pre_snapshot.object_id == ctx.source {
+                        ctx.refresh_source_snapshot(pre_snapshot.clone());
+                    }
+                }
+                Ok(None)
+            }
             EventOutcome::Replaced => Ok(Some(crate::effect::OutcomeStatus::Replaced)),
             EventOutcome::NotApplicable => Ok(Some(crate::effect::OutcomeStatus::TargetInvalid)),
         };
@@ -126,9 +136,12 @@ impl EffectExecutor for ReturnToHandEffect {
             let mut applied_count = 0usize;
             let mut affected_ids = Vec::new();
             for object_id in object_ids {
-                let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
+                let Some(obj) = game.object(object_id) else {
                     continue;
                 };
+                let from_zone = obj.zone;
+                let pre_snapshot =
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                 let additional_effects = ctx.additional_replacement_effects_snapshot();
                 if let EventOutcome::Proceed(result) = apply_zone_change_with_additional_effects(
                     game,
@@ -140,6 +153,10 @@ impl EffectExecutor for ReturnToHandEffect {
                     &additional_effects,
                 ) {
                     if result.new_object_id.is_some() {
+                        ctx.refresh_target_snapshot(pre_snapshot.clone());
+                        if pre_snapshot.object_id == ctx.source {
+                            ctx.refresh_source_snapshot(pre_snapshot.clone());
+                        }
                         affected_ids.extend(result.new_object_ids.iter().copied());
                         applied_count += 1;
                     }
@@ -162,9 +179,12 @@ impl EffectExecutor for ReturnToHandEffect {
                 &self.spec,
                 ObjectApplyResultPolicy::CountApplied,
                 |game, ctx, object_id| {
-                    let Some(from_zone) = game.object(object_id).map(|obj| obj.zone) else {
+                    let Some(obj) = game.object(object_id) else {
                         return Ok(false);
                     };
+                    let from_zone = obj.zone;
+                    let pre_snapshot =
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                     let additional_effects = ctx.additional_replacement_effects_snapshot();
                     match apply_zone_change_with_additional_effects(
                         game,
@@ -176,6 +196,12 @@ impl EffectExecutor for ReturnToHandEffect {
                         &additional_effects,
                     ) {
                         EventOutcome::Proceed(result) => {
+                            if result.new_object_id.is_some() {
+                                ctx.refresh_target_snapshot(pre_snapshot.clone());
+                                if pre_snapshot.object_id == ctx.source {
+                                    ctx.refresh_source_snapshot(pre_snapshot.clone());
+                                }
+                            }
                             affected_ids.extend(result.new_object_ids.iter().copied());
                             Ok(result.new_object_id.is_some())
                         }

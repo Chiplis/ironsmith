@@ -462,7 +462,7 @@ fn check_legend_rule(game: &GameState, actions: &mut Vec<StateBasedAction>) {
 /// Returns true if any state-based actions were applied.
 /// Should be called repeatedly until it returns false.
 ///
-/// Per MTG Rule 704.7: "If a state-based action results in a permanent leaving the
+/// Per MTG Rule 704.8: "If a state-based action results in a permanent leaving the
 /// battlefield at the same time other state-based actions were performed, that
 /// permanent's last known information is derived from the game state before any
 /// of those state-based actions were performed."
@@ -511,7 +511,7 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
         return false;
     }
 
-    // Per Rule 704.7, pre-capture snapshots for all dying creatures BEFORE
+    // Per Rule 704.8, pre-capture snapshots for all dying creatures BEFORE
     // any state-based actions are applied. This ensures LKI is derived from
     // the game state before any SBAs were performed.
     let pre_captured_snapshots: std::collections::HashMap<ObjectId, ObjectSnapshot> = actions
@@ -631,12 +631,12 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
 
 /// Apply a single state-based action with pre-captured snapshots.
 ///
-/// Per Rule 704.7, creature death snapshots must be captured BEFORE any SBAs are applied.
+/// Per Rule 704.8, creature death snapshots must be captured BEFORE any SBAs are applied.
 /// The `pre_captured_snapshots` map contains these pre-captured snapshots.
 fn apply_single_sba_with_snapshots(
     game: &mut GameState,
     action: StateBasedAction,
-    _pre_captured_snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
+    pre_captured_snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) {
     match action {
@@ -661,23 +661,29 @@ fn apply_single_sba_with_snapshots(
             if is_destroyed_by_damage_sba {
                 // Damage-based SBAs are destruction, so process through the event
                 // system to allow replacement effects like regeneration.
-                use crate::events::processing::process_destroy;
-                let _ = process_destroy(game, obj_id, None, decision_maker);
+                use crate::events::processing::process_destroy_with_snapshot;
+                let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned();
+                let _ =
+                    process_destroy_with_snapshot(game, obj_id, None, decision_maker, pre_snapshot);
             } else {
                 // 0 toughness or object not found - goes directly to graveyard
                 // Regeneration cannot replace this (Rule 704.5f), but other
                 // replacement effects like Yawgmoth's Will can still apply
-                use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
-                let outcome = process_zone_change(
+                use crate::events::processing::{
+                    ZoneChangeOutcome, process_zone_change_with_snapshot,
+                };
+                let pre_snapshot = pre_captured_snapshots.get(&obj_id).cloned();
+                let outcome = process_zone_change_with_snapshot(
                     game,
                     obj_id,
                     Zone::Battlefield,
                     Zone::Graveyard,
                     crate::events::cause::EventCause::from_sba(),
                     decision_maker,
+                    pre_snapshot.clone(),
                 );
                 if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
-                    game.move_object_by_sba(obj_id, final_zone);
+                    game.move_object_by_sba_with_snapshot(obj_id, final_zone, pre_snapshot);
                 }
             }
         }
@@ -780,10 +786,13 @@ fn apply_single_sba_with_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::DecisionMaker;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::{Anthem, StaticAbility};
+    use crate::types::CardType;
 
     #[derive(Default)]
     struct AlwaysYesDecisionMaker;
@@ -821,6 +830,67 @@ mod tests {
             self.calls += 1;
             self.answers.pop_front().unwrap_or(false)
         }
+    }
+
+    fn creature_card(card_id: u32, name: &str, power: i32, toughness: i32) -> crate::card::Card {
+        CardBuilder::new(CardId::from_raw(card_id), name)
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build()
+    }
+
+    #[test]
+    fn simultaneous_sba_death_lki_uses_pre_sba_continuous_effects() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let anthem_card = creature_card(400, "Doomed Marshal", 1, 1);
+        let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+        game.object_mut(anthem_id)
+            .expect("anthem creature should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::new(
+                Anthem::creatures_you_control(1, 1),
+            )));
+
+        let bear_card = creature_card(401, "Doomed Bear", 1, 1);
+        let bear_id = game.create_object_from_card(&bear_card, alice, Zone::Battlefield);
+
+        assert_eq!(game.calculated_toughness(anthem_id), Some(2));
+        assert_eq!(game.calculated_toughness(bear_id), Some(2));
+        game.mark_damage(anthem_id, 2);
+        game.mark_damage(bear_id, 2);
+
+        let actions = check_state_based_actions(&game);
+        assert!(actions.contains(&StateBasedAction::ObjectDies(anthem_id)));
+        assert!(actions.contains(&StateBasedAction::ObjectDies(bear_id)));
+
+        let mut dm = AlwaysYesDecisionMaker;
+        let all_effects = game.all_continuous_effects();
+        assert!(apply_state_based_actions_from_actions_with(
+            &mut game,
+            actions,
+            &all_effects,
+            &mut dm,
+        ));
+
+        let pending = game.take_pending_trigger_events();
+        let bear_death = pending
+            .iter()
+            .filter_map(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+            .find(|event| event.objects.first().copied() == Some(bear_id))
+            .expect("bear death should queue a zone-change event");
+        let snapshot = bear_death
+            .snapshot
+            .as_ref()
+            .expect("bear death should carry LKI");
+
+        assert_eq!(
+            snapshot.toughness,
+            Some(2),
+            "704.8 requires LKI from before any simultaneous SBAs, while the anthem still applied"
+        );
     }
 
     #[test]

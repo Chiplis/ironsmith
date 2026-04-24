@@ -6984,6 +6984,1040 @@ fn test_resolve_stack_entry_with_graveyard_object_target() {
     );
 }
 
+#[test]
+fn test_resolution_target_validation_uses_source_lki_for_protection() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9003), "Departed Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source_id).expect("source should exist"),
+        &game,
+    );
+
+    let protected_id = create_creature(&mut game, "Protected Creature", bob, 2, 2);
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
+        )));
+    game.refresh_continuous_state();
+
+    game.remove_object(source_id);
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+    )
+    .with_targets(vec![Target::Object(protected_id)])
+    .with_source_snapshot(source_snapshot);
+
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    assert!(
+        valid_targets.is_empty(),
+        "protection from red should make the target illegal using the departed source's LKI"
+    );
+    assert!(
+        all_targets_invalid,
+        "the ability should fizzle when its only target is illegal under source LKI"
+    );
+}
+
+#[test]
+fn test_resolution_player_target_validation_uses_source_lki_for_source_filter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9004), "Departed Red Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source_id).expect("source should exist"),
+        &game,
+    );
+    game.effect_store
+        .cant_effects
+        .cant_target_players_from
+        .push(crate::game_state::PlayerCantBeTargetedFrom {
+            player: bob,
+            source_filter: ObjectFilter::default().with_colors(crate::color::ColorSet::RED),
+            controller: bob,
+        });
+
+    game.remove_object(source_id);
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::deal_damage(
+            1,
+            ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)),
+        )],
+    )
+    .with_targets(vec![Target::Player(bob)])
+    .with_source_snapshot(source_snapshot);
+
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    assert!(
+        valid_targets.is_empty(),
+        "player target restrictions from red sources should use departed source LKI"
+    );
+    assert!(all_targets_invalid);
+}
+
+#[test]
+fn test_stack_entry_captures_source_lki_when_ability_source_leaves_before_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9005), "Red Ability Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let protected_id = create_creature(&mut game, "Protected Creature", bob, 2, 2);
+    game.object_mut(protected_id)
+        .expect("protected creature should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
+        )));
+    game.refresh_continuous_state();
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+    )
+    .with_targets(vec![Target::Object(protected_id)]);
+    game.push_to_stack(entry);
+
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave before its ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.damage_on(protected_id),
+        0,
+        "protection from red should make the target illegal using source LKI captured when the ability went on the stack"
+    );
+}
+
+#[test]
+fn test_resolution_uses_source_lki_from_when_source_left_expected_zone() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_id = create_creature(&mut game, "Late Deathtouch Source", alice, 1, 1);
+    let target_id = create_creature(&mut game, "Large Target", bob, 3, 3);
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    game.object_mut(source_id)
+        .expect("source should still be on the battlefield")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::deathtouch()));
+    game.refresh_continuous_state();
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave before its ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBAs should apply");
+
+    assert!(
+        !game.battlefield.contains(&target_id),
+        "113.7a/608.2h and 702.2e require the damage to use source LKI from when it left, including the late deathtouch"
+    );
+}
+
+#[test]
+fn test_resolution_uses_source_lki_for_generic_power_of_source() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Departed Power Source", alice, 4, 4);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::gain_life(Value::PowerOf(Box::new(
+            ChooseSpec::Source,
+        )))],
+    );
+    game.push_to_stack(entry);
+
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave before its ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        24,
+        "608.2h requires generic source-referential object values to use source LKI after the source leaves"
+    );
+}
+
+#[test]
+fn test_resolution_uses_source_lki_for_source_owner() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Departed Owner Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::gain_life_player(3, ChooseSpec::SourceOwner)],
+    );
+    game.push_to_stack(entry);
+
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave before its ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source owner LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        23,
+        "608.2h requires source-owner lookups to use the source's last known information after it leaves"
+    );
+}
+
+#[test]
+fn test_resolution_refreshes_source_lki_when_effect_moves_its_own_source() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Self-Bouncing Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::move_to_zone(ChooseSpec::Source, Zone::Hand, false),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9009), "Late Battlefield Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the late anthem before the source moves"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "113.7a/608.2h require source LKI from the source's last battlefield existence, even when the resolving effect moved it"
+    );
+}
+
+#[test]
+fn test_source_lki_survives_self_move_through_another_zone() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Roundtrip Source", alice, 2, 2);
+    let anthem_card = CardBuilder::new(CardId::from_raw(9011), "Predeparture Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the anthem before the source first leaves"
+    );
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::move_to_zone(ChooseSpec::Source, Zone::Graveyard, false),
+            Effect::move_to_zone(
+                ChooseSpec::Object(crate::filter::ObjectFilter::specific(anthem_id)),
+                Zone::Graveyard,
+                false,
+            ),
+            Effect::move_to_zone(ChooseSpec::Source, Zone::Battlefield, false),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires source information to use the source's last battlefield existence, not an intermediate graveyard snapshot"
+    );
+}
+
+#[test]
+fn test_source_lki_refreshes_when_sacrifice_source_moves_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Self-Sacrifice Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::sacrifice_source(),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9017), "Late Sacrifice Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the late anthem before the source sacrifices itself"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires source LKI from immediately before sacrifice moved it"
+    );
+}
+
+#[test]
+fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
+    use crate::ability::{ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = create_creature(&mut game, "Cost-Marked Source", alice, 2, 2);
+    let costs = TotalCost::from_costs(vec![
+        crate::costs::Cost::add_counters(crate::object::CounterType::PlusOnePlusOne, 1),
+        crate::costs::Cost::sacrifice_self(),
+    ]);
+    game.object_mut(source_id)
+        .expect("source should exist")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: costs,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let ability_index = game
+        .object(source_id)
+        .expect("source should still exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("source should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    let cost_order_ctx = match apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: source_id,
+            ability_index,
+        }),
+        &mut dm,
+    )
+    .expect("activation should begin")
+    {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected activation to ask for cost order, got {other:?}"),
+    };
+
+    let add_counter_cost_index = cost_order_ctx
+        .options
+        .iter()
+        .find(|option| option.description.to_ascii_lowercase().contains("counter"))
+        .map(|option| option.index)
+        .expect("expected an add-counter cost option");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(add_counter_cost_index),
+        &mut dm,
+    )
+    .expect("add-counter cost should be paid before sacrifice");
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the sacrifice-self cost should finish activation and put the ability on the stack"
+    );
+    assert!(
+        !game.battlefield.contains(&source_id),
+        "the source should be sacrificed as a cost before the ability resolves"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        23,
+        "113.7a/608.2h require activated ability source LKI from immediately before the sacrifice cost moved it, after prior costs modified it"
+    );
+}
+
+#[test]
+fn test_source_lki_refreshes_when_exile_source_moves_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Self-Exile Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Source)),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9018), "Late Exile Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the late anthem before the source exiles itself"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires source LKI from immediately before exile moved it"
+    );
+}
+
+#[test]
+fn test_source_lki_refreshes_when_destroy_source_moves_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Self-Destroy Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::new(crate::effects::DestroyEffect::with_spec(ChooseSpec::Source)),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9019), "Late Destroy Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the late anthem before the source destroys itself"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires source LKI from immediately before destroy moved it"
+    );
+}
+
+#[test]
+fn test_source_lki_refreshes_when_return_source_to_hand_moves_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Self-Bounce Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::return_source_to_hand_as_cost(),
+            Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
+        ],
+    );
+    game.push_to_stack(entry);
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9020), "Late Bounce Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the late anthem before the source returns to hand"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires source LKI from immediately before return-to-hand moved it"
+    );
+}
+
+#[test]
+fn test_source_lki_is_from_expected_zone_not_later_zone_changes() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Buffed Departing Source", alice, 2, 2);
+    let anthem_card = CardBuilder::new(CardId::from_raw(9008), "Battlefield Power Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(source_id),
+        Some(5),
+        "test setup should apply the battlefield continuous effect before the source leaves"
+    );
+
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::gain_life(Value::PowerOf(Box::new(
+            ChooseSpec::Source,
+        )))],
+    );
+    game.push_to_stack(entry);
+
+    let graveyard_id = game
+        .move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave its expected battlefield zone");
+    game.move_object_by_effect(graveyard_id, Zone::Exile)
+        .expect("source can move again before the ability resolves");
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "113.7a/608.2h require source LKI from its last existence on the battlefield, not a later graveyard or exile snapshot"
+    );
+}
+
+#[test]
+fn test_source_lki_ignores_returned_new_object_in_expected_zone() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_id = create_creature(&mut game, "Returning Departed Source", alice, 2, 2);
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![Effect::gain_life(Value::PowerOf(Box::new(
+            ChooseSpec::Source,
+        )))],
+    );
+    game.push_to_stack(entry);
+
+    let graveyard_id = game
+        .move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("source should leave its expected battlefield zone");
+    let returned_id = game
+        .move_object_by_effect(graveyard_id, Zone::Battlefield)
+        .expect("source can return before the ability resolves as a new object");
+
+    let anthem_card = CardBuilder::new(CardId::from_raw(9010), "New Object Power Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(returned_id),
+        Some(5),
+        "test setup should make the returned new object a 5-power creature"
+    );
+
+    resolve_stack_entry(&mut game).expect("ability should resolve using source LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        22,
+        "113.7a/608.2h require source LKI from the old object's last battlefield existence, not the returned new object"
+    );
+}
+
+#[test]
+fn test_resolution_uses_target_lki_after_effect_moves_it_to_hidden_zone() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9006), "Hidden Zone LKI Source")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Buffed Bounce Target", alice, 2, 2);
+    let anthem_card = CardBuilder::new(CardId::from_raw(9007), "Battlefield Anthem")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let anthem_id = game.create_object_from_card(&anthem_card, alice, Zone::Battlefield);
+    game.object_mut(anthem_id)
+        .expect("anthem should exist")
+        .abilities
+        .push(Ability::static_ability(StaticAbility::anthem(
+            crate::filter::ObjectFilter::creature(),
+            3,
+            0,
+        )));
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(target_id),
+        Some(5),
+        "test setup should make the target a 5-power creature on the battlefield"
+    );
+
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::move_to_zone(target_spec.clone(), Zone::Hand, false),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h should use the target's last known battlefield power after this effect moves it to hand"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_effect_modifies_target_before_moving_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9012), "Target LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Bounce Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::move_to_zone(target_spec.clone(), Zone::Hand, false),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using refreshed target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before it left, including counters added earlier in the same resolution"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_sacrifice_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9013), "Sacrifice LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Sacrifice Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::new(crate::effects::SacrificeTargetEffect::new(
+                target_spec.clone(),
+            )),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using sacrifice target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before sacrifice moved it to the graveyard"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_destroy_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9014), "Destroy LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Destroy Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::destroy(target_spec.clone()),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using destroy target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before destroy moved it to the graveyard"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_exile_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9015), "Exile LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Exile Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::exile(target_spec.clone()),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using exile target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before exile moved it"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_return_to_hand_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9016), "Bounce LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Bounce Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                target_spec.clone(),
+            )),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using return-to-hand target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before return-to-hand moved it"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_move_to_library_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9021), "Library LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Library Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::new(crate::effects::MoveToLibraryNthFromTopEffect::new(
+                target_spec.clone(),
+                Value::Fixed(1),
+            )),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using library target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before library movement"
+    );
+}
+
+#[test]
+fn test_target_lki_refreshes_when_shuffle_into_library_moves_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let source_card = CardBuilder::new(CardId::from_raw(9022), "Shuffle LKI Refresher")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Stack);
+
+    let target_id = create_creature(&mut game, "Countered Shuffle Target", alice, 2, 2);
+    let target_spec = ChooseSpec::target(ChooseSpec::Object(
+        crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ));
+    let entry = StackEntry::ability(
+        source_id,
+        alice,
+        vec![
+            Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                3,
+                target_spec.clone(),
+            ),
+            Effect::shuffle_objects_into_library(target_spec.clone(), PlayerFilter::You),
+            Effect::gain_life(Value::PowerOf(Box::new(target_spec))),
+        ],
+    )
+    .with_targets(vec![Target::Object(target_id)]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("effect should resolve using shuffle target LKI");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        25,
+        "608.2h requires target LKI from immediately before shuffle-into-library moved it"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {

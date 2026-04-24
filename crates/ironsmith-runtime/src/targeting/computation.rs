@@ -9,6 +9,7 @@ use crate::filter::player_filter_matches_game;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
+use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
@@ -44,14 +45,34 @@ pub(crate) fn can_target_object_with_view(
     caster: PlayerId,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> TargetingResult {
+    can_target_object_with_view_and_source_snapshot(game, target_id, source_id, None, caster, view)
+}
+
+pub(crate) fn can_target_object_with_view_and_source_snapshot(
+    game: &GameState,
+    target_id: ObjectId,
+    source_id: ObjectId,
+    source_snapshot: Option<&ObjectSnapshot>,
+    caster: PlayerId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> TargetingResult {
     let Some(target) = game.object(target_id) else {
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
 
     let Some(_source) = game.object(source_id) else {
-        // Source no longer exists - targeting can still be legal
-        // (we'll use LKI for the source's characteristics)
-        return TargetingResult::legal();
+        // Rule 608.2b: if the source of an ability has left its expected zone,
+        // resolution-time target legality uses that source's last known information.
+        let Some(source_snapshot) = source_snapshot else {
+            return TargetingResult::legal();
+        };
+        return can_target_object_from_source_snapshot_with_view(
+            game,
+            target_id,
+            source_snapshot,
+            caster,
+            view,
+        );
     };
 
     // Most targeting restrictions in this function apply only to permanents
@@ -99,6 +120,52 @@ pub(crate) fn can_target_object_with_view(
     TargetingResult::legal()
 }
 
+fn can_target_object_from_source_snapshot_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source_snapshot: &ObjectSnapshot,
+    caster: PlayerId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> TargetingResult {
+    let Some(target) = game.object(target_id) else {
+        return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
+    };
+
+    if target.zone != Zone::Battlefield && target.zone != Zone::Stack {
+        return TargetingResult::legal();
+    }
+
+    let target_abilities = view
+        .static_abilities_rc(target_id)
+        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+
+    if target_abilities.iter().any(|a| a.has_shroud()) {
+        return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
+    }
+
+    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
+        return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
+    }
+
+    for ability in target_abilities.iter() {
+        if let Some(filter) = ability.hexproof_from_filter()
+            && source_snapshot_matches_hexproof_from(game, source_snapshot, filter, caster)
+        {
+            return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
+        }
+    }
+
+    if has_protection_from_source_snapshot_with_view(game, target_id, source_snapshot, view) {
+        return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
+    }
+
+    if game.is_untargetable(target_id) && game.controller_of(target) != caster {
+        return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
+    }
+
+    TargetingResult::legal()
+}
+
 /// Check if a source matches a HexproofFrom filter.
 fn source_matches_hexproof_from(
     game: &GameState,
@@ -114,6 +181,16 @@ fn source_matches_hexproof_from(
     let filter_ctx = game.filter_context_for(caster, Some(source_id));
 
     filter.matches(source, &filter_ctx, game)
+}
+
+fn source_snapshot_matches_hexproof_from(
+    game: &GameState,
+    source_snapshot: &ObjectSnapshot,
+    filter: &ObjectFilter,
+    caster: PlayerId,
+) -> bool {
+    let filter_ctx = game.filter_context_for(caster, Some(source_snapshot.object_id));
+    filter.matches_snapshot(source_snapshot, &filter_ctx, game)
 }
 
 /// Check if a permanent has protection from a source.
@@ -153,6 +230,39 @@ pub(crate) fn has_protection_from_source_with_view(
                     .chosen_player(target_id)
                     .is_some_and(|chosen| game.controller_of(source) == chosen),
                 _ => source_matches_protection_with_view(source, protection_from, game, view),
+            };
+            if matches {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn has_protection_from_source_snapshot_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source_snapshot: &ObjectSnapshot,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Some(target) = game.object(target_id) else {
+        return false;
+    };
+
+    let target_abilities = view
+        .static_abilities_rc(target_id)
+        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
+
+    for ability in target_abilities.iter() {
+        if ability.has_protection()
+            && let Some(protection_from) = ability.protection_from()
+        {
+            let matches = match protection_from {
+                crate::ability::ProtectionFrom::ChosenPlayer => game
+                    .chosen_player(target_id)
+                    .is_some_and(|chosen| source_snapshot.controller == chosen),
+                _ => source_snapshot_matches_protection(source_snapshot, protection_from, game),
             };
             if matches {
                 return true;
@@ -211,6 +321,28 @@ pub(crate) fn source_matches_protection_with_view(
     }
 }
 
+fn source_snapshot_matches_protection(
+    source: &ObjectSnapshot,
+    protection: &crate::ability::ProtectionFrom,
+    game: &GameState,
+) -> bool {
+    use crate::ability::ProtectionFrom;
+
+    match protection {
+        ProtectionFrom::Color(color_set) => !source.colors.intersection(*color_set).is_empty(),
+        ProtectionFrom::AllColors => !source.colors.is_empty(),
+        ProtectionFrom::Creatures => source.card_types.contains(&CardType::Creature),
+        ProtectionFrom::ChosenPlayer => false,
+        ProtectionFrom::CardType(card_type) => source.card_types.contains(card_type),
+        ProtectionFrom::Permanents(filter) => {
+            let filter_ctx = game.filter_context_for(game.turn.active_player, None);
+            filter.matches_snapshot(source, &filter_ctx, game)
+        }
+        ProtectionFrom::Everything => true,
+        ProtectionFrom::Colorless => source.colors.is_empty(),
+    }
+}
+
 /// Compute all legal targets for a target specification.
 ///
 /// This is the main entry point for determining what can be targeted.
@@ -258,37 +390,82 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
     >,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
+    compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+        game,
+        spec,
+        caster,
+        source_id,
+        None,
+        tagged_objects,
+        view,
+    )
+}
+
+pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
+    tagged_objects: Option<
+        &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     match spec {
         // Target wrapper - recursively compute targets from inner spec
-        ChooseSpec::Target(inner) => compute_legal_targets_with_tagged_objects_with_view(
-            game,
-            inner,
-            caster,
-            source_id,
-            tagged_objects,
-            view,
-        ),
+        ChooseSpec::Target(inner) => {
+            compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+                game,
+                inner,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                view,
+            )
+        }
         // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => compute_legal_targets_with_tagged_objects_with_view(
-            game,
-            inner,
-            caster,
-            source_id,
-            tagged_objects,
-            view,
-        ),
-        ChooseSpec::AnyTarget => compute_any_targets_with_view(game, caster, source_id, view),
+        ChooseSpec::WithCount(inner, _) => {
+            compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+                game,
+                inner,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                view,
+            )
+        }
+        ChooseSpec::AnyTarget => {
+            compute_any_targets_with_view(game, caster, source_id, source_snapshot, view)
+        }
         ChooseSpec::AnyOtherTarget => {
-            compute_any_other_targets_with_view(game, caster, source_id, view)
+            compute_any_other_targets_with_view(game, caster, source_id, source_snapshot, view)
         }
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
-            compute_player_or_planeswalker_targets_with_view(game, filter, caster, source_id, view)
+            compute_player_or_planeswalker_targets_with_view(
+                game,
+                filter,
+                caster,
+                source_id,
+                source_snapshot,
+                view,
+            )
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
-        ChooseSpec::Player(filter) => compute_player_targets(game, filter, caster, source_id),
-        ChooseSpec::Object(filter) => {
-            compute_object_targets_with_view(game, filter, caster, source_id, tagged_objects, view)
+        ChooseSpec::Player(filter) => {
+            compute_player_targets(game, filter, caster, source_id, source_snapshot)
         }
+        ChooseSpec::Object(filter) => compute_object_targets_with_view(
+            game,
+            filter,
+            caster,
+            source_id,
+            source_snapshot,
+            tagged_objects,
+            view,
+        ),
         // These don't require selection - they're resolved at execution time
         ChooseSpec::Source
         | ChooseSpec::SourceController
@@ -307,9 +484,11 @@ fn compute_player_or_planeswalker_targets_with_view(
     player_filter: &PlayerFilter,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    let mut targets = compute_player_targets(game, player_filter, caster, source_id);
+    let mut targets =
+        compute_player_targets(game, player_filter, caster, source_id, source_snapshot);
 
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
@@ -320,7 +499,14 @@ fn compute_player_or_planeswalker_targets_with_view(
         }
 
         if let Some(src_id) = source_id {
-            match can_target_object_with_view(game, obj_id, src_id, caster, view) {
+            match can_target_object_with_view_and_source_snapshot(
+                game,
+                obj_id,
+                src_id,
+                source_snapshot,
+                caster,
+                view,
+            ) {
                 TargetingResult::Legal { .. } => targets.push(Target::Object(obj_id)),
                 TargetingResult::Invalid(_) => {}
             }
@@ -340,6 +526,7 @@ fn compute_any_targets_with_view(
     game: &GameState,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
     let mut targets = Vec::new();
@@ -363,7 +550,14 @@ fn compute_any_targets_with_view(
 
             // Check targeting legality
             if let Some(src_id) = source_id {
-                match can_target_object_with_view(game, obj_id, src_id, caster, view) {
+                match can_target_object_with_view_and_source_snapshot(
+                    game,
+                    obj_id,
+                    src_id,
+                    source_snapshot,
+                    caster,
+                    view,
+                ) {
                     TargetingResult::Legal { .. } => targets.push(Target::Object(obj_id)),
                     TargetingResult::Invalid(_) => {}
                 }
@@ -385,9 +579,10 @@ fn compute_any_other_targets_with_view(
     game: &GameState,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    let mut targets = compute_any_targets_with_view(game, caster, source_id, view);
+    let mut targets = compute_any_targets_with_view(game, caster, source_id, source_snapshot, view);
     if let Some(source_id) = source_id {
         targets.retain(|target| !matches!(target, Target::Object(id) if *id == source_id));
     }
@@ -400,6 +595,7 @@ fn compute_player_targets(
     filter: &PlayerFilter,
     controller: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
 ) -> Vec<Target> {
     // Unwrap Target wrapper — during legal target computation we want to know
     // which players *could be* targeted, not which are already targeted.
@@ -424,7 +620,9 @@ fn compute_player_targets(
         .filter(|p| {
             source_id.map_or_else(
                 || game.can_target_player(p.id),
-                |source| game.can_target_player_from_source(p.id, source),
+                |source| {
+                    can_target_player_from_source_or_snapshot(game, p.id, source, source_snapshot)
+                },
             )
         })
         .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
@@ -432,11 +630,42 @@ fn compute_player_targets(
         .collect()
 }
 
+fn can_target_player_from_source_or_snapshot(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    source_snapshot: Option<&ObjectSnapshot>,
+) -> bool {
+    if game.object(source_id).is_some() || source_snapshot.is_none() {
+        return game.can_target_player_from_source(player, source_id);
+    }
+    if !game.can_target_player(player) {
+        return false;
+    }
+    let source_snapshot = source_snapshot.expect("checked above");
+    !game
+        .effect_store
+        .cant_effects
+        .cant_target_players_from
+        .iter()
+        .any(|restriction| {
+            if restriction.player != player {
+                return false;
+            }
+            let filter_ctx =
+                game.filter_context_for(restriction.controller, Some(source_snapshot.object_id));
+            restriction
+                .source_filter
+                .matches_snapshot(source_snapshot, &filter_ctx, game)
+        })
+}
+
 fn compute_object_targets_with_view(
     game: &GameState,
     filter: &ObjectFilter,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    source_snapshot: Option<&ObjectSnapshot>,
     tagged_objects: Option<
         &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
@@ -460,7 +689,16 @@ fn compute_object_targets_with_view(
         }
 
         if let Some(src_id) = source_id {
-            if can_target_object_with_view(game, object_id, src_id, caster, view).is_legal() {
+            if can_target_object_with_view_and_source_snapshot(
+                game,
+                object_id,
+                src_id,
+                source_snapshot,
+                caster,
+                view,
+            )
+            .is_legal()
+            {
                 targets.push(Target::Object(object_id));
             }
             continue;
