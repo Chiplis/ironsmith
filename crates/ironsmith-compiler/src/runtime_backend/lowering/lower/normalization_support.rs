@@ -600,6 +600,9 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             )))
         }
         LineAst::Ability(mut parsed) => {
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+                rewrite_do_this_trigger_frequency_surface(full_text, triggered);
+            }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && let Some(condition) = combined_condition
             {
@@ -622,6 +625,30 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
         }
         other => Ok(other),
     }
+}
+
+fn rewrite_do_this_trigger_frequency_surface(
+    full_text: &str,
+    triggered: &mut crate::ability::TriggeredAbility,
+) {
+    let normalized = full_text.trim().to_ascii_lowercase();
+    if !normalized.contains("do this only once each turn")
+        && !normalized.contains("do this only twice each turn")
+    {
+        return;
+    }
+    let Some(condition) = triggered.intervening_if.take() else {
+        return;
+    };
+    triggered.intervening_if = Some(match condition {
+        crate::ConditionExpr::MaxTimesEachTurn(1) => {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(1)
+        }
+        crate::ConditionExpr::MaxTimesEachTurn(2) => {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(2)
+        }
+        other => other,
+    });
 }
 
 pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(

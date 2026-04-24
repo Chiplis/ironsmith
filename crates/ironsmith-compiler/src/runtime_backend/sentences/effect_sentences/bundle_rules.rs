@@ -22,7 +22,7 @@ use crate::cards::builders::{
 use crate::effect::{EventValueSpec, Value};
 use crate::runtime_backend::effect_sentences;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
-use crate::types::Subtype;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
@@ -889,6 +889,140 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     ])
 }
 
+fn parse_reveal_until_land_put_all_graveyard_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    let sentence_word_refs = sentence_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let (player, target_effect, consumed) = match sentence_word_refs.as_slice() {
+        [
+            "target",
+            "player",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            ..,
+        ] => (
+            PlayerAst::Target,
+            Some(EffectAst::TargetOnly {
+                target: TargetAst::Player(PlayerFilter::Any, span_from_tokens(tokens)),
+            }),
+            2,
+        ),
+        [
+            "target",
+            "opponent",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            ..,
+        ] => (
+            PlayerAst::TargetOpponent,
+            Some(EffectAst::TargetOnly {
+                target: TargetAst::Player(PlayerFilter::Opponent, span_from_tokens(tokens)),
+            }),
+            2,
+        ),
+        [
+            "that",
+            "player",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            ..,
+        ] => (PlayerAst::That, None, 2),
+        [
+            "defending",
+            "player",
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            ..,
+        ] => (PlayerAst::Defending, None, 2),
+        _ => return None,
+    };
+
+    let tail = &sentence_word_refs[consumed..];
+    if tail
+        != [
+            "reveals",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            "until",
+            "they",
+            "reveal",
+            "a",
+            "land",
+            "card",
+            "then",
+            "puts",
+            "those",
+            "cards",
+            "into",
+            "their",
+            "graveyard",
+        ]
+    {
+        return None;
+    }
+
+    let revealed_tag = TagKey::from("reveal_until_land_revealed");
+    let matched_tag = TagKey::from("reveal_until_land_matched");
+    let mut land_card = ObjectFilter::default();
+    land_card.card_types.push(CardType::Land);
+    land_card.zone = None;
+
+    let mut effects = Vec::new();
+    if let Some(target_effect) = target_effect {
+        effects.push(target_effect);
+    }
+    effects.push(EffectAst::ConsultTopOfLibrary {
+        player,
+        mode: LibraryConsultModeAst::Reveal,
+        filter: land_card,
+        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+        all_tag: revealed_tag.clone(),
+        match_tag: matched_tag,
+    });
+    effects.push(EffectAst::MoveToZone {
+        target: TargetAst::Tagged(revealed_tag, None),
+        zone: Zone::Graveyard,
+        to_top: false,
+        battlefield_controller: ReturnControllerAst::Preserve,
+        battlefield_tapped: false,
+        attached_to: None,
+    });
+    Some(effects)
+}
+
 fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
     if sentence_words.as_slice()
@@ -1116,6 +1250,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_shape_anew_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_reveal_until_land_put_all_graveyard_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_collision_of_realms_bundle(tokens) {

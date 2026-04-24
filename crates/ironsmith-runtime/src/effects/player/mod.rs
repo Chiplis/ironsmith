@@ -47,6 +47,7 @@ mod skip_draw_step;
 mod skip_next_combat_phase_this_turn;
 mod skip_turn;
 mod take_initiative;
+mod ticket_counters;
 mod venture_into_dungeon;
 mod win_the_game;
 
@@ -92,5 +93,6 @@ pub use skip_draw_step::SkipDrawStepEffect;
 pub use skip_next_combat_phase_this_turn::SkipNextCombatPhaseThisTurnEffect;
 pub use skip_turn::SkipTurnEffect;
 pub use take_initiative::TakeInitiativeEffect;
+pub use ticket_counters::TicketCountersEffect;
 pub use venture_into_dungeon::VentureIntoDungeonEffect;
 pub use win_the_game::WinTheGameEffect;

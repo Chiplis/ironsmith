@@ -682,6 +682,13 @@ pub(super) fn try_compile_player_turn_and_counter_effect(
             || Effect::energy_counters(count.clone()),
             |filter| Effect::energy_counters_player(count.clone(), filter),
         )?,
+        EffectAst::TicketCounters { count, player } => compile_player_effect(
+            *player,
+            ctx,
+            true,
+            || Effect::ticket_counters(count.clone()),
+            |filter| Effect::ticket_counters_player(count.clone(), filter),
+        )?,
         _ => return Ok(None),
     };
 

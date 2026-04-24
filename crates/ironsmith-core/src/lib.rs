@@ -122,9 +122,10 @@ pub use effect::{
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SoulbondPairEffect, SupportEffect,
     SurveilEffect, TagAttachedToSourceEffect, TagMatchingObjectsEffect,
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TransformEffect,
-    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
-    VentureIntoDungeonEffect, VoteChoice, VoteEffect, VoteOption, WinTheGameEffect, WithIdEffect,
+    TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect, TargetOnlyEffect,
+    TicketCountersEffect, TransformEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
+    UntapEffect, Until, VentureIntoDungeonEffect, VoteChoice, VoteEffect, VoteOption,
+    WinTheGameEffect, WithIdEffect,
 };
 pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;

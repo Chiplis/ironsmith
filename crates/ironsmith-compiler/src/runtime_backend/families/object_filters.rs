@@ -339,15 +339,21 @@ pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
 pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
-    let suffix = [
-        "with", "most", "votes", "or", "tied", "for", "most", "votes",
+    let suffixes = [
+        &[
+            "with", "the", "most", "votes", "or", "tied", "for", "most", "votes",
+        ][..],
+        &[
+            "with", "most", "votes", "or", "tied", "for", "most", "votes",
+        ][..],
     ];
-    let Some(suffix_start) = words.len().checked_sub(suffix.len()) else {
+    let Some((suffix_start, _suffix)) = suffixes.iter().find_map(|suffix| {
+        let suffix_start = words.len().checked_sub(suffix.len())?;
+        parse_full_word_slice(&words[suffix_start..], word_slice_phrase(suffix))
+            .map(|_| (suffix_start, *suffix))
+    }) else {
         return (tokens.to_vec(), false);
     };
-    if parse_full_word_slice(&words[suffix_start..], word_slice_phrase(&suffix)).is_none() {
-        return (tokens.to_vec(), false);
-    }
 
     let Some(token_end) = normalized_token_index_for_word_index(tokens, suffix_start) else {
         return (tokens.to_vec(), false);

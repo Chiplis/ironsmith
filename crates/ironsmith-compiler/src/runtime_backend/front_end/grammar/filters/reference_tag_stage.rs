@@ -265,6 +265,7 @@ pub(super) fn parse_object_filter_inner(
         .collect();
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
+    try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
@@ -1675,6 +1676,25 @@ fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut V
             continue;
         };
         filter.distinct_powers = true;
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_distinct_creature_types_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        ["that", "share", "no", "creature", "types"].as_slice(),
+        ["that", "shares", "no", "creature", "types"].as_slice(),
+        ["with", "no", "creature", "types", "in", "common"].as_slice(),
+    ] {
+        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+            continue;
+        };
+        filter.distinct_creature_types = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
     }

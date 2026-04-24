@@ -415,6 +415,9 @@ pub(crate) fn parse_vote_start_sentence(
     if !has_each || !has_player {
         return Ok(None);
     }
+    let secret = clause_words[..vote_idx]
+        .iter()
+        .any(|word| *word == "secretly" || *word == "secret");
 
     let for_idx = find_index(&clause_words, |word| *word == "for")
         .ok_or_else(|| CardTextError::ParseError("missing 'for' in vote clause".to_string()))?;
@@ -438,11 +441,16 @@ pub(crate) fn parse_vote_start_sentence(
                 return Ok(Some(EffectAst::VoteStartObjects {
                     filter,
                     count: ChoiceCount::exactly(1),
+                    secret,
                 }));
             }
             TargetAst::WithCount(inner, count) => {
                 if let TargetAst::Object(filter, _, _) = *inner {
-                    return Ok(Some(EffectAst::VoteStartObjects { filter, count }));
+                    return Ok(Some(EffectAst::VoteStartObjects {
+                        filter,
+                        count,
+                        secret,
+                    }));
                 }
             }
             _ => {}
@@ -454,6 +462,7 @@ pub(crate) fn parse_vote_start_sentence(
         return Ok(Some(EffectAst::VoteStartObjects {
             filter,
             count: ChoiceCount::exactly(1),
+            secret,
         }));
     }
 
@@ -483,7 +492,7 @@ pub(crate) fn parse_vote_start_sentence(
         ));
     }
 
-    Ok(Some(EffectAst::VoteStart { options }))
+    Ok(Some(EffectAst::VoteStart { options, secret }))
 }
 
 pub(crate) fn parse_for_each_vote_clause(

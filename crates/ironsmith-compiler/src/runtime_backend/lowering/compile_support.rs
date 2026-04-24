@@ -1008,7 +1008,7 @@ fn hand_exile_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
 }
 
 fn strip_choice_zones_from_filter(filter: &mut ObjectFilter, zones: &[Zone]) {
-    if filter.zone.is_some_and(|zone| zones.contains(&zone)) {
+    if zones.len() > 1 && filter.zone.is_some_and(|zone| zones.contains(&zone)) {
         filter.zone = None;
     }
     filter.any_of.retain(|option| {

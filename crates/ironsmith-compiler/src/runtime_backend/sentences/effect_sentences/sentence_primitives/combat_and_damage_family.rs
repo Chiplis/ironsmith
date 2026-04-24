@@ -232,6 +232,11 @@ pub(crate) fn parse_sentence_put_sticker_on(
         crate::events::KeywordActionKind::ArtSticker
     } else if contains_word_sequence(&clause_words[..=sticker_idx], &["ability", "sticker"]) {
         crate::events::KeywordActionKind::AbilitySticker
+    } else if contains_word_sequence(
+        &clause_words[..=sticker_idx],
+        &["power", "and", "toughness", "sticker"],
+    ) {
+        crate::events::KeywordActionKind::PowerToughnessSticker
     } else {
         crate::events::KeywordActionKind::Sticker
     };

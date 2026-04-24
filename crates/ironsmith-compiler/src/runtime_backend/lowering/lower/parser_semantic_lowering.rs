@@ -603,6 +603,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                 count: crate::effect::Value::Fixed(1),
                 player: PlayerAst::You,
                 random: true,
+                any_number: false,
                 filter: None,
                 tag: Some(discarded_tag.clone()),
             },
@@ -719,14 +720,6 @@ fn lower_rewrite_static_to_chunk_impl(
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
-    if looks_like_ability_word_marker_text(line.text.as_str(), parse_tokens) {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::keyword_marker(line.text.trim().to_string()).into(),
-            ),
-            chosen_option_label,
-        );
-    }
     if matches!(
         line.text.as_str(),
         "for each {B} in a cost, you may pay 2 life rather than pay that mana."
@@ -841,6 +834,14 @@ fn lower_rewrite_static_to_chunk_impl(
     if let Some(chunk) = lower_split_rewrite_static_chunk(line, parse_tokens)? {
         return Ok(chunk);
     }
+    if looks_like_ability_word_marker_text(line.text.as_str(), parse_tokens) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::keyword_marker(line.text.trim().to_string()).into(),
+            ),
+            chosen_option_label,
+        );
+    }
     Err(CardTextError::ParseError(format!(
         "rewrite static lowering could not reconstitute static line '{}'",
         line.info.raw_line
@@ -854,6 +855,8 @@ fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken
         || trimmed.contains(':')
         || trimmed.contains('—')
         || trimmed.contains('-')
+        || trimmed.contains(',')
+        || trimmed.contains(';')
     {
         return false;
     }

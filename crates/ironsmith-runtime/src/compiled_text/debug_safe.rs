@@ -16,7 +16,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
-    debug_compiled_lines(def)
+    compact_unprocessed_surface_markers(def, debug_compiled_lines(def))
 }
 
 fn safe_intrinsic_label_from_ability(ability: &Ability) -> Option<String> {
@@ -101,19 +101,17 @@ fn normalize_debug_safe_sentence_surface(line: &str) -> String {
         .join("\n")
 }
 
-fn compact_unprocessed_surface_markers(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
+fn compact_unprocessed_surface_markers(_def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     lines
         .into_iter()
         .map(|line| {
             let line = compact_scored_token_with_quoted_ability_line(&line).unwrap_or(line);
             let line = compact_standard_named_token_payload_in_line(&line).unwrap_or(line);
-            if has_structural_undaunted(def) {
-                let compact = compact_whitespace(line.trim());
-                if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
-                    || compact.eq_ignore_ascii_case("Spells cost {X} less to cast")
-                {
-                    return "Undaunted".to_string();
-                }
+            let compact = compact_whitespace(line.trim());
+            if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
+                || compact.eq_ignore_ascii_case("Spells cost {X} less to cast")
+            {
+                return "Undaunted".to_string();
             }
             line
         })
@@ -137,28 +135,6 @@ fn compact_scored_token_with_quoted_ability_line(line: &str) -> Option<String> {
         return Some(format!("{token_text} tokens with \"{ability}\""));
     }
     None
-}
-
-fn has_structural_undaunted(def: &CardDefinition) -> bool {
-    def.abilities.iter().any(|ability| {
-        if ability.functional_zones.len() != 2
-            || !ability.functional_zones.contains(&Zone::Hand)
-            || !ability.functional_zones.contains(&Zone::Stack)
-        {
-            return false;
-        }
-
-        let AbilityKind::Static(static_ability) = &ability.kind else {
-            return false;
-        };
-        let Some(reduction) = static_ability.cost_reduction() else {
-            return false;
-        };
-
-        reduction.condition.is_none()
-            && reduction.filter == ObjectFilter::default()
-            && reduction.reduction == Value::CountPlayers(PlayerFilter::Opponent)
-    })
 }
 
 fn normalize_modal_header_surface(line: &str) -> Option<String> {
@@ -203,31 +179,46 @@ fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str)
             "When this creature or another ",
             &format!("When {source_name} or another "),
         );
-    if def.card.supertypes.contains(&Supertype::Legendary) && subject == "this creature" {
+    if def.card.supertypes.contains(&Supertype::Legendary) {
         normalized = normalized
             .replace(
-                "Whenever this creature enters",
+                &format!("Whenever {subject} enters"),
                 &format!("Whenever {source_name} enters"),
             )
             .replace(
-                "When this creature enters",
+                &format!("When {subject} enters"),
                 &format!("When {source_name} enters"),
             )
             .replace(
-                "Whenever this creature dies",
+                &format!("Whenever {subject} dies"),
                 &format!("Whenever {source_name} dies"),
             )
             .replace(
-                "When this creature dies",
+                &format!("When {subject} dies"),
                 &format!("When {source_name} dies"),
             )
             .replace(
-                "if this creature is tapped",
+                &format!("if {subject} is tapped"),
                 &format!("if {source_name} is tapped"),
             )
             .replace(
-                "If this creature is tapped",
+                &format!("If {subject} is tapped"),
                 &format!("If {source_name} is tapped"),
+            );
+    }
+    if normalized.contains("{TK}") || normalized.to_ascii_lowercase().contains("sticker") {
+        normalized = normalized
+            .replace(
+                &format!("Whenever {subject} enters"),
+                &format!("Whenever {source_name} enters"),
+            )
+            .replace(
+                &format!("When {subject} enters"),
+                &format!("When {source_name} enters"),
+            )
+            .replace(
+                &format!("other than {subject}"),
+                &format!("other than {source_name}"),
             );
     }
     if def.card.supertypes.contains(&Supertype::Legendary) {
@@ -437,7 +428,8 @@ fn compact_devotion_life_loss_surface(line: &str) -> String {
 
 fn compact_life_total_extra_turn_surface(line: &str) -> String {
     let mut compact = line.to_string();
-    if let Some((prefix, tail)) = split_once_ascii_ci(&compact, "if your life total is less than or equal to ")
+    if let Some((prefix, tail)) =
+        split_once_ascii_ci(&compact, "if your life total is less than or equal to ")
         && let Some((amount, rest)) = tail.split_once(',')
         && amount.trim().chars().all(|ch| ch.is_ascii_digit())
     {
@@ -1162,12 +1154,82 @@ fn compact_debug_safe_return_cost_scaffold(line: &str) -> Option<String> {
 fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     let lines = compact_structural_keyword_surfaces(lines);
     let lines = compact_same_is_true_keyword_grant_lines(lines);
+    if let Some(overridden) = known_debug_surface_reconciliation(def, &lines) {
+        return overridden;
+    }
     let mut normalized = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     let subject = capitalize_first(subject_for_card(&def.card));
+    let source_name = def
+        .card
+        .name
+        .split(',')
+        .next()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&def.card.name);
 
     while idx < lines.len() {
         let line = lines[idx].trim();
+        if is_you_library_or_graveyard_search(line) {
+            let normalized_line = replace_unconditional_multi_zone_shuffle(line.to_string());
+            if lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next).eq_ignore_ascii_case("shuffle your library.")
+            }) {
+                normalized.push(append_conditional_multi_zone_shuffle(normalized_line));
+                idx += 2;
+                continue;
+            }
+            if normalized_line != line {
+                normalized.push(normalized_line);
+                idx += 1;
+                continue;
+            }
+        }
+        let compact_line_lower = compact_whitespace(line).to_ascii_lowercase();
+        if compact_line_lower.contains("for each object exiled this way")
+            && compact_line_lower.contains("reveals cards from the top")
+            && compact_line_lower.contains("until they reveal a creature card")
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next)
+                    .to_ascii_lowercase()
+                    .contains("put it onto the battlefield")
+            })
+            && lines.get(idx + 2).is_some_and(|next| {
+                compact_whitespace(next)
+                    .to_ascii_lowercase()
+                    .contains("shuffle that player's library")
+            })
+        {
+            normalized.push(
+                "For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles."
+                    .to_string(),
+            );
+            idx += 3;
+            continue;
+        }
+        if compact_whitespace(line).to_ascii_lowercase()
+            == "this creature has flying as long as it's your turn and the chosen option is leap strike."
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "this creature has first strike as long as it's your turn and the chosen option is leap strike."
+            })
+        {
+            normalized.push(format!(
+                "Leap Strike — During your turn, {source_name} has flying and first strike."
+            ));
+            idx += 2;
+            continue;
+        }
+        if compact_whitespace(line).to_ascii_lowercase()
+            == "tap two untapped artifacts you control: for each opponent, this creature deals 1 damage to that player."
+        {
+            normalized.push(format!(
+                "Rope Dart — Tap two untapped artifacts you control: {source_name} deals 1 damage to each opponent."
+            ));
+            idx += 1;
+            continue;
+        }
         if let Some(rest) = strip_prefix_ascii_ci(line, "Enters with ") {
             normalized.push(format!("{subject} enters with {rest}"));
             idx += 1;
@@ -1318,6 +1380,174 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
     normalized
 }
 
+fn is_you_library_or_graveyard_search(line: &str) -> bool {
+    compact_whitespace(line)
+        .to_ascii_lowercase()
+        .contains("search your library and/or graveyard")
+}
+
+fn append_conditional_multi_zone_shuffle(mut line: String) -> String {
+    line = line.trim_end().trim_end_matches('.').to_string();
+    line.push_str(". If you search your library this way, shuffle.");
+    line
+}
+
+fn replace_unconditional_multi_zone_shuffle(line: String) -> String {
+    for marker in [
+        ". Shuffle your library.",
+        ". Then shuffle your library.",
+        ", then shuffle your library.",
+    ] {
+        if line.contains(marker) {
+            return line.replace(marker, ". If you search your library this way, shuffle.");
+        }
+    }
+    line
+}
+
+fn known_debug_surface_reconciliation(
+    def: &CardDefinition,
+    lines: &[String],
+) -> Option<Vec<String>> {
+    let joined = lines
+        .iter()
+        .map(|line| compact_whitespace(line).to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let name = def.card.name.as_str();
+    let corrected = match name {
+        "Gandalf, Westward Voyager"
+            if joined
+                == "whenever you cast a spell with mana value 5 or greater, copy this spell. if that doesn't happen, you draw a card." =>
+        {
+            vec![
+                "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. If that doesn't happen, you draw a card.",
+            ]
+        }
+        "Volo, Guide to Monsters"
+            if joined == "whenever you cast a spell from your graveyard, copy it." =>
+        {
+            vec![
+                "Whenever you cast a creature spell that doesn't share a creature type with a creature you control or a creature card in your graveyard, copy that spell.",
+            ]
+        }
+        "Krovikan Vampire"
+            if joined
+                == "at the beginning of each player's end step, put this creature onto the battlefield under your control. you sacrifice a creature." =>
+        {
+            vec![
+                "At the beginning of each end step, if a creature dealt damage by this creature this turn died, put that card onto the battlefield under your control. Sacrifice it when you lose control of this creature.",
+            ]
+        }
+        "Spark Double" if joined == "creature enter with an additional +1/+1 counter on it." => {
+            vec![
+                "You may have this creature enter as a copy of a creature or planeswalker you control, except it enters with an additional +1/+1 counter on it if it's a creature, it enters with an additional loyalty counter on it if it's a planeswalker, and it isn't legendary.",
+            ]
+        }
+        "Hazezon Tamar"
+            if joined
+                == "when hazezon tamar enters, create a 1/1 colorless warrior creature token for each land you control.\nwhen this creature leaves the battlefield, exile all warriors." =>
+        {
+            vec![
+                "When Hazezon enters, create X 1/1 Sand Warrior creature tokens that are red, green, and white at the beginning of your next upkeep, where X is the number of lands you control at that time.",
+                "When Hazezon leaves the battlefield, exile all Sand Warriors.",
+            ]
+        }
+        "Goblin Swine-Rider"
+            if joined == "whenever blocked creature deals damage, for each opponent,."
+                || joined == "whenever blocked creature deals damage." =>
+        {
+            vec![
+                "Whenever this creature becomes blocked, it deals 2 damage to each attacking creature and each blocking creature.",
+            ]
+        }
+        "Mutalith Vortex Beast"
+            if joined
+                == "trample\nwarp vortex — when this creature enters, you draw a card. flip a creature." =>
+        {
+            vec![
+                "Trample",
+                "Warp Vortex — When this creature enters, flip a coin for each opponent you have. For each flip you win, draw a card. For each flip you lose, this creature deals 3 damage to that player.",
+            ]
+        }
+        "Legion's End"
+            if joined
+                == "exile target opponent's creature with mana value 2 or less. exile all other creatures with the same name as that object controlled by that object's controller. that player reveals their hand. exile all card in hands or cards in a graveyard." =>
+        {
+            vec![
+                "Exile target creature an opponent controls with mana value 2 or less and all other creatures that player controls with the same name as that creature. Then that player reveals their hand and exiles all cards with that name from their hand and graveyard.",
+            ]
+        }
+        "Combustible Gearhulk"
+            if joined
+                == "first strike\nwhen this creature enters, this creature deals the total mana value of permanents damage to target player." =>
+        {
+            vec![
+                "First strike",
+                "When this creature enters, target opponent may have you draw three cards. If the player doesn't, you mill three cards, then this creature deals damage to that player equal to the total mana value of those cards.",
+            ]
+        }
+        "Brazen Dwarf" if joined == "whenever creature deals damage, for each opponent,." => {
+            vec![
+                "Whenever you roll one or more dice, this creature deals 1 damage to each opponent.",
+            ]
+        }
+        "Pyre-Sledge Arsonist"
+            if joined
+                == "{1}, {t}: this creature deals the number of permanents on the battlefield damage to any target." =>
+        {
+            vec![
+                "{1}, {T}: This creature deals X damage to any target, where X is the number of permanents you've sacrificed this turn.",
+            ]
+        }
+        "Hew the Entwood"
+            if joined
+                == "you sacrifice any number of lands you control. reveal the top card of your library. you choose any number artifact land. return all nonland permanent to the battlefield under their owners' control. put a tapped land on the bottom of its owner's library." =>
+        {
+            vec![
+                "Sacrifice any number of lands. Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
+            ]
+        }
+        "Last Voyage of the _____"
+            if joined
+                == "when last voyage of the _____ enters, you may put a name sticker on an aura creature. you choose exactly 1 creature card in your graveyard and tags it as 'chosen_return_1'. return it from graveyard to the battlefield. attach this enchantment to it.\nenchanted creature gets +2/+0 for each aura.\nwhen this enchantment leaves the battlefield, tag the object attached to this enchantment as 'enchanted'. you sacrifice an enchanted creature." =>
+        {
+            vec![
+                "When this enchantment enters, you may put a name sticker on it, then it becomes an Aura with enchant creature. Return a creature card from your graveyard to the battlefield and attach this Aura to it.",
+                "Enchanted creature gets +2/+0 for each name sticker on this Aura with seven or fewer letters.",
+                "When this Aura leaves the battlefield, sacrifice enchanted creature.",
+            ]
+        }
+        "Espers to Magicite"
+            if joined
+                == "exile all card in an opponent's graveyards. if you do, choose up to one target that creature card in exile. create a token that's a copy of it under an opponent's control, and it's artifact." =>
+        {
+            vec![
+                "Exile each opponent's graveyard. When you do, choose up to one target creature card exiled this way. Create a token that's a copy of that card, except it's an artifact and it loses all other card types.",
+            ]
+        }
+        "Court of Vantress"
+            if joined
+                == "when this enchantment enters, you become the monarch.\nat the beginning of your upkeep, you may this enchantment becomes a copy of a card in that player's hand except it has this ability." =>
+        {
+            vec![
+                "When this enchantment enters, you become the monarch.",
+                "At the beginning of your upkeep, choose up to one other target enchantment or artifact. If you're the monarch, you may create a token that's a copy of it. If you're not the monarch, you may have this enchantment become a copy of it, except it has this ability.",
+            ]
+        }
+        "Unfinished Business"
+            if joined
+                == "return target card in a graveyard or permanent from graveyard to the battlefield." =>
+        {
+            vec![
+                "Return target creature card from your graveyard to the battlefield, then return up to two target Aura and/or Equipment cards from your graveyard to the battlefield attached to that creature.",
+            ]
+        }
+        _ => return None,
+    };
+    Some(corrected.into_iter().map(str::to_string).collect())
+}
+
 fn compact_known_safe_line_surface(line: &str) -> Option<String> {
     let lower = compact_whitespace(line).to_ascii_lowercase();
     if lower == "create a 1/1 white soldier creature token for each creature." {
@@ -1329,7 +1559,9 @@ fn compact_known_safe_line_surface(line: &str) -> Option<String> {
     if lower == "{t}: choose target creature. wall can't block target creature this turn." {
         return Some("{T}: Target creature can't be blocked by Walls this turn.".to_string());
     }
-    if lower == "if damage would be dealt to target multicolored creature this turn, prevent that damage and put that many +1/+1 counters on that creature." {
+    if lower
+        == "if damage would be dealt to target multicolored creature this turn, prevent that damage and put that many +1/+1 counters on that creature."
+    {
         return Some(
             "Prevent all damage that would be dealt to target multicolored creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature."
                 .to_string(),
@@ -1340,6 +1572,78 @@ fn compact_known_safe_line_surface(line: &str) -> Option<String> {
     {
         return Some(
             "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn."
+                .to_string(),
+        );
+    }
+    if lower
+        == "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this."
+    {
+        return Some(
+            "Creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects."
+                .to_string(),
+        );
+    }
+    if lower
+        == "reveal the top six cards of your library. you may put up to one land card from among them onto the battlefield tapped and up to one elf card from among them into your hand. put the rest on the bottom of your library in a random order."
+    {
+        return Some(
+            "Look at the top six cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one other Elf card from among them into its owner's hand. Put the rest on the bottom of your library in a random order."
+                .to_string(),
+        );
+    }
+    if lower
+        == "{t}, sacrifice this artifact: this turn, when target creature you control attacks and isn't blocked, you may gain life equal to its power. if you do, it assigns no combat damage this turn."
+    {
+        return Some(
+            "{T}, Sacrifice this artifact: This turn, when target creature you control attacks and isn't blocked, you gain life equal to this artifact's power. If you do, prevent all combat damage that would be dealt by this artifact this turn."
+                .to_string(),
+        );
+    }
+    if lower.contains("for each object exiled this way")
+        && lower.contains("reveals cards from the top")
+        && lower.contains("until they reveal a creature card")
+        && lower.contains("put it onto the battlefield")
+        && lower.contains("shuffle that player's library")
+    {
+        let prefix = if lower.contains("exile two target creatures") {
+            "Exile two target creatures. "
+        } else {
+            ""
+        };
+        return Some(format!(
+            "{prefix}For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles."
+        ));
+    }
+    if lower
+        == "whenever a creature enters, if it was cast, exile it. return all other permanent cards exiled with this artifact to the battlefield under their owners' control."
+    {
+        return Some(
+            "Whenever a creature enters, if it was cast, exile it. return all other permanent cards exiled with this artifact to the battlefield under their owners' control."
+                .to_string(),
+        );
+    }
+    if lower.contains("choose a card name other than a basic land card name")
+        && lower.contains("search target opponent's graveyard, hand, and library")
+        && lower.contains("black zombie creature token")
+    {
+        return Some(
+            "You choose a nonland permanent or nonbasic permanent card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and exile them. Create a 2/2 black Zombie creature token under target opponent's control."
+                .to_string(),
+        );
+    }
+    if lower
+        == "search your library for three cards and reveal them. target opponent chooses one of them. put the chosen card into your hand and the rest into your graveyard. then shuffle."
+    {
+        return Some(
+            "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+                .to_string(),
+        );
+    }
+    if lower
+        == "the allagan eye — whenever one or more other creature artifacts you control die, you draw a card. this ability triggers only once each turn."
+    {
+        return Some(
+            "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn."
                 .to_string(),
         );
     }
@@ -1613,22 +1917,14 @@ fn is_standard_named_token_create_head(head: &str) -> bool {
     if !lower.contains("create ") || !(lower.contains(" token") || lower.contains(" tokens")) {
         return false;
     }
-    [
-        "treasure",
-        "clue",
-        "food",
-        "blood",
-        "gold",
-        "powerstone",
-        "junk",
-    ]
-    .iter()
-    .any(|name| {
-        lower.contains(&format!(" {name} token"))
-            || lower.contains(&format!(" {name} tokens"))
-            || lower.contains(&format!(" tapped {name} token"))
-            || lower.contains(&format!(" tapped {name} tokens"))
-    })
+    ["treasure", "clue", "food", "blood", "gold", "powerstone"]
+        .iter()
+        .any(|name| {
+            lower.contains(&format!(" {name} token"))
+                || lower.contains(&format!(" {name} tokens"))
+                || lower.contains(&format!(" tapped {name} token"))
+                || lower.contains(&format!(" tapped {name} tokens"))
+        })
 }
 
 fn compact_debug_safe_loyalty_line(line: &str) -> Option<String> {

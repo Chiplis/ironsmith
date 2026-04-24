@@ -1415,6 +1415,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             count,
             player,
             random,
+            any_number,
             filter,
             tag,
         } => {
@@ -1457,6 +1458,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     *random,
                     resolved_filter,
                 )
+                .with_any_number(*any_number)
                 .with_tag(tag),
             );
             (vec![effect], choices)

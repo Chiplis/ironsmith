@@ -197,7 +197,11 @@ pub(crate) fn compile_card_text(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<CompiledCardText, CardTextError> {
-    CardTextCompiler::compile(builder, text.into(), CompilePolicy { allow_unsupported })
+    let text = text.into();
+    let mut compiled =
+        CardTextCompiler::compile(builder, text.clone(), CompilePolicy { allow_unsupported })?;
+    normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
+    Ok(compiled)
 }
 
 pub(crate) fn parse_card_text(
@@ -240,6 +244,26 @@ fn text_uses_do_this_only_each_turn(text: &str) -> bool {
     let normalized = text.trim().to_ascii_lowercase();
     normalized.contains("do this only once each turn")
         || normalized.contains("do this only twice each turn")
+}
+
+fn normalize_do_this_trigger_frequency_conditions(text: &str, definition: &mut CardDefinition) {
+    let normalized = text.to_ascii_lowercase();
+    let once = normalized.contains("do this only once each turn");
+    let twice = normalized.contains("do this only twice each turn");
+    if !once && !twice {
+        return;
+    }
+    for ability in &mut definition.abilities {
+        let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind else {
+            continue;
+        };
+        if once && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1)) {
+            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1));
+        }
+        if twice && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(2)) {
+            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(2));
+        }
+    }
 }
 
 #[cfg(test)]

@@ -786,6 +786,35 @@ fn compile_oracle_text_compare_text_outputs_only_text_and_score() {
 }
 
 #[test]
+fn compile_oracle_text_outputs_original_oracle_text() {
+    let dir = tempdir().expect("tempdir");
+    let cards_path = dir.path().join("cards.json");
+    write_cards_json(&cards_path);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
+        .current_dir(dir.path())
+        .arg("--name")
+        .arg("Lightning Bolt")
+        .arg("--cards")
+        .arg(&cards_path)
+        .output()
+        .expect("run compile_oracle_text");
+    assert!(
+        output.status.success(),
+        "compile_oracle_text should succeed"
+    );
+
+    let stdout =
+        String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
+    assert!(stdout.contains("Original oracle text:"), "{stdout}");
+    assert!(
+        stdout.contains("Lightning Bolt deals 3 damage to any target."),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Compiled abilities/effects"), "{stdout}");
+}
+
+#[test]
 fn compile_oracle_text_rejects_obsolete_db_flags() {
     let dir = tempdir().expect("tempdir");
     let cards_path = dir.path().join("cards.json");

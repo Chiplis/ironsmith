@@ -2667,6 +2667,7 @@ pub struct VoteEffect<E> {
     pub choice: VoteChoice<E>,
     pub controller_extra_votes: u32,
     pub controller_optional_extra_votes: u32,
+    pub secret: bool,
 }
 
 impl<E> VoteEffect<E> {
@@ -2675,6 +2676,7 @@ impl<E> VoteEffect<E> {
             choice: VoteChoice::NamedOptions(options),
             controller_extra_votes,
             controller_optional_extra_votes: 0,
+            secret: false,
         }
     }
 
@@ -2687,6 +2689,7 @@ impl<E> VoteEffect<E> {
             choice: VoteChoice::NamedOptions(options),
             controller_extra_votes,
             controller_optional_extra_votes,
+            secret: false,
         }
     }
 
@@ -2711,6 +2714,7 @@ impl<E> VoteEffect<E> {
             choice: VoteChoice::Objects { filter, count },
             controller_extra_votes,
             controller_optional_extra_votes: 0,
+            secret: false,
         }
     }
 
@@ -2738,6 +2742,7 @@ impl<E> VoteEffect<E> {
             choice: VoteChoice::Objects { filter, count },
             controller_extra_votes,
             controller_optional_extra_votes,
+            secret: false,
         }
     }
 
@@ -2747,6 +2752,11 @@ impl<E> VoteEffect<E> {
 
     pub fn councils_dilemma(options: Vec<VoteOption<E>>) -> Self {
         Self::with_optional_extra(options, 0, 1)
+    }
+
+    pub fn with_secret(mut self, secret: bool) -> Self {
+        self.secret = secret;
+        self
     }
 }
 
@@ -2912,6 +2922,7 @@ pub struct DiscardEffect {
     pub count: Value,
     pub player: PlayerFilter,
     pub random: bool,
+    pub any_number: bool,
     pub card_filter: Option<ObjectFilter>,
     pub tag: Option<crate::tag::TagKey>,
 }
@@ -2927,9 +2938,15 @@ impl DiscardEffect {
             count: count.into(),
             player,
             random,
+            any_number: false,
             card_filter,
             tag: None,
         }
+    }
+
+    pub fn with_any_number(mut self, any_number: bool) -> Self {
+        self.any_number = any_number;
+        self
     }
 
     pub fn with_tag(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
@@ -4430,6 +4447,25 @@ pub struct EnergyCountersEffect {
 }
 
 impl EnergyCountersEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TicketCountersEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl TicketCountersEffect {
     pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self {
             count: count.into(),

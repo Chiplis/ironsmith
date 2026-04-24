@@ -318,6 +318,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::TakeInitiative { player }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
+        | EffectAst::TicketCounters { player, .. }
         | EffectAst::Scry { player, .. }
         | EffectAst::Fateseal { player, .. }
         | EffectAst::Surveil { player, .. }
@@ -1398,6 +1399,7 @@ fn resolve_effect_result_values_in_fields(
         | EffectAst::SetLifeTotal { amount, .. }
         | EffectAst::PoisonCounters { count: amount, .. }
         | EffectAst::EnergyCounters { count: amount, .. }
+        | EffectAst::TicketCounters { count: amount, .. }
         | EffectAst::Monstrosity { amount }
         | EffectAst::PreventDamage { amount, .. }
         | EffectAst::RedirectNextDamageFromSourceToTarget { amount, .. }
@@ -1770,6 +1772,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::SetLifeTotal { amount, .. }
         | EffectAst::PoisonCounters { count: amount, .. }
         | EffectAst::EnergyCounters { count: amount, .. }
+        | EffectAst::TicketCounters { count: amount, .. }
         | EffectAst::Monstrosity { amount } => bind_unresolved_it_in_value(amount, seed_tag),
         EffectAst::PreventDamage { amount, target, .. } => {
             bind_unresolved_it_in_value(amount, seed_tag)

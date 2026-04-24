@@ -610,6 +610,10 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::TicketCountersEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::DiscoverEffect>(&effect) {
         return Ok(converted);
     }
@@ -719,6 +723,7 @@ where
                     payload.controller_extra_votes,
                     payload.controller_optional_extra_votes,
                 )
+                .with_secret(payload.secret)
             }
             ironsmith_core::VoteChoice::Objects { filter, count } => {
                 crate::effects::VoteEffect::vote_objects_with_optional_extra(
@@ -727,6 +732,7 @@ where
                     payload.controller_extra_votes,
                     payload.controller_optional_extra_votes,
                 )
+                .with_secret(payload.secret)
             }
         };
         return Ok(Effect::new(converted));
@@ -740,7 +746,8 @@ where
             payload.player.clone(),
             payload.random,
             payload.card_filter.clone(),
-        );
+        )
+        .with_any_number(payload.any_number);
         if let Some(tag) = &payload.tag {
             converted = converted.with_tag(tag.clone());
         }

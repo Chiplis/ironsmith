@@ -146,7 +146,6 @@ mod tests {
             effect_text: "draw a card".to_string(),
             effect_parse_tokens: vec![OwnedLexToken::synthetic_word("draw")],
             intervening_if: Some("if you control a Wizard".to_string()),
-            presentation_label: None,
             max_triggers_per_turn: Some(1),
             chosen_option_label: Some("A".to_string()),
         };

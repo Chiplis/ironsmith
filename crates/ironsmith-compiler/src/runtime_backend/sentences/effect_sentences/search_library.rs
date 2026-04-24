@@ -958,7 +958,9 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         return Ok(None);
     }
     let words_all = token_words(tokens);
-    let refers_to_exiled = grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some();
+    let refers_to_exiled = grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some()
+        || grammar::words_match_prefix(tokens, &["for", "each", "of", "those", "creatures"])
+            .is_some();
     if !refers_to_exiled {
         return Ok(None);
     }

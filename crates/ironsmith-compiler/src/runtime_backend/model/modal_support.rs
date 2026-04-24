@@ -236,6 +236,7 @@ fn replace_modal_header_x_in_effect_ast(
         | EffectAst::SetLifeTotal { amount, .. }
         | EffectAst::PoisonCounters { count: amount, .. }
         | EffectAst::EnergyCounters { count: amount, .. }
+        | EffectAst::TicketCounters { count: amount, .. }
         | EffectAst::AddManaScaled { amount, .. }
         | EffectAst::AddManaAnyColor { amount, .. }
         | EffectAst::AddManaAnyOneColor { amount, .. }

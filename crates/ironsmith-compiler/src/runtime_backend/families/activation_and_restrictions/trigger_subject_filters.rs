@@ -794,8 +794,15 @@ pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
         || contains_word_sequence(words, &["during", "your", "turn"])
         || contains_word_sequence(words, &["during", "their", "turn"])
         || contains_word_sequence(words, &["during", "an", "opponents", "turn"])
+        || contains_word_sequence(words, &["during", "an", "opponent's", "turn"])
+        || contains_word_sequence(words, &["during", "an", "opponent", "s", "turn"])
         || contains_word_sequence(words, &["during", "opponents", "turn"])
+        || contains_word_sequence(words, &["during", "opponent's", "turn"])
+        || contains_word_sequence(words, &["during", "opponent", "s", "turn"])
         || contains_word_sequence(words, &["during", "each", "opponents", "turn"]);
+    let has_turn_context = has_turn_context
+        || contains_word_sequence(words, &["during", "each", "opponent's", "turn"])
+        || contains_word_sequence(words, &["during", "each", "opponent", "s", "turn"]);
     if !has_turn_context {
         return false;
     }
@@ -860,8 +867,14 @@ pub(crate) fn parse_spell_activity_trigger(
     let mut during_turn = if contains_word_sequence(&clause_words, &["during", "your", "turn"]) {
         Some(PlayerFilter::You)
     } else if contains_word_sequence(&clause_words, &["during", "an", "opponents", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "an", "opponent's", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "an", "opponent", "s", "turn"])
         || contains_word_sequence(&clause_words, &["during", "opponents", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "opponent's", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "opponent", "s", "turn"])
         || contains_word_sequence(&clause_words, &["during", "each", "opponents", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "each", "opponent's", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "each", "opponent", "s", "turn"])
     {
         Some(PlayerFilter::Opponent)
     } else {

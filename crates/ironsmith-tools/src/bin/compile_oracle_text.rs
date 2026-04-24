@@ -260,8 +260,6 @@ fn write_compiled_job<W: Write>(
 
     outln!("Name: {}", display_def.card.name);
     if detailed {
-        outln!("Oracle text:");
-        outln!("{}", job.oracle_text.trim());
         outln!("Parse input:");
         outln!("{}", job.parse_input.trim());
     }
@@ -275,6 +273,8 @@ fn write_compiled_job<W: Write>(
             .collect::<Vec<_>>()
             .join(" ")
     );
+    outln!("Original oracle text:");
+    outln!("{}", job.oracle_text.trim());
     outln!("Compiled abilities/effects");
     if raw {
         outln!("- {:#?}", display_def);

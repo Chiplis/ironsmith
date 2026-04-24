@@ -164,7 +164,7 @@ pub use player::{
     GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayEnergyEffect,
     PoisonCountersEffect, RingTemptsYouEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect,
-    VentureIntoDungeonEffect, WinTheGameEffect,
+    TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,

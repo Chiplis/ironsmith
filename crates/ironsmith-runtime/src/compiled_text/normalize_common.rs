@@ -1,6 +1,6 @@
 use super::*;
-use crate::filter::StackObjectKind;
 use crate::TaggedOpbjectRelation;
+use crate::filter::StackObjectKind;
 
 use std::cell::Cell;
 

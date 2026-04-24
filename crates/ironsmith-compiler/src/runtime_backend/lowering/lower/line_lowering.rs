@@ -1038,7 +1038,7 @@ fn lower_triggered_chunk(
         None,
         prepared.prepared.imports.clone(),
     );
-    let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
+    let mut parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
         parsed,
         prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
     }) {
@@ -1052,6 +1052,20 @@ fn lower_triggered_chunk(
         }
         Err(err) => return Err(err),
     };
+    let source_for_frequency_surface = format!("{} {}", info.raw_line, info.normalized.original);
+    let source_for_frequency_surface = source_for_frequency_surface.to_ascii_lowercase();
+    if source_for_frequency_surface.contains("do this only once each turn")
+        && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
+        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+    {
+        triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1));
+    }
+    if source_for_frequency_surface.contains("do this only twice each turn")
+        && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
+        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(2))
+    {
+        triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(2));
+    }
     if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
         state.haunt_linkage = Some((triggered.effects.to_vec(), triggered.choices.clone()));
     }

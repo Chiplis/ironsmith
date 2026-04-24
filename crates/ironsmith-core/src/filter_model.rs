@@ -403,6 +403,7 @@ pub struct ObjectFilter {
     pub excluded_name: Option<String>,
     pub distinct_names: bool,
     pub distinct_powers: bool,
+    pub distinct_creature_types: bool,
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
@@ -423,6 +424,7 @@ impl ObjectFilter {
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
             || self.distinct_powers
+            || self.distinct_creature_types
             || self.toughness.is_some()
             || self.total_power_toughness.is_some()
             || self
@@ -1682,6 +1684,9 @@ impl ObjectFilter {
         }
         if self.distinct_powers {
             parts.push("with different powers".to_string());
+        }
+        if self.distinct_creature_types {
+            parts.push("that share no creature types".to_string());
         }
 
         if let Some(ref name) = self.name {

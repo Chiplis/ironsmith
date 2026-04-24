@@ -1825,6 +1825,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         | EffectAst::Mill { player, .. }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
+        | EffectAst::TicketCounters { player, .. }
         | EffectAst::RevealTop { player }
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }
@@ -1875,6 +1876,7 @@ pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
         | EffectAst::Mill { player, .. }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
+        | EffectAst::TicketCounters { player, .. }
         | EffectAst::RevealTop { player }
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }
@@ -1922,6 +1924,7 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                 | EffectAst::Mill { player, .. }
                 | EffectAst::PoisonCounters { player, .. }
                 | EffectAst::EnergyCounters { player, .. }
+                | EffectAst::TicketCounters { player, .. }
                 | EffectAst::RevealTop { player }
                 | EffectAst::RevealHand { player }
                 | EffectAst::PutIntoHand { player, .. }
@@ -2080,6 +2083,10 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             ..
         }
         | EffectAst::EnergyCounters {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::TicketCounters {
             player: effect_player,
             ..
         }

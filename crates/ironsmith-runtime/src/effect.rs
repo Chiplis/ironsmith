@@ -2434,6 +2434,18 @@ impl Effect {
         Self::new(EnergyCountersEffect::new(count, player))
     }
 
+    /// Create a "ticket counters" effect.
+    pub fn ticket_counters(count: impl Into<Value>) -> Self {
+        use crate::effects::TicketCountersEffect;
+        Self::new(TicketCountersEffect::you(count))
+    }
+
+    /// Create a "ticket counters" effect for a specific player.
+    pub fn ticket_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::TicketCountersEffect;
+        Self::new(TicketCountersEffect::new(count, player))
+    }
+
     /// Create an "experience counters" effect.
     pub fn experience_counters(count: impl Into<Value>) -> Self {
         use crate::effects::ExperienceCountersEffect;

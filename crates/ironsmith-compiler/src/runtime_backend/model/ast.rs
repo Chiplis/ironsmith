@@ -1110,6 +1110,7 @@ pub(crate) enum EffectAst {
         count: Value,
         player: PlayerAst,
         random: bool,
+        any_number: bool,
         filter: Option<ObjectFilter>,
         tag: Option<TagKey>,
     },
@@ -1248,6 +1249,10 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
     },
     EnergyCounters {
+        count: Value,
+        player: PlayerAst,
+    },
+    TicketCounters {
         count: Value,
         player: PlayerAst,
     },
@@ -1688,10 +1693,12 @@ pub(crate) enum EffectAst {
     },
     VoteStart {
         options: Vec<String>,
+        secret: bool,
     },
     VoteStartObjects {
         filter: ObjectFilter,
         count: ChoiceCount,
+        secret: bool,
     },
     VoteOption {
         option: String,

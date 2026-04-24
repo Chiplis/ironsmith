@@ -654,6 +654,55 @@ fn normalize_chosen_distinct_powers(
     normalized
 }
 
+fn normalize_chosen_distinct_creature_types(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let mut used_types = std::collections::HashSet::new();
+    let mut normalized = Vec::new();
+    for id in chosen {
+        if normalized.len() >= max {
+            break;
+        }
+        let Some(object) = game.object(id) else {
+            continue;
+        };
+        if object
+            .subtypes
+            .iter()
+            .all(|subtype| !used_types.contains(subtype))
+        {
+            used_types.extend(object.subtypes.iter().copied());
+            normalized.push(id);
+        }
+    }
+
+    if fill_to_min && normalized.len() < min {
+        for id in candidates {
+            if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            let Some(object) = game.object(*id) else {
+                continue;
+            };
+            if object
+                .subtypes
+                .iter()
+                .all(|subtype| !used_types.contains(subtype))
+            {
+                used_types.extend(object.subtypes.iter().copied());
+                normalized.push(*id);
+            }
+        }
+    }
+
+    normalized
+}
+
 fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<ObjectId> {
     candidates
         .iter()
@@ -956,6 +1005,18 @@ pub(crate) fn run_choose_objects(
     };
     let chosen = if effect.filter.distinct_powers {
         normalize_chosen_distinct_powers(game, chosen, &candidates, min, max, !allow_hidden_partial)
+    } else {
+        chosen
+    };
+    let chosen = if effect.filter.distinct_creature_types {
+        normalize_chosen_distinct_creature_types(
+            game,
+            chosen,
+            &candidates,
+            min,
+            max,
+            !allow_hidden_partial,
+        )
     } else {
         chosen
     };

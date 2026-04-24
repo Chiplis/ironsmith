@@ -807,13 +807,15 @@ pub(crate) fn compile_vote_sequence(
         return Ok(None);
     };
     let vote_start = match &first.effect {
-        EffectAst::VoteStart { options } => Some((Some(options.clone()), None)),
-        EffectAst::VoteStartObjects { filter, count } => {
-            Some((None, Some((filter.clone(), *count))))
-        }
+        EffectAst::VoteStart { options, secret } => Some((Some(options.clone()), None, *secret)),
+        EffectAst::VoteStartObjects {
+            filter,
+            count,
+            secret,
+        } => Some((None, Some((filter.clone(), *count)), *secret)),
         _ => None,
     };
-    let Some((named_options, object_vote)) = vote_start else {
+    let Some((named_options, object_vote, secret)) = vote_start else {
         return Ok(None);
     };
 
@@ -845,16 +847,13 @@ pub(crate) fn compile_vote_sequence(
 
     if let Some((filter, count)) = object_vote {
         let resolved = resolve_it_tag(&filter, &current_reference_env(ctx))?;
-        let effect = if extra_optional > 0 {
-            Effect::vote_objects_with_optional_extra(
-                resolved,
-                count,
-                extra_mandatory,
-                extra_optional,
-            )
+        let vote = if extra_optional > 0 {
+            crate::effects::VoteEffect::objects(resolved, count, extra_mandatory, extra_optional)
         } else {
-            Effect::vote_objects(resolved, count, extra_mandatory)
-        };
+            crate::effects::VoteEffect::vote_objects(resolved, count, extra_mandatory)
+        }
+        .with_secret(secret);
+        let effect = Effect::new(vote);
         let mut compiled = vec![effect];
         let mut choices = Vec::new();
         for annotated in effects.iter().take(consumed).skip(1) {
@@ -930,11 +929,13 @@ pub(crate) fn compile_vote_sequence(
         apply_local_reference_env(ctx, &annotated.out_env);
     }
 
-    let effect = if extra_optional > 0 {
-        Effect::vote_with_optional_extra(vote_options, extra_mandatory, extra_optional)
+    let vote = if extra_optional > 0 {
+        crate::effects::VoteEffect::named(vote_options, extra_mandatory, extra_optional)
     } else {
-        Effect::vote(vote_options, extra_mandatory)
-    };
+        crate::effects::VoteEffect::new(vote_options, extra_mandatory)
+    }
+    .with_secret(secret);
+    let effect = Effect::new(vote);
     let mut compiled = vec![effect];
     compiled.extend(post_vote_effects);
 

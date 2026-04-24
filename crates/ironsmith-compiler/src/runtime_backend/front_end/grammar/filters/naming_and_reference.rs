@@ -532,6 +532,21 @@ pub(super) fn try_apply_with_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
+    if matches!(
+        words,
+        ["a", "power", "and", "toughness", "sticker", "on", "it", ..]
+            | ["power", "and", "toughness", "sticker", "on", "it", ..]
+    ) {
+        *filter = filter
+            .clone()
+            .with_ability_marker("a power and toughness sticker on it");
+        return Some(if words.first().copied() == Some("a") {
+            7
+        } else {
+            6
+        });
+    }
+
     if let Some(consumed) = parse_with_no_abilities_words(words) {
         filter.no_abilities = true;
         return Some(consumed);

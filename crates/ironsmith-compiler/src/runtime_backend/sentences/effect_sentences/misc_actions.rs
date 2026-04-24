@@ -379,10 +379,22 @@ pub(crate) fn parse_get(
         return Ok(EffectAst::EnergyCounters { count, player });
     }
 
-    if clause_words.as_slice() == ["tk"] {
+    let ticket_count = tokens
+        .iter()
+        .filter(|token| {
+            token.is_word("tk")
+                || (token.kind == TokenKind::ManaGroup
+                    && token
+                        .slice
+                        .trim_start_matches('{')
+                        .trim_end_matches('}')
+                        .eq_ignore_ascii_case("tk"))
+        })
+        .count();
+    if ticket_count > 0 {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        return Ok(EffectAst::EnergyCounters {
-            count: Value::Fixed(1),
+        return Ok(EffectAst::TicketCounters {
+            count: Value::Fixed(ticket_count as i32),
             player,
         });
     }

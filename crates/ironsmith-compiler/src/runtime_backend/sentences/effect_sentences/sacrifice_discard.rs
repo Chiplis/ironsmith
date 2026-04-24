@@ -224,14 +224,20 @@ pub(crate) fn parse_discard(
             count: Value::Fixed(1),
             player,
             random: false,
+            any_number: false,
             filter: Some(tagged_filter),
             tag: None,
         });
     }
 
+    let any_number = clause_words
+        .as_slice()
+        .starts_with(&["any", "number", "of"]);
     let count_tokens =
         if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, UP_TO_PREFIXES) {
             rest
+        } else if any_number {
+            &tokens[token_index_for_word_index(tokens, 3).unwrap_or(tokens.len())..]
         } else {
             tokens
         };
@@ -241,6 +247,8 @@ pub(crate) fn parse_discard(
         .is_some_and(|token| token.is_word("all"));
     let (mut count, used) = if uses_all_count {
         (Value::Fixed(0), count_offset + 1)
+    } else if any_number {
+        (Value::Fixed(0), count_offset)
     } else {
         let (count, used_relative) = parse_value(count_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -301,6 +309,7 @@ pub(crate) fn parse_discard(
             count,
             player,
             random: false,
+            any_number,
             filter: discard_filter,
             tag: None,
         });
@@ -352,6 +361,7 @@ pub(crate) fn parse_discard(
         count,
         player,
         random,
+        any_number,
         filter: discard_filter,
         tag: None,
     })

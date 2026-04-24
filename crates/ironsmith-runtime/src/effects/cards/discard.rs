@@ -42,6 +42,8 @@ pub struct DiscardEffect {
     pub player: PlayerFilter,
     /// Whether to discard at random.
     pub random: bool,
+    /// Whether the player may discard any number of matching cards.
+    pub any_number: bool,
     /// Optional hand-card restriction for cards that can be discarded.
     pub card_filter: Option<ObjectFilter>,
     /// Optional tag used to track discarded cards for later clauses such as
@@ -66,9 +68,16 @@ impl DiscardEffect {
             count: count.into(),
             player,
             random,
+            any_number: false,
             card_filter,
             tag: None,
         }
+    }
+
+    /// Allow the player to choose any number of eligible cards.
+    pub fn with_any_number(mut self, any_number: bool) -> Self {
+        self.any_number = any_number;
+        self
     }
 
     /// Tag discarded cards for later reference in the same effect sequence.
@@ -135,7 +144,11 @@ impl EffectExecutor for DiscardEffect {
         use crate::decisions::specs::ChooseObjectsSpec;
         use crate::events::processing::execute_discard;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let count = if self.any_number {
+            usize::MAX
+        } else {
+            resolve_value(game, &self.count, ctx)?.max(0) as usize
+        };
         let mut discarded = 0;
         let mut discarded_cards = Vec::new();
         let mut discarded_snapshots = Vec::new();
@@ -154,7 +167,7 @@ impl EffectExecutor for DiscardEffect {
         }
 
         let required = count.min(hand_cards.len());
-        if required == 0 {
+        if required == 0 && !self.any_number {
             return Ok(EffectOutcome::count(0));
         }
 
@@ -172,6 +185,17 @@ impl EffectExecutor for DiscardEffect {
         } else if self.random {
             game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()
+        } else if self.any_number {
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose any number of cards to discard".to_string(),
+                hand_cards.clone(),
+                0,
+                Some(required),
+            );
+            let chosen: Vec<_> =
+                make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
+            normalize_object_selection(chosen, &hand_cards, required)
         } else {
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
@@ -251,6 +275,10 @@ impl EffectExecutor for DiscardEffect {
     fn cost_description(&self) -> Option<String> {
         if self.discards_source_as_cost() {
             return Some("Discard this card".to_string());
+        }
+
+        if self.any_number {
+            return None;
         }
 
         let count = match self.count {

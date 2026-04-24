@@ -627,6 +627,12 @@ pub(crate) fn parse_deal_damage_with_amount(
             target: TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
         });
     }
+    if target_words.as_slice() == ["the", "player"] {
+        return Ok(EffectAst::DealDamage {
+            amount,
+            target: TargetAst::Player(PlayerFilter::IteratedPlayer, span_from_tokens(target_tokens)),
+        });
+    }
     if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
         let each_of_words = crate::runtime_backend::token_word_refs(each_of_tokens);

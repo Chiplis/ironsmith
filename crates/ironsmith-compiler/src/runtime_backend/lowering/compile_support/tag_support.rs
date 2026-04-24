@@ -571,6 +571,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         | EffectAst::SetLifeTotal { amount, .. }
         | EffectAst::PoisonCounters { count: amount, .. }
         | EffectAst::EnergyCounters { count: amount, .. }
+        | EffectAst::TicketCounters { count: amount, .. }
         | EffectAst::PreventDamage { amount, .. }
         | EffectAst::RedirectNextDamageFromSourceToTarget { amount, .. }
         | EffectAst::PreventDamageEach { amount, .. }
@@ -707,6 +708,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::SkipDrawStep { player }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
+        | EffectAst::TicketCounters { player, .. }
         | EffectAst::CreateTokenCopy { player, .. }
         | EffectAst::CreateTokenCopyFromSource { player, .. }
         | EffectAst::CreateTokenWithMods { player, .. }

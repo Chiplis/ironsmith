@@ -266,7 +266,10 @@ pub(crate) fn parse_you_choose_objects_clause(
         ["of", "them", rest @ ..] | ["of", "those", rest @ ..] if !rest.is_empty()
     ) {
         references_it = true;
-        if matches!(choose_words.as_slice(), ["of", "those", "card"] | ["of", "those", "cards"]) {
+        if matches!(
+            choose_words.as_slice(),
+            ["of", "those", "card"] | ["of", "those", "cards"]
+        ) {
             references_container_it = true;
         }
         choose_words = choose_words[2..].to_vec();

@@ -35,7 +35,7 @@ pub(crate) fn parse_exile(
     }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
         let filter_tokens = &tokens[1..];
-        let mut filter = parse_object_filter(filter_tokens, false)?;
+        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
         return Ok(if until_source_leaves {
             EffectAst::ExileUntilSourceLeaves {

@@ -385,8 +385,22 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             };
             let base_filter_tokens = trim_commas(&filter_tokens[..token_cutoff]);
             let mut filter = parse_object_filter(&base_filter_tokens, false)?;
-            filter =
-                filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            let relation = if let Some(except_idx) =
+                find_index(&base_filter_tokens, |token| token.is_word("except"))
+            {
+                let base_before_except = trim_commas(&base_filter_tokens[..except_idx]);
+                if base_before_except.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "missing destroy-all filter before except clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                filter = parse_object_filter(&base_before_except, false)?;
+                TaggedOpbjectRelation::IsNotTaggedObject
+            } else {
+                TaggedOpbjectRelation::IsTaggedObject
+            };
+            filter = filter.match_tagged(TagKey::from(IT_TAG), relation);
             return Ok(wrap_destroy_with_delayed_timing(
                 EffectAst::DestroyAll { filter },
                 delayed_timing,
