@@ -31,7 +31,11 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
         let sacrificing_player = e
             .sacrificing_player
             .or_else(|| e.snapshot.as_ref().map(|s| s.controller))
-            .or_else(|| ctx.game.object(e.permanent).map(|o| o.controller));
+            .or_else(|| {
+                ctx.game
+                    .object(e.permanent)
+                    .map(|o| ctx.game.controller_of(o))
+            });
 
         let player_matches = match (&self.player, sacrificing_player) {
             (PlayerFilter::You, Some(player)) => player == ctx.controller,

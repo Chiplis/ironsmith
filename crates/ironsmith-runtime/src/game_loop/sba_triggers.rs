@@ -849,7 +849,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             }
             AttackEventTarget::Planeswalker(planeswalker_id) => {
                 if let Some(planeswalker) = game.object(planeswalker_id) {
-                    entry = entry.with_defending_player(planeswalker.controller);
+                    entry = entry.with_defending_player(game.controller_of(planeswalker));
                 }
             }
         }
@@ -865,7 +865,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             }
             AttackEventTarget::Planeswalker(planeswalker_id) => {
                 if let Some(planeswalker) = game.object(planeswalker_id) {
-                    entry = entry.with_defending_player(planeswalker.controller);
+                    entry = entry.with_defending_player(game.controller_of(planeswalker));
                 }
             }
         }
@@ -882,7 +882,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             }
             AttackEventTarget::Planeswalker(planeswalker_id) => {
                 if let Some(planeswalker) = game.object(planeswalker_id) {
-                    entry = entry.with_defending_player(planeswalker.controller);
+                    entry = entry.with_defending_player(game.controller_of(planeswalker));
                 }
             }
         }

@@ -237,9 +237,9 @@ pub fn generate_continuous_effects_from_static_abilities(
                             )
                         })
                     });
-                    (object.controller, overlay.abilities.clone())
+                    (game.controller_of(object), overlay.abilities.clone())
                 } else {
-                    (object.controller, object.abilities.clone())
+                    (game.controller_of(object), object.abilities.clone())
                 };
 
             // Process each static ability on the object

@@ -227,8 +227,9 @@ mod tests {
         assert_eq!(outcome.output_objects().len(), 2);
         assert!(
             outcome.output_objects().iter().all(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.zone == Zone::Graveyard && obj.controller == bob)
+                game.object(*id).is_some_and(|obj| {
+                    obj.zone == Zone::Graveyard && game.controller_of(obj) == bob
+                })
             }),
             "destroy effect should surface the graveyard objects for tagged follow-ups, got {:?}",
             outcome.output_objects()
@@ -272,7 +273,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .is_some_and(|obj| obj.name == "Elephant" && obj.controller == alice)
+                    .is_some_and(|obj| obj.name == "Elephant" && game.controller_of(obj) == alice)
             })
             .count();
         let bob_elephants = game
@@ -280,7 +281,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .is_some_and(|obj| obj.name == "Elephant" && obj.controller == bob)
+                    .is_some_and(|obj| obj.name == "Elephant" && game.controller_of(obj) == bob)
             })
             .count();
 

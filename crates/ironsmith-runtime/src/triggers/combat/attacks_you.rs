@@ -37,7 +37,7 @@ impl AttacksYouTrigger {
             AttackEventTarget::Planeswalker(pw) => ctx
                 .game
                 .object(*pw)
-                .is_some_and(|o| o.controller == ctx.controller),
+                .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
         }
     }
 
@@ -47,7 +47,7 @@ impl AttacksYouTrigger {
             AttackTarget::Planeswalker(pw) => ctx
                 .game
                 .object(*pw)
-                .is_some_and(|o| o.controller == ctx.controller),
+                .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
         }
     }
 
@@ -59,7 +59,7 @@ impl AttacksYouTrigger {
         let Some(attacker_obj) = ctx.game.object(attacker) else {
             return true;
         };
-        let attacking_player = attacker_obj.controller;
+        let attacking_player = ctx.game.controller_of(attacker_obj);
         let Some(combat) = ctx.game.combat.as_ref() else {
             return true;
         };
@@ -68,7 +68,7 @@ impl AttacksYouTrigger {
             let Some(obj) = ctx.game.object(info.creature) else {
                 continue;
             };
-            if obj.controller != attacking_player {
+            if ctx.game.controller_of(obj) != attacking_player {
                 continue;
             }
             if !Self::combat_target_attacks_controller(&info.target, ctx) {

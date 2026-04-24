@@ -1043,8 +1043,11 @@ impl DecisionView {
                                 max_count,
                                 object_id: visible_object_id.map(|id| id.0),
                                 object_controller: visible_object_id
-                                    .and_then(|id| game.object(id))
-                                    .map(|obj| obj.controller.0),
+                                    .and_then(|id| {
+                                        game.current_controller(id)
+                                            .or_else(|| game.object(id).map(|obj| obj.owner))
+                                    })
+                                    .map(|controller| controller.0),
                                 related_object_ids: visible_related_object_ids,
                             }
                         })
@@ -1134,7 +1137,11 @@ impl DecisionView {
                         max_count: Some(1),
                         object_id: decision_object_visible(*object_id).then_some(object_id.0),
                         object_controller: decision_object_visible(*object_id)
-                            .then(|| game.object(*object_id).map(|obj| obj.controller.0))
+                            .then(|| {
+                                game.current_controller(*object_id)
+                                    .or_else(|| game.object(*object_id).map(|obj| obj.owner))
+                                    .map(|controller| controller.0)
+                            })
                             .flatten(),
                         related_object_ids: None,
                     })
@@ -1178,8 +1185,11 @@ impl DecisionView {
                             max_count: Some(distribute.total),
                             object_id: visible_object_id.map(|object_id| object_id.0),
                             object_controller: visible_object_id
-                                .and_then(|object_id| game.object(object_id))
-                                .map(|obj| obj.controller.0),
+                                .and_then(|object_id| {
+                                    game.current_controller(object_id)
+                                        .or_else(|| game.object(object_id).map(|obj| obj.owner))
+                                })
+                                .map(|controller| controller.0),
                             related_object_ids: None,
                         }
                     })
@@ -1301,8 +1311,11 @@ impl DecisionView {
                         object_controller: proliferate
                             .eligible_permanents
                             .get(index)
-                            .and_then(|(id, _)| game.object(*id))
-                            .map(|obj| obj.controller.0),
+                            .and_then(|(id, _)| {
+                                game.current_controller(*id)
+                                    .or_else(|| game.object(*id).map(|obj| obj.owner))
+                            })
+                            .map(|controller| controller.0),
                         related_object_ids: None,
                     })
                     .chain(proliferate.eligible_players.iter().enumerate().map(

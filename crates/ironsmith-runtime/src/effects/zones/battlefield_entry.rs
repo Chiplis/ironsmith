@@ -76,16 +76,8 @@ pub(crate) fn move_to_battlefield_with_options(
         return BattlefieldEntryOutcome::Prevented;
     }
 
-    if let Some(obj) = game.object_mut(new_id) {
-        match options.controller {
-            BattlefieldEntryController::Preserve => {}
-            BattlefieldEntryController::Owner => {
-                obj.controller = obj.owner;
-            }
-            BattlefieldEntryController::Specific(controller) => {
-                obj.controller = controller;
-            }
-        }
+    if let BattlefieldEntryController::Specific(controller) = options.controller {
+        game.set_current_controller(new_id, controller);
     }
 
     let enters_tapped = result.enters_tapped || options.tapped;

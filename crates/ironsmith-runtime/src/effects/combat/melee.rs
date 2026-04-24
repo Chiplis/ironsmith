@@ -35,7 +35,7 @@ impl EffectExecutor for MeleeEffect {
             let Some(attacking_creature) = game.object(attacker.creature) else {
                 continue;
             };
-            if attacking_creature.controller != source.controller {
+            if game.controller_of(attacking_creature) != game.controller_of(source) {
                 continue;
             }
             match attacker.target {
@@ -44,13 +44,13 @@ impl EffectExecutor for MeleeEffect {
                 }
                 AttackTarget::Planeswalker(planeswalker_id) => {
                     if let Some(planeswalker) = game.object(planeswalker_id) {
-                        attacked_opponents.insert(planeswalker.controller);
+                        attacked_opponents.insert(game.controller_of(planeswalker));
                     }
                 }
             }
         }
 
-        attacked_opponents.remove(&source.controller);
+        attacked_opponents.remove(&game.controller_of(source));
         let amount = attacked_opponents.len() as i32;
         if amount <= 0 {
             return Ok(EffectOutcome::count(0));

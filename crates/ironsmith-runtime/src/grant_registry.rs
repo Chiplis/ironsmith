@@ -487,7 +487,7 @@ impl GrantRegistry {
                 continue;
             };
 
-            let controller = perm.controller;
+            let controller = game.controller_of(perm);
 
             for ability in &perm.abilities {
                 if let AbilityKind::Static(s) = &ability.kind {

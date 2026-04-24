@@ -267,7 +267,7 @@ mod tests {
                 game.object(id).is_some_and(|obj| {
                     matches!(obj.kind, crate::object::ObjectKind::Token)
                         && obj.name == "Lander"
-                        && obj.controller == controller
+                        && game.controller_of(obj) == controller
                 })
             })
             .count()

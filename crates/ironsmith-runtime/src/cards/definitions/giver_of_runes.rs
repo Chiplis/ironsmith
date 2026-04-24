@@ -328,7 +328,7 @@ mod tests {
         // Verify P/T (notably 1/2, not 1/1)
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Giver of Runes" && obj.controller == alice)
+                .map(|obj| obj.name == "Giver of Runes" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

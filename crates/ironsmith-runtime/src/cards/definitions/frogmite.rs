@@ -79,7 +79,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let frogmite_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Frogmite" && obj.controller == alice)
+                .map(|obj| obj.name == "Frogmite" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

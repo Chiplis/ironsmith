@@ -156,7 +156,8 @@ mod tests {
         for token_id in &token_ids {
             let token = game.object(*token_id).expect("Token should exist");
             assert_eq!(
-                token.controller, bob,
+                game.controller_of(token),
+                bob,
                 "Token should be controlled by original creature's controller"
             );
             assert_eq!(token.zone, Zone::Battlefield);
@@ -300,7 +301,7 @@ mod tests {
         for token_id in &token_ids {
             let token = game.object(*token_id).expect("Token should exist");
             // Tokens go under Alice's control (the creature's controller)
-            assert_eq!(token.controller, alice);
+            assert_eq!(game.controller_of(token), alice);
             // 6/6 -> 3/3
             assert_eq!(token.power(), Some(3));
             assert_eq!(token.toughness(), Some(3));
@@ -401,7 +402,8 @@ mod tests {
         // Both tokens should be controlled by Bob
         for token in &serra_angels_on_bf {
             assert_eq!(
-                token.controller, bob,
+                game.controller_of(token),
+                bob,
                 "Tokens should be controlled by Bob (original creature's controller)"
             );
             // 4/4 -> 2/2 (half rounded up)
@@ -471,7 +473,8 @@ mod tests {
 
         // The Colossus should still be controlled by Bob
         assert_eq!(
-            colossus_on_bf[0].controller, bob,
+            game.current_controller(colossus_on_bf[0].id),
+            Some(bob),
             "Darksteel Colossus should still be controlled by Bob"
         );
 

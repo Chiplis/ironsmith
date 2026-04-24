@@ -132,7 +132,7 @@ impl GameEventType for DamageEvent {
             DamageTarget::Player(player) => player,
             DamageTarget::Object(obj_id) => game
                 .object(obj_id)
-                .map(|o| o.controller)
+                .map(|o| game.controller_of(o))
                 .unwrap_or(game.turn.active_player),
         }
     }

@@ -379,7 +379,7 @@ pub fn declare_attackers(
         }
 
         // Must be controlled by active player
-        if creature.controller != active_player {
+        if game.controller_of(creature) != active_player {
             return Err(CombatError::NotControlledBy {
                 creature: *creature_id,
                 expected: active_player,
@@ -415,7 +415,7 @@ pub fn declare_attackers(
                 {
                     return Err(CombatError::InvalidAttackTarget(target.clone()));
                 }
-                pw.controller
+                game.controller_of(pw)
             }
         };
 
@@ -432,21 +432,23 @@ pub fn declare_attackers(
             if let Some(can_attack) = ability.can_attack_with_attacking_group(
                 game,
                 creature.id,
-                creature.controller,
+                game.controller_of(creature),
                 &declared_attackers,
             ) && !can_attack
             {
                 return Err(CombatError::CreatureCannotAttack(*creature_id));
             }
             if let Some(can_pay) =
-                ability.can_pay_attack_cost(game, creature.id, creature.controller)
+                ability.can_pay_attack_cost(game, creature.id, game.controller_of(creature))
                 && !can_pay
             {
                 return Err(CombatError::CreatureCannotAttack(*creature_id));
             }
-            if let Some(cost) =
-                ability.generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
-            {
+            if let Some(cost) = ability.generic_attack_mana_cost_for_source(
+                game,
+                creature.id,
+                game.controller_of(creature),
+            ) {
                 additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
             }
         }
@@ -472,7 +474,7 @@ pub fn declare_attackers(
             return Err(CombatError::NotOnBattlefield(*creature_id));
         };
         let creature_source = creature.id;
-        let creature_controller = creature.controller;
+        let creature_controller = game.controller_of(creature);
         let abilities = game
             .calculated_characteristics(creature_source)
             .map(|c| c.static_abilities)
@@ -922,7 +924,7 @@ pub fn is_defending_player(combat: &CombatState, player: PlayerId) -> bool {
 pub fn is_attacking_player(combat: &CombatState, player: PlayerId, game: &GameState) -> bool {
     combat.attackers.iter().any(|info| {
         game.object(info.creature)
-            .is_some_and(|obj| obj.controller == player)
+            .is_some_and(|obj| game.controller_of(obj) == player)
     })
 }
 
@@ -934,7 +936,7 @@ pub fn get_attacking_player(combat: &CombatState, game: &GameState) -> Option<Pl
         .attackers
         .first()
         .and_then(|info| game.object(info.creature))
-        .map(|obj| obj.controller)
+        .map(|obj| game.controller_of(obj))
 }
 
 #[cfg(test)]

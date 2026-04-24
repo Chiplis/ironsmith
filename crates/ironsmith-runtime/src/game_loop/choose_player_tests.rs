@@ -119,7 +119,7 @@ fn count_battlefield_name(game: &GameState, owner: PlayerId, name: &str) -> usiz
         .iter()
         .filter(|&&id| {
             game.object(id)
-                .is_some_and(|obj| obj.controller == owner && obj.name == name)
+                .is_some_and(|obj| game.controller_of(obj) == owner && obj.name == name)
         })
         .count()
 }

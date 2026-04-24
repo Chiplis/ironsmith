@@ -106,7 +106,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let crows_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Murder of Crows" && obj.controller == alice)
+                .map(|obj| obj.name == "Murder of Crows" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

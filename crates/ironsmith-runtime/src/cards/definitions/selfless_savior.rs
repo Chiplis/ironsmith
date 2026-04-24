@@ -389,7 +389,7 @@ mod tests {
         // Verify P/T
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Selfless Savior" && obj.controller == alice)
+                .map(|obj| obj.name == "Selfless Savior" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

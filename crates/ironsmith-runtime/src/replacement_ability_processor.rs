@@ -28,7 +28,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
         if let Some(object) = game.object(object_id) {
-            let controller = object.controller;
+            let controller = game.controller_of(object);
             let zone = object.zone;
 
             // Process each static ability on the object.

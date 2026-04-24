@@ -303,7 +303,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .any(|obj| obj.name == "Vampire" && obj.controller == alice);
+            .any(|obj| obj.name == "Vampire" && game.controller_of(obj) == alice);
 
         assert!(
             has_vampire,
@@ -368,7 +368,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .any(|obj| obj.name == "Vampire" && obj.controller == alice);
+            .any(|obj| obj.name == "Vampire" && game.controller_of(obj) == alice);
 
         assert!(
             !has_vampire,

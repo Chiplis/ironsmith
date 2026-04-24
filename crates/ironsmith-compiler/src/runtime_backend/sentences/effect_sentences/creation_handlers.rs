@@ -1062,6 +1062,30 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     if grammar::words_match_any_prefix(
         tokens,
         &[
+            &["card", "exiled", "from", "their", "hand", "this", "way"],
+            &["cards", "exiled", "from", "their", "hand", "this", "way"],
+            &[
+                "card", "exiled", "from", "his", "or", "her", "hand", "this", "way",
+            ],
+            &[
+                "cards", "exiled", "from", "his", "or", "her", "hand", "this", "way",
+            ],
+        ],
+    )
+    .is_some()
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        return Some(Value::Count(filter));
+    }
+    if grammar::words_match_any_prefix(
+        tokens,
+        &[
             &["creature", "that", "died", "this", "turn"],
             &["creatures", "that", "died", "this", "turn"],
         ],

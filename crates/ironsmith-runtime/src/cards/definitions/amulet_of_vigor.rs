@@ -497,7 +497,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id).map(|o| (id, o)))
-            .find(|(_, obj)| obj.name == "Godless Shrine" && obj.controller == alice);
+            .find(|(_, obj)| obj.name == "Godless Shrine" && game.controller_of(obj) == alice);
 
         assert!(
             shrine.is_some(),

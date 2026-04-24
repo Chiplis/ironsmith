@@ -1979,7 +1979,7 @@ mod tests {
                 colors: object.colors(),
                 abilities: object.abilities.clone(),
                 static_abilities: Vec::new(),
-                controller: object.controller,
+                controller: object.owner,
             },
         )]);
         let game = GameState::new(vec!["Alice".to_string()], 20);
@@ -2027,7 +2027,7 @@ mod tests {
                 colors: land.colors(),
                 abilities: land.abilities.clone(),
                 static_abilities: Vec::new(),
-                controller: land.controller,
+                controller: land.owner,
             },
         )]);
         let game = GameState::new(vec!["Alice".to_string()], 20);
@@ -2134,7 +2134,7 @@ mod tests {
                 colors: land.colors(),
                 abilities: land.abilities.clone(),
                 static_abilities: Vec::new(),
-                controller: land.controller,
+                controller: land.owner,
             },
         )]);
         let game = GameState::new(vec!["Alice".to_string()], 20);

@@ -51,7 +51,7 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
         let Some(source_obj) = game.object(source_id) else {
             continue;
         };
-        if source_obj.controller != player_id {
+        if game.controller_of(source_obj) != player_id {
             continue;
         }
         let Some(static_abilities) = view.static_abilities_rc(source_id) else {

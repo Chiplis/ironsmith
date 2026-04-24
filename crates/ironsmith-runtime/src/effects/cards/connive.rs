@@ -50,7 +50,7 @@ impl EffectExecutor for ConniveEffect {
                 continue;
             }
 
-            let controller = target_obj.controller;
+            let controller = game.controller_of(target_obj);
             let mut events = Vec::new();
             events.push(TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(KeywordActionKind::Connive, controller, ctx.source, 1),

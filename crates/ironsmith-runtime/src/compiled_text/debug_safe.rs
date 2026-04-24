@@ -1622,15 +1622,6 @@ fn compact_known_safe_line_surface(line: &str) -> Option<String> {
                 .to_string(),
         );
     }
-    if lower.contains("choose a card name other than a basic land card name")
-        && lower.contains("search target opponent's graveyard, hand, and library")
-        && lower.contains("black zombie creature token")
-    {
-        return Some(
-            "You choose a nonland permanent or nonbasic permanent card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and exile them. Create a 2/2 black Zombie creature token under target opponent's control."
-                .to_string(),
-        );
-    }
     if lower
         == "search your library for three cards and reveal them. target opponent chooses one of them. put the chosen card into your hand and the rest into your graveyard. then shuffle."
     {

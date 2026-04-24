@@ -370,7 +370,7 @@ mod tests {
         // Verify P/T
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Kami of False Hope" && obj.controller == alice)
+                .map(|obj| obj.name == "Kami of False Hope" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

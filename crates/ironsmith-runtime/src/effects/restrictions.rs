@@ -127,7 +127,7 @@ impl EffectExecutor for CantEffect {
                 .filter_map(|object_id| {
                     let obj = game.object(*object_id)?;
                     if filter.matches(obj, &filter_ctx, game) {
-                        Some((*object_id, obj.controller))
+                        Some((*object_id, game.controller_of(obj)))
                     } else {
                         None
                     }

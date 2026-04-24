@@ -60,7 +60,8 @@ pub(crate) fn attachment_can_attach_to_target(
         let Some(filter) = attachment.aura_attach_filter.clone() else {
             return false;
         };
-        let filter_ctx = game.filter_context_for(attachment.controller, Some(attachment_id));
+        let filter_ctx =
+            game.filter_context_for(game.controller_of(attachment), Some(attachment_id));
         return filter.matches_target(target, &filter_ctx, game);
     }
 

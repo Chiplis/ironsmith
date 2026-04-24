@@ -1085,7 +1085,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         colors: object.colors(),
         abilities: object.abilities.clone(),
         static_abilities: extract_static_abilities(&object.abilities),
-        controller: object.controller,
+        controller: object.owner,
     }
 }
 
@@ -1990,7 +1990,7 @@ fn mark_continuous_effect_group_started(
     }
 }
 
-fn continuous_effect_duration_and_condition_are_active(
+pub(crate) fn continuous_effect_duration_and_condition_are_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {
@@ -2089,7 +2089,10 @@ fn continuous_effect_duration_is_active(
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
         Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield && obj.controller == effect.controller
+            obj.zone == Zone::Battlefield
+                && game
+                    .current_controller(effect.source)
+                    .is_some_and(|controller| controller == effect.controller)
         }),
         _ => true,
     }
@@ -2107,7 +2110,6 @@ fn filter_matches_with_characteristics(
 ) -> bool {
     let mut adjusted_object = object.clone();
     adjusted_object.name = chars.name.clone();
-    adjusted_object.controller = chars.controller;
     adjusted_object.card_types = chars.card_types.clone();
     adjusted_object.subtypes = chars.subtypes.clone();
     adjusted_object.supertypes = chars.supertypes.clone();
@@ -4485,7 +4487,7 @@ mod tests {
             colors: creature.colors(),
             abilities: creature.abilities.clone(),
             static_abilities: extract_static_abilities(&creature.abilities),
-            controller: creature.controller,
+            controller: creature.owner,
         };
 
         // Add abilities from counters
@@ -4531,7 +4533,7 @@ mod tests {
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: Vec::new(),
-            controller: creature.controller,
+            controller: creature.owner,
         };
 
         add_abilities_from_counters(&creature, &mut chars);
@@ -4587,7 +4589,7 @@ mod tests {
             colors: ColorSet::COLORLESS,
             abilities: Vec::new(),
             static_abilities: vec![StaticAbility::flying()], // Already has flying
-            controller: creature.controller,
+            controller: creature.owner,
         };
 
         add_abilities_from_counters(&creature, &mut chars);

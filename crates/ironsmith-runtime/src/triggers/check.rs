@@ -357,7 +357,7 @@ fn additional_trigger_copies_for_entry(
                 game,
                 view,
                 entry,
-                obj.controller,
+                game.controller_of(obj),
                 obj_id,
                 spec.source_filter.as_ref(),
                 spec.event_matcher.as_ref(),
@@ -392,7 +392,7 @@ fn trigger_is_suppressed(
                 game,
                 view,
                 entry,
-                obj.controller,
+                game.controller_of(obj),
                 obj_id,
                 spec.source_filter.as_ref(),
                 spec.event_matcher.as_ref(),
@@ -560,7 +560,7 @@ fn add_monarch_designation_triggers(
                     "Whenever a creature deals combat damage to the monarch".to_string(),
                 ),
                 effects: ResolutionProgram::from_effects(vec![Effect::become_monarch_player(
-                    PlayerFilter::Specific(source_obj.controller),
+                    PlayerFilter::Specific(game.controller_of(source_obj)),
                 )]),
                 choices: vec![],
                 intervening_if: None,
@@ -580,7 +580,7 @@ fn initiative_already_transferred_this_batch(
         .iter()
         .filter(|(_, player)| *player == damaged_player)
         .filter_map(|(source, _)| game.object(*source))
-        .any(|object| object.controller == controller)
+        .any(|object| game.controller_of(object) == controller)
 }
 
 fn add_initiative_designation_triggers(
@@ -625,7 +625,11 @@ fn add_initiative_designation_triggers(
         && player_id == initiative
         && let Some(source_obj) = game.object(damage_event.source)
         && game.object_has_card_type(source_obj.id, CardType::Creature)
-        && !initiative_already_transferred_this_batch(game, initiative, source_obj.controller)
+        && !initiative_already_transferred_this_batch(
+            game,
+            initiative,
+            game.controller_of(source_obj),
+        )
     {
         push_initiative_trigger(
             triggered,
@@ -637,7 +641,7 @@ fn add_initiative_designation_triggers(
                         .to_string(),
                 ),
                 effects: ResolutionProgram::from_effects(vec![Effect::take_initiative_player(
-                    PlayerFilter::Specific(source_obj.controller),
+                    PlayerFilter::Specific(game.controller_of(source_obj)),
                 )]),
                 choices: vec![],
                 intervening_if: None,
@@ -657,20 +661,24 @@ fn add_ring_designation_triggers(
         && let Some(attacked) =
             trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
         && let Some(attacker) = game.object(attacked.attacker)
-        && game.ring_level(attacker.controller) >= 2
-        && game.current_ring_bearer(attacker.controller) == Some(attacked.attacker)
+        && game.ring_level(game.controller_of(attacker)) >= 2
+        && game.current_ring_bearer(game.controller_of(attacker)) == Some(attacked.attacker)
     {
         push_ring_trigger(
             triggered,
-            attacker.controller,
+            game.controller_of(attacker),
             TriggeredAbility {
                 trigger: Trigger::custom(
                     "ring_bearer_attacks",
                     "Whenever your Ring-bearer attacks".to_string(),
                 ),
                 effects: ResolutionProgram::from_effects(vec![
-                    Effect::target_draws(1, PlayerFilter::Specific(attacker.controller)),
-                    Effect::discard_player(1, PlayerFilter::Specific(attacker.controller), false),
+                    Effect::target_draws(1, PlayerFilter::Specific(game.controller_of(attacker))),
+                    Effect::discard_player(
+                        1,
+                        PlayerFilter::Specific(game.controller_of(attacker)),
+                        false,
+                    ),
                 ]),
                 choices: vec![],
                 intervening_if: None,
@@ -684,8 +692,8 @@ fn add_ring_designation_triggers(
         && let Some(blocked) =
             trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
         && let Some(attacker) = game.object(blocked.attacker)
-        && game.ring_level(attacker.controller) >= 3
-        && game.current_ring_bearer(attacker.controller) == Some(blocked.attacker)
+        && game.ring_level(game.controller_of(attacker)) >= 3
+        && game.current_ring_bearer(game.controller_of(attacker)) == Some(blocked.attacker)
     {
         let delayed = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
             Trigger::end_of_combat(),
@@ -694,11 +702,11 @@ fn add_ring_designation_triggers(
             ))],
             true,
             vec![blocked.blocker],
-            PlayerFilter::Specific(attacker.controller),
+            PlayerFilter::Specific(game.controller_of(attacker)),
         ));
         push_ring_trigger(
             triggered,
-            attacker.controller,
+            game.controller_of(attacker),
             TriggeredAbility {
                 trigger: Trigger::custom(
                     "ring_bearer_becomes_blocked",
@@ -719,12 +727,12 @@ fn add_ring_designation_triggers(
         && damage_event.amount > 0
         && matches!(damage_event.target, crate::events::DamageTarget::Player(_))
         && let Some(source_obj) = game.object(damage_event.source)
-        && game.ring_level(source_obj.controller) >= 4
-        && game.current_ring_bearer(source_obj.controller) == Some(damage_event.source)
+        && game.ring_level(game.controller_of(source_obj)) >= 4
+        && game.current_ring_bearer(game.controller_of(source_obj)) == Some(damage_event.source)
     {
         push_ring_trigger(
             triggered,
-            source_obj.controller,
+            game.controller_of(source_obj),
             TriggeredAbility {
                 trigger: Trigger::custom(
                     "ring_bearer_combat_damage",
@@ -837,7 +845,7 @@ pub(crate) fn check_triggers_with_view(
             continue;
         };
 
-        let ctx = TriggerContext::for_source(obj_id, obj.controller, game);
+        let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game);
 
         // Get calculated abilities (after continuous effects like Humility, Blood Moon)
         let calculated_abilities = view
@@ -864,7 +872,7 @@ pub(crate) fn check_triggers_with_view(
                     && !verify_intervening_if(
                         game,
                         condition,
-                        obj.controller,
+                        game.controller_of(obj),
                         trigger_event,
                         obj_id,
                         Some(trigger_identity),
@@ -875,7 +883,7 @@ pub(crate) fn check_triggers_with_view(
 
                 let entry = TriggeredAbilityEntry {
                     source: obj_id,
-                    controller: obj.controller,
+                    controller: game.controller_of(obj),
                     x_value: trigger_entry_x_value(trigger_event, obj.x_value),
                     ability: TriggeredAbility {
                         trigger: trigger_ability.trigger.clone(),
@@ -1138,7 +1146,7 @@ fn collect_state_triggers_for_object(
         if !verify_intervening_if(
             game,
             condition,
-            obj.controller,
+            game.controller_of(obj),
             &trigger_event,
             obj.id,
             Some(trigger_identity),
@@ -1158,7 +1166,7 @@ fn collect_state_triggers_for_object(
         let tagged_objects = tagged_objects_for_trigger_event(game, &trigger_event);
         triggered.push(TriggeredAbilityEntry {
             source: obj.id,
-            controller: obj.controller,
+            controller: game.controller_of(obj),
             x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
             ability: TriggeredAbility {
                 trigger: trigger_ability.trigger.clone(),
@@ -1381,7 +1389,7 @@ fn check_triggers_in_zone(
         return;
     };
 
-    let ctx = TriggerContext::for_source(obj_id, obj.controller, game);
+    let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game);
 
     for ability in &obj.abilities {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
@@ -1402,7 +1410,7 @@ fn check_triggers_in_zone(
                 && !verify_intervening_if(
                     game,
                     condition,
-                    obj.controller,
+                    game.controller_of(obj),
                     trigger_event,
                     obj_id,
                     Some(trigger_identity),
@@ -1413,7 +1421,7 @@ fn check_triggers_in_zone(
 
             let entry = TriggeredAbilityEntry {
                 source: obj_id,
-                controller: obj.controller,
+                controller: game.controller_of(obj),
                 x_value: trigger_entry_x_value(trigger_event, obj.x_value),
                 ability: TriggeredAbility {
                     trigger: trigger_ability.trigger.clone(),
@@ -1504,7 +1512,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::ControllerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
-                .is_some_and(|obj| player == obj.controller),
+                .is_some_and(|obj| player == game.controller_of(obj)),
             ObjectRef::Target | ObjectRef::Tagged(_) => false, // Can't resolve at trigger-check time
         },
         PlayerFilter::OwnerOf(obj_ref) => match obj_ref {
@@ -1516,7 +1524,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::AliasedControllerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)
-                .is_some_and(|obj| player == obj.controller),
+                .is_some_and(|obj| player == game.controller_of(obj)),
             ObjectRef::Target | ObjectRef::Tagged(_) => false,
         },
         PlayerFilter::AliasedOwnerOf(obj_ref) => match obj_ref {
@@ -1601,7 +1609,7 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
-                    .map(|planeswalker| planeswalker.controller),
+                    .map(|planeswalker| game.controller_of(planeswalker)),
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureAttackedAndUnblocked {
         event
@@ -1610,7 +1618,7 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
-                    .map(|planeswalker| planeswalker.controller),
+                    .map(|planeswalker| game.controller_of(planeswalker)),
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureBecameBlocked {
         event
@@ -1620,7 +1628,7 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Player(player_id) => Some(player_id),
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
-                    .map(|planeswalker| planeswalker.controller),
+                    .map(|planeswalker| game.controller_of(planeswalker)),
             })
     } else {
         None

@@ -277,7 +277,7 @@ pub(super) fn max_x_from_non_mana_costs(
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(id, obj)| {
-                    obj.controller == player_id
+                    game.controller_of(obj) == player_id
                         && sacrifice.filter.matches(obj, &filter_ctx, game)
                         && game.can_be_sacrificed(*id)
                 })
@@ -1723,7 +1723,7 @@ pub(super) fn get_available_mana_abilities(
             continue;
         };
 
-        if perm.controller != player {
+        if game.controller_of(perm) != player {
             continue;
         }
 

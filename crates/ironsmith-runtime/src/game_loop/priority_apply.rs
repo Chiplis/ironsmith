@@ -370,10 +370,7 @@ pub fn apply_priority_response_with_dm(
                 .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
             let new_id = result.new_id;
 
-            // Set controller
-            if let Some(obj) = game.object_mut(new_id) {
-                obj.controller = player;
-            }
+            game.set_current_controller(new_id, player);
 
             // Check for ETB triggers only if the land entered the battlefield.
             if game

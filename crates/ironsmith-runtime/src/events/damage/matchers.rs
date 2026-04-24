@@ -581,7 +581,7 @@ impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
         let Some(target_obj) = ctx.game.object(target_id) else {
             return false;
         };
-        target_obj.controller == ctx.controller
+        ctx.game.controller_of(target_obj) == ctx.controller
             && target_obj
                 .card_types
                 .contains(&crate::types::CardType::Creature)

@@ -35,7 +35,7 @@ fn army_creature_candidates(game: &GameState, controller: PlayerId) -> Vec<Objec
         .copied()
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
-                obj.controller == controller
+                game.controller_of(obj) == controller
                     && game.object_has_card_type(id, CardType::Creature)
                     && game.calculated_subtypes(id).contains(&Subtype::Army)
             })

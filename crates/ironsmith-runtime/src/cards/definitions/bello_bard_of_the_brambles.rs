@@ -111,7 +111,7 @@ mod tests {
             .copied()
             .find(|&id| {
                 game.object(id)
-                    .map(|o| o.name == "Humility" && o.controller == alice)
+                    .map(|o| o.name == "Humility" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .expect("Humility should be on battlefield");
@@ -171,7 +171,7 @@ mod tests {
             .copied()
             .find(|&id| {
                 game.object(id)
-                    .map(|o| o.name == "Humility" && o.controller == alice)
+                    .map(|o| o.name == "Humility" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .expect("Humility should be on battlefield");

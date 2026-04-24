@@ -1124,12 +1124,12 @@ impl<'a> DerivedGameView<'a> {
     fn current_controller(&self, object_id: ObjectId) -> Option<PlayerId> {
         let object = self.game.object(object_id)?;
         if !self.requires_battlefield_characteristic_calculation(object_id) {
-            return Some(object.controller);
+            return Some(object.owner);
         }
 
         self.calculated_characteristics(object_id)
             .map(|chars| chars.controller)
-            .or(Some(object.controller))
+            .or(Some(object.owner))
     }
 
     pub(crate) fn requires_battlefield_characteristic_calculation(

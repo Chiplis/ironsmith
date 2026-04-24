@@ -1446,7 +1446,7 @@ fn test_student_of_warfare_base_stats() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+        .find(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Student should be on battlefield");
 
@@ -1539,7 +1539,7 @@ fn test_student_of_warfare_level_2() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+        .find(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Student should be on battlefield");
 
@@ -1689,7 +1689,7 @@ fn test_student_of_warfare_level_7() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+        .find(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Student should be on battlefield");
 
@@ -2028,7 +2028,7 @@ fn test_giant_growth_on_leveled_student() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+        .find(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Student should be on battlefield");
 
@@ -2157,7 +2157,7 @@ fn test_counters_on_leveled_student() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+        .find(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Student should be on battlefield");
 
@@ -2429,7 +2429,7 @@ fn test_undying_creature_returns_with_plus_counter() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Butcher Ghoul" && obj.controller == alice)
+        .find(|obj| obj.name == "Butcher Ghoul" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Butcher Ghoul should have returned to the battlefield");
 
@@ -2777,7 +2777,7 @@ fn test_counter_annihilation_enables_undying_loop() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Butcher Ghoul" && obj.controller == alice)
+        .find(|obj| obj.name == "Butcher Ghoul" && game.controller_of(obj) == alice)
         .map(|obj| obj.id)
         .expect("Butcher Ghoul should have returned to the battlefield");
 
@@ -2866,7 +2866,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
             .iter()
             .filter_map(|&id| game.object(id))
             .filter(|obj| {
-                obj.controller == alice
+                game.controller_of(obj) == alice
                     && obj.id != yawgmoth_id
                     && (obj.name == "Butcher Ghoul" || obj.name == "Sightless Ghoul")
             })

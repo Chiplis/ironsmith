@@ -236,8 +236,9 @@ mod tests {
         assert_eq!(outcome.output_objects().len(), 2);
         assert!(
             outcome.output_objects().iter().all(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.zone == Zone::Graveyard && obj.controller == bob)
+                game.object(*id).is_some_and(|obj| {
+                    obj.zone == Zone::Graveyard && game.controller_of(obj) == bob
+                })
             }),
             "destroy-no-regeneration effect should surface graveyard objects, got {:?}",
             outcome.output_objects()

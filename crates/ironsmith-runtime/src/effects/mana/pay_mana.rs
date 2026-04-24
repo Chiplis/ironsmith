@@ -173,7 +173,7 @@ impl CostExecutableEffect for PayManaEffect {
             | ChooseSpec::SpecificPlayer(player) => *player,
             ChooseSpec::SourceController => game
                 .object(source)
-                .map(|object| object.controller)
+                .map(|object| game.controller_of(object))
                 .unwrap_or(controller),
             _ => controller,
         };
@@ -220,7 +220,7 @@ fn get_available_mana_abilities(
             continue;
         };
 
-        if permanent.controller != player {
+        if game.controller_of(permanent) != player {
             continue;
         }
 

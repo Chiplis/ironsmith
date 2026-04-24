@@ -91,7 +91,7 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        if object.controller != defending_player {
+        if game.controller_of(object) != defending_player {
             continue;
         }
 
@@ -120,7 +120,9 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     let creature = game.object(creature_id)?;
     let defending_player = match target {
         AttackTarget::Player(player_id) => Some(*player_id),
-        AttackTarget::Planeswalker(object_id) => game.object(*object_id).map(|obj| obj.controller),
+        AttackTarget::Planeswalker(object_id) => {
+            game.object(*object_id).map(|obj| game.controller_of(obj))
+        }
     }?;
     let view = DerivedGameView::new(game);
     if !crate::rules::combat::can_attack_defending_player_with_view(
@@ -135,7 +137,7 @@ fn required_attack_cost_message_for_unpreviewed_attack(
     let abilities = static_abilities_for_object_with_effects(game, creature.id, all_effects);
     if abilities.iter().any(|ability| {
         ability
-            .can_pay_attack_cost(game, creature.id, creature.controller)
+            .can_pay_attack_cost(game, creature.id, game.controller_of(creature))
             .is_some_and(|can_pay| !can_pay)
     }) {
         return Some("Cannot pay required attack cost".to_string());
@@ -146,7 +148,11 @@ fn required_attack_cost_message_for_unpreviewed_attack(
         |acc, ability| {
             acc.saturating_add(
                 ability
-                    .generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
+                    .generic_attack_mana_cost_for_source(
+                        game,
+                        creature.id,
+                        game.controller_of(creature),
+                    )
                     .unwrap_or(0),
             )
         },
@@ -236,7 +242,7 @@ fn prepare_attacker_declarations(
             ))
             .into());
         };
-        if creature.controller != game.turn.active_player {
+        if game.controller_of(creature) != game.turn.active_player {
             return Err(ResponseError::InvalidAttackers(
                 "Can only attack with creatures you control".to_string(),
             )
@@ -251,7 +257,7 @@ fn prepare_attacker_declarations(
             if let Some(can_attack) = ability.can_attack_with_attacking_group(
                 game,
                 creature.id,
-                creature.controller,
+                game.controller_of(creature),
                 &attacking_creatures,
             ) && !can_attack
             {
@@ -260,23 +266,25 @@ fn prepare_attacker_declarations(
                 );
             }
             if let Some(can_pay) =
-                ability.can_pay_attack_cost(game, creature.id, creature.controller)
+                ability.can_pay_attack_cost(game, creature.id, game.controller_of(creature))
                 && !can_pay
             {
                 return Err(
                     ResponseError::InvalidAttackers(format!("{}", ability.display())).into(),
                 );
             }
-            if let Some(cost) =
-                ability.generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
-            {
+            if let Some(cost) = ability.generic_attack_mana_cost_for_source(
+                game,
+                creature.id,
+                game.controller_of(creature),
+            ) {
                 additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
             }
         }
 
         prepared.push(PreparedAttackerDeclaration {
             declaration: decl.clone(),
-            controller: creature.controller,
+            controller: game.controller_of(creature),
             abilities,
         });
 
@@ -548,7 +556,7 @@ pub fn apply_blocker_declarations(
             ))
             .into());
         };
-        if blocker.controller != defending_player {
+        if game.controller_of(blocker) != defending_player {
             return Err(ResponseError::InvalidBlockers(
                 "Can only block with creatures you control".to_string(),
             )
@@ -693,7 +701,7 @@ pub fn get_blocker_order_decision(
 
     // The attacking creature's controller orders the blockers
     let attacker_obj = game.object(attacker)?;
-    let attacking_player = attacker_obj.controller;
+    let attacking_player = game.controller_of(attacker_obj);
 
     // Convert blockers to items with names
     let items: Vec<(ObjectId, String)> = blockers

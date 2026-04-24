@@ -46,7 +46,7 @@ impl TriggerMatcher for ThisAttacksWithGreaterPowerTrigger {
             let Some(attacker_obj) = ctx.game.object(attacker_id) else {
                 return false;
             };
-            if attacker_obj.controller != ctx.controller {
+            if ctx.game.controller_of(attacker_obj) != ctx.controller {
                 return false;
             }
             Self::effective_power(ctx, attacker_id).is_some_and(|power| power > source_power)

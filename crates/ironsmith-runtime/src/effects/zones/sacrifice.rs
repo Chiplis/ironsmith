@@ -60,7 +60,7 @@ fn choose_objects_to_sacrifice(
         .iter()
         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
         .filter(|(id, obj)| {
-            obj.controller == player_id
+            game.controller_of(obj) == player_id
                 && filter.matches(obj, &filter_ctx, game)
                 && game.can_be_sacrificed(*id)
         })
@@ -245,7 +245,7 @@ impl EffectExecutor for SacrificeEffect {
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(id, obj)| {
-                    obj.controller == player_id
+                    game.controller_of(obj) == player_id
                         && self.filter.matches(obj, &filter_ctx, game)
                         && game.can_be_sacrificed(*id)
                 })
@@ -371,7 +371,7 @@ impl CostExecutableEffect for SacrificeEffect {
                 .iter()
                 .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(id, obj)| {
-                    obj.controller == controller
+                    game.controller_of(obj) == controller
                         && filter.matches(obj, &filter_ctx, game)
                         && game.can_be_sacrificed(*id)
                 })
@@ -418,7 +418,7 @@ impl CostExecutableEffect for SacrificeEffect {
             .iter()
             .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
             .filter(|(id, obj)| {
-                obj.controller == controller
+                game.controller_of(obj) == controller
                     && self.filter.matches(obj, &filter_ctx, game)
                     && game.can_be_sacrificed(*id)
             })
@@ -824,9 +824,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
         let creature_id = create_creature_on_battlefield(&mut game, "Borrowed Bear", alice);
-        game.object_mut(creature_id)
-            .expect("borrowed creature should exist")
-            .controller = bob;
+        game.set_current_controller(creature_id, bob);
 
         let mut ctx = ExecutionContext::new_default(source, bob);
         let result = SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::You)
@@ -842,7 +840,11 @@ mod tests {
             .and_then(|player| player.graveyard.first().copied())
             .and_then(|id| game.object(id));
         assert_eq!(
-            graveyard_object.map(|object| (object.name.as_str(), object.owner, object.controller)),
+            graveyard_object.map(|object| (
+                object.name.as_str(),
+                object.owner,
+                game.controller_of(object)
+            )),
             Some(("Borrowed Bear", alice, bob)),
             "sacrificed permanents should go to their owner's graveyard"
         );

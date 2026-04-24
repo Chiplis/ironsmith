@@ -71,7 +71,7 @@ mod tests {
 
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Invisible Stalker" && obj.controller == alice)
+                .map(|obj| obj.name == "Invisible Stalker" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

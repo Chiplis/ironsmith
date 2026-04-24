@@ -753,7 +753,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let spirit_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Selfless Spirit" && obj.controller == alice)
+                .map(|obj| obj.name == "Selfless Spirit" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 
@@ -874,7 +874,7 @@ mod tests {
         // Selfless Spirit should be tapped (regeneration taps the creature)
         let spirit_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Selfless Spirit" && obj.controller == alice)
+                .map(|obj| obj.name == "Selfless Spirit" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

@@ -67,7 +67,6 @@ impl EffectExecutor for CastTaggedEffect {
                 None => return Ok(EffectOutcome::target_invalid()),
             };
             let mut copy_obj = crate::object::Object::token_copy_of(&source_obj, copy_id, caster);
-            copy_obj.controller = caster;
             copy_obj.x_value = x_value;
 
             if is_land {

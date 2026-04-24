@@ -35,7 +35,7 @@ pub fn get_ward_cost(
     };
 
     // Ward only triggers when an opponent targets
-    if target.controller == caster {
+    if game.controller_of(target) == caster {
         return None;
     }
 
@@ -61,7 +61,7 @@ pub fn get_ward_cost(
         if let Some(cost) = ability.ward_cost() {
             return Some(PendingWardCost {
                 target: target_id,
-                ward_controller: target.controller,
+                ward_controller: game.controller_of(target),
                 cost: cost.clone(),
             });
         }

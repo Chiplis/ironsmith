@@ -10,10 +10,14 @@ use rand::{SeedableRng, rngs::StdRng};
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::Card;
-use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, ContinuousEffectManager};
+use crate::continuous::{
+    CalculatedCharacteristics, ContinuousEffect, ContinuousEffectManager, EffectTarget,
+    Modification,
+};
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
 use crate::dungeon::ActiveDungeonProgress;
+use crate::effect::Until;
 use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
@@ -563,7 +567,7 @@ impl RestrictionEffectInstance {
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && obj.controller == self.controller
+                    obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
                 })
             }
             _ => true,
@@ -601,7 +605,7 @@ impl GoadEffectInstance {
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && obj.controller == self.goaded_by
+                    obj.zone == Zone::Battlefield && game.controller_of(obj) == self.goaded_by
                 })
             }
             _ => true,
@@ -2370,7 +2374,7 @@ impl GameState {
         self.object(permanent).is_some_and(|object| {
             self.effect_store.cant_effects.can_untap_during_step(
                 permanent,
-                object.controller,
+                self.controller_of(object),
                 untap_player,
             )
         })
@@ -3161,7 +3165,7 @@ impl GameState {
         // Apply "as this enters, choose a color" selections.
         let choose_color_abilities = self
             .object(new_id)
-            .map(|obj| (obj.controller, obj.abilities.clone()));
+            .map(|obj| (self.controller_of(obj), obj.abilities.clone()));
         if let Some((controller, abilities)) = choose_color_abilities {
             for ability in abilities {
                 if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
@@ -4193,7 +4197,7 @@ impl GameState {
                         })
                         .chain(object.level_granted_abilities().iter().cloned())
                         .collect(),
-                    controller: object.controller,
+                    controller: self.controller_of(object),
                 });
 
         let has_changeling = chars
@@ -4224,7 +4228,74 @@ impl GameState {
 
     /// Return the object's current controller in its zone.
     pub fn current_controller(&self, id: ObjectId) -> Option<PlayerId> {
-        Some(self.current_characteristics(id)?.controller)
+        let object = self.object(id)?;
+        let mut controller = object.owner;
+        for effect in self
+            .effect_store
+            .continuous_effects
+            .effects_sorted()
+            .into_iter()
+            .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
+        {
+            if !crate::continuous::continuous_effect_duration_and_condition_are_active(effect, self)
+            {
+                continue;
+            }
+            let applies = match &effect.applies_to {
+                EffectTarget::Specific(target) => *target == id,
+                EffectTarget::Source => effect.source == id,
+                EffectTarget::AllPermanents => object.zone == Zone::Battlefield,
+                EffectTarget::AllCreatures => {
+                    object.zone == Zone::Battlefield && self.current_is_creature(id)
+                }
+                EffectTarget::Filter(filter) => filter.matches(
+                    object,
+                    &self.filter_context_for(effect.controller, Some(effect.source)),
+                    self,
+                ),
+                EffectTarget::AttachedTo(source) => {
+                    self.object(*source)
+                        .and_then(|source| source.attached_to)
+                        .and_then(|target| target.object_id())
+                        == Some(id)
+                }
+            };
+            if applies && let Modification::ChangeController(new_controller) = effect.modification {
+                controller = new_controller;
+            }
+        }
+        Some(controller)
+    }
+
+    /// Return the object's current controller, falling back to its owner if the
+    /// object cannot be evaluated through continuous effects.
+    pub fn controller_of(&self, object: &Object) -> PlayerId {
+        self.current_controller(object.id).unwrap_or(object.owner)
+    }
+
+    /// Return the object's current controller by object id.
+    pub fn controller_of_id(&self, id: ObjectId) -> Option<PlayerId> {
+        let object = self.object(id)?;
+        Some(self.controller_of(object))
+    }
+
+    /// Set an object's controller as derived state rather than object storage.
+    pub fn set_current_controller(&mut self, id: ObjectId, controller: PlayerId) {
+        let Some(object) = self.object(id) else {
+            return;
+        };
+        if object.owner == controller {
+            return;
+        }
+        let effect = ContinuousEffect::new(
+            id,
+            controller,
+            EffectTarget::Specific(id),
+            Modification::ChangeController(controller),
+        )
+        .until(Until::Forever);
+        self.effect_store.continuous_effects.add_effect(effect);
+        self.refresh_continuous_state();
     }
 
     /// Return the object's current card types in its zone.
@@ -4458,7 +4529,7 @@ impl GameState {
             .iter()
             .filter_map(|(&object_id, object)| {
                 let zone = object.zone;
-                let controller = object.controller;
+                let controller = self.controller_of(object);
                 match zone {
                     Zone::Battlefield => Some(
                         self.calculated_characteristics_with_effects(object_id, &all_effects)
@@ -4647,7 +4718,7 @@ impl GameState {
                 if !static_ability.is_active(self, perm_id) {
                     continue;
                 }
-                if let Some(result) = f(perm_id, object.controller, &static_ability) {
+                if let Some(result) = f(perm_id, self.controller_of(object), &static_ability) {
                     return Some(result);
                 }
             }
@@ -4758,7 +4829,7 @@ impl GameState {
             .iter()
             .filter_map(|&id| self.object(id).map(|obj| (id, obj)))
             .filter(|(id, obj)| {
-                obj.controller == payer
+                self.controller_of(obj) == payer
                     && (!lands_only || self.object_is_land_for_cost_restrictions(*id))
                     && filter.matches(obj, &filter_ctx, self)
                     && self.can_be_sacrificed(*id)
@@ -5273,7 +5344,8 @@ impl GameState {
     pub fn has_citys_blessing(&self, player: PlayerId) -> bool {
         self.command_zone.iter().any(|&obj_id| {
             self.object(obj_id).is_some_and(|obj| {
-                obj.controller == player && obj.name.eq_ignore_ascii_case("City's Blessing")
+                self.controller_of(obj) == player
+                    && obj.name.eq_ignore_ascii_case("City's Blessing")
             })
         })
     }
@@ -5325,7 +5397,7 @@ impl GameState {
             .filter(|&&id| {
                 self.objects
                     .get(&id)
-                    .is_some_and(|o| o.controller == controller)
+                    .is_some_and(|o| self.controller_of(o) == controller)
             })
             .copied()
             .collect()
@@ -5336,9 +5408,9 @@ impl GameState {
         self.battlefield
             .iter()
             .filter(|&&id| {
-                self.objects
-                    .get(&id)
-                    .is_some_and(|o| o.controller == controller && self.current_is_creature(id))
+                self.objects.get(&id).is_some_and(|o| {
+                    self.controller_of(o) == controller && self.current_is_creature(id)
+                })
             })
             .copied()
             .collect()
@@ -5996,7 +6068,7 @@ impl GameState {
             // We check both the current ID and the stable_id (which persists across zone changes).
             for &bf_id in &self.battlefield {
                 if let Some(obj) = self.object(bf_id)
-                    && obj.controller == player_id
+                    && self.controller_of(obj) == player_id
                 {
                     // Check if this is the commander by current ID
                     if bf_id == commander_id {
@@ -6030,7 +6102,7 @@ impl GameState {
         for &commander_id in &all_commanders {
             for &bf_id in &self.battlefield {
                 if let Some(obj) = self.object(bf_id)
-                    && obj.controller == player_id
+                    && self.controller_of(obj) == player_id
                 {
                     // Check if this is a commander by current ID or stable_id
                     if bf_id == commander_id || obj.stable_id == StableId::from(commander_id) {
@@ -6563,7 +6635,7 @@ impl GameState {
         if !self.current_is_creature(left) || !self.current_is_creature(right) {
             return false;
         }
-        left_obj.controller == right_obj.controller
+        self.controller_of(left_obj) == self.controller_of(right_obj)
     }
 
     pub fn clear_soulbond_pair(&mut self, object_id: ObjectId) {

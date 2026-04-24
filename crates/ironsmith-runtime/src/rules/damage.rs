@@ -105,7 +105,7 @@ pub(crate) fn apply_processed_damage_assignment(
         crate::events::DamageTarget::Player(player_id) => {
             let source_controller = game
                 .object(source)
-                .map(|obj| obj.controller)
+                .map(|obj| game.controller_of(obj))
                 .or(cause.source_controller);
             if keywords.has_infect {
                 if let Some(event) = game.add_player_counters_with_source(
@@ -154,7 +154,7 @@ pub(crate) fn apply_processed_damage_assignment(
                 );
                 let source_controller = game
                     .object(source)
-                    .map(|obj| obj.controller)
+                    .map(|obj| game.controller_of(obj))
                     .or(cause.source_controller);
                 if let Some(event) = game.add_counters_with_source(
                     object_id,
@@ -501,7 +501,6 @@ mod tests {
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
-            controller: PlayerId::from_index(0),
             name: name.to_string(),
             mana_cost: None,
             color_override: None,

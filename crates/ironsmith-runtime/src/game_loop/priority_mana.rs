@@ -985,7 +985,8 @@ pub(super) fn mana_ability_can_pay_pip(
     }
 
     // Check what mana this ability can produce.
-    let produced_symbols = mana_ability.inferred_mana_symbols(game, perm_id, obj.controller);
+    let produced_symbols =
+        mana_ability.inferred_mana_symbols(game, perm_id, game.controller_of(obj));
 
     let pip_has_colored = pip.iter().any(|s| {
         matches!(
@@ -1052,7 +1053,7 @@ pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_ind
 
     mana_ability.effects.iter().all(|effect| {
         effect
-            .producible_mana_symbols(game, source, object.controller)
+            .producible_mana_symbols(game, source, game.controller_of(object))
             .is_some()
     })
 }
@@ -3108,9 +3109,8 @@ pub(super) fn propose_spell_cast(
     };
 
     let mut mark_face_down = false;
+    game.set_current_controller(new_id, caster);
     if let Some(obj) = game.object_mut(new_id) {
-        obj.controller = caster;
-
         if let Some(method) = selected_method {
             if method.is_bestow() {
                 obj.apply_bestow_cast_overlay();

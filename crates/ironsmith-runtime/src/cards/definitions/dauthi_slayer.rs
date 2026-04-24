@@ -78,7 +78,7 @@ mod tests {
 
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Dauthi Slayer" && obj.controller == alice)
+                .map(|obj| obj.name == "Dauthi Slayer" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

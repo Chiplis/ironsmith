@@ -88,7 +88,7 @@ mod tests {
         // Find Savannah Lions and verify it's now 3/2 (base 2/1 + 1/1 from Crusade)
         let lions_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Savannah Lions" && obj.controller == alice)
+                .map(|obj| obj.name == "Savannah Lions" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 
@@ -140,7 +140,7 @@ mod tests {
         // Savannah Lions (white) should be buffed to 3/2
         let lions_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Savannah Lions" && obj.controller == alice)
+                .map(|obj| obj.name == "Savannah Lions" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 
@@ -162,7 +162,7 @@ mod tests {
         // Grizzly Bears (green, not white) should remain 2/2
         let bears_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Grizzly Bears" && obj.controller == alice)
+                .map(|obj| obj.name == "Grizzly Bears" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

@@ -26,7 +26,7 @@ pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQ
             let obj = game.object(id)?;
             // Check calculated subtypes (after continuous effects), not base subtypes
             let subtypes = game.calculated_subtypes(id);
-            if subtypes.contains(&Subtype::Saga) && obj.controller == active_player {
+            if subtypes.contains(&Subtype::Saga) && game.controller_of(obj) == active_player {
                 Some(id)
             } else {
                 None

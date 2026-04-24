@@ -272,7 +272,7 @@ pub(crate) fn can_block_with_view(
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                if obj.controller != blocker.controller
+                if game.controller_of(obj) != game.controller_of(blocker)
                     || !view.object_has_card_type(obj.id, CardType::Land)
                 {
                     return false;
@@ -311,7 +311,7 @@ pub(crate) fn can_block_with_view(
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                obj.controller == blocker.controller
+                game.controller_of(obj) == game.controller_of(blocker)
                     && view.object_has_card_type(obj.id, required_card_type)
             });
         if defending_controls_required_type {
@@ -328,7 +328,7 @@ pub(crate) fn can_block_with_view(
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                obj.controller == blocker.controller
+                game.controller_of(obj) == game.controller_of(blocker)
                     && required_card_types
                         .iter()
                         .all(|required_type| view.object_has_card_type(obj.id, *required_type))
@@ -371,14 +371,14 @@ fn protection_prevents_blocking_with_view(
         ProtectionFrom::Permanents(filter) => {
             // Create a filter context for the attacker (who has the protection)
             // "You" is the controller of the attacker, source is the attacker
-            let ctx = FilterContext::new(attacker.controller).with_source(attacker.id);
+            let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
             filter.matches(blocker, &ctx, game)
         }
         ProtectionFrom::Everything => true,
         ProtectionFrom::Colorless => blocker_colors.is_empty(),
         ProtectionFrom::ChosenPlayer => game
             .chosen_player(attacker.id)
-            .is_some_and(|chosen| blocker.controller == chosen),
+            .is_some_and(|chosen| game.controller_of(blocker) == chosen),
     }
 }
 
@@ -509,7 +509,7 @@ pub(crate) fn can_attack_defending_player_with_view(
         if let Some(can_attack) = ability.can_attack_specific_defender(
             game,
             creature.id,
-            creature.controller,
+            game.controller_of(creature),
             defending_player,
         ) && !can_attack
         {
@@ -658,7 +658,6 @@ mod tests {
             card: None,
             zone: Zone::Battlefield,
             owner: PlayerId::from_index(0),
-            controller: PlayerId::from_index(0),
             name: name.to_string(),
             mana_cost: None,
             color_override: None,
@@ -892,15 +891,12 @@ mod tests {
         let mut game = test_game_state();
 
         let mut ring_bearer = make_creature("Bearer", 2, 2);
-        ring_bearer.controller = alice;
         ring_bearer.owner = alice;
 
         let mut equal_power_blocker = make_creature("Equal", 2, 2);
-        equal_power_blocker.controller = bob;
         equal_power_blocker.owner = bob;
 
         let mut larger_blocker = make_creature("Large", 3, 3);
-        larger_blocker.controller = bob;
         larger_blocker.owner = bob;
 
         game.add_object(ring_bearer.clone());
@@ -919,7 +915,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let mut attacker = make_creature("Beebles", 2, 2);
         attacker.id = ObjectId::from_raw(10);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_type(
@@ -929,7 +925,7 @@ mod tests {
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(11);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         let mut game_without_artifact = test_game_state();
         game_without_artifact.add_object(attacker.clone());
@@ -941,7 +937,7 @@ mod tests {
 
         let mut artifact = make_creature("Relic", 0, 1);
         artifact.id = ObjectId::from_raw(12);
-        artifact.controller = bob;
+        artifact.owner = bob;
         artifact.card_types.push(CardType::Artifact);
 
         let mut game_with_artifact = test_game_state();
@@ -960,7 +956,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let mut attacker = make_creature("Tanglewalker", 2, 2);
         attacker.id = ObjectId::from_raw(110);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_types(vec![
@@ -971,12 +967,12 @@ mod tests {
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(111);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         let mut game_with_only_artifact = test_game_state();
         let mut artifact_only = make_creature("Relic", 0, 1);
         artifact_only.id = ObjectId::from_raw(112);
-        artifact_only.controller = bob;
+        artifact_only.owner = bob;
         artifact_only.card_types = vec![CardType::Artifact];
         game_with_only_artifact.add_object(attacker.clone());
         game_with_only_artifact.add_object(blocker.clone());
@@ -989,7 +985,7 @@ mod tests {
         let mut game_with_only_land = test_game_state();
         let mut land_only = make_creature("Field", 0, 1);
         land_only.id = ObjectId::from_raw(113);
-        land_only.controller = bob;
+        land_only.owner = bob;
         land_only.card_types = vec![CardType::Land];
         game_with_only_land.add_object(attacker.clone());
         game_with_only_land.add_object(blocker.clone());
@@ -1002,7 +998,7 @@ mod tests {
         let mut game_with_artifact_land = test_game_state();
         let mut artifact_land = make_creature("Seat of Synod", 0, 1);
         artifact_land.id = ObjectId::from_raw(114);
-        artifact_land.controller = bob;
+        artifact_land.owner = bob;
         artifact_land.card_types = vec![CardType::Artifact, CardType::Land];
         game_with_artifact_land.add_object(attacker);
         game_with_artifact_land.add_object(blocker);
@@ -1031,15 +1027,15 @@ mod tests {
 
         let mut attacker = make_creature("Attacker", 2, 2);
         attacker.id = ObjectId::from_raw(20);
-        attacker.controller = alice;
+        attacker.owner = alice;
 
         let mut other_attacker = make_creature("Other Attacker", 2, 2);
         other_attacker.id = ObjectId::from_raw(21);
-        other_attacker.controller = alice;
+        other_attacker.owner = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
         blocker.id = ObjectId::from_raw(22);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         game.add_object(attacker.clone());
         game.add_object(other_attacker.clone());
@@ -1078,11 +1074,9 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Attacker", 2, 2);
-        attacker.controller = alice;
         attacker.owner = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
-        blocker.controller = bob;
         blocker.owner = bob;
 
         game.add_object(attacker.clone());
@@ -1114,7 +1108,7 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Serpent", 5, 5);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_defending_player_controls_land_subtype(
@@ -1128,7 +1122,7 @@ mod tests {
         // Add an Island under Bob's control.
         let mut island = make_creature("Island", 0, 0);
         island.id = ObjectId::from_raw(99);
-        island.controller = bob;
+        island.owner = bob;
         island.card_types = vec![CardType::Land];
         island.subtypes = vec![crate::types::Subtype::Island];
         game.add_object(island);
@@ -1139,11 +1133,9 @@ mod tests {
     #[test]
     fn test_cant_attack_unless_defending_player_is_poisoned() {
         let mut game = test_game_state();
-        let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Poison Seeker", 3, 2);
-        attacker.controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_condition(
@@ -1168,7 +1160,6 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Crown-Hunter Hireling Variant", 4, 4);
-        attacker.controller = alice;
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_condition(
@@ -1288,11 +1279,11 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Pathwalker", 2, 2);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(&mut attacker, StaticAbility::any_landwalk());
 
         let mut blocker = make_creature("Blocker", 2, 2);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         let mut game = test_game_state();
         game.add_object(attacker.clone());
@@ -1300,7 +1291,7 @@ mod tests {
         assert!(can_block(&attacker, &blocker, &game));
 
         let mut land = make_creature("Plains", 0, 1);
-        land.controller = bob;
+        land.owner = bob;
         land.card_types = vec![CardType::Land];
         land.subtypes = vec![crate::types::Subtype::Plains];
         game.add_object(land);
@@ -1314,20 +1305,20 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Boots Walker", 2, 2);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(&mut attacker, StaticAbility::nonbasic_landwalk());
 
         let mut blocker = make_creature("Blocker", 2, 2);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         let mut basic_land = make_creature("Forest", 0, 1);
-        basic_land.controller = bob;
+        basic_land.owner = bob;
         basic_land.card_types = vec![CardType::Land];
         basic_land.subtypes = vec![crate::types::Subtype::Forest];
         basic_land.supertypes = vec![Supertype::Basic];
 
         let mut nonbasic_land = make_creature("Maze", 0, 1);
-        nonbasic_land.controller = bob;
+        nonbasic_land.owner = bob;
         nonbasic_land.card_types = vec![CardType::Land];
         nonbasic_land.subtypes = vec![crate::types::Subtype::Desert];
 
@@ -1347,17 +1338,17 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Snow Scout", 2, 2);
-        attacker.controller = alice;
+        attacker.owner = alice;
         add_ability(
             &mut attacker,
             StaticAbility::snow_landwalk(crate::types::Subtype::Forest),
         );
 
         let mut blocker = make_creature("Blocker", 2, 2);
-        blocker.controller = bob;
+        blocker.owner = bob;
 
         let mut forest = make_creature("Forest", 0, 1);
-        forest.controller = bob;
+        forest.owner = bob;
         forest.card_types = vec![CardType::Land];
         forest.subtypes = vec![crate::types::Subtype::Forest];
 
@@ -1382,15 +1373,12 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let mut attacker = make_creature("Traveler", 2, 2);
-        attacker.controller = alice;
         attacker.owner = alice;
 
         let mut blocker = make_creature("Blocker", 2, 2);
-        blocker.controller = bob;
         blocker.owner = bob;
 
         let mut aura = make_creature("Traveler's Cloak", 0, 0);
-        aura.controller = alice;
         aura.owner = alice;
         aura.card_types = vec![CardType::Enchantment];
         aura.subtypes = vec![crate::types::Subtype::Aura];
@@ -1403,7 +1391,6 @@ mod tests {
         ));
 
         let mut chosen_land = make_creature("Desert", 0, 1);
-        chosen_land.controller = bob;
         chosen_land.owner = bob;
         chosen_land.card_types = vec![CardType::Land];
         chosen_land.subtypes = vec![crate::types::Subtype::Desert];

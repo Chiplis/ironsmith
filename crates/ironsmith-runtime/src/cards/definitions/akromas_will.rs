@@ -532,7 +532,7 @@ mod tests {
 
         // Now Alice gains control of Bob's commander (e.g., via Control Magic)
         if let Some(obj) = game.object_mut(bobs_commander) {
-            obj.controller = alice;
+            obj.owner = alice;
         }
 
         // Verify Alice now controls a commander (Bob's commander)

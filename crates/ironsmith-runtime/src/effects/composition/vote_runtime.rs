@@ -76,7 +76,7 @@ fn additional_vote_modifiers_from_static_abilities(
     game.battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == player_id)
+        .filter(|obj| game.controller_of(obj) == player_id)
         .flat_map(|obj| obj.abilities.iter())
         .filter_map(|ability| match &ability.kind {
             crate::ability::AbilityKind::Static(static_ability) => Some(static_ability),
@@ -397,7 +397,7 @@ fn collect_token_batch(
             for &object_id in &zone_change.objects {
                 if let Some(object) = game.object(object_id) {
                     by_controller
-                        .entry(object.controller)
+                        .entry(game.controller_of(object))
                         .or_default()
                         .push(object_id);
                 }

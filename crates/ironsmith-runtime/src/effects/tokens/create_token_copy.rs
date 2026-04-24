@@ -57,7 +57,7 @@ fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<Attac
 
     for &object_id in &game.battlefield {
         if let Some(object) = game.object(object_id)
-            && object.controller == player_id
+            && game.controller_of(object) == player_id
             && object.has_card_type(CardType::Planeswalker)
         {
             targets.push(AttackTarget::Planeswalker(object_id));

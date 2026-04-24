@@ -1,16 +1,22 @@
 use super::*;
 use crate::effects::rebase_target_scope;
+use crate::game_loop::targeting::DeclaredTarget;
 use crate::triggers::Trigger;
 
 pub(super) fn active_target_assignments_for_effect(
     effect: &Effect,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
     assignments: &[crate::game_state::TargetAssignment],
     cursor: &mut usize,
 ) -> Vec<crate::game_state::TargetAssignment> {
-    let count =
-        count_target_selection_slots_for_effect(effect, chosen_modes, consumed_modal_selection);
+    let count = count_target_selection_slots_for_effect(
+        effect,
+        chosen_modes,
+        consumed_modal_selection,
+        declared_targets,
+    );
     let start = *cursor;
     let end = start.saturating_add(count).min(assignments.len());
     *cursor = end;
@@ -122,6 +128,7 @@ pub(crate) fn execute_resolution_program(
     let mut all_events = Vec::new();
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
+    let mut declared_targets = Vec::new();
     for segment in &program.segments {
         let (selected_effects, selected_self_replacement) = if segment.self_replacements.is_empty()
         {
@@ -142,10 +149,12 @@ pub(crate) fn execute_resolution_program(
                 .map(|effect| {
                     let mut temp_cursor = assignment_cursor;
                     let mut temp_consumed_modal_selection = consumed_modal_selection;
+                    let mut temp_declared_targets = declared_targets.clone();
                     active_target_assignments_for_effect(
                         effect,
                         chosen_modes,
                         &mut temp_consumed_modal_selection,
+                        &mut temp_declared_targets,
                         valid_target_assignments,
                         &mut temp_cursor,
                     )
@@ -189,6 +198,7 @@ pub(crate) fn execute_resolution_program(
                 effect,
                 chosen_modes,
                 &mut consumed_modal_selection,
+                &mut declared_targets,
                 valid_target_assignments,
                 &mut assignment_cursor,
             );

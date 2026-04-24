@@ -87,7 +87,7 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
                 crate::object::AttachmentTarget::Object(id) => ctx
                     .game
                     .object(id)
-                    .is_some_and(|obj| obj.controller == player),
+                    .is_some_and(|obj| ctx.game.controller_of(obj) == player),
                 crate::object::AttachmentTarget::Player(id) => id == player,
             }
         }

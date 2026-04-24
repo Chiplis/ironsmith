@@ -297,7 +297,7 @@ fn collect_controlled_battlefield(game: &GameState, player: PlayerId) -> Vec<Obj
         .copied()
         .filter(|&id| {
             game.object(id)
-                .is_some_and(|object| object.controller == player)
+                .is_some_and(|object| game.controller_of(object) == player)
         })
         .collect()
 }
@@ -670,7 +670,7 @@ fn add_non_battlefield_ability_actions(
         let Some(obj) = game.object(source_id) else {
             continue;
         };
-        if obj.zone == Zone::Battlefield || obj.controller != player {
+        if obj.zone == Zone::Battlefield || game.controller_of(obj) != player {
             continue;
         }
 
@@ -943,7 +943,7 @@ fn activation_precheck_with_view(
     let controller = source_facts.controller;
 
     if let Some(obj) = game.object(source)
-        && !game.can_activate_non_mana_abilities(obj.controller)
+        && !game.can_activate_non_mana_abilities(game.controller_of(obj))
     {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());

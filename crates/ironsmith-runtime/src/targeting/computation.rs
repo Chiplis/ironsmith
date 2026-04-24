@@ -72,7 +72,7 @@ pub(crate) fn can_target_object_with_view(
     }
 
     // Check for hexproof (only blocks opponents)
-    if target_abilities.iter().any(|a| a.has_hexproof()) && target.controller != caster {
+    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
@@ -92,7 +92,7 @@ pub(crate) fn can_target_object_with_view(
 
     // Check CantEffectTracker for "can't be targeted" effects
     // Note: This includes both shroud and hexproof tracked separately
-    if game.is_untargetable(target_id) && target.controller != caster {
+    if game.is_untargetable(target_id) && game.controller_of(target) != caster {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 
@@ -151,7 +151,7 @@ pub(crate) fn has_protection_from_source_with_view(
             let matches = match protection_from {
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
-                    .is_some_and(|chosen| source.controller == chosen),
+                    .is_some_and(|chosen| game.controller_of(source) == chosen),
                 _ => source_matches_protection_with_view(source, protection_from, game, view),
             };
             if matches {
@@ -326,7 +326,7 @@ fn compute_player_or_planeswalker_targets_with_view(
             }
         } else {
             let is_untargetable = game.is_untargetable(obj_id);
-            let is_controlled_by_caster = obj.controller == caster;
+            let is_controlled_by_caster = game.controller_of(obj) == caster;
             if !is_untargetable || is_controlled_by_caster {
                 targets.push(Target::Object(obj_id));
             }
@@ -370,7 +370,7 @@ fn compute_any_targets_with_view(
             } else {
                 // No source - check basic hexproof/shroud
                 let is_untargetable = game.is_untargetable(obj_id);
-                let is_controlled_by_caster = obj.controller == caster;
+                let is_controlled_by_caster = game.controller_of(obj) == caster;
                 if !is_untargetable || is_controlled_by_caster {
                     targets.push(Target::Object(obj_id));
                 }
@@ -472,7 +472,7 @@ fn compute_object_targets_with_view(
         }
 
         let is_untargetable = game.is_untargetable(object_id);
-        let is_controlled_by_caster = object.controller == caster;
+        let is_controlled_by_caster = game.controller_of(object) == caster;
         if !is_untargetable || is_controlled_by_caster {
             targets.push(Target::Object(object_id));
         }
@@ -512,13 +512,12 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
 
-        let mut obj = Object::from_card(
+        let obj = Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
         );
-        obj.controller = controller;
         obj
     }
 
@@ -528,13 +527,12 @@ mod tests {
             .card_types(vec![CardType::Battle])
             .build();
 
-        let mut obj = Object::from_card(
+        let obj = Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
         );
-        obj.controller = controller;
         obj
     }
 
@@ -543,13 +541,12 @@ mod tests {
             .card_types(vec![CardType::Land])
             .build();
 
-        let mut obj = Object::from_card(
+        let obj = Object::from_card(
             ObjectId::from_raw(id as u64),
             &card,
             controller,
             Zone::Battlefield,
         );
-        obj.controller = controller;
         obj
     }
 
@@ -733,9 +730,7 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
             .card_types(vec![CardType::Instant])
             .build();
-        let mut black_source =
-            Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
-        black_source.controller = p0;
+        let black_source = Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
 
         let target_id = target.id;
         let black_source_id = black_source.id;
@@ -761,8 +756,7 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
             .card_types(vec![CardType::Instant])
             .build();
-        let mut source = Object::from_card(ObjectId::from_raw(1), &card, p0, Zone::Battlefield);
-        source.controller = p0;
+        let source = Object::from_card(ObjectId::from_raw(1), &card, p0, Zone::Battlefield);
         let source_id = source.id;
         game.add_object(source);
 
@@ -848,8 +842,7 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
             .card_types(vec![CardType::Instant])
             .build();
-        let mut red_source = Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
-        red_source.controller = p0;
+        let red_source = Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
 
         let target_id = target.id;
         let red_source_id = red_source.id;
@@ -883,9 +876,7 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
             .card_types(vec![CardType::Instant])
             .build();
-        let mut blue_source =
-            Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
-        blue_source.controller = p0;
+        let blue_source = Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
 
         let target_id = target.id;
         let blue_source_id = blue_source.id;
@@ -919,9 +910,8 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
             .card_types(vec![CardType::Instant])
             .build();
-        let mut colorless_source =
+        let colorless_source =
             Object::from_card(ObjectId::from_raw(2), &card, p0, Zone::Battlefield);
-        colorless_source.controller = p0;
 
         let target_id = target.id;
         let colorless_source_id = colorless_source.id;

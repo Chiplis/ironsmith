@@ -49,7 +49,7 @@ impl EffectExecutor for EvolveEffect {
         };
 
         if !entered_obj.has_card_type(CardType::Creature)
-            || entered_obj.controller != source_obj.controller
+            || game.controller_of(entered_obj) != game.controller_of(source_obj)
         {
             return Ok(EffectOutcome::count(0));
         }

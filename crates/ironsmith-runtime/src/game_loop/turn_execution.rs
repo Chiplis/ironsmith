@@ -101,7 +101,10 @@ pub(super) fn generate_damage_triggers(
         let cause = game
             .object(event.source)
             .map(|obj| {
-                crate::events::cause::EventCause::from_combat_damage(event.source, obj.controller)
+                crate::events::cause::EventCause::from_combat_damage(
+                    event.source,
+                    game.controller_of(obj),
+                )
             })
             .unwrap_or_else(crate::events::cause::EventCause::effect);
         let trigger_event = TriggerEvent::new_with_provenance(

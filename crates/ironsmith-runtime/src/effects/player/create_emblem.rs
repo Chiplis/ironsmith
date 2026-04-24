@@ -88,7 +88,7 @@ mod tests {
             let obj = game.object(emblem_id).unwrap();
             assert_eq!(obj.name, "Test Emblem");
             assert_eq!(obj.zone, Zone::Command);
-            assert_eq!(obj.controller, alice);
+            assert_eq!(game.controller_of(obj), alice);
         } else {
             panic!("Expected Objects result");
         }
@@ -142,9 +142,9 @@ mod tests {
             let emblem_id = ids[0];
             let obj = game.object(emblem_id).unwrap();
             // Controller should be Bob
-            assert_eq!(obj.controller, bob);
+            assert_eq!(game.controller_of(obj), bob);
             // Alice doesn't control it
-            assert_ne!(obj.controller, alice);
+            assert_ne!(game.controller_of(obj), alice);
         } else {
             panic!("Expected Objects result");
         }

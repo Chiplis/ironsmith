@@ -122,7 +122,7 @@ fn collect_available_mana_symbols(
                 infer_symbols_from_mana_effect(
                     game,
                     perm.id,
-                    perm.controller,
+                    game.controller_of(perm),
                     effect,
                     &mut symbols,
                 );
@@ -145,7 +145,7 @@ fn mana_ability_condition_met(
         .as_ref()
         .is_none_or(|condition| {
             let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
-                controller: source.controller,
+                controller: game.controller_of(source),
                 source: source.id,
                 defending_player: None,
                 attacking_player: None,

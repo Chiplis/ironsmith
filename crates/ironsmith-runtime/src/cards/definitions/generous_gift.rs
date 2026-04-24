@@ -228,7 +228,7 @@ mod tests {
         // Check if any Elephant on battlefield is controlled by Bob
         let elephant_for_bob = game.battlefield.iter().any(|&id| {
             game.object(id)
-                .map(|o| o.name == "Elephant" && o.controller == bob)
+                .map(|o| o.name == "Elephant" && game.controller_of(o) == bob)
                 .unwrap_or(false)
         });
         assert!(elephant_for_bob, "Bob should have an Elephant token");

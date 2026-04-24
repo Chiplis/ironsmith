@@ -68,7 +68,7 @@ impl EffectExecutor for RegenerateEffect {
             if !game.can_be_regenerated(target_id) {
                 continue;
             }
-            let controller = obj.controller;
+            let controller = game.controller_of(obj);
 
             let replacement_effects = vec![
                 Effect::tap(ChooseSpec::SpecificObject(target_id)),

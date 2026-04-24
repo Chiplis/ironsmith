@@ -35,7 +35,7 @@ impl EffectExecutor for MeldEffect {
             return Ok(EffectOutcome::resolved());
         };
         if source.owner != ctx.controller
-            || source.controller != ctx.controller
+            || game.controller_of(&source) != ctx.controller
             || source.kind != ObjectKind::Card
         {
             return Ok(EffectOutcome::resolved());
@@ -50,7 +50,7 @@ impl EffectExecutor for MeldEffect {
                 game.object(candidate_id).is_some_and(|candidate| {
                     candidate_id != source_id
                         && candidate.owner == ctx.controller
-                        && candidate.controller == ctx.controller
+                        && game.controller_of(candidate) == ctx.controller
                         && candidate.name.eq_ignore_ascii_case(counterpart_name)
                 })
             }),
@@ -58,7 +58,7 @@ impl EffectExecutor for MeldEffect {
                 game.object(candidate_id).is_some_and(|candidate| {
                     candidate_id != source_id
                         && candidate.owner == ctx.controller
-                        && candidate.controller == ctx.controller
+                        && game.controller_of(candidate) == ctx.controller
                         && candidate.name.eq_ignore_ascii_case(counterpart_name)
                 })
             }),

@@ -140,7 +140,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let student_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Student of Warfare" && obj.controller == alice)
+                .map(|obj| obj.name == "Student of Warfare" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

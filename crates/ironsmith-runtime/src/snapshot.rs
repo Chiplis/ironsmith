@@ -137,7 +137,7 @@ impl ObjectSnapshot {
             card: obj.card,
 
             // Ownership
-            controller: obj.controller,
+            controller: game.controller_of(obj),
             owner: obj.owner,
 
             // Copiable characteristics

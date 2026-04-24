@@ -478,7 +478,7 @@ impl ActivationSourceFacts {
     ) -> Self {
         let controller = game
             .object(source)
-            .map(|obj| obj.controller)
+            .map(|obj| game.controller_of(obj))
             .unwrap_or(game.turn.active_player);
         Self {
             controller,

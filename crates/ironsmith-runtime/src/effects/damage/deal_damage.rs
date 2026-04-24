@@ -49,7 +49,7 @@ pub(crate) fn apply_processed_damage_outcome(
 ) -> EffectOutcome {
     let source_controller = game
         .object(source)
-        .map(|obj| obj.controller)
+        .map(|obj| game.controller_of(obj))
         .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
 
     let processed = process_damage_assignments_with_event_with_source_snapshot(

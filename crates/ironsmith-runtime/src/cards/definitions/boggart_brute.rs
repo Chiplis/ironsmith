@@ -64,7 +64,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let brute_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Boggart Brute" && obj.controller == alice)
+                .map(|obj| obj.name == "Boggart Brute" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

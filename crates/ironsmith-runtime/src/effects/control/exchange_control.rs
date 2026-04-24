@@ -120,8 +120,8 @@ impl EffectExecutor for ExchangeControlEffect {
         }
 
         // Get current controllers
-        let controller1 = game.object(perm1_id).map(|o| o.controller);
-        let controller2 = game.object(perm2_id).map(|o| o.controller);
+        let controller1 = game.object(perm1_id).map(|o| game.controller_of(o));
+        let controller2 = game.object(perm2_id).map(|o| game.controller_of(o));
 
         if let (Some(c1), Some(c2)) = (controller1, controller2) {
             if c1 == c2 {

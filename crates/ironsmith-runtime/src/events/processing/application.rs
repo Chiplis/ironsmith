@@ -712,7 +712,7 @@ fn resolve_value_for_etb(
 ) -> u32 {
     let controller = game
         .object(source)
-        .map(|o| o.controller)
+        .map(|o| game.controller_of(o))
         .unwrap_or(crate::ids::PlayerId::from_index(0));
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;

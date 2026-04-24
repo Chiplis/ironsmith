@@ -278,7 +278,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Treasure" && obj.controller == alice)
+            .filter(|obj| obj.name == "Treasure" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(treasures.len(), 1, "Should have created 1 Treasure token");
         assert!(treasures[0].card_types.contains(&CardType::Artifact));
@@ -375,7 +375,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Shapeshifter" && obj.controller == alice)
+            .filter(|obj| obj.name == "Shapeshifter" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(
             shapeshifters.len(),
@@ -441,7 +441,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Treasure" && obj.controller == alice)
+            .filter(|obj| obj.name == "Treasure" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(treasures.len(), 1, "Should have 1 Treasure");
 
@@ -449,7 +449,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.name == "Shapeshifter" && obj.controller == alice)
+            .filter(|obj| obj.name == "Shapeshifter" && game.controller_of(obj) == alice)
             .collect();
         assert_eq!(shapeshifters.len(), 1, "Should have 1 Shapeshifter");
     }

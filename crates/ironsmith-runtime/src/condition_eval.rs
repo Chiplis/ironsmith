@@ -354,7 +354,7 @@ fn condition_count_for_player(
     condition_candidate_ids_for_zone(game, filter.zone)
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+        .filter(|obj| condition_object_matches_player_zone(game, obj, candidate, filter.zone))
         .filter(|obj| filter.matches(obj, &filter_ctx, game))
         .count()
 }
@@ -672,13 +672,13 @@ fn evaluate_condition_shared_core(
                 for &commander_id in commanders {
                     if game.battlefield.contains(&commander_id)
                         && let Some(obj) = game.object(commander_id)
-                        && obj.controller == ctx.controller
+                        && game.controller_of(obj) == ctx.controller
                     {
                         return Some(true);
                     }
                     for &bf_id in &game.battlefield {
                         if let Some(obj) = game.object(bf_id)
-                            && obj.controller == ctx.controller
+                            && game.controller_of(obj) == ctx.controller
                             && obj.stable_id == StableId::from(commander_id)
                         {
                             return Some(true);
@@ -923,7 +923,8 @@ pub fn evaluate_condition_external(
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
             game.battlefield.iter().any(|&obj_id| {
                 game.object(obj_id).is_some_and(|obj| {
-                    obj.controller == ctx.controller && filter.matches(obj, &filter_ctx, game)
+                    game.controller_of(obj) == ctx.controller
+                        && filter.matches(obj, &filter_ctx, game)
                 })
             })
         }
@@ -932,7 +933,8 @@ pub fn evaluate_condition_external(
             let opponents = &filter_ctx.opponents;
             game.battlefield.iter().any(|&obj_id| {
                 game.object(obj_id).is_some_and(|obj| {
-                    opponents.contains(&obj.controller) && filter.matches(obj, &filter_ctx, game)
+                    opponents.contains(&game.controller_of(obj))
+                        && filter.matches(obj, &filter_ctx, game)
                 })
             })
         }
@@ -1131,7 +1133,7 @@ pub fn evaluate_condition_external(
                 .copied()
                 .filter(|&id| {
                     game.object(id).is_some_and(|obj| {
-                        obj.controller == ctx.controller && game.current_is_creature(id)
+                        game.controller_of(obj) == ctx.controller && game.current_is_creature(id)
                     })
                 })
                 .map(|id| game.current_power(id).unwrap_or(0).max(0))
@@ -1151,7 +1153,7 @@ pub fn evaluate_condition_external(
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == player_id && obj.is_land())
+                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
             {
                 for subtype in game.calculated_subtypes(obj.id) {
                     if matches!(
@@ -1202,7 +1204,9 @@ pub fn evaluate_condition_external(
             condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .any(|obj| filter.matches(obj, &filter_ctx, game))
         }
         Condition::PlayerControlsAtLeast {
@@ -1218,7 +1222,9 @@ pub fn evaluate_condition_external(
             let matches = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
                 .count();
             matches >= *count as usize
@@ -1240,7 +1246,9 @@ pub fn evaluate_condition_external(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
                     .count()
                     == *count as usize
@@ -1266,7 +1274,9 @@ pub fn evaluate_condition_external(
             let your_count = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
                 .count();
             game.players.iter().filter(|p| p.id != player_id).all(|p| {
@@ -1281,7 +1291,9 @@ pub fn evaluate_condition_external(
                 let other_count = condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, other_id, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, other_id, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &other_ctx, game))
                     .count();
                 your_count >= other_count
@@ -1299,7 +1311,9 @@ pub fn evaluate_condition_external(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
                     .count()
             };
@@ -1607,12 +1621,13 @@ fn condition_candidate_ids_for_zone(game: &GameState, zone: Option<Zone>) -> Vec
 }
 
 fn condition_object_matches_player_zone(
+    game: &GameState,
     obj: &crate::object::Object,
     player_id: PlayerId,
     zone: Option<Zone>,
 ) -> bool {
     match zone {
-        Some(Zone::Battlefield) | None => obj.controller == player_id,
+        Some(Zone::Battlefield) | None => game.controller_of(obj) == player_id,
         _ => obj.owner == player_id,
     }
 }
@@ -1645,7 +1660,7 @@ fn count_distinct_matching_powers(
     for obj in condition_candidate_ids_for_zone(game, filter.zone)
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+        .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
         .filter(|obj| filter.matches(obj, filter_ctx, game))
     {
         if let Some(power) = game.calculated_power(obj.id).or_else(|| obj.power()) {
@@ -1745,13 +1760,13 @@ fn evaluate_condition_simple(
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.controller == controller)
+            .filter(|obj| game.controller_of(obj) == controller)
             .any(|obj| filter.matches(obj, &filter_ctx, game)),
         Condition::OpponentControls(filter) => game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| opponents.contains(&obj.controller))
+            .filter(|obj| opponents.contains(&game.controller_of(obj)))
             .any(|obj| filter.matches(obj, &filter_ctx, game)),
         Condition::PlayerControls { player, filter } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
@@ -1772,7 +1787,9 @@ fn evaluate_condition_simple(
             condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .any(|obj| filter.matches(obj, &ctx, game))
         }
         Condition::PlayerOwnsCardNamedInZones {
@@ -1837,7 +1854,9 @@ fn evaluate_condition_simple(
             let matches = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .filter(|obj| filter.matches(obj, &ctx, game))
                 .count();
             matches >= *count as usize
@@ -1855,7 +1874,7 @@ fn evaluate_condition_simple(
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == player_id && obj.is_land())
+                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
             {
                 for subtype in game.calculated_subtypes(obj.id) {
                     if matches!(
@@ -1931,7 +1950,9 @@ fn evaluate_condition_simple(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &ctx, game))
                     .count()
             };
@@ -1962,7 +1983,9 @@ fn evaluate_condition_simple(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &ctx, game))
                     .count()
             };
@@ -2439,7 +2462,7 @@ fn evaluate_condition(
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == ctx.controller)
+                .filter(|obj| game.controller_of(obj) == ctx.controller)
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
 
             Ok(has_matching)
@@ -2452,7 +2475,7 @@ fn evaluate_condition(
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| opponents.contains(&obj.controller))
+                .filter(|obj| opponents.contains(&game.controller_of(obj)))
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
 
             Ok(has_matching)
@@ -2464,7 +2487,9 @@ fn evaluate_condition(
             let has_matching = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
             Ok(has_matching)
         }
@@ -2507,7 +2532,9 @@ fn evaluate_condition(
             let matches = condition_candidate_ids_for_zone(game, filter.zone)
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| {
+                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                })
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
                 .count();
             Ok(matches >= *count as usize)
@@ -2522,7 +2549,7 @@ fn evaluate_condition(
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == player_id && obj.is_land())
+                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
             {
                 for subtype in game.calculated_subtypes(obj.id) {
                     if matches!(
@@ -2572,7 +2599,9 @@ fn evaluate_condition(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
                     .count()
             };
@@ -2592,7 +2621,9 @@ fn evaluate_condition(
                 condition_candidate_ids_for_zone(game, filter.zone)
                     .iter()
                     .filter_map(|&id| game.object(id))
-                    .filter(|obj| condition_object_matches_player_zone(obj, candidate, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
                     .count()
             };
@@ -2789,7 +2820,7 @@ fn evaluate_condition(
             for target in &ctx.targets {
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
-                    && let Some(player) = game.player(obj.controller)
+                    && let Some(player) = game.player(game.controller_of(obj))
                 {
                     return Ok(player.poison_counters > 0);
                 }
@@ -2814,7 +2845,7 @@ fn evaluate_condition(
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             let target_controller = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => {
-                    game.object(*id).map(|obj| obj.controller)
+                    game.object(*id).map(|obj| game.controller_of(obj))
                 }
                 _ => None,
             });
@@ -2827,7 +2858,7 @@ fn evaluate_condition(
                 .iter()
                 .filter(|&&id| {
                     game.object(id).is_some_and(|obj| {
-                        obj.controller == ctx.controller
+                        game.controller_of(obj) == ctx.controller
                             && game.object_has_card_type(id, crate::types::CardType::Creature)
                     })
                 })
@@ -2837,7 +2868,7 @@ fn evaluate_condition(
                 .iter()
                 .filter(|&&id| {
                     game.object(id).is_some_and(|obj| {
-                        obj.controller == target_controller
+                        game.controller_of(obj) == target_controller
                             && game.object_has_card_type(id, crate::types::CardType::Creature)
                     })
                 })
@@ -3063,7 +3094,7 @@ fn evaluate_condition(
                 .copied()
                 .filter(|&id| {
                     game.object(id).is_some_and(|obj| {
-                        obj.controller == ctx.controller && game.current_is_creature(id)
+                        game.controller_of(obj) == ctx.controller && game.current_is_creature(id)
                     })
                 })
                 .map(|id| game.current_power(id).unwrap_or(0).max(0))

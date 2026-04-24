@@ -325,7 +325,7 @@ fn check_role_sbas_with_view(
             continue;
         }
         roles_by_target_and_controller
-            .entry((attached_id, obj.controller))
+            .entry((attached_id, game.controller_of(obj)))
             .or_default()
             .push(obj_id);
     }
@@ -440,7 +440,7 @@ fn check_legend_rule(game: &GameState, actions: &mut Vec<StateBasedAction>) {
         };
 
         if obj.has_supertype(Supertype::Legendary) {
-            let key = (obj.controller, obj.name.clone());
+            let key = (game.controller_of(obj), obj.name.clone());
             legends.entry(key).or_default().push(obj_id);
         }
     }
@@ -594,7 +594,7 @@ pub(crate) fn legend_rule_specs_from_actions(
 pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
     // Find the name and controller of the kept permanent
     let (name, controller) = if let Some(obj) = game.object(keep) {
-        (obj.name.clone(), obj.controller)
+        (obj.name.clone(), game.controller_of(obj))
     } else {
         return;
     };
@@ -608,7 +608,7 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
                 return None;
             }
             let obj = game.object(id)?;
-            if obj.controller == controller
+            if game.controller_of(obj) == controller
                 && obj.name == name
                 && obj.has_supertype(Supertype::Legendary)
             {

@@ -69,7 +69,7 @@ mod tests {
 
         let creature_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Zodiac Rooster" && obj.controller == alice)
+                .map(|obj| obj.name == "Zodiac Rooster" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

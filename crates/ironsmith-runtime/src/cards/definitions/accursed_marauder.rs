@@ -340,7 +340,7 @@ mod tests {
         // Verify Marauder P/T
         let marauder_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Accursed Marauder" && obj.controller == alice)
+                .map(|obj| obj.name == "Accursed Marauder" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

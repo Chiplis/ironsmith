@@ -416,7 +416,10 @@ mod tests {
         let token_count_before = game
             .battlefield
             .iter()
-            .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+            .filter(|&&id| {
+                game.object(id)
+                    .is_some_and(|obj| game.controller_of(obj) == alice)
+            })
             .count();
 
         let mut ctx = ExecutionContext::new_default(source, alice)
@@ -461,7 +464,10 @@ mod tests {
         let token_count_after = game
             .battlefield
             .iter()
-            .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+            .filter(|&&id| {
+                game.object(id)
+                    .is_some_and(|obj| game.controller_of(obj) == alice)
+            })
             .count();
 
         assert_eq!(token_count_after, token_count_before + 1);

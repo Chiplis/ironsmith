@@ -38,9 +38,9 @@ fn static_abilities_for_attack_preview(
 fn defending_player_for_attack_target(game: &GameState, target: &AttackTarget) -> Option<PlayerId> {
     match target {
         AttackTarget::Player(player) => Some(*player),
-        AttackTarget::Planeswalker(planeswalker) => {
-            game.object(*planeswalker).map(|object| object.controller)
-        }
+        AttackTarget::Planeswalker(planeswalker) => game
+            .object(*planeswalker)
+            .map(|object| game.controller_of(object)),
     }
 }
 
@@ -55,7 +55,7 @@ fn generic_attack_tax_preview(
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        if object.controller != defending_player {
+        if game.controller_of(object) != defending_player {
             continue;
         }
 
@@ -108,7 +108,7 @@ fn can_declare_attack_target_preview(
     let abilities = static_abilities_for_attack_preview(view, attacker);
     if abilities.iter().any(|ability| {
         ability
-            .can_pay_attack_cost(game, attacker.id, attacker.controller)
+            .can_pay_attack_cost(game, attacker.id, game.controller_of(attacker))
             .is_some_and(|can_pay| !can_pay)
     }) {
         return false;
@@ -119,7 +119,11 @@ fn can_declare_attack_target_preview(
         |acc, ability| {
             acc.saturating_add(
                 ability
-                    .generic_attack_mana_cost_for_source(game, attacker.id, attacker.controller)
+                    .generic_attack_mana_cost_for_source(
+                        game,
+                        attacker.id,
+                        game.controller_of(attacker),
+                    )
                     .unwrap_or(0),
             )
         },
@@ -127,7 +131,7 @@ fn can_declare_attack_target_preview(
 
     total_generic_cost == 0
         || game.can_pay_mana_cost(
-            attacker.controller,
+            game.controller_of(attacker),
             None,
             &generic_mana_cost(total_generic_cost),
             0,
@@ -145,7 +149,7 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
-        if perm.controller != active_player {
+        if game.controller_of(perm) != active_player {
             continue;
         }
         if !view.object_has_card_type(perm_id, crate::types::CardType::Creature) {
@@ -191,12 +195,12 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         // Can attack planeswalkers controlled by opponents
         for &other_perm_id in &game.battlefield {
             if let Some(other_perm) = game.object(other_perm_id)
-                && other_perm.controller != active_player
+                && game.controller_of(other_perm) != active_player
                 && view.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
             {
                 let target = AttackTarget::Planeswalker(other_perm_id);
                 if can_declare_attack_target_preview(game, perm, &target, &view) {
-                    if goaded_by.contains(&other_perm.controller) {
+                    if goaded_by.contains(&game.controller_of(other_perm)) {
                         goad_targets.push(target);
                     } else {
                         nongoad_targets.push(target);
@@ -252,7 +256,7 @@ pub fn compute_legal_blockers(
                 continue;
             };
 
-            if blocker.controller != defending_player {
+            if game.controller_of(blocker) != defending_player {
                 continue;
             }
 

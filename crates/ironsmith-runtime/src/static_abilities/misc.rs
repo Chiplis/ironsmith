@@ -539,7 +539,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
             .battlefield
             .iter()
             .filter_map(|&id| ctx.game.object(id))
-            .filter(|obj| obj.controller == ctx.controller && obj.is_land())
+            .filter(|obj| ctx.game.controller_of(obj) == ctx.controller && obj.is_land())
             .count();
         land_count < 2
     }
@@ -571,7 +571,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
             .battlefield
             .iter()
             .filter_map(|&id| ctx.game.object(id))
-            .filter(|obj| obj.controller == ctx.controller && obj.is_land())
+            .filter(|obj| ctx.game.controller_of(obj) == ctx.controller && obj.is_land())
             .count();
         land_count > 2
     }
@@ -604,7 +604,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
             .iter()
             .filter_map(|&id| ctx.game.object(id))
             .filter(|obj| {
-                obj.controller == ctx.controller
+                ctx.game.controller_of(obj) == ctx.controller
                     && obj.is_land()
                     && obj.supertypes.contains(&crate::types::Supertype::Basic)
             })

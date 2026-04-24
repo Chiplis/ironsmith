@@ -3194,7 +3194,7 @@ fn test_plumb_style_additional_cost_trigger_copies_for_each_payment() {
         .stack
         .iter()
         .filter_map(|entry| game.object(entry.object_id))
-        .filter(|obj| obj.controller == alice && obj.name == "Plumb Variant")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Plumb Variant")
         .collect();
     assert_eq!(copied_spells.len(), 3, "expected original plus two copies");
     assert_eq!(
@@ -5200,7 +5200,7 @@ fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.name == "Squad Test")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Squad Test")
         .collect();
     assert_eq!(
         squad_objects.len(),
@@ -5396,7 +5396,7 @@ fn test_offspring_trigger_creates_one_one_copy_when_paid() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.name == "Offspring Test")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Offspring Test")
         .collect();
     assert_eq!(
         offspring_objects.len(),
@@ -5677,7 +5677,7 @@ fn test_mobilize_trigger_creates_attacking_warriors() {
         .copied()
         .filter(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.controller == alice && obj.name == "Warrior")
+                .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Warrior")
         })
         .collect();
     assert_eq!(warrior_ids.len(), 2, "expected two mobilize tokens");
@@ -15396,8 +15396,9 @@ fn shape_anew_sacrifices_target_and_uses_that_controller_library() {
     );
     assert!(
         game.battlefield.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Bob Library Artifact" && obj.controller == bob)
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Bob Library Artifact" && game.controller_of(obj) == bob
+            })
         }),
         "Bob's library artifact should enter the battlefield under Bob's control"
     );
@@ -30285,8 +30286,8 @@ fn debug_surface_keeps_complex_source_text_regressions() {
         ),
         (
             "Necromentia",
-            "You choose a nonland permanent or nonbasic permanent card name",
-            "Create a 2/2 black Zombie creature token under target opponent's control",
+            "Choose a card name other than a basic land card name",
+            "for each card exiled from their hand this way",
         ),
     ];
 
@@ -30311,6 +30312,91 @@ fn debug_surface_keeps_complex_source_text_regressions() {
         rendered.matches("When this creature enters").count(),
         1,
         "expected one Burning-Rune Demon trigger, got {rendered}"
+    );
+}
+
+#[test]
+fn necromentia_counts_only_cards_exiled_from_hand_this_way() {
+    struct NecromentiaDecisionMaker;
+
+    impl crate::decision::DecisionMaker for NecromentiaDecisionMaker {
+        fn decide_text(
+            &mut self,
+            _game: &crate::GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Duress".to_string()
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &crate::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.max.unwrap_or(ctx.candidates.len()))
+                .collect()
+        }
+    }
+
+    fn simple_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .build()
+    }
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = parse_oracle_card_definition("Necromentia");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let duress = simple_card("Duress");
+    let opt = simple_card("Opt");
+    game.create_object_from_card(&duress, bob, Zone::Hand);
+    game.create_object_from_card(&duress, bob, Zone::Graveyard);
+    game.create_object_from_card(&duress, bob, Zone::Library);
+    game.create_object_from_card(&opt, bob, Zone::Hand);
+    game.create_object_from_card(&opt, bob, Zone::Exile);
+
+    let mut dm = NecromentiaDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        def.spell_effect.as_ref().expect("Necromentia spell effect"),
+        None,
+        &[],
+    )
+    .expect("Necromentia should resolve");
+
+    let zombie_count = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|object| game.controller_of(object) == bob && object.name == "Zombie")
+        .count();
+    assert_eq!(
+        zombie_count, 1,
+        "Necromentia should create one Zombie only for the matching card exiled from hand"
+    );
+
+    let exiled_duress_count = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|object| {
+            object.owner == bob && object.name == "Duress" && object.zone == Zone::Exile
+        })
+        .count();
+    assert_eq!(
+        exiled_duress_count, 3,
+        "Necromentia should exile matching cards from hand, graveyard, and library"
     );
 }
 

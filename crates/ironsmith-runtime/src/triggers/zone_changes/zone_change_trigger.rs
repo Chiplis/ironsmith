@@ -486,8 +486,10 @@ impl TriggerMatcher for ZoneChangeTrigger {
                 zc.destination_objects().iter().any(|&id| {
                     if let Some(obj) = ctx.game.object(id) {
                         match &self.player {
-                            PlayerRelation::You => obj.controller == ctx.controller,
-                            PlayerRelation::Opponent => obj.controller != ctx.controller,
+                            PlayerRelation::You => ctx.game.controller_of(obj) == ctx.controller,
+                            PlayerRelation::Opponent => {
+                                ctx.game.controller_of(obj) != ctx.controller
+                            }
                             PlayerRelation::Any => true,
                         }
                     } else if let Some(snapshot) = zc.snapshot.as_ref() {
@@ -551,7 +553,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
                     zc.objects
                         .first()
                         .and_then(|&id| ctx.game.object(id))
-                        .map(|o| o.controller)
+                        .map(|o| ctx.game.controller_of(o))
                 })
                 .unwrap_or(ctx.controller);
 

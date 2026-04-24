@@ -189,7 +189,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|obj| obj.name == "Angel" && obj.controller == alice)
+                    .map(|obj| obj.name == "Angel" && game.controller_of(obj) == alice)
                     .unwrap_or(false)
             })
             .copied()
@@ -377,7 +377,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let geist_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Geist of Saint Traft" && obj.controller == alice)
+                .map(|obj| obj.name == "Geist of Saint Traft" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

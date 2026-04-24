@@ -295,7 +295,8 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .copied()
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
-                obj.zone == crate::zone::Zone::Battlefield && obj.controller == active_player
+                obj.zone == crate::zone::Zone::Battlefield
+                    && game.controller_of(obj) == active_player
             })
         })
         .collect();
@@ -313,10 +314,10 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         let Some(source) = game.object(source_id) else {
             continue;
         };
-        if source.controller == active_player {
+        if game.controller_of(source) == active_player {
             continue;
         }
-        let source_controller = source.controller;
+        let source_controller = game.controller_of(source);
         let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
         for ability in &source.abilities {
             let AbilityKind::Static(static_ability) = &ability.kind else {
@@ -343,7 +344,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Check if the permanent has "doesn't untap during your untap step"
-            let has_doesnt_untap = obj.controller == active_player
+            let has_doesnt_untap = game.controller_of(obj) == active_player
                 && obj.abilities.iter().any(|ability| {
                     if let AbilityKind::Static(s) = &ability.kind {
                         s.affects_untap()
@@ -351,7 +352,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                         false
                     }
                 });
-            let has_optional_choice = obj.controller == active_player
+            let has_optional_choice = game.controller_of(obj) == active_player
                 && obj.abilities.iter().any(|ability| {
                     matches!(
                         &ability.kind,

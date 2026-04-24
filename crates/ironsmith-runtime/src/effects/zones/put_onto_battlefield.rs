@@ -171,7 +171,7 @@ mod tests {
             // Creature should be on battlefield and untapped
             assert!(game.battlefield.contains(&new_id));
             assert!(!game.is_tapped(new_id));
-            assert_eq!(game.object(new_id).unwrap().controller, alice);
+            assert_eq!(game.current_controller(new_id), Some(alice));
         } else {
             panic!("Expected Objects result");
         }
@@ -253,7 +253,7 @@ mod tests {
             let new_id = ids[0];
             // Alice controls it even though Bob owns it
             let obj = game.object(new_id).unwrap();
-            assert_eq!(obj.controller, alice);
+            assert_eq!(game.controller_of(obj), alice);
             assert_eq!(obj.owner, bob);
         } else {
             panic!("Expected Objects result");

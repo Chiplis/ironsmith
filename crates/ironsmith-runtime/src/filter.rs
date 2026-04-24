@@ -95,7 +95,7 @@ impl TaggedConstraintSubject for Object {
     }
 
     fn subject_controller(&self) -> PlayerId {
-        self.controller
+        self.owner
     }
 
     fn subject_card_types(&self) -> &[CardType] {
@@ -1448,7 +1448,6 @@ impl ObjectFilterExt for ObjectFilter {
             expand_semantic_subtypes(&mut chars);
             let mut adjusted = object.clone();
             adjusted.name = chars.name;
-            adjusted.controller = chars.controller;
             adjusted.card_types = chars.card_types;
             adjusted.subtypes = chars.subtypes;
             adjusted.supertypes = chars.supertypes;
@@ -1493,7 +1492,9 @@ impl ObjectFilterExt for ObjectFilter {
                         } else {
                             attachment.subtypes.clone()
                         };
-                        attachment.controller == you && attachment_subtypes.contains(&Subtype::Aura)
+                        game.current_controller(*attachment_id)
+                            .is_some_and(|controller| controller == you)
+                            && attachment_subtypes.contains(&Subtype::Aura)
                     })
                 })
             });
@@ -1504,7 +1505,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Controller check
         if let Some(controller_filter) = &self.controller
-            && !controller_filter.matches_player(object.controller, ctx)
+            && !game
+                .current_controller(object.id)
+                .is_some_and(|controller| controller_filter.matches_player(controller, ctx))
         {
             return false;
         }
@@ -3620,7 +3623,7 @@ fn attacking_defending_player_for_object(
         crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
             .object(*planeswalker_id)
-            .map(|object| object.controller),
+            .map(|object| game.controller_of(object)),
     }
 }
 

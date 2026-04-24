@@ -223,7 +223,7 @@ fn object_characteristic_signature(
                     _ => None,
                 })
                 .collect(),
-            obj.controller,
+            obj.owner,
         )
     };
 
@@ -374,7 +374,7 @@ pub(super) fn grouped_battlefield_for_player(
         let Some(obj) = game.object(*object_id) else {
             continue;
         };
-        if obj.controller != player {
+        if game.current_controller(obj.id).unwrap_or(obj.owner) != player {
             continue;
         }
         total += 1;
@@ -536,7 +536,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
-            object.controller == player
+            game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(*id, StaticAbilityId::LookAtTopCardOfLibrary)
         })
     })
@@ -545,7 +545,7 @@ fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
 fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
-            object.controller == player
+            game.current_controller(*id).unwrap_or(object.owner) == player
                 && game.object_has_static_ability_id(
                     *id,
                     StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
@@ -569,7 +569,7 @@ fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerI
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
-            object.controller != player
+            game.current_controller(*id).unwrap_or(object.owner) != player
                 && game.object_has_static_ability_id(
                     *id,
                     StaticAbilityId::OpponentsPlayWithHandsRevealed,
@@ -1012,7 +1012,7 @@ impl GameSnapshot {
                     inspect_object_id: Some(stack_id.0),
                     stable_id: Some(obj.stable_id.0.0),
                     source_stable_id: None,
-                    controller: obj.controller.0,
+                    controller: game.current_controller(stack_id).unwrap_or(obj.owner).0,
                     name: obj.name.clone(),
                     mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
                     effect_text: pending_effect_text,
@@ -1081,7 +1081,7 @@ pub(super) fn build_object_details_snapshot(
 ) -> Option<ObjectDetailsSnapshot> {
     let obj = game.object(id)?;
     let current_name = game.current_name(id).unwrap_or_else(|| obj.name.clone());
-    let current_controller = game.current_controller(id).unwrap_or(obj.controller);
+    let current_controller = game.current_controller(id).unwrap_or(obj.owner);
     let current_supertypes = game
         .current_supertypes(id)
         .unwrap_or_else(|| obj.supertypes.clone());
@@ -1348,6 +1348,55 @@ mod tests {
         assert!(
             bear_groups.iter().all(|group| group.count == 1),
             "protected legal targets should not be grouped: {bear_groups:?}"
+        );
+    }
+
+    #[test]
+    fn battlefield_grouping_uses_current_controller_for_temporary_control_effects() {
+        use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+        use ironsmith::effect::Until;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let protected_ids = std::collections::HashSet::new();
+        let bears_card = test_bears_card();
+        let bear = game.create_object_from_card(&bears_card, bob, Zone::Battlefield);
+
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                bear,
+                alice,
+                EffectTarget::Specific(bear),
+                Modification::ChangeController(alice),
+            )
+            .until(Until::EndOfTurn)
+            .with_expires_end_of_turn(game.turn.turn_number),
+        );
+        game.refresh_continuous_state();
+
+        assert_eq!(
+            game.current_controller(bear),
+            Some(alice),
+            "continuous control effect should make Alice the current controller"
+        );
+
+        let (alice_battlefield, alice_total) =
+            grouped_battlefield_for_player(&game, alice, &protected_ids);
+        let (bob_battlefield, bob_total) =
+            grouped_battlefield_for_player(&game, bob, &protected_ids);
+
+        assert_eq!(alice_total, 1, "Alice should see the stolen bear");
+        assert!(
+            alice_battlefield
+                .iter()
+                .any(|permanent| permanent.member_ids.contains(&bear.0)),
+            "Alice's battlefield snapshot should contain the stolen bear: {alice_battlefield:?}"
+        );
+        assert_eq!(bob_total, 0, "Bob should no longer see the stolen bear");
+        assert!(
+            bob_battlefield.is_empty(),
+            "Bob's battlefield snapshot should not contain the stolen bear: {bob_battlefield:?}"
         );
     }
 

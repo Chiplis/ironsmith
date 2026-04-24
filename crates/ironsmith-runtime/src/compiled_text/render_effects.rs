@@ -2684,16 +2684,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         })
     }
 
-    fn count_filter_has_exile_and_hand(filter: &ObjectFilter) -> bool {
-        let has_zone = |zone| {
-            filter.any_of.iter().any(|option| {
-                option.zone == Some(zone)
-                    && option.controller.is_none()
-                    && option.owner.is_none()
-                    && option.card_types.is_empty()
+    fn count_filter_counts_tagged_hand_cards(filter: &ObjectFilter, tag: &TagKey) -> bool {
+        filter.zone == Some(Zone::Hand)
+            && filter.controller.is_none()
+            && filter.owner.is_none()
+            && filter.card_types.is_empty()
+            && filter.tagged_constraints.len() == 1
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             })
-        };
-        has_zone(Zone::Exile) && has_zone(Zone::Hand)
     }
 
     fn render_necromentia_shape(effects: &[&Effect]) -> Option<String> {
@@ -2765,12 +2765,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let Value::Count(count_filter) = &create.count else {
             return None;
         };
-        if count_filter
-            .owner
-            .as_ref()
-            .is_none_or(|owner| !is_target_opponent_player_filter(owner))
-            || !count_filter_has_exile_and_hand(count_filter)
-        {
+        if !count_filter_counts_tagged_hand_cards(count_filter, &choose.tag) {
             return None;
         }
 
@@ -10275,20 +10270,20 @@ mod tests {
         let exile = crate::effects::ForEachTaggedEffect::new(
             searched_tag.clone(),
             vec![Effect::new(crate::effects::MoveToZoneEffect::new(
-                ChooseSpec::Tagged(searched_tag),
+                ChooseSpec::Tagged(searched_tag.clone()),
                 Zone::Exile,
                 false,
             ))],
         );
         let shuffle = crate::effects::ShuffleLibraryEffect::new(PlayerFilter::target_opponent());
 
-        let mut count_filter = ObjectFilter::default().owned_by(PlayerFilter::target_opponent());
+        let mut count_filter = ObjectFilter::default().in_zone(Zone::Hand);
         count_filter
-            .any_of
-            .push(ObjectFilter::default().in_zone(Zone::Exile));
-        count_filter
-            .any_of
-            .push(ObjectFilter::default().in_zone(Zone::Hand));
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: searched_tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
         let zombie = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
             .token()
             .card_types(vec![CardType::Creature])

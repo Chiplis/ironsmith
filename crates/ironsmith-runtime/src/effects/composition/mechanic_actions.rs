@@ -202,7 +202,7 @@ impl EffectExecutor for ExploreEffect {
                 let snapshot = explore_snapshot_for_object(game, ctx, object_id);
                 let controller = game
                     .object(object_id)
-                    .map(|object| object.controller)
+                    .map(|object| game.controller_of(object))
                     .or_else(|| snapshot.as_ref().map(|snap| snap.controller))?;
                 Some(ExploreInstruction {
                     object_id,
@@ -437,12 +437,11 @@ fn manifest_card(
     card_id: ObjectId,
     controller: crate::ids::PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let Some(original_controller) = game.object(card_id).map(|obj| obj.controller) else {
+    if game.object(card_id).is_none() {
         return Ok(EffectOutcome::count(0));
-    };
+    }
 
     if let Some(card) = game.object_mut(card_id) {
-        card.controller = controller;
         card.apply_face_down_cast_overlay();
     }
 
@@ -461,7 +460,6 @@ fn manifest_card(
         }
         BattlefieldEntryOutcome::Prevented => {
             if let Some(card) = game.object_mut(card_id) {
-                card.controller = original_controller;
                 card.end_face_down_cast_overlay();
             }
             EffectOutcome::count(0)
@@ -535,7 +533,7 @@ impl EffectExecutor for PopulateEffect {
                 .copied()
                 .filter(|&id| {
                     game.object(id).is_some_and(|obj| {
-                        obj.controller == ctx.controller
+                        game.controller_of(obj) == ctx.controller
                             && obj.kind == ObjectKind::Token
                             && game.object_has_card_type(id, crate::types::CardType::Creature)
                     })
@@ -618,7 +616,7 @@ impl EffectExecutor for BolsterEffect {
             .copied()
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
+                    game.controller_of(obj) == ctx.controller
                         && game.object_has_card_type(id, crate::types::CardType::Creature)
                 })
             })
@@ -705,7 +703,7 @@ impl EffectExecutor for CipherEffect {
             .copied()
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
+                    game.controller_of(obj) == ctx.controller
                         && game.object_has_card_type(id, crate::types::CardType::Creature)
                 })
             })
@@ -889,7 +887,7 @@ impl EffectExecutor for DevourEffect {
             .filter(|&id| id != ctx.source)
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
+                    game.controller_of(obj) == ctx.controller
                         && game.object_has_card_type(id, crate::types::CardType::Creature)
                         && game.can_be_sacrificed(id)
                 })
@@ -1605,7 +1603,7 @@ mod tests {
             .object(manifested_id)
             .expect("manifested permanent should exist");
 
-        assert_eq!(manifested.controller, alice);
+        assert_eq!(game.controller_of(manifested), alice);
         assert!(game.is_face_down(manifested_id));
         assert!(game.is_manifested(manifested_id));
         assert_eq!(game.calculated_power(manifested_id), Some(2));
@@ -1657,7 +1655,7 @@ mod tests {
             .object(manifested_id)
             .expect("manifested permanent should exist");
         assert_eq!(manifested.owner, bob);
-        assert_eq!(manifested.controller, alice);
+        assert_eq!(game.controller_of(manifested), alice);
         assert!(game.is_face_down(manifested_id));
     }
 

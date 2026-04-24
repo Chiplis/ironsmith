@@ -42,7 +42,7 @@ fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> 
         .filter_map(|info| {
             let creature = info.creature;
             let obj = game.object(creature)?;
-            if obj.zone != Zone::Battlefield || obj.controller != controller {
+            if obj.zone != Zone::Battlefield || game.controller_of(obj) != controller {
                 return None;
             }
             if !is_unblocked(combat, creature) {

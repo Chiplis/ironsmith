@@ -156,13 +156,13 @@ impl GameEventType for ZoneChangeEvent {
                 self.destination_objects()
                     .first()
                     .and_then(|&id| game.object(id))
-                    .map(|o| o.controller)
+                    .map(|o| game.controller_of(o))
             })
             .or_else(|| {
                 self.objects
                     .first()
                     .and_then(|&id| game.object(id))
-                    .map(|o| o.controller)
+                    .map(|o| game.controller_of(o))
             })
             .unwrap_or(game.turn.active_player)
     }

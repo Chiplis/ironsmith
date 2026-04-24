@@ -2088,7 +2088,7 @@ fn display_game_state(game: &GameState) {
                         obj.name,
                         pt,
                         tapped,
-                        player_name(game, obj.controller)
+                        player_name(game, game.controller_of(obj))
                             .chars()
                             .next()
                             .unwrap_or('?')
@@ -3299,7 +3299,7 @@ fn prompt_choose_targets(
                 Target::Object(id) => {
                     if let Some(obj) = game.object(*id) {
                         let controller_name = game
-                            .player(obj.controller)
+                            .player(game.controller_of(obj))
                             .map(|p| p.name.chars().next().unwrap_or('?'))
                             .unwrap_or('?');
                         if game.current_is_creature(*id) {

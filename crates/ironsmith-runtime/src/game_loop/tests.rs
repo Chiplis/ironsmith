@@ -995,7 +995,8 @@ fn all_hallows_eve_exiles_with_counters_and_returns_graveyard_creatures_after_co
             "creature cards from both graveyards should return to the battlefield"
         );
         assert_eq!(
-            object.controller, expected_controller,
+            game.controller_of(object),
+            expected_controller,
             "each returned creature should enter under its owner's control"
         );
         assert!(
@@ -1173,7 +1174,8 @@ fn all_hallows_eve_sees_creatures_put_into_opponents_graveyard_by_sbas_before_it
             "All Hallow's Eve should return Myr Moonvessel from each player's graveyard"
         );
         assert_eq!(
-            object.controller, expected_controller,
+            game.controller_of(object),
+            expected_controller,
             "each returned Myr should enter under its owner's control"
         );
         assert!(
@@ -1265,7 +1267,7 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
     assert!(
         game.battlefield.iter().any(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Revealed Beast" && obj.controller == bob)
+                .is_some_and(|obj| obj.name == "Revealed Beast" && game.controller_of(obj) == bob)
         }),
         "the first revealed creature should enter under the active player's control"
     );
@@ -1347,7 +1349,7 @@ fn aether_rift_returns_randomly_discarded_creature_when_no_player_pays() {
     assert!(
         game.battlefield.iter().any(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Rift Beast" && obj.controller == alice)
+                .is_some_and(|obj| obj.name == "Rift Beast" && game.controller_of(obj) == alice)
         }),
         "discarded creature should return to the battlefield"
     );
@@ -2771,8 +2773,9 @@ fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
 
     assert!(
         game.battlefield.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| obj.name == "Portcullis Test Entrant" && obj.controller == bob)
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Portcullis Test Entrant" && game.controller_of(obj) == bob
+            })
         }),
         "the exiled creature should return to the battlefield under its owner's control"
     );
@@ -2965,7 +2968,7 @@ fn test_toggo_landfall_creates_a_rock_token_with_an_activated_ability() {
         .copied()
         .find(|&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Rock" && obj.controller == alice)
+                .is_some_and(|obj| obj.name == "Rock" && game.controller_of(obj) == alice)
         })
         .expect("Toggo should create a Rock token");
     let rock = game.object(rock_id).expect("Rock token should exist");
@@ -3064,7 +3067,7 @@ fn test_bridge_from_below_triggers_from_graveyard_on_your_creature_dying() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.name == "Zombie")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Zombie")
         .count();
     assert_eq!(zombie_count, 1, "Bridge should create one Zombie token");
 }
@@ -3102,7 +3105,7 @@ fn test_bridge_from_below_exiles_itself_when_opponents_creature_dies() {
         .exile
         .iter()
         .filter_map(|&id| game.object(id))
-        .any(|obj| obj.controller == alice && obj.name == "Bridge from Below");
+        .any(|obj| game.controller_of(obj) == alice && obj.name == "Bridge from Below");
     assert!(exiled_bridge, "Bridge should exile itself");
 }
 
@@ -3141,7 +3144,7 @@ fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.name == "Zombie")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Zombie")
         .count();
     assert_eq!(
         zombie_count, 0,
@@ -3178,9 +3181,7 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
     }
 
     let alice_owned_creature = create_creature(&mut game, "Alice Creature", alice, 2, 2);
-    game.object_mut(alice_owned_creature)
-        .expect("alice creature exists")
-        .controller = bob;
+    game.set_current_controller(alice_owned_creature, bob);
 
     let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "owned creature should move to graveyard");
@@ -3207,9 +3208,7 @@ fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
     );
 
     let bob_owned_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
-    game.object_mut(bob_owned_creature)
-        .expect("bob creature exists")
-        .controller = alice;
+    game.set_current_controller(bob_owned_creature, alice);
 
     let moved = game.move_object_by_effect(bob_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "bob creature should move to graveyard");
@@ -3263,9 +3262,7 @@ fn test_parsed_mortuary_moves_owned_creature_from_graveyard_to_library_top() {
 
     let alice_owned_creature =
         create_creature(&mut game, "Borrowed Mortuary Creature", alice, 2, 2);
-    game.object_mut(alice_owned_creature)
-        .expect("alice creature exists")
-        .controller = bob;
+    game.set_current_controller(alice_owned_creature, bob);
 
     let moved = game.move_object_by_effect(alice_owned_creature, Zone::Graveyard);
     assert!(moved.is_some(), "owned creature should move to graveyard");
@@ -3732,6 +3729,179 @@ fn test_extract_target_specs_target_player_sacrifice_choice_has_target_requireme
         2,
         "expected both players to be legal targets in a two-player game"
     );
+}
+
+#[test]
+fn test_extract_target_specs_necromentia_uses_one_target_opponent_requirement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Necromentia")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a card name other than a basic land card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and exile them. That player shuffles, then creates a 2/2 black Zombie creature token for each card exiled from their hand this way.")
+        .expect("Necromentia should parse");
+    let effects = def.spell_effect.as_ref().expect("expected spell effects");
+    let game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let requirements =
+        extract_target_requirements_from_program_with_modes(&game, effects, alice, None, None);
+
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Necromentia should require only its target opponent, got {:?}",
+        requirements
+    );
+    assert_eq!(requirements[0].description, "target");
+    assert_eq!(requirements[0].min_targets, 1);
+    assert_eq!(requirements[0].max_targets, Some(1));
+}
+
+#[test]
+fn test_extract_target_specs_oracle_target_binding_regressions() {
+    struct SpellCase {
+        name: &'static str,
+        types: Vec<CardType>,
+        oracle: &'static str,
+        expected_requirements: usize,
+        expected_counts: &'static [(usize, Option<usize>)],
+    }
+
+    let cases = vec![
+        SpellCase {
+            name: "Dispossess",
+            types: vec![CardType::Sorcery],
+            oracle: "Choose an artifact card name. Search target opponent's graveyard, hand, and library for any number of cards with the chosen name and exile them. Then that player shuffles.",
+            expected_requirements: 1,
+            expected_counts: &[(1, Some(1))],
+        },
+        SpellCase {
+            name: "Cranial Extraction",
+            types: vec![CardType::Sorcery],
+            oracle: "Choose a nonland card name. Search target player's graveyard, hand, and library for all cards with that name and exile them. Then that player shuffles.",
+            expected_requirements: 1,
+            expected_counts: &[(1, Some(1))],
+        },
+        SpellCase {
+            name: "Oblation",
+            types: vec![CardType::Instant],
+            oracle: "The owner of target nonland permanent shuffles it into their library, then draws two cards.",
+            expected_requirements: 1,
+            expected_counts: &[(1, Some(1))],
+        },
+        SpellCase {
+            name: "Chaos Warp",
+            types: vec![CardType::Instant],
+            oracle: "The owner of target permanent shuffles it into their library, then reveals the top card of their library. If it's a permanent card, they put it onto the battlefield.",
+            expected_requirements: 1,
+            expected_counts: &[(1, Some(1))],
+        },
+        SpellCase {
+            name: "Gods Willing",
+            types: vec![CardType::Instant],
+            oracle: "Target creature you control gains protection from the color of your choice until end of turn. (It can't be blocked, targeted, dealt damage, enchanted, or equipped by anything of that color.)\nScry 1.",
+            expected_requirements: 1,
+            expected_counts: &[(1, Some(1))],
+        },
+        SpellCase {
+            name: "Arc Trail",
+            types: vec![CardType::Sorcery],
+            oracle: "Arc Trail deals 2 damage to any target and 1 damage to any other target.",
+            expected_requirements: 2,
+            expected_counts: &[(1, Some(1)), (1, Some(1))],
+        },
+        SpellCase {
+            name: "Decimate",
+            types: vec![CardType::Sorcery],
+            oracle: "Destroy target artifact, target creature, target enchantment, and target land. (You can't cast this spell unless you have legal choices for all its targets.)",
+            expected_requirements: 4,
+            expected_counts: &[(1, Some(1)), (1, Some(1)), (1, Some(1)), (1, Some(1))],
+        },
+        SpellCase {
+            name: "Hex",
+            types: vec![CardType::Sorcery],
+            oracle: "Destroy six target creatures.",
+            expected_requirements: 1,
+            expected_counts: &[(6, Some(6))],
+        },
+    ];
+
+    let alice = PlayerId::from_index(0);
+
+    for case in cases {
+        let mut game = setup_game();
+        let bob = PlayerId::from_index(1);
+        create_creature(&mut game, "Alice Creature", alice, 2, 2);
+        for idx in 0..6 {
+            create_creature(&mut game, &format!("Bob Creature {idx}"), bob, 2, 2);
+        }
+        let artifact = CardBuilder::new(CardId::from_raw(1000), "Target Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+        let enchantment = CardBuilder::new(CardId::from_raw(1001), "Target Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+        let land = CardBuilder::new(CardId::from_raw(1002), "Target Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_card(&land, bob, Zone::Battlefield);
+
+        let def = CardDefinitionBuilder::new(CardId::new(), case.name)
+            .card_types(case.types)
+            .parse_text(case.oracle)
+            .unwrap_or_else(|err| panic!("{} should parse: {err:?}", case.name));
+        let effects = def
+            .spell_effect
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} should have spell effects", case.name));
+        let requirements =
+            extract_target_requirements_from_program_with_modes(&game, effects, alice, None, None);
+
+        assert_eq!(
+            requirements.len(),
+            case.expected_requirements,
+            "{} should have {} target requirement(s), got {:?}",
+            case.name,
+            case.expected_requirements,
+            requirements
+        );
+        let counts = requirements
+            .iter()
+            .map(|requirement| (requirement.min_targets, requirement.max_targets))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            counts, case.expected_counts,
+            "{} target counts should match",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn test_extract_target_specs_blood_artist_trigger_uses_one_target_player_binding() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Blood Artist")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.",
+        )
+        .expect("Blood Artist should parse");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Blood Artist should have a triggered ability");
+
+    assert_eq!(
+        triggered.choices.len(),
+        1,
+        "Blood Artist should expose one target player choice, got {:?}",
+        triggered.choices
+    );
+    assert_eq!(triggered.choices[0].count().min, 1);
+    assert_eq!(triggered.choices[0].count().max, Some(1));
 }
 
 fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornithopter_is_sacrificed()
@@ -4427,7 +4597,10 @@ fn test_distinct_player_target_clauses_resolve_against_their_own_selected_target
     let token_count_before = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
         .count();
 
     let spell_card = CardBuilder::new(CardId::from_raw(5_102), "Player Split Effects")
@@ -4461,7 +4634,10 @@ fn test_distinct_player_target_clauses_resolve_against_their_own_selected_target
     let token_count_after = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
         .count();
 
     assert_eq!(token_count_after, token_count_before + 1);
@@ -4479,7 +4655,10 @@ fn test_verdant_command_distinct_player_modes_use_their_own_targets() {
     let token_count_before = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
         .count();
 
     let verdant_command = CardDefinitionBuilder::new(CardId::from_raw(5_103), "Verdant Command")
@@ -4510,7 +4689,10 @@ fn test_verdant_command_distinct_player_modes_use_their_own_targets() {
     let token_count_after = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|obj| game.controller_of(obj) == alice)
+        })
         .count();
 
     assert_eq!(token_count_after, token_count_before + 2);
@@ -5013,12 +5195,14 @@ fn test_active_target_assignments_preserves_stored_target_slot_when_legality_cha
         range: 0..1,
     };
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     let mut cursor = 0usize;
 
     let active = super::stack_resolution::active_target_assignments_for_effect(
         &effects[0],
         None,
         &mut consumed_modal_selection,
+        &mut declared_targets,
         std::slice::from_ref(&assignment),
         &mut cursor,
     );
@@ -5059,11 +5243,13 @@ fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_r
     let gain_mode = [1usize];
 
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     let mut cursor = 0usize;
     let active = super::stack_resolution::active_target_assignments_for_effect(
         &effects[0],
         Some(&counter_mode),
         &mut consumed_modal_selection,
+        &mut declared_targets,
         std::slice::from_ref(&assignment),
         &mut cursor,
     );
@@ -5078,11 +5264,13 @@ fn test_active_target_assignments_modal_target_slot_tracks_chosen_mode_without_r
     );
 
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     let mut cursor = 0usize;
     let inactive = super::stack_resolution::active_target_assignments_for_effect(
         &effects[0],
         Some(&gain_mode),
         &mut consumed_modal_selection,
+        &mut declared_targets,
         std::slice::from_ref(&assignment),
         &mut cursor,
     );
@@ -5415,6 +5603,97 @@ fn create_creature(
         .power_toughness(PowerToughness::fixed(power, toughness))
         .build();
     game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn act_of_aggression_gains_control_untaps_and_grants_haste_until_end_of_turn() {
+    use crate::static_abilities::StaticAbilityId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let act = CardDefinitionBuilder::new(CardId::from_raw(82_300), "Act of Aggression")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red, ManaSymbol::Life(2)],
+            vec![ManaSymbol::Red, ManaSymbol::Life(2)],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Gain control of target creature an opponent controls until end of turn. Untap that creature. It gains haste until end of turn.",
+        )
+        .expect("Act of Aggression should parse");
+
+    let stolen_id = create_creature(&mut game, "Borrowed Bear", bob, 2, 2);
+    let friendly_id = create_creature(&mut game, "Friendly Bear", alice, 2, 2);
+    game.tap(stolen_id);
+
+    let spell_effect = act.spell_effect.as_ref().expect("Act should have effects");
+    let target_requirements = super::targeting::extract_target_requirements(
+        &game,
+        spell_effect.flattened_default_effects(),
+        alice,
+        None,
+    );
+    assert_eq!(
+        target_requirements.len(),
+        1,
+        "Act should ask for one creature target"
+    );
+    assert!(
+        target_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(stolen_id)),
+        "Act should be able to target an opponent's creature"
+    );
+    assert!(
+        !target_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(friendly_id)),
+        "Act should not be able to target your own creature"
+    );
+
+    let act_id = game.create_object_from_definition(&act, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(act_id, alice)
+            .with_targets(vec![Target::Object(stolen_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: target_requirements[0].spec.clone(),
+                range: 0..1,
+            }]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Act of Aggression should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.current_controller(stolen_id),
+        Some(alice),
+        "Alice should control the targeted opponent creature after Act resolves"
+    );
+    assert!(
+        !game.is_tapped(stolen_id),
+        "Act should untap the targeted creature"
+    );
+    assert!(
+        game.object_has_static_ability_id(stolen_id, StaticAbilityId::Haste),
+        "Act should grant haste to the targeted creature"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.current_controller(stolen_id),
+        Some(bob),
+        "control should revert at end of turn"
+    );
+    assert!(
+        !game.object_has_static_ability_id(stolen_id, StaticAbilityId::Haste),
+        "haste should expire at end of turn"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -6761,7 +7040,7 @@ fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.kind == ObjectKind::Token)
+        .filter(|obj| game.controller_of(obj) == alice && obj.kind == ObjectKind::Token)
         .filter(|obj| obj.name == "Offspring Trigger Test")
         .collect();
     assert_eq!(tokens.len(), 1, "expected one offspring token");
@@ -7839,7 +8118,7 @@ fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
         .battlefield
         .iter()
         .filter_map(|id| game.object(*id))
-        .find(|obj| obj.controller == alice && obj.name == "Horror")
+        .find(|obj| game.controller_of(obj) == alice && obj.name == "Horror")
         .expect("Spoils of Blood should create a Horror token");
 
     assert_eq!(
@@ -8114,7 +8393,7 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
         .iter()
         .filter(|&&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == alice)
+                .is_some_and(|obj| obj.name == "Elephant" && game.controller_of(obj) == alice)
         })
         .count();
     let bob_elephants = game
@@ -8122,7 +8401,7 @@ fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {
         .iter()
         .filter(|&&id| {
             game.object(id)
-                .is_some_and(|obj| obj.name == "Elephant" && obj.controller == bob)
+                .is_some_and(|obj| obj.name == "Elephant" && game.controller_of(obj) == bob)
         })
         .count();
 
@@ -9815,6 +10094,48 @@ fn test_legend_rule_decision() {
 }
 
 #[test]
+fn legend_rule_uses_current_controller_after_control_change() {
+    use crate::rules::state_based::{apply_legend_rule_choice, get_legend_rule_specs};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let legend_card = CardBuilder::new(CardId::from_raw(1), "Isamaru, Hound of Konda")
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice_legend = game.create_object_from_card(&legend_card, alice, Zone::Battlefield);
+    let bob_legend = game.create_object_from_card(&legend_card, bob, Zone::Battlefield);
+    assert!(
+        get_legend_rule_specs(&game).is_empty(),
+        "separate controllers should not violate the legend rule"
+    );
+
+    game.set_current_controller(bob_legend, alice);
+
+    let specs = get_legend_rule_specs(&game);
+    assert_eq!(
+        specs.len(),
+        1,
+        "control change should create a legend-rule choice"
+    );
+    let (player, spec) = &specs[0];
+    assert_eq!(*player, alice);
+    assert_eq!(spec.legends.len(), 2);
+    assert!(spec.legends.contains(&alice_legend));
+    assert!(spec.legends.contains(&bob_legend));
+
+    apply_legend_rule_choice(&mut game, alice_legend);
+
+    assert!(game.battlefield.contains(&alice_legend));
+    assert!(!game.battlefield.contains(&bob_legend));
+    assert_eq!(game.player(bob).unwrap().graveyard.len(), 1);
+}
+
+#[test]
 fn test_may_effect_with_callback() {
     use crate::decision::DecisionMaker;
     use crate::effects::ExecutionContext;
@@ -10346,9 +10667,7 @@ fn test_once_per_turn_restriction_survives_control_change() {
     game.remove_summoning_sickness(creature_id);
 
     game.record_ability_activation(creature_id, 0);
-    game.object_mut(creature_id)
-        .expect("test creature should still exist")
-        .controller = bob;
+    game.set_current_controller(creature_id, bob);
 
     game.turn.priority_player = Some(bob);
 
@@ -12995,9 +13314,7 @@ fn test_suspend_creature_gains_haste_until_control_changes() {
         });
     assert!(has_haste, "suspended creature should gain haste");
 
-    if let Some(creature) = game.object_mut(creature_id) {
-        creature.controller = bob;
-    }
+    game.set_current_controller(creature_id, bob);
 
     let has_haste_after_control_change = game
         .current_abilities(creature_id)
@@ -14542,7 +14859,7 @@ fn test_split_other_half_cast_uses_back_face_characteristics_on_stack() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Grizzly Bears" && obj.controller == alice);
+        .find(|obj| obj.name == "Grizzly Bears" && game.controller_of(obj) == alice);
     assert!(
         reanimated.is_some(),
         "Entering should return a creature card from a graveyard under the caster's control"
@@ -14614,7 +14931,7 @@ fn test_fused_split_cast_combines_effects_and_resolves_in_order() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .find(|obj| obj.name == "Grizzly Bears" && obj.controller == alice);
+        .find(|obj| obj.name == "Grizzly Bears" && game.controller_of(obj) == alice);
     assert!(
         reanimated.is_some(),
         "Entering half of fused spell should return a creature under the caster's control"
@@ -18836,7 +19153,7 @@ fn count_battlefield_permanents_named(game: &GameState, controller: PlayerId, na
         .iter()
         .filter(|&&id| {
             game.object(id)
-                .is_some_and(|obj| obj.controller == controller && obj.name == name)
+                .is_some_and(|obj| game.controller_of(obj) == controller && obj.name == name)
         })
         .count()
 }
@@ -19217,7 +19534,9 @@ fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
 
     let bob_battlefield_has_mountain = game.battlefield.iter().any(|&id| {
         game.object(id)
-            .map(|obj| obj.name == "Mountain" && obj.controller == bob && game.is_tapped(id))
+            .map(|obj| {
+                obj.name == "Mountain" && game.controller_of(obj) == bob && game.is_tapped(id)
+            })
             .unwrap_or(false)
     });
     assert!(
@@ -19322,7 +19641,7 @@ fn test_boseiju_channel_lets_destroyed_permanent_controller_search_for_land() {
 
     let bob_battlefield_has_forest = game.battlefield.iter().any(|&id| {
         game.object(id)
-            .map(|obj| obj.name == "Forest" && obj.controller == bob)
+            .map(|obj| obj.name == "Forest" && game.controller_of(obj) == bob)
             .unwrap_or(false)
     });
     assert!(
@@ -19506,7 +19825,7 @@ fn test_boseiju_channel_activation_flow_preserves_land_search_after_destroying_t
 
     let bob_battlefield_has_forest = game.battlefield.iter().any(|&id| {
         game.object(id)
-            .map(|obj| obj.name == "Forest" && obj.controller == bob)
+            .map(|obj| obj.name == "Forest" && game.controller_of(obj) == bob)
             .unwrap_or(false)
     });
     assert!(
@@ -19898,7 +20217,7 @@ fn test_the_stasis_coffin_activation_grants_protection_and_exiles_itself() {
         .exile
         .iter()
         .filter_map(|&id| game.object(id))
-        .any(|obj| obj.name == "The Stasis Coffin" && obj.controller == alice);
+        .any(|obj| obj.name == "The Stasis Coffin" && game.controller_of(obj) == alice);
     assert!(
         coffin_exiled,
         "The Stasis Coffin should be in exile after its activation cost is paid"
@@ -20237,7 +20556,7 @@ fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
         .battlefield
         .iter()
         .filter_map(|&id| game.object(id))
-        .filter(|obj| obj.controller == alice && obj.name == "Forest")
+        .filter(|obj| game.controller_of(obj) == alice && obj.name == "Forest")
         .count();
     assert_eq!(
         battlefield_forest_count, 2,

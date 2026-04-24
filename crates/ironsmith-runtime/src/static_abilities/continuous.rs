@@ -1295,7 +1295,7 @@ impl StaticAbilityKind for Anthem {
         let Some(source_obj) = game.object(source) else {
             return false;
         };
-        static_condition_is_active(condition, game, source, source_obj.controller)
+        static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 
     fn is_anthem(&self) -> bool {
@@ -1451,7 +1451,7 @@ impl StaticAbilityKind for GrantAbility {
         let Some(source_obj) = game.object(source) else {
             return false;
         };
-        static_condition_is_active(condition, game, source, source_obj.controller)
+        static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 }
 
@@ -1910,7 +1910,7 @@ impl StaticAbilityKind for CopyActivatedAbilities {
         let Some(source_obj) = game.object(source) else {
             return false;
         };
-        static_condition_is_active(condition, game, source, source_obj.controller)
+        static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 }
 
@@ -1994,7 +1994,7 @@ impl StaticAbilityKind for CopyTriggeredAbilities {
         let Some(source_obj) = game.object(source) else {
             return false;
         };
-        static_condition_is_active(condition, game, source, source_obj.controller)
+        static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 }
 
@@ -2938,7 +2938,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         };
         let attached_controller = game
             .object(attached_to)
-            .map(|object| object.controller)
+            .map(|object| game.controller_of(object))
             .unwrap_or(controller);
 
         if let crate::ability::AbilityKind::Static(static_ability) = &self.ability.kind {

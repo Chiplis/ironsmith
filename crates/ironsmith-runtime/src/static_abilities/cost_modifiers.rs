@@ -365,7 +365,7 @@ fn cost_modifier_condition_is_active(
         return false;
     };
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
-        controller: source_obj.controller,
+        controller: game.controller_of(source_obj),
         source,
         defending_player: None,
         attacking_player: None,
@@ -811,7 +811,7 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     let Some(source_obj) = game.object(source) else {
         return false;
     };
-    let controller = source_obj.controller;
+    let controller = game.controller_of(source_obj);
     match condition {
         ActivatedAbilityCostCondition::TargetsExactly { count, filter } => {
             let opponents = game
@@ -1140,7 +1140,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
     let Some(source_obj) = game.object(source) else {
         return false;
     };
-    let controller = source_obj.controller;
+    let controller = game.controller_of(source_obj);
 
     match condition {
         ThisSpellCostCondition::Always => true,
@@ -1164,7 +1164,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                     .iter()
                     .filter_map(|&object_id| game.object(object_id))
                     .filter(|object| {
-                        object.controller == player.id
+                        game.controller_of(object) == player.id
                             && game.object_has_card_type(object.id, CardType::Land)
                     })
                     .count();
@@ -1176,7 +1176,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                 .iter()
                 .filter_map(|&object_id| game.object(object_id))
                 .filter(|object| {
-                    object.controller == controller
+                    game.controller_of(object) == controller
                         && game.object_has_card_type(object.id, CardType::Creature)
                 })
                 .count();
@@ -1189,7 +1189,7 @@ pub fn this_spell_cost_condition_is_active_for_cast(
                         .iter()
                         .filter_map(|&object_id| game.object(object_id))
                         .filter(|object| {
-                            object.controller == player.id
+                            game.controller_of(object) == player.id
                                 && game.object_has_card_type(object.id, CardType::Creature)
                         })
                         .count();

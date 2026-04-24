@@ -246,7 +246,7 @@ mod tests {
             let copy_obj = game.object(copy_id).unwrap();
             assert_eq!(copy_obj.zone, Zone::Stack);
             assert_eq!(copy_obj.name, "Lightning Bolt");
-            assert_eq!(copy_obj.controller, alice);
+            assert_eq!(game.controller_of(copy_obj), alice);
 
             // Stack should have 2 entries (original + copy)
             assert_eq!(game.stack.len(), 2);
@@ -474,7 +474,7 @@ mod tests {
 
             // Copy should be controlled by Bob
             let copy_obj = game.object(copy_id).unwrap();
-            assert_eq!(copy_obj.controller, bob);
+            assert_eq!(game.controller_of(copy_obj), bob);
 
             let copy_entry = game.stack.iter().find(|e| e.object_id == copy_id).unwrap();
             assert_eq!(copy_entry.controller, bob);

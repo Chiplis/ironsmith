@@ -538,7 +538,7 @@ impl StaticAbilityKind for RuleRestriction {
             return true;
         };
         let controller = match game.object(source) {
-            Some(object) => object.controller,
+            Some(object) => game.controller_of(object),
             None => return false,
         };
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {

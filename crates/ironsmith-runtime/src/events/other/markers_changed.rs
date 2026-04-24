@@ -109,7 +109,7 @@ impl GameEventType for MarkersChangedEvent {
             MarkerLocation::Player(id) => *id,
             MarkerLocation::Object(id) => game
                 .object(*id)
-                .map(|o| o.controller)
+                .map(|o| game.controller_of(o))
                 .unwrap_or(game.turn.active_player),
         }
     }

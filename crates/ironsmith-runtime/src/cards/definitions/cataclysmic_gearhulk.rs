@@ -241,7 +241,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.controller == alice)
+            .filter(|obj| game.controller_of(obj) == alice)
             .count();
         assert_eq!(alice_count, 5);
     }
@@ -278,7 +278,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.controller == alice)
+            .filter(|obj| game.controller_of(obj) == alice)
             .count();
         assert_eq!(alice_count, 2);
 
@@ -287,7 +287,7 @@ mod tests {
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.controller == bob)
+            .filter(|obj| game.controller_of(obj) == bob)
             .count();
         assert_eq!(bob_count, 2);
     }

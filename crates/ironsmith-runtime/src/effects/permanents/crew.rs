@@ -25,7 +25,9 @@ fn crew_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
             let Some(obj) = game.object(id) else {
                 return false;
             };
-            game.current_is_creature(id) && obj.controller == controller && !game.is_tapped(id)
+            game.current_is_creature(id)
+                && game.controller_of(obj) == controller
+                && !game.is_tapped(id)
         })
         .collect()
 }

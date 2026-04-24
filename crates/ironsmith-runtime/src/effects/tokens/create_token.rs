@@ -301,7 +301,7 @@ mod tests {
 
         if let crate::effect::OutcomeValue::Objects(ids) = result.value {
             let token = game.object(ids[0]).unwrap();
-            assert_eq!(token.controller, bob);
+            assert_eq!(game.controller_of(token), bob);
             assert_eq!(
                 token.owner, bob,
                 "the player who creates the token should own it"

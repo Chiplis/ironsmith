@@ -26,7 +26,7 @@ impl GameEventType for StateTriggerEvent {
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
         game.object(self.source)
-            .map(|obj| obj.controller)
+            .map(|obj| game.controller_of(obj))
             .unwrap_or(game.turn.active_player)
     }
 

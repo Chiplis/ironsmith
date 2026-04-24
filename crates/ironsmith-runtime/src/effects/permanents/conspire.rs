@@ -41,7 +41,10 @@ fn conspire_candidates(game: &GameState, controller: PlayerId, source: ObjectId)
             let Some(obj) = game.object(id) else {
                 return false;
             };
-            if !game.current_is_creature(id) || obj.controller != controller || game.is_tapped(id) {
+            if !game.current_is_creature(id)
+                || game.controller_of(obj) != controller
+                || game.is_tapped(id)
+            {
                 return false;
             }
 

@@ -64,7 +64,7 @@ pub fn execute_combat_damage_step(
             continue;
         }
 
-        let controller = attacker.controller;
+        let controller = game.controller_of(attacker);
 
         if is_blocked(combat, attacker_id) {
             // Blocked attacker - deal damage to blockers
@@ -128,7 +128,7 @@ pub fn execute_combat_damage_step(
         // Deterministic default order when multiple attackers are blocked.
         attacker_ids.sort_by_key(|id| id.0);
 
-        let controller = blocker.controller;
+        let controller = game.controller_of(blocker);
         if attacker_ids.len() == 1 {
             let attacker_id = attacker_ids[0];
             if game.object(attacker_id).is_none() {
@@ -220,7 +220,7 @@ pub(super) fn creature_assigns_combat_damage_using_toughness(
                     return true;
                 }
                 crate::static_abilities::StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness => {
-                    if source.controller == creature.controller {
+                    if game.controller_of(source) == game.controller_of(creature) {
                         return true;
                     }
                 }
@@ -268,7 +268,9 @@ pub(super) fn apply_combat_lifelink(
 
 fn combat_damage_cause(game: &GameState, source_id: ObjectId) -> crate::events::cause::EventCause {
     game.object(source_id)
-        .map(|obj| crate::events::cause::EventCause::from_combat_damage(source_id, obj.controller))
+        .map(|obj| {
+            crate::events::cause::EventCause::from_combat_damage(source_id, game.controller_of(obj))
+        })
         .unwrap_or_else(|| crate::events::cause::EventCause::combat_damage(source_id))
 }
 
@@ -386,7 +388,7 @@ pub(super) fn deal_damage_to_defender(
     damage: u32,
 ) -> Option<CombatDamageEvent> {
     let attacker = game.object(attacker_id)?;
-    let controller = attacker.controller;
+    let controller = game.controller_of(attacker);
 
     match target {
         AttackTarget::Player(player_id) => {

@@ -127,7 +127,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let parasite_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Hex Parasite" && obj.controller == alice)
+                .map(|obj| obj.name == "Hex Parasite" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

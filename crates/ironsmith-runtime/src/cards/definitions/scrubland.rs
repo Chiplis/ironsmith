@@ -326,7 +326,7 @@ mod tests {
             .copied()
             .find(|&id| {
                 game.object(id)
-                    .map(|obj| obj.name == "Scrubland" && obj.controller == alice)
+                    .map(|obj| obj.name == "Scrubland" && game.controller_of(obj) == alice)
                     .unwrap_or(false)
             })
             .expect("Should find Scrubland");

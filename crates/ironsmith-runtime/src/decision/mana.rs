@@ -105,7 +105,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
         let Some(perm) = game.object(source_id) else {
             continue;
         };
-        let controller = perm.controller;
+        let controller = game.controller_of(perm);
         let filter_ctx = FilterContext::new(controller)
             .with_source(source_id)
             .with_active_player(game.turn.active_player)
@@ -215,7 +215,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
         let Some(perm) = game.object(source_id) else {
             continue;
         };
-        let controller = perm.controller;
+        let controller = game.controller_of(perm);
         let filter_ctx = FilterContext::new(controller)
             .with_source(source_id)
             .with_active_player(game.turn.active_player)
@@ -512,7 +512,7 @@ pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) 
             AttackTarget::Player(defender) => defender == player,
             AttackTarget::Planeswalker(planeswalker_id) => game
                 .object(planeswalker_id)
-                .is_some_and(|planeswalker| planeswalker.controller == player),
+                .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
         })
 }
 
@@ -661,7 +661,7 @@ pub(crate) fn this_spell_cast_condition_allows(
                         crate::combat_state::AttackTarget::Player(defender) => defender == player,
                         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
                             .object(planeswalker_id)
-                            .is_some_and(|planeswalker| planeswalker.controller == player),
+                            .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
                     })
                 })
         }
@@ -679,7 +679,7 @@ pub(crate) fn this_spell_cast_condition_allows(
                 .iter()
                 .filter_map(|&id| game.object(id))
                 .filter(|object| {
-                    object.controller == player
+                    game.controller_of(object) == player
                         && required_filter.matches(object, &filter_ctx, game)
                 })
                 .count()
@@ -2322,7 +2322,7 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
-        let controller = perm.controller;
+        let controller = game.controller_of(perm);
         let ctx = FilterContext::new(controller)
             .with_source(perm_id)
             .with_active_player(game.turn.active_player)
@@ -2692,7 +2692,7 @@ pub(crate) fn count_artifacts_controlled_with_view(
         .iter()
         .filter(|&&id| {
             if let Some(obj) = game.object(id) {
-                obj.controller == player
+                game.controller_of(obj) == player
                     && view.object_has_card_type(id, crate::types::CardType::Artifact)
             } else {
                 false
@@ -2874,7 +2874,7 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     use crate::ability::AbilityKind;
 
     let object = game.object(permanent_id)?;
-    if object.controller != player
+    if game.controller_of(object) != player
         || object.zone != Zone::Battlefield
         || !ability.functions_in(&object.zone)
         || !ability.is_mana_ability()
@@ -3193,7 +3193,9 @@ pub fn get_improvise_artifacts(game: &GameState, player: PlayerId) -> Vec<crate:
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Must be an artifact controlled by player
-            if obj.controller != player || !obj.has_card_type(crate::types::CardType::Artifact) {
+            if game.controller_of(obj) != player
+                || !obj.has_card_type(crate::types::CardType::Artifact)
+            {
                 return None;
             }
             // Must be untapped
@@ -3330,7 +3332,7 @@ pub fn get_convoke_creatures(
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Must be a creature controlled by player
-            if obj.controller != player || !game.current_is_creature(id) {
+            if game.controller_of(obj) != player || !game.current_is_creature(id) {
                 return None;
             }
             // Must be untapped

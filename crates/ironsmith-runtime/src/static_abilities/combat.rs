@@ -933,7 +933,7 @@ impl CantAttackUnlessCondition {
             .iter()
             .filter_map(|&id| game.object(id))
             .filter(|obj| {
-                controller.is_none_or(|player| obj.controller == player)
+                controller.is_none_or(|player| game.controller_of(obj) == player)
                     && battlefield_filter.matches(obj, &filter_ctx, game)
             })
             .count()
@@ -1017,7 +1017,7 @@ impl CantAttackUnlessCondition {
                 DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent => {
                     Some(game.battlefield.iter().any(|&id| {
                         game.object(id).is_some_and(|obj| {
-                            obj.controller == defending_player
+                            game.controller_of(obj) == defending_player
                                 && (game.object_has_card_type(obj.id, CardType::Enchantment)
                                     || obj.attachments.iter().any(|attachment_id| {
                                         game.object(*attachment_id).is_some_and(|attachment| {
@@ -1142,7 +1142,7 @@ impl CantAttackUnlessCondition {
             .copied()
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
-                    obj.controller == controller
+                    game.controller_of(obj) == controller
                         && battlefield_filter.matches(obj, &filter_ctx, game)
                         && (!require_sacrificable || game.can_be_sacrificed(id))
                 })
@@ -1448,7 +1448,8 @@ fn count_basic_land_types_among_lands_you_control(game: &GameState, controller: 
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        if object.controller != controller || !game.object_has_card_type(object_id, CardType::Land)
+        if game.controller_of(object) != controller
+            || !game.object_has_card_type(object_id, CardType::Land)
         {
             continue;
         }

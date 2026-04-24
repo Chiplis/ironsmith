@@ -53,7 +53,7 @@ impl GameEventType for DestroyEvent {
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
         game.object(self.permanent)
-            .map(|o| o.controller)
+            .map(|o| game.controller_of(o))
             .unwrap_or(game.turn.active_player)
     }
 

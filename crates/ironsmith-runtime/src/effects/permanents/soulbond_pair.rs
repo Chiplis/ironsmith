@@ -13,7 +13,7 @@ fn source_is_valid(game: &GameState, source: ObjectId, controller: PlayerId) -> 
     game.object(source).is_some_and(|object| {
         object.zone == Zone::Battlefield
             && game.current_is_creature(source)
-            && object.controller == controller
+            && game.controller_of(object) == controller
     })
 }
 
@@ -26,7 +26,7 @@ fn candidate_creatures(game: &GameState, source: ObjectId, controller: PlayerId)
             game.object(*id).is_some_and(|object| {
                 object.zone == Zone::Battlefield
                     && game.current_is_creature(*id)
-                    && object.controller == controller
+                    && game.controller_of(object) == controller
             })
         })
         .filter(|id| !game.is_soulbond_paired(*id))
@@ -88,7 +88,7 @@ impl EffectExecutor for SoulbondPairEffect {
         if !game.object(partner).is_some_and(|object| {
             object.zone == Zone::Battlefield
                 && game.current_is_creature(partner)
-                && object.controller == ctx.controller
+                && game.controller_of(object) == ctx.controller
         }) {
             return Ok(EffectOutcome::count(0));
         }

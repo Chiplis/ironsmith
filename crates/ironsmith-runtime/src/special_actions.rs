@@ -498,10 +498,7 @@ fn perform_play_land(
         player_data.record_land_play();
     }
 
-    // Set the controller to the player who played it
-    if let Some(obj) = game.object_mut(new_id) {
-        obj.controller = player;
-    }
+    game.set_current_controller(new_id, player);
 
     Ok(())
 }
@@ -556,7 +553,7 @@ fn validate_turn_face_up_common<'a>(
     }
 
     // Check the player controls the permanent
-    if object.controller != player {
+    if game.controller_of(object) != player {
         return Err(ActionError::InvalidTarget);
     }
 
@@ -970,7 +967,7 @@ fn can_activate_mana_ability_with_cost_checks(
         .ok_or(ActionError::ObjectNotFound)?;
 
     // Check the player controls the object
-    if object.controller != player {
+    if game.controller_of(object) != player {
         return Err(ActionError::InvalidTarget);
     }
 
@@ -1097,7 +1094,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
 
-    if object.controller != player {
+    if game.controller_of(object) != player {
         return Err(ActionError::InvalidTarget);
     }
 
@@ -2721,7 +2718,7 @@ mod tests {
             .iter()
             .find_map(|&id| game.object(id).filter(|obj| obj.name == "Dakmor Salvage"))
             .expect("played land should be on the battlefield");
-        assert_eq!(played_land.controller, alice);
+        assert_eq!(game.controller_of(played_land), alice);
         assert_eq!(played_land.zone, Zone::Battlefield);
         assert!(
             !game

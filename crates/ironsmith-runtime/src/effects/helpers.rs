@@ -1251,7 +1251,7 @@ fn count_matching_objects_for_player(
     value_candidate_ids_for_filter(game, filter, ctx)
         .into_iter()
         .filter_map(|id| game.object(id))
-        .filter(|obj| obj.controller == player_id)
+        .filter(|obj| game.controller_of(obj) == player_id)
         .filter(|obj| filter.matches(obj, &filter_ctx, game))
         .count()
 }
@@ -1330,7 +1330,7 @@ pub fn resolve_player_from_spec(
                 let planeswalker = game
                     .object(planeswalker_id)
                     .ok_or(ExecutionError::ObjectNotFound(planeswalker_id))?;
-                Ok(planeswalker.controller)
+                Ok(game.controller_of(planeswalker))
             }
             None => ctx.combat.defending_player.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
@@ -1571,7 +1571,7 @@ fn resolve_controller_of(
         ObjectRef::Target => {
             let target_id = find_target_object(&ctx.targets)?;
             if let Some(obj) = game.object(target_id) {
-                Ok(obj.controller)
+                Ok(game.controller_of(obj))
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 Ok(snapshot.controller)
             } else {
@@ -1580,7 +1580,7 @@ fn resolve_controller_of(
         }
         ObjectRef::Specific(object_id) => {
             if let Some(obj) = game.object(*object_id) {
-                Ok(obj.controller)
+                Ok(game.controller_of(obj))
             } else if let Some(snapshot) = ctx.target_snapshots.get(object_id) {
                 Ok(snapshot.controller)
             } else {
@@ -2464,7 +2464,7 @@ pub fn resolve_players_from_spec(
                 let planeswalker = game
                     .object(planeswalker_id)
                     .ok_or(ExecutionError::ObjectNotFound(planeswalker_id))?;
-                Ok(vec![planeswalker.controller])
+                Ok(vec![game.controller_of(planeswalker)])
             }
             None => {
                 if let Some(defending) = ctx.combat.defending_player {

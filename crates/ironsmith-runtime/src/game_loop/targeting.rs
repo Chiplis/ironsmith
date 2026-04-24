@@ -1,4 +1,5 @@
 use super::*;
+use crate::target::PlayerFilter;
 
 fn resolve_modal_count_value_for_source(
     game: &GameState,
@@ -122,7 +123,7 @@ pub(super) fn is_crime_target(game: &GameState, committer: PlayerId, target: &Ta
             if obj.zone == Zone::Graveyard {
                 obj.owner != committer
             } else {
-                obj.controller != committer
+                game.controller_of(obj) != committer
             }
         }
     }
@@ -362,6 +363,79 @@ pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
     })
 }
 
+fn is_target_only_effect(effect: &Effect) -> bool {
+    effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        .is_some()
+        || wrapped_inner_effect(effect).is_some_and(is_target_only_effect)
+}
+
+fn wrapped_inner_effect(effect: &Effect) -> Option<&Effect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        Some(&tagged.effect)
+    } else if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        Some(&with_id.effect)
+    } else if let Some(local_rewrite) = effect.downcast_ref::<crate::effects::LocalRewriteEffect>()
+    {
+        Some(&local_rewrite.effect)
+    } else if let Some(execute_with_source) =
+        effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+    {
+        Some(&execute_with_source.effect)
+    } else {
+        None
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct DeclaredTarget {
+    spec: ChooseSpec,
+}
+
+fn declare_target(effect: &Effect, spec: &ChooseSpec, declared: &mut Vec<DeclaredTarget>) {
+    if is_target_only_effect(effect)
+        || !declared
+            .iter()
+            .any(|declared| target_spec_reuses_declared_target(spec, &declared.spec))
+    {
+        declared.push(DeclaredTarget { spec: spec.clone() });
+    }
+}
+
+fn player_filter_reuses_declared_target(candidate: &PlayerFilter, declared: &PlayerFilter) -> bool {
+    candidate == declared
+        || matches!(declared, PlayerFilter::Target(inner) if candidate == inner.as_ref())
+        || matches!(candidate, PlayerFilter::Target(inner) if inner.as_ref() == declared)
+}
+
+fn target_spec_reuses_declared_target(candidate: &ChooseSpec, declared: &ChooseSpec) -> bool {
+    if candidate == declared || candidate.base() == declared.base() {
+        return true;
+    }
+
+    match (candidate.base(), declared.base()) {
+        (ChooseSpec::Player(candidate), ChooseSpec::Player(declared)) => {
+            player_filter_reuses_declared_target(candidate, declared)
+        }
+        (
+            ChooseSpec::PlayerOrPlaneswalker(candidate),
+            ChooseSpec::PlayerOrPlaneswalker(declared),
+        ) => player_filter_reuses_declared_target(candidate, declared),
+        _ => false,
+    }
+}
+
+fn effect_reuses_declared_target(
+    effect: &Effect,
+    spec: &ChooseSpec,
+    declared: &[DeclaredTarget],
+) -> bool {
+    !is_target_only_effect(effect)
+        && declared
+            .iter()
+            .any(|declared| target_spec_reuses_declared_target(spec, &declared.spec))
+}
+
 pub(super) fn resolve_modal_mode_counts(
     game: &GameState,
     source_id: Option<ObjectId>,
@@ -382,6 +456,7 @@ pub(super) fn resolve_modal_mode_counts(
     (min_modes, max_modes)
 }
 
+#[allow(dead_code)]
 pub(super) fn effect_mode_has_legal_targets_with_view(
     game: &GameState,
     mode: &crate::effect::EffectMode,
@@ -389,8 +464,20 @@ pub(super) fn effect_mode_has_legal_targets_with_view(
     source_id: Option<ObjectId>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     mode.effects.iter().all(|effect| {
-        spell_effect_has_legal_targets_with_view(game, effect, caster, source_id, None, view)
+        spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+            game,
+            effect,
+            caster,
+            source_id,
+            None,
+            &mut consumed_modal_selection,
+            &mut declared_targets,
+            true,
+            view,
+        )
     })
 }
 
@@ -400,6 +487,7 @@ fn choose_mode_has_legal_targets_internal_with_view(
     caster: PlayerId,
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
+    declared_targets: &mut Vec<DeclaredTarget>,
     require_full_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
@@ -424,9 +512,22 @@ fn choose_mode_has_legal_targets_internal_with_view(
                 return false;
             }
 
-            if !effect_mode_has_legal_targets_with_view(game, mode, caster, source_id, view) {
+            let mut mode_consumed_modal_selection = false;
+            if !mode.effects.iter().all(|effect| {
+                spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+                    game,
+                    effect,
+                    caster,
+                    source_id,
+                    None,
+                    &mut mode_consumed_modal_selection,
+                    declared_targets,
+                    require_full_selection,
+                    view,
+                )
+            }) {
                 return false;
-            }
+            };
             selected_count += 1;
         }
 
@@ -440,7 +541,23 @@ fn choose_mode_has_legal_targets_internal_with_view(
     let legal_mode_count = choose_mode
         .modes
         .iter()
-        .filter(|mode| effect_mode_has_legal_targets_with_view(game, mode, caster, source_id, view))
+        .filter(|mode| {
+            let mut mode_consumed_modal_selection = false;
+            let mut mode_declared_targets = declared_targets.clone();
+            mode.effects.iter().all(|effect| {
+                spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+                    game,
+                    effect,
+                    caster,
+                    source_id,
+                    None,
+                    &mut mode_consumed_modal_selection,
+                    &mut mode_declared_targets,
+                    require_full_selection,
+                    view,
+                )
+            })
+        })
         .count();
 
     if min_modes == 0 {
@@ -461,6 +578,7 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
     require_full_mode_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
@@ -477,6 +595,7 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             caster,
             source_id,
             modes_for_this_choose_mode,
+            declared_targets,
             require_full_mode_selection,
             view,
         );
@@ -485,6 +604,10 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
+        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+            return true;
+        }
+        declare_target(effect, extracted.spec, declared_targets);
         // For "any number" effects, we can cast even with no legal targets.
         if extracted.min_targets == 0 {
             return true;
@@ -503,6 +626,7 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     true
 }
 
+#[allow(dead_code)]
 pub(super) fn spell_effect_has_legal_targets_with_view(
     game: &GameState,
     effect: &Effect,
@@ -512,6 +636,7 @@ pub(super) fn spell_effect_has_legal_targets_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     spell_effect_has_legal_targets_internal_with_preview_mode_selection(
         game,
         effect,
@@ -519,11 +644,13 @@ pub(super) fn spell_effect_has_legal_targets_with_view(
         source_id,
         chosen_modes,
         &mut consumed_modal_selection,
+        &mut declared_targets,
         true,
         view,
     )
 }
 
+#[allow(dead_code)]
 pub(super) fn spell_effect_has_legal_targets_internal_with_view(
     game: &GameState,
     effect: &Effect,
@@ -533,6 +660,7 @@ pub(super) fn spell_effect_has_legal_targets_internal_with_view(
     consumed_modal_selection: &mut bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    let mut declared_targets = Vec::new();
     spell_effect_has_legal_targets_internal_with_preview_mode_selection(
         game,
         effect,
@@ -540,6 +668,7 @@ pub(super) fn spell_effect_has_legal_targets_internal_with_view(
         source_id,
         chosen_modes,
         consumed_modal_selection,
+        &mut declared_targets,
         true,
         view,
     )
@@ -552,6 +681,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
 ) {
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
@@ -572,6 +702,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             source_id,
                             None,
                             consumed_modal_selection,
+                            declared_targets,
                             requirements,
                         );
                     }
@@ -584,6 +715,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
+        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+            return;
+        }
+        declare_target(effect, extracted.spec, declared_targets);
         let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
@@ -605,6 +740,7 @@ fn count_target_selection_slots_from_effect_internal(
     effect: &Effect,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
         let modes_for_this_choose_mode = if !*consumed_modal_selection {
@@ -626,6 +762,7 @@ fn count_target_selection_slots_from_effect_internal(
                             inner,
                             None,
                             consumed_modal_selection,
+                            declared_targets,
                         )
                     })
                     .sum::<usize>()
@@ -633,21 +770,30 @@ fn count_target_selection_slots_from_effect_internal(
             .sum();
     }
 
-    extract_target_spec(effect)
-        .filter(|extracted| requires_target_selection(extracted.spec))
-        .map(|_| 1)
-        .unwrap_or(0)
+    let Some(extracted) = extract_target_spec(effect) else {
+        return 0;
+    };
+    if !requires_target_selection(extracted.spec) {
+        return 0;
+    }
+    if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+        return 0;
+    }
+    declare_target(effect, extracted.spec, declared_targets);
+    1
 }
 
 pub(crate) fn count_target_selection_slots_for_effect(
     effect: &Effect,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
     count_target_selection_slots_from_effect_internal(
         effect,
         chosen_modes,
         consumed_modal_selection,
+        declared_targets,
     )
 }
 
@@ -660,6 +806,7 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
     consumed_modal_selection: &mut bool,
 ) -> Vec<TargetRequirement> {
     let mut requirements = Vec::new();
+    let mut declared_targets = Vec::new();
     extract_target_requirements_from_effect_internal(
         game,
         effect,
@@ -667,6 +814,7 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
         source_id,
         chosen_modes,
         consumed_modal_selection,
+        &mut declared_targets,
         &mut requirements,
     );
     requirements
@@ -728,6 +876,7 @@ pub(super) fn extract_target_requirements_with_modes(
 ) -> Vec<TargetRequirement> {
     let mut requirements = Vec::new();
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
 
     for effect in effects {
         extract_target_requirements_from_effect_internal(
@@ -737,6 +886,7 @@ pub(super) fn extract_target_requirements_with_modes(
             source_id,
             chosen_modes,
             &mut consumed_modal_selection,
+            &mut declared_targets,
             &mut requirements,
         );
     }
@@ -810,6 +960,7 @@ pub(crate) fn spell_has_legal_targets_with_mode_preview_and_view(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     for effect in effects {
         if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             game,
@@ -818,6 +969,7 @@ pub(crate) fn spell_has_legal_targets_with_mode_preview_and_view(
             source_id,
             Some(chosen_modes),
             &mut consumed_modal_selection,
+            &mut declared_targets,
             false,
             view,
         ) {
@@ -836,14 +988,17 @@ pub(crate) fn spell_has_legal_targets_with_modes_and_view(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     for effect in effects {
-        if !spell_effect_has_legal_targets_internal_with_view(
+        if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             game,
             effect,
             caster,
             source_id,
             chosen_modes,
             &mut consumed_modal_selection,
+            &mut declared_targets,
+            true,
             view,
         ) {
             return false;
@@ -1029,6 +1184,7 @@ pub(super) fn collect_validation_target_specs_from_effect(
     effect: &Effect,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    declared_targets: &mut Vec<DeclaredTarget>,
     specs: &mut Vec<ChooseSpec>,
 ) {
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
@@ -1047,6 +1203,7 @@ pub(super) fn collect_validation_target_specs_from_effect(
                             inner,
                             None,
                             consumed_modal_selection,
+                            declared_targets,
                             specs,
                         );
                     }
@@ -1059,6 +1216,10 @@ pub(super) fn collect_validation_target_specs_from_effect(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
+        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+            return;
+        }
+        declare_target(effect, extracted.spec, declared_targets);
         specs.push(extracted.spec.clone());
     }
 }
@@ -1077,11 +1238,13 @@ pub(super) fn stack_entry_validation_target_specs(
 
     let mut specs = Vec::new();
     let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
     for effect in effects.all_effects() {
         collect_validation_target_specs_from_effect(
             effect,
             entry.chosen_modes.as_deref(),
             &mut consumed_modal_selection,
+            &mut declared_targets,
             &mut specs,
         );
     }

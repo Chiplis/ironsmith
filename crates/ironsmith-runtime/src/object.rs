@@ -141,9 +141,8 @@ pub struct Object {
     pub card: Option<CardId>,
     pub zone: Zone,
 
-    // Ownership (owner never changes, controller can)
+    // Ownership (owner never changes)
     pub owner: PlayerId,
-    pub controller: PlayerId,
 
     // Copiable values (what Clone effects copy)
     pub name: String,
@@ -253,7 +252,6 @@ impl Object {
             card: Some(card.id),
             zone,
             owner,
-            controller: owner,
             name: card.name.clone(),
             mana_cost: card.mana_cost.clone(),
             color_override: card.color_indicator,
@@ -449,7 +447,6 @@ impl Object {
             card: None,
             zone: Zone::Battlefield,
             owner,
-            controller: owner,
             name,
             mana_cost: None,
             color_override: Some(color),
@@ -496,7 +493,6 @@ impl Object {
             card: None,
             zone: Zone::Battlefield,
             owner,
-            controller: owner,
             // Copiable values from source
             name: source.name.clone(),
             mana_cost: source.mana_cost.clone(),
@@ -562,7 +558,6 @@ impl Object {
             card: None,
             zone: Zone::Battlefield,
             owner,
-            controller: owner,
             name: snapshot.name.clone(),
             mana_cost: snapshot.mana_cost.clone(),
             color_override: (!snapshot.colors.is_empty()).then_some(snapshot.colors),
@@ -620,7 +615,6 @@ impl Object {
             card: None,
             zone: Zone::Command,
             owner,
-            controller: owner,
             name,
             mana_cost: None,
             color_override: None,
@@ -1157,7 +1151,6 @@ impl Object {
             card: None,
             zone: Zone::Battlefield,
             owner: controller,
-            controller,
             name: def.card.name.clone(),
             mana_cost: None,                          // Tokens don't have mana costs
             color_override: def.card.color_indicator, // Use color indicator if set
@@ -1523,7 +1516,6 @@ mod tests {
         // Token-specific properties
         assert_eq!(token.kind, ObjectKind::Token);
         assert_eq!(token.owner, PlayerId::from_index(1));
-        assert_eq!(token.controller, PlayerId::from_index(1));
     }
 
     #[test]
@@ -1579,7 +1571,6 @@ mod tests {
         // But identity fields remain unchanged
         assert_eq!(clone.id, ObjectId::from_raw(1));
         assert_eq!(clone.owner, PlayerId::from_index(0));
-        assert_eq!(clone.controller, PlayerId::from_index(0));
 
         // And counters are preserved (non-copiable)
         assert_eq!(clone.counters.get(&CounterType::PlusOnePlusOne), Some(&1));

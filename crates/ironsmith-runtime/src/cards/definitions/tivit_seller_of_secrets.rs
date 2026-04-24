@@ -511,7 +511,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Clue" && o.controller == alice)
+                    .map(|o| o.name == "Clue" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .count();
@@ -525,7 +525,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Treasure" && o.controller == alice)
+                    .map(|o| o.name == "Treasure" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .count();
@@ -596,7 +596,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Clue" && o.controller == controller)
+                    .map(|o| o.name == "Clue" && game.controller_of(o) == controller)
                     .unwrap_or(false)
             })
             .count();
@@ -610,7 +610,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Treasure" && o.controller == controller)
+                    .map(|o| o.name == "Treasure" && game.controller_of(o) == controller)
                     .unwrap_or(false)
             })
             .count();

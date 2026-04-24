@@ -108,7 +108,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let floodcaller_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Valley Floodcaller" && obj.controller == alice)
+                .map(|obj| obj.name == "Valley Floodcaller" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

@@ -67,7 +67,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bears_id = game.battlefield.iter().copied().find(|&id| {
             game.object(id)
-                .map(|obj| obj.name == "Grizzly Bears" && obj.controller == alice)
+                .map(|obj| obj.name == "Grizzly Bears" && game.controller_of(obj) == alice)
                 .unwrap_or(false)
         });
 

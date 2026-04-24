@@ -32,7 +32,7 @@ impl GameEventType for CreatureBlockedEvent {
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
         game.object(self.blocker)
-            .map(|o| o.controller)
+            .map(|o| game.controller_of(o))
             .unwrap_or(game.turn.active_player)
     }
 

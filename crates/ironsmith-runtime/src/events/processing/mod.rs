@@ -992,11 +992,11 @@ pub fn process_destroy(
     }
 
     // Get the controller before we lose the reference
-    let controller = obj.controller;
+    let controller = game.controller_of(obj);
     let cause = if let Some(source_id) = source {
         let source_controller = game
             .object(source_id)
-            .map(|source_obj| source_obj.controller)
+            .map(|source_obj| game.controller_of(source_obj))
             .unwrap_or(controller);
         crate::events::cause::EventCause::from_effect(source_id, source_controller)
     } else {
@@ -1172,7 +1172,7 @@ pub fn process_zone_change_with_additional_effects(
                 .mark_effect_used(effect_id);
             let controller = game
                 .object(object)
-                .map(|obj| obj.controller)
+                .map(|obj| game.controller_of(obj))
                 .or_else(|| snapshot.as_ref().map(|snap| snap.controller))
                 .unwrap_or(PlayerId::from_index(0));
             let mut ctx = crate::effects::ExecutionContext::new(object, controller, dm);
@@ -1560,7 +1560,7 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 .unwrap_or_else(|| {
                     let controller = game
                         .object(source)
-                        .map(|object| object.controller)
+                        .map(|object| game.controller_of(object))
                         .unwrap_or(game.turn.active_player);
                     (source, controller)
                 });
@@ -1721,7 +1721,7 @@ fn apply_prevention_for_damage_assignment(
         DamageTarget::Object(object_id) => {
             let controller = game
                 .object(object_id)
-                .map(|o| o.controller)
+                .map(|o| game.controller_of(o))
                 .unwrap_or(game.turn.active_player);
             game.effect_store
                 .prevention_effects
@@ -1960,7 +1960,7 @@ pub fn process_etb_with_event_and_dm(
             // effects can modify it (e.g., Doubling Season).
             enters_with_counters.push((CounterType::Loyalty, loyalty));
         }
-        let controller = obj.controller;
+        let controller = game.controller_of(obj);
         for ability in &obj.abilities {
             if let AbilityKind::Static(s) = &ability.kind {
                 // Check for unified replacement effects
@@ -2099,7 +2099,7 @@ pub fn process_etb_with_event_and_dm(
             }
             TraitEventResult::Replaced { effects, effect_id } => {
                 use crate::effects::{ExecutionContext, execute_effect};
-                if let Some(controller) = game.object(object).map(|o| o.controller) {
+                if let Some(controller) = game.object(object).map(|o| game.controller_of(o)) {
                     game.effect_store
                         .replacement_effects
                         .mark_effect_used(effect_id);
@@ -2169,7 +2169,8 @@ pub fn process_etb_with_event_and_dm(
                     }
                     TraitApplyResult::Replaced(effects) => {
                         use crate::effects::{ExecutionContext, execute_effect};
-                        if let Some(controller) = game.object(object).map(|o| o.controller) {
+                        if let Some(controller) = game.object(object).map(|o| game.controller_of(o))
+                        {
                             game.effect_store
                                 .replacement_effects
                                 .mark_effect_used(chosen_id);
@@ -2199,7 +2200,7 @@ pub fn process_etb_with_event_and_dm(
                         };
                         let controller = game
                             .object(object_id)
-                            .map(|o| o.controller)
+                            .map(|o| game.controller_of(o))
                             .unwrap_or(PlayerId::from_index(0));
                         let response = match decision_ctx {
                             crate::decisions::context::DecisionContext::Boolean(ctx) => {
@@ -2254,7 +2255,7 @@ pub fn process_etb_with_event_and_dm(
             } => {
                 let controller = game
                     .object(object_id)
-                    .map(|o| o.controller)
+                    .map(|o| game.controller_of(o))
                     .unwrap_or(PlayerId::from_index(0));
                 let response = match decision_ctx {
                     crate::decisions::context::DecisionContext::Boolean(ctx) => {

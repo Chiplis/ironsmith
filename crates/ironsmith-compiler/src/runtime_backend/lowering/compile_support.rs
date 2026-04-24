@@ -759,10 +759,11 @@ fn prepend_missing_target_choice_prelude(
         if !choice.is_target() {
             continue;
         }
-        let already_exposed = compiled
+        let exposed_count = compiled
             .iter()
-            .any(|effect| effect.target_spec().is_some_and(|spec| spec == choice));
-        if !already_exposed {
+            .filter(|effect| effect.target_spec().is_some_and(|spec| spec == choice))
+            .count();
+        if exposed_count != 1 {
             prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                 choice.clone(),
             )));

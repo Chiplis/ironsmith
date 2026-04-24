@@ -5449,10 +5449,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("cast Ornithopter should be on the stack");
         assert_eq!(stack_entry.controller, alice);
         assert_eq!(
-            game.object(stack_entry.object_id)
-                .expect("stack Ornithopter should exist")
-                .controller,
-            alice,
+            game.current_controller(stack_entry.object_id),
+            Some(alice),
             "spell on the stack should be controlled by the caster"
         );
 
@@ -5466,7 +5464,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .find(|obj| obj.name == "Ornithopter" && obj.owner == bob)
             .expect("resolved Ornithopter should be on the battlefield");
         assert_eq!(
-            resolved_ornithopter.controller, alice,
+            game.controller_of(resolved_ornithopter),
+            alice,
             "a permanent cast through Dauthi should enter under the caster's control"
         );
     }
@@ -13131,7 +13130,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .copied()
             .find(|&id| {
                 game.object(id)
-                    .map(|obj| obj.name == "Alice Revival Bear" && obj.controller == alice)
+                    .map(|obj| obj.name == "Alice Revival Bear" && game.controller_of(obj) == alice)
                     .unwrap_or(false)
             })
             .expect("Alice's creature should be on the battlefield");
@@ -13141,7 +13140,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .copied()
             .find(|&id| {
                 game.object(id)
-                    .map(|obj| obj.name == "Bob Revival Bear" && obj.controller == bob)
+                    .map(|obj| obj.name == "Bob Revival Bear" && game.controller_of(obj) == bob)
                     .unwrap_or(false)
             })
             .expect("Bob's creature should be on the battlefield");

@@ -49,7 +49,7 @@ impl<'a> RulesContext<'a> {
         Some(Self {
             game,
             source,
-            controller: obj.controller,
+            controller: game.controller_of(obj),
         })
     }
 }
