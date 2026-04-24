@@ -1144,8 +1144,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ConniveEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::ConniveEffect::new(
+        return Ok(Effect::new(crate::effects::ConniveEffect::new_with_count(
             payload.target.clone(),
+            payload.count.clone(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DetainEffect>(&effect) {

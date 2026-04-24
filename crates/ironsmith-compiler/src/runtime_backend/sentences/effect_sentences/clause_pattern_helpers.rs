@@ -13,6 +13,7 @@ use super::super::activation_and_restrictions::activation_restriction_clauses::s
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
+use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_index as find_token_index,
@@ -1879,7 +1880,27 @@ pub(crate) fn parse_connive_clause(
         return Ok(None);
     };
 
-    if tokens[connive_idx + 1..]
+    let mut count = Value::Fixed(1);
+    let mut trailing_tokens = trim_commas(&tokens[connive_idx + 1..]);
+    if !trailing_tokens.is_empty() {
+        let Some((parsed_count, used)) = parse_value(&trailing_tokens) else {
+            return Ok(None);
+        };
+        count = parsed_count;
+        trailing_tokens = trim_commas(&trailing_tokens[used..]);
+        if !trailing_tokens.is_empty() {
+            let Some(where_value) = parse_where_x_value_clause(&trailing_tokens) else {
+                return Ok(None);
+            };
+            count = super::super::util::replace_unbound_x_with_value(
+                count,
+                &where_value,
+                &crate::runtime_backend::token_word_refs(&trailing_tokens).join(" "),
+            )?;
+        }
+    }
+
+    if trailing_tokens
         .iter()
         .any(|token| token.as_word().is_some())
     {
@@ -1901,5 +1922,5 @@ pub(crate) fn parse_connive_clause(
     }
 
     let target = parse_target_phrase(subject_tokens)?;
-    Ok(Some(EffectAst::Connive { target }))
+    Ok(Some(EffectAst::Connive { target, count }))
 }

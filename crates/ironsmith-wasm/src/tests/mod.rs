@@ -1803,6 +1803,12 @@ fn snapshot_redacts_hidden_opponent_select_object_candidates() {
             .all(|candidate| candidate.id != card_a && candidate.id != card_b),
         "redacted candidates should not expose the real hidden object ids"
     );
+    assert!(
+        redacted_candidates
+            .iter()
+            .all(|candidate| candidate.object_controller.is_none()),
+        "redacted candidates should not expose hidden object controllers"
+    );
 }
 
 #[test]
@@ -1872,6 +1878,11 @@ fn snapshot_shows_hidden_zone_select_object_candidates_to_decision_player() {
     assert_eq!(
         candidates[0].id, borrowed_card,
         "the decision player should receive the real object id for exposed candidates"
+    );
+    assert_eq!(
+        candidates[0].object_controller,
+        Some(bob.0),
+        "visible select-object candidates should include their current controller for UI coloring"
     );
 }
 

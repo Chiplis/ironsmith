@@ -15036,6 +15036,26 @@ fn parse_trigger_it_connives_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_connive_x_where_clause_preserves_dynamic_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Connive X Variant")
+        .parse_text(
+            "Whenever you attack, target attacking creature connives X, where X is the number of attacking creatures.",
+        )
+        .expect("connive X where-clause should parse");
+    let joined = unprocessed_compiled_lines(&def).join(" ").to_lowercase();
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        joined.contains("connives") && joined.contains("number of attacking creatures"),
+        "expected dynamic connive text to be preserved, got {joined}"
+    );
+    assert!(
+        debug.contains("ConniveEffect") && debug.contains("Count"),
+        "expected ConniveEffect with dynamic count, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_reveal_hand_choose_card_from_it_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Reveal Hand From It Variant")
         .parse_text(

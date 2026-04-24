@@ -60,7 +60,7 @@
 - ~~`701.47` Amass~~
 - `701.48` Learn
 - `701.49` Venture into the Dungeon
-- `701.50` Connive
+- ~~`701.50` Connive~~
 - `701.51` Open an Attraction
 - `701.52` Roll to Visit Your Attractions
 - `701.53` Incubate

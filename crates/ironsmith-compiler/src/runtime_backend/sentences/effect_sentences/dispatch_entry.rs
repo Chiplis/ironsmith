@@ -1376,7 +1376,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::Counter { target }
         | EffectAst::CounterUnlessPays { target, .. }
         | EffectAst::Explore { target }
-        | EffectAst::Connive { target }
+        | EffectAst::Connive { target, .. }
         | EffectAst::Detain { target }
         | EffectAst::Goad { target }
         | EffectAst::Tap { target }
@@ -1651,6 +1651,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         | EffectAst::Scry { count: amount, .. }
         | EffectAst::Surveil { count: amount, .. }
         | EffectAst::Discover { count: amount, .. }
+        | EffectAst::Connive { count: amount, .. }
         | EffectAst::LookAtTopCards { count: amount, .. }
         | EffectAst::PayEnergy { amount, .. }
         | EffectAst::CopySpell { count: amount, .. }
@@ -1810,6 +1811,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
         }
         | EffectAst::Connive {
             target: effect_target,
+            ..
         }
         | EffectAst::Detain {
             target: effect_target,

@@ -1116,6 +1116,7 @@ pub(crate) enum EffectAst {
     },
     Connive {
         target: TargetAst,
+        count: Value,
     },
     ConniveIterated,
     Detain {

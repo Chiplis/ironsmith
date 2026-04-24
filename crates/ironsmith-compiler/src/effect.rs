@@ -973,6 +973,13 @@ impl Effect {
         Self::new(crate::effects::ConniveEffect::new(target))
     }
 
+    pub fn connive_with_count(
+        target: crate::target::ChooseSpec,
+        count: impl Into<crate::effect::Value>,
+    ) -> Self {
+        Self::new(crate::effects::ConniveEffect::new_with_count(target, count))
+    }
+
     pub fn behold(subtype: crate::types::Subtype, count: u32) -> Self {
         Self::new(crate::effects::BeholdEffect::you(subtype, count))
     }

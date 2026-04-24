@@ -58,7 +58,10 @@ macro_rules! direct_target_effect_variants {
                 ..
             }
             | EffectAst::Explore { target: $target }
-            | EffectAst::Connive { target: $target }
+            | EffectAst::Connive {
+                target: $target,
+                ..
+            }
             | EffectAst::Goad { target: $target }
             | EffectAst::PutCounters {
                 target: $target,

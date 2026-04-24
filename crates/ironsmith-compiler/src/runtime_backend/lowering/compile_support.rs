@@ -4111,6 +4111,7 @@ mod parse_compile_tests {
                         end: 5,
                     }),
                 ),
+                count: Value::Fixed(1),
             },
             &mut annotations,
             &ctx,

@@ -21698,7 +21698,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
     }
     if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
-        return format!("{} connives", describe_choose_spec(&connive.target));
+        return match &connive.count {
+            Value::Fixed(1) => format!("{} connives", describe_choose_spec(&connive.target)),
+            count => format!(
+                "{} connives X, where X is {}",
+                describe_choose_spec(&connive.target),
+                describe_value(count)
+            ),
+        };
     }
     if let Some(detain) = effect.downcast_ref::<crate::effects::DetainEffect>() {
         return format!("Detain {}", describe_choose_spec(&detain.target));

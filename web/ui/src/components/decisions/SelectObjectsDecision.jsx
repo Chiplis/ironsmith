@@ -183,8 +183,10 @@ export default function SelectObjectsDecision({
               const isSelected = selected.has(c.id);
               const isUnavailable = !isSelected && selected.size >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
-              const controllerId = objectControllerById.get(String(c.id));
-              const accent = controllerId == null || Number(controllerId) === Number(state?.perspective)
+              const controllerId = c?.object_controller != null
+                ? Number(c.object_controller)
+                : objectControllerById.get(String(c.id));
+              const accent = controllerId == null
                 ? null
                 : getPlayerAccent(state?.players || [], controllerId);
               return (

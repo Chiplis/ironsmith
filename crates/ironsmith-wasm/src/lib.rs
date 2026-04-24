@@ -777,6 +777,7 @@ struct ObjectChoiceView {
     id: u64,
     name: String,
     legal: bool,
+    object_controller: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1281,6 +1282,10 @@ impl DecisionView {
                         id: id.0,
                         name: name.clone(),
                         legal: true,
+                        object_controller: game
+                            .current_controller(*id)
+                            .or_else(|| game.object(*id).map(|obj| obj.owner))
+                            .map(|controller| controller.0),
                     })
                     .collect(),
                 source_id: resolve_source_id(partition.source),
@@ -1361,6 +1366,13 @@ impl DecisionView {
                                 hidden_object_label()
                             },
                             legal: obj.legal,
+                            object_controller: visible
+                                .then(|| {
+                                    game.current_controller(obj.id)
+                                        .or_else(|| game.object(obj.id).map(|object| object.owner))
+                                })
+                                .flatten()
+                                .map(|controller| controller.0),
                         }
                     })
                     .collect(),

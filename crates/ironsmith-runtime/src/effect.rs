@@ -1221,6 +1221,12 @@ impl Effect {
         Self::new(ConniveEffect::new(target))
     }
 
+    /// Create a "target creature connives N" effect.
+    pub fn connive_with_count(target: ChooseSpec, count: impl Into<Value>) -> Self {
+        use crate::effects::ConniveEffect;
+        Self::new(ConniveEffect::new_with_count(target, count))
+    }
+
     /// Create a "goad target creature" effect.
     pub fn goad(target: ChooseSpec) -> Self {
         use crate::effects::GoadEffect;

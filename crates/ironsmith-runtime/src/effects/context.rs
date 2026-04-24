@@ -422,8 +422,10 @@ impl<'a> ExecutionContext<'a> {
             if let ResolvedTarget::Object(obj_id) = target
                 && let Some(obj) = game.object(*obj_id)
             {
-                self.target_snapshots
-                    .insert(*obj_id, ObjectSnapshot::from_object(obj, game));
+                self.target_snapshots.insert(
+                    *obj_id,
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game),
+                );
             }
         }
     }

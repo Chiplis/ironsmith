@@ -1876,11 +1876,19 @@ impl SupportEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConniveEffect {
     pub target: ChooseSpec,
+    pub count: Value,
 }
 
 impl ConniveEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self::new_with_count(target, Value::Fixed(1))
+    }
+
+    pub fn new_with_count(target: ChooseSpec, count: impl Into<Value>) -> Self {
+        Self {
+            target,
+            count: count.into(),
+        }
     }
 }
 

@@ -1463,11 +1463,15 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             );
             (vec![effect], choices)
         }
-        EffectAst::Connive { target } => {
+        EffectAst::Connive { target, count } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let effect =
-                tag_object_target_effect(Effect::connive(spec.clone()), &spec, ctx, "connived");
+            let effect = tag_object_target_effect(
+                Effect::connive_with_count(spec.clone(), count.clone()),
+                &spec,
+                ctx,
+                "connived",
+            );
             (vec![effect], choices)
         }
         EffectAst::ConniveIterated => (vec![Effect::connive(ChooseSpec::Iterated)], Vec::new()),

@@ -519,7 +519,7 @@ fn advance_reference_frame_for_effect(
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
             }
         }
-        EffectAst::Connive { target } => {
+        EffectAst::Connive { target, .. } => {
             maybe_tag_target(&target, frame, id_gen, "connived")?;
         }
         EffectAst::Detain { target } => {
@@ -1705,7 +1705,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::PhaseIn { target }
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
-        | EffectAst::Connive { target }
+        | EffectAst::Connive { target, .. }
         | EffectAst::Detain { target }
         | EffectAst::Goad { target }
         | EffectAst::Transform { target }
