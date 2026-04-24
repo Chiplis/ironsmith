@@ -861,7 +861,7 @@ mod tests {
                 object.owner,
                 game.controller_of(object)
             )),
-            Some(("Borrowed Bear", alice, bob)),
+            Some(("Borrowed Bear", alice, alice)),
             "sacrificed permanents should go to their owner's graveyard"
         );
     }

@@ -20,7 +20,20 @@ pub(super) fn active_target_assignments_for_effect(
     let start = *cursor;
     let end = start.saturating_add(count).min(assignments.len());
     *cursor = end;
-    assignments[start..end].to_vec()
+    let selected = assignments[start..end].to_vec();
+    if !selected.is_empty() {
+        return selected;
+    }
+
+    if let Some(spec) = effect.0.get_target_spec()
+        && let Some(next) = assignments.get(*cursor)
+        && (next.spec == *spec || next.spec.base() == spec.base())
+    {
+        *cursor += 1;
+        return vec![next.clone()];
+    }
+
+    selected
 }
 
 fn representative_segment_targets(
@@ -474,6 +487,9 @@ pub(super) fn resolve_stack_entry_full(
                 // and move directly to battlefield (avoids double-processing)
                 let new_id = game.move_object_by_effect(entry.object_id, Zone::Battlefield);
                 if let Some(id) = new_id {
+                    if entry.controller != obj.owner {
+                        game.set_current_controller(id, entry.controller);
+                    }
                     if let Some(chosen_player) = chosen_player {
                         game.set_chosen_player(id, chosen_player);
                     }
@@ -533,6 +549,9 @@ pub(super) fn resolve_stack_entry_full(
 
             // Note: Use the new ID from ETB result since zone change creates a new object
             if let Some(result) = etb_result {
+                if entry.controller != obj.owner {
+                    game.set_current_controller(result.new_id, entry.controller);
+                }
                 if let Some(chosen_player) = chosen_player {
                     game.set_chosen_player(result.new_id, chosen_player);
                 }
