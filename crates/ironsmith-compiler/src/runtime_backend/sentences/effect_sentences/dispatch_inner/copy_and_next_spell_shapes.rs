@@ -135,6 +135,108 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if grammar::words_match_prefix(tokens, &["this", "turn"]).is_some() {
+        let Some((_duration, delayed_clause)) =
+            super::super::grammar::primitives::split_lexed_once_on_delimiter(
+                tokens,
+                super::super::lexer::TokenKind::Comma,
+            )
+        else {
+            return Ok(None);
+        };
+        let delayed_clause = trim_commas(delayed_clause);
+        if !delayed_clause
+            .first()
+            .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        {
+            return Ok(None);
+        }
+        let Some((trigger_part, effect_part)) =
+            super::super::grammar::primitives::split_lexed_once_on_delimiter(
+                &delayed_clause,
+                super::super::lexer::TokenKind::Comma,
+            )
+        else {
+            return Ok(None);
+        };
+
+        let mut trigger_tokens = trim_commas(trigger_part);
+        if trigger_tokens
+            .first()
+            .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        {
+            trigger_tokens = trigger_tokens[1..].to_vec();
+        }
+        if trigger_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed trigger clause after 'this turn' (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
+        }
+
+        let delayed_effects = parse_effect_chain(&trim_commas(effect_part))?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed trigger effect clause (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
+        }
+
+        let trigger_words = crate::runtime_backend::token_word_refs(&trigger_tokens);
+        let attack_unblocked_suffix =
+            slice_ends_with(trigger_words.as_slice(), &["attacks", "and", "isn't", "blocked"])
+                || slice_ends_with(
+                    trigger_words.as_slice(),
+                    &["attacks", "and", "isnt", "blocked"],
+                );
+        if attack_unblocked_suffix
+            && trigger_words
+                .first()
+                .is_some_and(|word| *word == "target")
+        {
+            let subject_len = trigger_words.len().saturating_sub(4);
+            let subject_tokens = trim_commas(&trigger_tokens[1..subject_len]);
+            if subject_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing target subject for delayed attack trigger (clause: '{}')",
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                )));
+            }
+            let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported delayed attack target filter (clause: '{}')",
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                ))
+            })?;
+            let mut trigger_filter = filter.clone();
+            trigger_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            return Ok(Some(vec![
+                EffectAst::ChooseObjects {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                },
+                EffectAst::DelayedTriggerThisTurn {
+                    trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
+                    effects: delayed_effects,
+                },
+            ]));
+        }
+
+        let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
+        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+            trigger,
+            effects: delayed_effects,
+        }]));
+    }
+
     if !tokens
         .first()
         .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
@@ -666,4 +768,3 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
 
     merged
 }
-

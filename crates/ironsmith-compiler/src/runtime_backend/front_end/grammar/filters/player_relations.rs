@@ -874,6 +874,41 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     true
 }
 
+pub(super) fn parse_drawn_this_turn_words(words: &[&str]) -> Option<usize> {
+    parse_filter_prefix_words(
+        words,
+        (
+            primitives::word_slice_eq("drawn"),
+            primitives::word_slice_eq("this"),
+            primitives::word_slice_eq("turn"),
+        )
+            .void(),
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+pub(super) fn try_apply_drawn_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) =
+        find_filter_prefix_consumed(all_words.as_slice(), parse_drawn_this_turn_words)
+    else {
+        return false;
+    };
+    filter.drawn_this_turn = true;
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[SegmentPhraseVariant {
+            words: &["drawn", "this", "turn"],
+            drain_start_offset: 0,
+        }],
+    );
+    true
+}
+
 pub(super) fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
     filter.tagged_constraints.push(TaggedObjectConstraint {
         tag: TagKey::from(IT_TAG),

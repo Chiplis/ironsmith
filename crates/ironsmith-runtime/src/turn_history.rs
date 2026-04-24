@@ -161,6 +161,12 @@ impl TurnHistory {
             .sum()
     }
 
+    pub fn object_was_drawn_this_turn(&self, object: ObjectId) -> bool {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
+            .any(|event| event.cards.contains(&object))
+    }
+
     pub fn max_cards_drawn_for_players(&self, players: &[PlayerId]) -> u32 {
         players
             .iter()

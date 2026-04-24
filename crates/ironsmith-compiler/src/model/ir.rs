@@ -75,6 +75,7 @@ pub struct RewriteTriggeredLine<Predicate> {
     pub intervening_if: Option<Predicate>,
     pub max_triggers_per_turn: Option<u32>,
     pub chosen_option_label: Option<String>,
+    pub presentation_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

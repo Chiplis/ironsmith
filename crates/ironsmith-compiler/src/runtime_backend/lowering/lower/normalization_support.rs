@@ -19,6 +19,11 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
         | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
+        PredicateAst::ValueComparison {
+            left: crate::effect::Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            ..
+        } => Some(filter.clone()),
         PredicateAst::And(left, right) => predicate_object_filter_antecedent(left)
             .or_else(|| predicate_object_filter_antecedent(right)),
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
@@ -231,11 +236,22 @@ fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &Obje
     *filter = replacement;
 }
 
+fn bind_condition_target_antecedent(target: &mut TargetAst, antecedent: &ObjectFilter) {
+    match target {
+        TargetAst::Object(filter, _, _) => bind_condition_filter_antecedent(filter, antecedent),
+        TargetAst::WithCount(inner, _) => bind_condition_target_antecedent(inner, antecedent),
+        _ => {}
+    }
+}
+
 fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
     match effect {
         EffectAst::ChooseObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
             bind_condition_filter_antecedent(filter, antecedent);
+        }
+        EffectAst::Destroy { target } | EffectAst::DestroyNoRegeneration { target } => {
+            bind_condition_target_antecedent(target, antecedent);
         }
         EffectAst::Conditional {
             if_true, if_false, ..
@@ -534,6 +550,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
     full_text: &str,
     max_triggers_per_turn: Option<u32>,
     chosen_option_label: Option<&str>,
+    presentation_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
     let max_condition =
         crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
@@ -556,7 +573,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)
                 .and_then(|count| {
-                    crate::runtime_backend::trigger_frequency_condition(Some(full_text), Some(count))
+                    crate::runtime_backend::trigger_frequency_condition(
+                        Some(full_text),
+                        Some(count),
+                    )
                 });
             let merged_condition = match (chosen_option_label, merged_max_condition) {
                 (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
@@ -575,6 +595,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 infer_rewrite_triggered_functional_zones(&trigger, full_text),
                 Some(full_text.to_string()),
                 merged_condition,
+                presentation_label,
                 ReferenceImports::default(),
             )))
         }
@@ -591,6 +612,11 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             }
             if parsed.text().is_none() {
                 *parsed.text_mut() = Some(full_text.to_string());
+            }
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
+                && triggered.presentation_label.is_none()
+            {
+                triggered.presentation_label = presentation_label.map(str::to_string);
             }
             Ok(LineAst::Ability(parsed))
         }
@@ -622,6 +648,16 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                     max_triggers_per_turn,
                 });
             };
+            let mut effects = effects;
+            if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
+                bind_condition_antecedent_in_effects(&mut effects, &antecedent);
+            }
+            if predicate_contains_source_match(&predicate) {
+                effects = effects
+                    .into_iter()
+                    .map(retarget_it_animation_to_source)
+                    .collect();
+            }
             if matches!(
                 effects.as_slice(),
                 [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
@@ -754,6 +790,7 @@ fn rewrite_item_to_parsed_item(
                     &line.effect_text,
                     &line.effect_parse_tokens,
                     line.intervening_if.clone(),
+                    line.presentation_label.as_deref(),
                     line.max_triggers_per_turn,
                     line.chosen_option_label.as_deref(),
                 )?,

@@ -150,6 +150,7 @@ pub enum Restriction {
     BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
     Transform(ObjectFilter),
+    PhaseOut(ObjectFilter),
     AttackOrBlock(ObjectFilter),
     AttackOrBlockAlone(ObjectFilter),
 }
@@ -365,6 +366,10 @@ impl Restriction {
         Self::Transform(filter)
     }
 
+    pub fn phase_out(filter: ObjectFilter) -> Self {
+        Self::PhaseOut(filter)
+    }
+
     pub fn attack_or_block(filter: ObjectFilter) -> Self {
         Self::AttackOrBlock(filter)
     }
@@ -478,6 +483,8 @@ pub enum Condition {
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
+    ObjectEnteredBattlefieldThisTurn(ObjectFilter),
+    ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     SourceWasCast,
     ThisSpellWasCastFromZone(Zone),
     PlayerTappedLandForManaThisTurn {
@@ -536,6 +543,7 @@ pub enum Condition {
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,
     TaggedObjectMatches(TagKey, ObjectFilter),
+    TaggedObjectWasCast(TagKey),
     TaggedObjectIsSoulbondPaired(TagKey),
     EnchantedPermanentAttackedThisTurn,
     TargetMatches(ObjectFilter),

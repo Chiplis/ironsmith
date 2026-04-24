@@ -70,6 +70,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
             triggering_tag,
             ObjectFilter::creature().with_toughness(Comparison::LessThanOrEqual(3)),
         )),
+        presentation_label: None,
     };
 
     role_token_builder(

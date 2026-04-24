@@ -736,11 +736,11 @@ impl WasmGame {
                     && !trimmed.starts_with("Defense:")
             })
             .collect();
-        let oracle_text = oracle_lines.join("\n").trim().to_string();
-        if oracle_text.is_empty() {
+        let compiled_card_text = oracle_lines.join("\n").trim().to_string();
+        if compiled_card_text.is_empty() {
             None
         } else {
-            Some(oracle_text)
+            Some(compiled_card_text)
         }
     }
 

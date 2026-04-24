@@ -1696,6 +1696,7 @@ impl CardDefinitionBuilder {
                     ]),
                     choices: vec![],
                     intervening_if: None,
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             }),
@@ -2193,6 +2194,7 @@ impl CardDefinitionBuilder {
                         min_count: 1,
                     },
                 ))),
+                presentation_label: None,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -2247,6 +2249,7 @@ impl CardDefinitionBuilder {
                         min_count: 1,
                     },
                 ))),
+                presentation_label: None,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -2362,6 +2365,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2424,6 +2428,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2580,6 +2585,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2619,6 +2625,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2663,6 +2670,7 @@ impl CardDefinitionBuilder {
                 )]),
                 choices: vec![ChooseSpec::target(ChooseSpec::creature())],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones,
         })
@@ -2690,6 +2698,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target_spec],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2717,6 +2726,7 @@ impl CardDefinitionBuilder {
                 )]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
         })
@@ -2758,6 +2768,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: Some(Condition::ThisSpellPaidLabel(label)),
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
         })
@@ -2791,6 +2802,7 @@ impl CardDefinitionBuilder {
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
                 intervening_if: Some(Condition::XValueAtLeast(5)),
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2837,6 +2849,7 @@ impl CardDefinitionBuilder {
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
                 choices: vec![],
                 intervening_if: Some(bless_condition),
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2867,6 +2880,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2894,6 +2908,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2974,6 +2989,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3119,6 +3135,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Fade)),
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3153,6 +3170,7 @@ impl CardDefinitionBuilder {
                     ]),
                     choices: vec![],
                     intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Time)),
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             })
@@ -3213,6 +3231,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3258,6 +3277,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3287,6 +3307,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -3325,6 +3346,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Stack],
         })
@@ -3642,6 +3664,7 @@ impl CardDefinitionBuilder {
                 effects: effects.into(),
                 choices: vec![target_spec],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         };
@@ -3663,6 +3686,7 @@ impl CardDefinitionBuilder {
                 effects: effects.into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         };
@@ -3774,6 +3798,7 @@ impl CardDefinitionBuilder {
                         counter_type: CounterType::Time,
                         count: 1,
                     }),
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Exile],
             })
@@ -3789,6 +3814,7 @@ impl CardDefinitionBuilder {
                     ]),
                     choices: vec![],
                     intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Time)),
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Exile],
             })
@@ -3833,6 +3859,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Hand], // Only triggers from hand
         })
@@ -10058,6 +10085,42 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             effects_debug.contains("PutCountersEffect") && effects_debug.contains("ScryEffect"),
             "expected +1/+1 counter and scry effects in heroic trigger, got {effects_debug}"
+        );
+        assert_eq!(
+            triggered.presentation_label.as_deref(),
+            Some("Heroic"),
+            "expected labeled trigger provenance to be stored on the trigger"
+        );
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def);
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.starts_with("Heroic — Whenever you cast a spell")),
+            "expected labeled trigger to render from structured provenance, got {rendered:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn keyword_list_followed_by_trigger_does_not_gain_label_dash() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Atraxa Shape Variant")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Phyrexian, Subtype::Angel])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .parse_text("Flying, vigilance, deathtouch, lifelink\nAt the beginning of your end step, proliferate.")
+            .expect("parse keyword list plus trigger");
+
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def);
+        assert!(
+            rendered.iter().any(|line| {
+                line == "Flying, vigilance, deathtouch, lifelink"
+                    || line == "Flying, deathtouch, lifelink, vigilance"
+            }),
+            "expected keyword list to remain its own line, got {rendered:?}"
+        );
+        assert!(
+            !rendered.iter().any(|line| line.contains("lifelink — At")),
+            "keyword list should not be reinterpreted as a presentation label, got {rendered:?}"
         );
     }
 

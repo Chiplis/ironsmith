@@ -35,7 +35,10 @@ fn current_text_box_overlay(
     )
     .ok_or(ExecutionError::InvalidTarget)?;
 
-    Ok(TextBoxOverlay::new(chars.oracle_text, chars.abilities))
+    Ok(TextBoxOverlay::new(
+        chars.compiled_card_text,
+        chars.abilities,
+    ))
 }
 
 impl EffectExecutor for ExchangeTextBoxesEffect {
@@ -197,11 +200,11 @@ mod tests {
             .expect("trigger creature should have characteristics");
 
         assert_eq!(
-            mana_chars.oracle_text,
+            mana_chars.compiled_card_text,
             crate::compiled_text::debug_compiled_lines(&trigger_def).join("\n")
         );
         assert_eq!(
-            raid_chars.oracle_text,
+            raid_chars.compiled_card_text,
             crate::compiled_text::debug_compiled_lines(&mana_def).join("\n")
         );
         assert!(

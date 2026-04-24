@@ -174,7 +174,7 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::effects::ExecutionContext;
     use crate::effects::RegenerateEffect;
-    use crate::game_state::GameState;
+    use crate::game_state::{GameState, Phase, Step};
     use crate::ids::CardId;
     use crate::ids::PlayerId;
     use crate::snapshot::ObjectSnapshot;
@@ -196,6 +196,50 @@ mod tests {
 
         assert!(!game.can_gain_life(PlayerId::from_index(0)));
         assert!(!game.can_gain_life(PlayerId::from_index(1)));
+    }
+
+    #[test]
+    fn cant_phase_out_restriction_expires_at_controller_next_upkeep() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let permanent_card = CardBuilder::new(CardId::from_raw(11), "Anchored Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let permanent_id = game.create_object_from_card(&permanent_card, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(permanent_id, alice);
+        CantEffect::new(
+            Restriction::phase_out(ObjectFilter::specific(permanent_id)),
+            Until::YourNextUpkeep,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("apply phase-out restriction");
+
+        assert!(!game.can_phase_out(permanent_id));
+
+        game.next_turn();
+        game.update_cant_effects();
+        assert!(
+            !game.can_phase_out(permanent_id),
+            "restriction should remain active through another player's turn"
+        );
+
+        game.next_turn();
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Untap);
+        game.update_cant_effects();
+        assert!(
+            !game.can_phase_out(permanent_id),
+            "restriction should remain active through the controller's untap step"
+        );
+
+        game.turn.step = Some(Step::Upkeep);
+        game.update_cant_effects();
+        assert!(
+            game.can_phase_out(permanent_id),
+            "restriction should expire as the controller's next upkeep begins"
+        );
     }
 
     #[test]

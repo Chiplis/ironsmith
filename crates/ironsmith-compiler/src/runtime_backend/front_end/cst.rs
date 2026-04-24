@@ -93,6 +93,7 @@ pub(crate) struct TriggeredLineCst {
     pub(crate) intervening_if: Option<PredicateAst>,
     pub(crate) max_triggers_per_turn: Option<u32>,
     pub(crate) chosen_option_label: Option<String>,
+    pub(crate) presentation_label: Option<String>,
 }
 
 #[derive(Debug, Clone)]

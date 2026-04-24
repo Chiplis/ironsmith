@@ -63,6 +63,11 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
         | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
+        PredicateAst::ValueComparison {
+            left: crate::effect::Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            ..
+        } => Some(filter.clone()),
         PredicateAst::And(left, right) => predicate_object_filter_antecedent(left)
             .or_else(|| predicate_object_filter_antecedent(right)),
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
@@ -124,11 +129,22 @@ fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &Obje
     *filter = replacement;
 }
 
+fn bind_condition_target_antecedent(target: &mut TargetAst, antecedent: &ObjectFilter) {
+    match target {
+        TargetAst::Object(filter, _, _) => bind_condition_filter_antecedent(filter, antecedent),
+        TargetAst::WithCount(inner, _) => bind_condition_target_antecedent(inner, antecedent),
+        _ => {}
+    }
+}
+
 fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
     match effect {
         EffectAst::ChooseObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
             bind_condition_filter_antecedent(filter, antecedent);
+        }
+        EffectAst::Destroy { target } | EffectAst::DestroyNoRegeneration { target } => {
+            bind_condition_target_antecedent(target, antecedent);
         }
         EffectAst::Conditional {
             if_true, if_false, ..
@@ -835,6 +851,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
     functional_zones: Vec<Zone>,
     text: Option<String>,
     intervening_if: Option<crate::ConditionExpr>,
+    presentation_label: Option<&str>,
     reference_imports: impl Into<ReferenceImports>,
 ) -> ParsedAbility {
     let reference_imports = reference_imports.into();
@@ -845,6 +862,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
                 effects: crate::resolution::ResolutionProgram::default(),
                 choices: Vec::new(),
                 intervening_if,
+                presentation_label: presentation_label.map(str::to_string),
             }),
             functional_zones,
         }

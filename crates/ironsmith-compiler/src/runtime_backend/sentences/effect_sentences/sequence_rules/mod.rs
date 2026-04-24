@@ -298,6 +298,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: triples::parse_top_cards_put_match_into_hand_rest_graveyard,
     },
     SequenceRuleDef {
+        name: "top-cards-put-any-matching-to-zone-rest-bottom",
+        feature_tag: Some("looked-cards-any-matching-bottom"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: triples::parse_top_cards_put_any_matching_to_zone_rest_bottom,
+    },
+    SequenceRuleDef {
         name: "look-at-top-split-hand-bottom-exile-play",
         feature_tag: Some("looked-cards-split-play-exiled"),
         priority: 335,
@@ -337,6 +345,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: first_word_look_or_reveal,
         parser: triples::parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-reveal-match-put-top-rest-bottom",
+        feature_tag: Some("looked-cards-reveal-and-top"),
+        priority: 333,
+        consumed_sentences: 3,
+        predicate: first_head_look_at,
+        parser: triples::parse_look_at_top_reveal_match_put_top_rest_bottom,
     },
     SequenceRuleDef {
         name: "look-at-top-reveal-match-put-rest-bottom",
@@ -473,6 +489,14 @@ const REGISTERED_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_head_look_at,
         parser: pairs::parse_look_at_top_then_put_one_hand_other_bottom,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-put-one-hand-other-graveyard",
+        feature_tag: Some("looked-cards-hand-graveyard"),
+        priority: 236,
+        consumed_sentences: 2,
+        predicate: first_head_look_at,
+        parser: pairs::parse_look_at_top_then_put_one_hand_other_graveyard,
     },
     SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand",

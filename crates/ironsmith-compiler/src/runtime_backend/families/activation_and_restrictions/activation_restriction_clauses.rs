@@ -883,6 +883,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             }
         },
         ["transform"] => Restriction::transform(filter),
+        ["phase", "out"] | ["phase", "out", "this", "turn"] | ["phases", "out"] => {
+            Restriction::phase_out(filter)
+        }
         ["be", "targeted"] => Restriction::be_targeted(filter),
         _ if remainder_words.first() == Some(&"block") && remainder_words.len() > 1 => {
             let attacker_tokens = trim_commas(&remainder_tokens[1..]);

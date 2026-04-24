@@ -65,7 +65,7 @@ pub struct ObjectSnapshot {
     /// Subtypes (Human, Equipment, Forest, etc.).
     pub subtypes: Vec<Subtype>,
     /// Oracle text / rules text.
-    pub oracle_text: String,
+    pub compiled_card_text: String,
     /// Optional reference to another face for flip/DFC style cards.
     pub other_face: Option<CardId>,
     /// Linked face name for on-demand compilation without a global registry preload.
@@ -147,7 +147,7 @@ impl ObjectSnapshot {
             supertypes: obj.supertypes.clone(),
             card_types: obj.card_types.clone(),
             subtypes: obj.subtypes.clone(),
-            oracle_text: obj.oracle_text.clone(),
+            compiled_card_text: obj.compiled_card_text.clone(),
             other_face: obj.other_face,
             other_face_name: obj.other_face_name.clone(),
             linked_face_layout: obj.linked_face_layout,
@@ -239,7 +239,7 @@ impl ObjectSnapshot {
         // which include continuous effects like anthems, pumps, etc.
         if let Some(calculated) = game.calculated_characteristics_with_effects(obj.id, effects) {
             // Override with calculated values (these include continuous effects)
-            snapshot.oracle_text = calculated.oracle_text;
+            snapshot.compiled_card_text = calculated.compiled_card_text;
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
             snapshot.card_types = calculated.card_types;
@@ -437,7 +437,7 @@ impl ObjectSnapshot {
             supertypes: vec![],
             card_types: vec![],
             subtypes: vec![],
-            oracle_text: String::new(),
+            compiled_card_text: String::new(),
             other_face: None,
             other_face_name: None,
             linked_face_layout: LinkedFaceLayout::None,

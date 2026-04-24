@@ -82,6 +82,7 @@ fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticIt
         intervening_if: triggered.intervening_if,
         max_triggers_per_turn: triggered.max_triggers_per_turn,
         chosen_option_label: triggered.chosen_option_label,
+        presentation_label: triggered.presentation_label,
     }))
 }
 

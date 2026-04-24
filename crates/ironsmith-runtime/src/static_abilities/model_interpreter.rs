@@ -789,10 +789,25 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::new(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyActivatedAbilities(copy) => {
-                let converted =
+                let mut converted =
                     crate::static_abilities::CopyActivatedAbilities::new(copy.filter.clone())
-                        .with_exclude_source_name(copy.exclude_source_name);
+                        .with_exclude_source_name(copy.exclude_source_name)
+                        .with_exclude_source_id(copy.exclude_source_id)
+                        .with_display(copy.display.clone());
+                if let Some(counter) = copy.counter {
+                    converted = converted.with_counter(counter);
+                }
+                if copy.force_once_each_turn {
+                    converted = converted.with_once_each_turn();
+                }
                 StaticAbility::copy_activated_abilities(converted)
+            }
+            ironsmith_core::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
+                let converted =
+                    crate::static_abilities::CopyTriggeredAbilities::new(copy.filter.clone())
+                        .with_exclude_source_name(copy.exclude_source_name)
+                        .with_display(copy.display.clone());
+                StaticAbility::copy_triggered_abilities(converted)
             }
             ironsmith_core::StaticAbilityPayload::LevelAbility(level) => {
                 StaticAbility::with_level_abilities(vec![crate::ability::LevelAbility {

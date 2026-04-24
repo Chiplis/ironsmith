@@ -115,7 +115,7 @@ pub use composition::{
     TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
     VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
-pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect};
+pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
 pub use counters::{
     ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,

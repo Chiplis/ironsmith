@@ -812,6 +812,7 @@ fn lower_gift_keyword_chunk(
                     "When this permanent enters, if the gift was promised, {followup_text}"
                 )),
                 Some(crate::ConditionExpr::ThisSpellPaidLabel("Gift".to_string())),
+                None,
                 prepared.imports.clone(),
             );
             let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
@@ -873,6 +874,7 @@ fn lower_optional_cost_with_cast_trigger_chunk(
         vec![Zone::Stack],
         Some(followup_text),
         Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_label)),
+        None,
         prepared.imports.clone(),
     );
     let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
@@ -1033,6 +1035,7 @@ fn lower_triggered_chunk(
             Some(info.raw_line.as_str()),
             max_triggers_per_turn,
         ),
+        None,
         prepared.prepared.imports.clone(),
     );
     let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {

@@ -26,9 +26,15 @@ fn compile_delayed_trigger_spec(
             },
         ),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        TriggerSpec::ThisAttacksAndIsntBlocked => {
+            Ok(ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked)
+        }
         TriggerSpec::Attacks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
         }
+        TriggerSpec::AttacksAndIsntBlocked(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter.clone()),
+        ),
         TriggerSpec::AttacksOneOrMore(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter.clone()),
         ),
@@ -590,6 +596,62 @@ pub(super) fn try_compile_timing_and_control_effect(
                         .until_end_of_turn(),
                     );
                     (vec![effect], choices)
+                }
+                TriggerSpec::ThisAttacksAndIsntBlocked => {
+                    if let Some(target_tag) = ctx.last_object_tag.clone() {
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            target_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
+                            delayed_effects,
+                            false,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
+                                delayed_effects,
+                                false,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
+                TriggerSpec::AttacksAndIsntBlocked(filter) => {
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
+                            delayed_effects,
+                            false,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_filter)
+                        .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(
+                                    resolved_filter,
+                                ),
+                                delayed_effects,
+                                false,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
                 }
                 _ => {
                     let effect = Effect::new(
@@ -1173,6 +1235,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     | PredicateAst::ItIsSoulbondPaired
                     | PredicateAst::ItMatches(_)
             ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
+                || matches!(predicate, PredicateAst::TaggedWasCast(tag) if tag.as_str() == IT_TAG)
                 || matches!(
                     predicate,
                     PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)

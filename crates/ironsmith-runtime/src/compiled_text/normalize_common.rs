@@ -467,10 +467,13 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 && name_lower != "token"
                 && name_lower != subtype_text.to_ascii_lowercase()
                 && !name_matches_any_subtype;
-            if name_is_distinct {
+            let use_name_for_creature = name_is_distinct
+                && card
+                    .supertypes
+                    .contains(&crate::types::Supertype::Legendary);
+            if name_is_distinct && !use_name_for_creature {
                 explicit_named_clause = Some(card.name.clone());
             }
-            let use_name_for_creature = false;
             let use_name_for_noncreature = false;
             if use_name_for_creature {
                 creature_name_prefix = Some(card.name.clone());
@@ -515,6 +518,12 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 }
                 if static_ability.is_keyword() {
                     keyword_texts.push(static_ability.display().to_ascii_lowercase());
+                    continue;
+                }
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::CopyTriggeredAbilities
+                {
+                    extra_ability_texts.push(static_ability.display().to_ascii_lowercase());
                     continue;
                 }
                 extra_ability_texts.push(quote_token_granted_ability_text(
@@ -4422,7 +4431,10 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized.starts_with("At the beginning of each player's end step,") {
         let lower = normalized.to_ascii_lowercase();
-        if !lower.contains("that player") && !lower.contains("the player") {
+        if !lower.contains("that player")
+            && !lower.contains("the player")
+            && !lower.contains("entered the battlefield under your control this turn")
+        {
             normalized = normalized.replacen(
                 "At the beginning of each player's end step,",
                 "At the beginning of each end step,",
@@ -7610,6 +7622,72 @@ pub(super) fn describe_tag_attached_then_tap_or_untap(
     None
 }
 
+fn object_filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    }) || filter
+        .any_of
+        .iter()
+        .any(|candidate| object_filter_references_tag(candidate, tag))
+}
+
+fn choose_spec_filter_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
+    match spec {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            object_filter_references_tag(filter, tag)
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_filter_references_tag(inner, tag)
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn describe_tag_attached_then_double_power(
+    tag_attached: &crate::effects::TagAttachedToSourceEffect,
+    next: &Effect,
+) -> Option<String> {
+    let tag = tag_attached.tag.as_str();
+    if tag != "equipped" {
+        return None;
+    }
+    let apply = next.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if apply.until != Until::EndOfTurn
+        || apply.condition.is_some()
+        || apply.modification.is_some()
+        || !apply.additional_modifications.is_empty()
+        || apply.runtime_modifications.len() != 1
+        || !apply
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_filter_references_tag(spec, tag))
+    {
+        return None;
+    }
+    let crate::effects::RuntimeModification::ModifyPowerToughness { power, toughness } =
+        &apply.runtime_modifications[0]
+    else {
+        return None;
+    };
+    if *toughness != Value::Fixed(0) {
+        return None;
+    }
+    let Value::PowerOf(power_spec) = power else {
+        return None;
+    };
+    if !choose_spec_filter_references_tag(power_spec, tag) {
+        return None;
+    }
+    let attached_object = describe_attached_object_for_tag(tag, apply.target_spec.as_ref());
+    Some(format!(
+        "Double {attached_object}'s power until end of turn"
+    ))
+}
+
 pub(super) fn is_generated_internal_tag(tag: &str) -> bool {
     effect_text_shared::is_generated_internal_tag(tag)
 }
@@ -7618,11 +7696,27 @@ pub(super) fn is_implicit_reference_tag(tag: &str) -> bool {
     effect_text_shared::is_implicit_reference_tag(tag)
 }
 
+fn is_aura_only_filter(filter: &ObjectFilter) -> bool {
+    if filter.subtypes.as_slice() != [Subtype::Aura] {
+        return false;
+    }
+    if !filter.card_types.is_empty() && filter.card_types.as_slice() != [CardType::Enchantment] {
+        return false;
+    }
+    let mut bare = filter.clone();
+    bare.subtypes.clear();
+    if bare.card_types.as_slice() == [CardType::Enchantment] {
+        bare.card_types.clear();
+    }
+    bare == ObjectFilter::default()
+}
+
 pub(super) fn describe_until(until: &Until) -> String {
     match until {
         Until::Forever => "forever".to_string(),
         Until::EndOfTurn => "until end of turn".to_string(),
         Until::YourNextTurn => "until your next turn".to_string(),
+        Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {
@@ -7852,6 +7946,9 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::Transform(filter) => {
             format!("{} can't transform", filter.description())
+        }
+        crate::effect::Restriction::PhaseOut(filter) => {
+            format!("{} can't phase out", filter.description())
         }
         crate::effect::Restriction::AttackOrBlock(filter) => {
             format!("{} can't attack or block", filter.description())
@@ -8229,6 +8326,46 @@ fn describe_happily_ever_after_condition(condition: &Condition) -> Option<String
     };
 
     Some(format!("{first}, {second}, and {third}"))
+}
+
+fn pluralize_relative_object_phrase(phrase: &str) -> String {
+    let mut plural = pluralize_noun_phrase(phrase);
+    for (singular, plural_noun) in [
+        ("artifact", "artifacts"),
+        ("battle", "battles"),
+        ("card", "cards"),
+        ("creature", "creatures"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("permanent", "permanents"),
+        ("planeswalker", "planeswalkers"),
+        ("spell", "spells"),
+    ] {
+        if plural == format!("{singular} you don't controls") {
+            plural = format!("{plural_noun} you don't control");
+        }
+        if plural == format!("{singular} you controls") {
+            plural = format!("{plural_noun} you control");
+        }
+        plural = plural.replace(
+            &format!(" {singular} you don't controls"),
+            &format!(" {plural_noun} you don't control"),
+        );
+        plural = plural.replace(
+            &format!(" {singular} you controls"),
+            &format!(" {plural_noun} you control"),
+        );
+    }
+    plural
+}
+
+fn describe_counter_constraint_phrase(counter: crate::filter::CounterConstraint) -> String {
+    match counter {
+        crate::filter::CounterConstraint::Any => "a counter".to_string(),
+        crate::filter::CounterConstraint::Typed(counter_type) => {
+            with_indefinite_article(&format!("{} counter", describe_counter_type(counter_type)))
+        }
+    }
 }
 
 pub(super) fn describe_condition(condition: &Condition) -> String {
@@ -8647,6 +8784,27 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             "a permanent left the battlefield under your control this turn".to_string()
         }
+        Condition::ObjectEnteredBattlefieldThisTurn(filter) => {
+            let mut object_filter = filter.clone();
+            object_filter.zone = None;
+            let controller = object_filter.controller.take();
+            let object = with_indefinite_article(strip_leading_article(&object_filter.description()));
+            if let Some(controller) = controller {
+                format!(
+                    "{object} entered the battlefield under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                )
+            } else {
+                format!("{object} entered the battlefield this turn")
+            }
+        }
+        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
+            let mut object_filter = filter.clone();
+            object_filter.zone = None;
+            let object = with_indefinite_article(strip_leading_article(&object_filter.description()))
+                .replace(" you control", " you controlled");
+            format!("{object} was put into a graveyard from the battlefield this turn")
+        }
         Condition::SourceWasCast => "you cast it".to_string(),
         Condition::ThisSpellWasCastFromZone(zone) => {
             let zone_text = match zone {
@@ -8801,6 +8959,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             let desc = filter.description();
             if is_implicit_reference_tag(tag.as_str()) {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
+                if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
+                    return "that enchantment is an Aura".to_string();
+                }
                 let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
                     "that object"
 	                } else {
@@ -8926,9 +9087,16 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
 	                    return is_clause(noun);
 	                }
 	                return format!("{subject} matches {desc}");
-	            }
+                }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
+        Condition::TaggedObjectWasCast(tag) => {
+            if is_implicit_reference_tag(tag.as_str()) {
+                "it was cast".to_string()
+            } else {
+                format!("the tagged object '{}' was cast", tag.as_str())
+            }
+        }
         Condition::TaggedObjectIsSoulbondPaired(tag) => {
             if is_implicit_reference_tag(tag.as_str()) {
                 "it's paired with another creature".to_string()
@@ -9097,6 +9265,18 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 return rendered;
             }
             if let (
+                Value::LifeLostThisTurn(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "{} lost {} or more life this turn",
+                    describe_player_filter(player),
+                    count
+                );
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
@@ -9106,8 +9286,20 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 let count_text = small_number_word(*count as u32)
                     .map(str::to_string)
                     .unwrap_or_else(|| count.to_string());
+                if let Some(counter) = filter.with_counter {
+                    let mut subject_filter = filter.clone();
+                    subject_filter.with_counter = None;
+                    subject_filter.zone = None;
+                    let subject =
+                        strip_indefinite_article(&subject_filter.description()).to_string();
+                    let noun = pluralize_relative_object_phrase(&subject);
+                    return format!(
+                        "{count_text} or more {noun} have {} on them",
+                        describe_counter_constraint_phrase(counter)
+                    );
+                }
                 let subject = strip_indefinite_article(&filter.description()).to_string();
-                let noun = pluralize_noun_phrase(&subject);
+                let noun = pluralize_relative_object_phrase(&subject);
                 return format!("there are {} or more {} on the battlefield", count_text, noun);
             }
             if let (
@@ -9323,6 +9515,24 @@ mod tests {
         assert_eq!(
             describe_value(&Value::TotalPower(filter)),
             "the total power of the sacrificed creatures"
+        );
+    }
+
+    #[test]
+    fn describe_count_condition_with_counter_uses_have_counter_clause() {
+        let mut filter = ObjectFilter::permanent().controlled_by(PlayerFilter::NotYou);
+        filter.zone = Some(Zone::Battlefield);
+        filter.with_counter = Some(crate::filter::CounterConstraint::Typed(
+            crate::object::CounterType::Named("aim"),
+        ));
+
+        assert_eq!(
+            describe_condition(&Condition::ValueComparison {
+                left: Value::Count(filter),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(2),
+            }),
+            "two or more permanents you don't control have an aim counter on them"
         );
     }
 }

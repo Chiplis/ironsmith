@@ -2450,6 +2450,7 @@ fn put_triggers_on_stack_uses_controller_selected_order_for_simultaneous_trigger
         effects: crate::resolution::ResolutionProgram::default(),
         choices: vec![],
         intervening_if: None,
+        presentation_label: None,
     };
 
     let mut trigger_queue = TriggerQueue::new();
@@ -2533,6 +2534,7 @@ fn put_triggers_on_stack_orders_each_controller_in_apnap_order() {
         effects: crate::resolution::ResolutionProgram::default(),
         choices: vec![],
         intervening_if: None,
+        presentation_label: None,
     };
 
     let make_trigger = |game: &mut GameState, name: &str, controller: PlayerId| {
@@ -3852,7 +3854,7 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
         .calculated_characteristics(ornithopter_id)
         .expect("Ornithopter should still have calculated characteristics after the exchange");
     assert_eq!(
-        ornithopter_chars.oracle_text,
+        ornithopter_chars.compiled_card_text,
         crate::compiled_text::debug_compiled_lines(&myr_def).join("\n"),
         "Ornithopter should now carry Myr Moonvessel's text box"
     );
@@ -4146,12 +4148,12 @@ fn run_exchange_of_words_cast_from_hand_swapping_alices_yawgmoth_and_ornithopter
         .expect("Yawgmoth should still have calculated characteristics");
 
     assert_eq!(
-        ornithopter_chars.oracle_text,
+        ornithopter_chars.compiled_card_text,
         crate::compiled_text::debug_compiled_lines(&fixture.yawgmoth).join("\n"),
         "Ornithopter should pick up Yawgmoth's text box after the exchange"
     );
     assert_eq!(
-        yawgmoth_chars.oracle_text,
+        yawgmoth_chars.compiled_card_text,
         crate::compiled_text::debug_compiled_lines(&fixture.ornithopter).join("\n"),
         "Yawgmoth should pick up Ornithopter's text box after the exchange"
     );
@@ -9941,6 +9943,7 @@ fn test_undying_trigger_generation() {
                 effects: undying_effects().into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -9999,6 +10002,7 @@ fn test_undying_does_not_trigger_with_plus_counters() {
                 effects: undying_effects().into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -10059,6 +10063,7 @@ fn test_persist_trigger_generation() {
                 effects: persist_effects().into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         });

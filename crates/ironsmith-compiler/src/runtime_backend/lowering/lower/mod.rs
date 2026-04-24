@@ -2,8 +2,8 @@ use crate::Until;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::builders::{
     CardDefinition, CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, GiftTimingAst,
-    IT_TAG, InsteadSemantics, LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility,
-    ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
+    IT_TAG, InsteadSemantics, LineAst, LineInfo, NormalizedLine, OptionalCost, ParseAnnotations,
+    ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
     ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };

@@ -366,6 +366,7 @@ fn effect_output_changed(
         include_mana,
         exclude_source_name,
         exclude_source_id,
+        ..
     } = &a.modification
     {
         let before = collect_activated_ability_signatures(
@@ -1152,7 +1153,8 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 })
                 .collect();
         }
-        Modification::CopyActivatedAbilities { .. } => {}
+        Modification::CopyActivatedAbilities { .. }
+        | Modification::CopyTriggeredAbilities { .. } => {}
         Modification::AddCombatDamageDrawAbility => {
             chars.abilities.push(crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_deals_combat_damage_to_player(),
@@ -1968,7 +1970,7 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 name: object.name.clone(),
-                oracle_text: object.oracle_text.clone(),
+                compiled_card_text: object.compiled_card_text.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
@@ -2016,7 +2018,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
-                oracle_text: land.oracle_text.clone(),
+                compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -2041,6 +2043,7 @@ mod tests {
                 include_mana: true,
                 exclude_source_name: false,
                 exclude_source_id: false,
+                force_once_each_turn: false,
             },
             timestamp: 1,
             group: None,
@@ -2122,7 +2125,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
-                oracle_text: land.oracle_text.clone(),
+                compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
@@ -2147,6 +2150,7 @@ mod tests {
                 include_mana: true,
                 exclude_source_name: false,
                 exclude_source_id: false,
+                force_once_each_turn: false,
             },
             timestamp: 1,
             group: None,

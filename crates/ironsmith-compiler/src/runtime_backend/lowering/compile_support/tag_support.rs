@@ -814,6 +814,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                     | PredicateAst::ItIsSoulbondPaired
                     | PredicateAst::ItMatches(_)
             ) || matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == IT_TAG)
+                || matches!(predicate, PredicateAst::TaggedWasCast(t) if t.as_str() == IT_TAG)
                 || matches!(
                     predicate,
                     PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == IT_TAG
@@ -894,6 +895,7 @@ pub(crate) fn restriction_references_tag(
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
+        | Restriction::PhaseOut(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)

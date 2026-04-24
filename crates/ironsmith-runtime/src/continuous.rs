@@ -364,6 +364,14 @@ pub enum Modification {
         include_mana: bool,
         exclude_source_name: bool,
         exclude_source_id: bool,
+        force_once_each_turn: bool,
+    },
+
+    /// Copy triggered abilities from objects matching a filter.
+    CopyTriggeredAbilities {
+        filter: ObjectFilter,
+        exclude_source_name: bool,
+        exclude_source_id: bool,
     },
 
     /// Add "Whenever this creature deals combat damage to a player, draw a card."
@@ -502,6 +510,7 @@ impl Modification {
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
             | Modification::RemoveAllAbilities
@@ -542,14 +551,14 @@ impl Modification {
 /// A rules-text overlay used by text-changing effects such as text-box exchange.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextBoxOverlay {
-    pub oracle_text: String,
+    pub compiled_card_text: String,
     pub abilities: Vec<Ability>,
 }
 
 impl TextBoxOverlay {
-    pub fn new(oracle_text: String, abilities: Vec<Ability>) -> Self {
+    pub fn new(compiled_card_text: String, abilities: Vec<Ability>) -> Self {
         Self {
-            oracle_text,
+            compiled_card_text,
             abilities,
         }
     }
@@ -976,7 +985,7 @@ impl ContinuousEffect {
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
     pub name: String,
-    pub oracle_text: String,
+    pub compiled_card_text: String,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: Vec<CardType>,
@@ -1067,7 +1076,7 @@ fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
 fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
     CalculatedCharacteristics {
         name: object.name.clone(),
-        oracle_text: object.oracle_text.clone(),
+        compiled_card_text: object.compiled_card_text.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
@@ -1349,7 +1358,7 @@ fn apply_text_box_modification_to_chars(
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
         chars.name = target.name.clone();
-        chars.oracle_text = target.oracle_text.clone();
+        chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
         chars.card_types = target.card_types.clone();
@@ -1383,7 +1392,7 @@ fn apply_text_box_modification_to_chars(
         }
         Modification::ChangeText { .. } => {}
         Modification::SetTextBox(overlay) => {
-            chars.oracle_text = overlay.oracle_text.clone();
+            chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.abilities = overlay.abilities.clone();
             chars.static_abilities = extract_static_abilities(&overlay.abilities);
         }
@@ -2062,6 +2071,20 @@ fn continuous_effect_duration_is_active(
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.turn.active_player == effect.controller)
         }
+        Until::YourNextUpkeep => {
+            if game.turn.turn_number <= effect.expires_end_of_turn
+                || game.turn.active_player != effect.controller
+            {
+                true
+            } else if matches!(game.turn.phase, crate::game_state::Phase::Beginning) {
+                !matches!(
+                    game.turn.step,
+                    Some(crate::game_state::Step::Upkeep | crate::game_state::Step::Draw)
+                )
+            } else {
+                false
+            }
+        }
         Until::ThisLeavesTheBattlefield => game
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
@@ -2225,7 +2248,7 @@ fn apply_modification_to_chars(
         let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
         chars.name = target.name.clone();
-        chars.oracle_text = target.oracle_text.clone();
+        chars.compiled_card_text = target.compiled_card_text.clone();
         chars.power = target.base_power.as_ref().map(|p| p.base_value());
         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
         chars.card_types = target.card_types.clone();
@@ -2265,7 +2288,7 @@ fn apply_modification_to_chars(
             // Text changes are handled separately.
         }
         Modification::SetTextBox(overlay) => {
-            chars.oracle_text = overlay.oracle_text.clone();
+            chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.abilities = overlay.abilities.clone();
             chars.static_abilities = extract_static_abilities(&overlay.abilities);
             add_abilities_from_counters(object, chars);
@@ -2364,6 +2387,7 @@ fn apply_modification_to_chars(
             include_mana,
             exclude_source_name,
             exclude_source_id,
+            force_once_each_turn,
         } => {
             use crate::ability::AbilityKind;
             use crate::static_ability_processor::get_all_continuous_effects;
@@ -2420,7 +2444,68 @@ fn apply_modification_to_chars(
                     if ability.is_mana_ability() && !*include_mana {
                         continue;
                     }
-                    chars.abilities.push(ability.clone());
+                    let mut copied = ability.clone();
+                    if *force_once_each_turn
+                        && let AbilityKind::Activated(activated) = &mut copied.kind
+                    {
+                        activated.timing = crate::ability::ActivationTiming::OncePerTurn;
+                    }
+                    chars.abilities.push(copied);
+                }
+            }
+        }
+        Modification::CopyTriggeredAbilities {
+            filter,
+            exclude_source_name,
+            exclude_source_id,
+        } => {
+            use crate::ability::AbilityKind;
+            use crate::static_ability_processor::get_all_continuous_effects;
+
+            let effects = get_all_continuous_effects(game);
+            let commanders = &game.commanders;
+            let battlefield = &game.battlefield;
+
+            let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
+            candidate_ids.sort();
+
+            for candidate_id in candidate_ids {
+                let Some(candidate) = objects.get(&candidate_id) else {
+                    continue;
+                };
+                if *exclude_source_id && candidate.id == object.id {
+                    continue;
+                }
+                if *exclude_source_name && candidate.name == object.name {
+                    continue;
+                }
+
+                let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
+                    candidate.id,
+                    objects,
+                    &effects,
+                    battlefield,
+                    commanders,
+                    game,
+                ) else {
+                    continue;
+                };
+
+                if !filter_matches_with_characteristics(
+                    filter,
+                    candidate,
+                    &candidate_chars,
+                    game,
+                    effect_controller,
+                    effect_source,
+                ) {
+                    continue;
+                }
+
+                for ability in &candidate_chars.abilities {
+                    if matches!(ability.kind, AbilityKind::Triggered(_)) {
+                        chars.abilities.push(ability.clone());
+                    }
                 }
             }
         }
@@ -2770,7 +2855,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         let preserved_abilities =
                             preserve_source_abilities.then(|| chars.abilities.clone());
                         chars.name = target.name.clone();
-                        chars.oracle_text = target.oracle_text.clone();
+                        chars.compiled_card_text = target.compiled_card_text.clone();
                         // Copy base characteristics from the target
                         chars.power = target.base_power.as_ref().map(|p| p.base_value());
                         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
@@ -2800,7 +2885,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     // Text changes are handled separately.
                 }
                 Modification::SetTextBox(overlay) => {
-                    chars.oracle_text = overlay.oracle_text.clone();
+                    chars.compiled_card_text = overlay.compiled_card_text.clone();
                     chars.abilities = overlay.abilities.clone();
                     chars.static_abilities = extract_static_abilities(&overlay.abilities);
                     add_abilities_from_counters(object, &mut chars);
@@ -2932,6 +3017,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     include_mana,
                     exclude_source_name,
                     exclude_source_id,
+                    force_once_each_turn,
                 } => {
                     use crate::ability::AbilityKind;
                     use crate::static_ability_processor::get_all_continuous_effects;
@@ -2985,7 +3071,65 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                             if ability.is_mana_ability() && !*include_mana {
                                 continue;
                             }
-                            chars.abilities.push(ability.clone());
+                            let mut copied = ability.clone();
+                            if *force_once_each_turn
+                                && let AbilityKind::Activated(activated) = &mut copied.kind
+                            {
+                                activated.timing = crate::ability::ActivationTiming::OncePerTurn;
+                            }
+                            chars.abilities.push(copied);
+                        }
+                    }
+                }
+                Modification::CopyTriggeredAbilities {
+                    filter,
+                    exclude_source_name,
+                    exclude_source_id,
+                } => {
+                    use crate::ability::AbilityKind;
+                    use crate::static_ability_processor::get_all_continuous_effects;
+
+                    let effects = get_all_continuous_effects(ctx.game);
+                    let mut candidate_ids: Vec<_> = ctx.objects.keys().copied().collect();
+                    candidate_ids.sort();
+
+                    for candidate_id in candidate_ids {
+                        let Some(candidate) = ctx.objects.get(&candidate_id) else {
+                            continue;
+                        };
+                        if *exclude_source_id && candidate.id == object.id {
+                            continue;
+                        }
+                        if *exclude_source_name && candidate.name == object.name {
+                            continue;
+                        }
+
+                        let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
+                            candidate.id,
+                            ctx.objects,
+                            &effects,
+                            ctx.battlefield,
+                            &ctx.game.commanders,
+                            ctx.game,
+                        ) else {
+                            continue;
+                        };
+
+                        if !filter_matches_with_characteristics(
+                            filter,
+                            candidate,
+                            &candidate_chars,
+                            ctx.game,
+                            effect.controller,
+                            effect.source,
+                        ) {
+                            continue;
+                        }
+
+                        for ability in &candidate_chars.abilities {
+                            if matches!(ability.kind, AbilityKind::Triggered(_)) {
+                                chars.abilities.push(ability.clone());
+                            }
                         }
                     }
                 }
@@ -3305,6 +3449,7 @@ fn apply_layer_7_effects(
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
             | Modification::RemoveAllAbilities
@@ -4331,7 +4476,7 @@ mod tests {
         // Calculate characteristics
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
-            oracle_text: creature.oracle_text.clone(),
+            compiled_card_text: creature.compiled_card_text.clone(),
             power: creature.base_power.as_ref().map(|p| p.base_value()),
             toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
             card_types: creature.card_types.clone(),
@@ -4377,7 +4522,7 @@ mod tests {
 
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
-            oracle_text: creature.oracle_text.clone(),
+            compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),
@@ -4433,7 +4578,7 @@ mod tests {
         // Start with flying ability already present
         let mut chars = CalculatedCharacteristics {
             name: creature.name.clone(),
-            oracle_text: creature.oracle_text.clone(),
+            compiled_card_text: creature.compiled_card_text.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),

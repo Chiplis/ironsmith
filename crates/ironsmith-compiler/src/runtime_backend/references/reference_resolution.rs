@@ -2278,6 +2278,7 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
             }
             replacements
         }
+        PredicateAst::TaggedWasCast(tag) => bind_unresolved_it_in_tag(tag, seed_tag),
         PredicateAst::PlayerTaggedObjectMatches { tag, filter, .. } => {
             bind_unresolved_it_in_tag(tag, seed_tag)
                 + bind_unresolved_it_in_filter(filter, seed_tag)
@@ -2329,6 +2330,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
+        | Restriction::PhaseOut(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)

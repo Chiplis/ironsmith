@@ -380,6 +380,7 @@ pub struct ObjectFilter {
     pub entered_graveyard_this_turn: bool,
     pub entered_graveyard_from_battlefield_this_turn: bool,
     pub was_dealt_damage_this_turn: bool,
+    pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
     pub power_parity: Option<ParityRequirement>,
     pub power_reference: PtReference,
@@ -401,6 +402,7 @@ pub struct ObjectFilter {
     pub name: Option<String>,
     pub excluded_name: Option<String>,
     pub distinct_names: bool,
+    pub distinct_powers: bool,
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
@@ -420,6 +422,7 @@ impl ObjectFilter {
             || self.power_parity.is_some()
             || self.power_relative_to_source.is_some()
             || self.power_greater_than_base_power
+            || self.distinct_powers
             || self.toughness.is_some()
             || self.total_power_toughness.is_some()
             || self
@@ -452,6 +455,7 @@ impl ObjectFilter {
             || self.historic
             || self.nonhistoric
             || self.modified
+            || self.drawn_this_turn
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
@@ -1676,6 +1680,9 @@ impl ObjectFilter {
         if self.distinct_names {
             parts.push("with different names".to_string());
         }
+        if self.distinct_powers {
+            parts.push("with different powers".to_string());
+        }
 
         if let Some(ref name) = self.name {
             return format!("a {} named {}", parts.join(" "), name);
@@ -1867,6 +1874,9 @@ impl ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.drawn_this_turn {
+            parts.push("drawn this turn".to_string());
         }
 
         match (controller_suffix, owner_suffix) {
@@ -2249,6 +2259,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Lifelink => Some("lifelink"),
         Menace => Some("menace"),
         Reach => Some("reach"),
+        Skulk => Some("skulk"),
         Shroud => Some("shroud"),
         Trample => Some("trample"),
         Vigilance => Some("vigilance"),

@@ -321,6 +321,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_drawn_this_turn_clause() {
+        let tokens = lex_line("cards in your hand drawn this turn", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(filter.drawn_this_turn);
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_named_clause_with_trailing_zone() {
         let tokens = lex_line("artifact card named Sol Ring from your graveyard", 0).unwrap();
 
@@ -449,6 +459,17 @@ mod tests {
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(2)));
         assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(2)));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_and_or_subtype_distinct_powers() {
+        let tokens = lex_line("creature and/or vehicle cards with different powers", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.subtypes, vec![Subtype::Vehicle]);
+        assert!(filter.type_or_subtype_union);
+        assert!(filter.distinct_powers);
     }
 
     #[test]

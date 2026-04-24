@@ -11,6 +11,7 @@ pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
             ]),
             choices: vec![],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -255,6 +256,7 @@ pub(crate) fn cumulative_upkeep_granted_ability(total_cost: TotalCost) -> Abilit
             ]),
             choices: vec![],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -1385,6 +1387,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
                     Some(&token_words(&trigger_tokens).join(" ")),
                     max_triggers_per_turn,
                 ),
+                None,
                 ReferenceImports::default(),
             ),
             _ => {
@@ -1646,6 +1649,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
                 Some(&token_words(&ability_tokens).join(" ")),
                 max_triggers_per_turn,
             ),
+            None,
             ReferenceImports::default(),
         );
         if parsed_triggered_ability_is_empty(&parsed) {

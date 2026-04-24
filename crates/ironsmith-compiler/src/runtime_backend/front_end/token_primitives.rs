@@ -677,6 +677,7 @@ fn parse_simple_restriction_duration_prefix_inner<'a>(
 ) -> WResult<Until> {
     dispatch! {peek(grammar::word_parser_text);
         "until" => alt((
+            grammar::phrase(&["until", "your", "next", "upkeep"]).value(Until::YourNextUpkeep),
             grammar::phrase(&["until", "the", "end", "of", "combat"]).value(Until::EndOfCombat),
             grammar::phrase(&["until", "end", "of", "combat"]).value(Until::EndOfCombat),
             parse_turn_duration_phrase_inner.map(until_from_turn_duration_phrase),
@@ -702,6 +703,7 @@ fn simple_restriction_duration_from_suffix_phrase(phrase: &[&str]) -> Option<Unt
             Some(Until::ControllersNextUntapStep)
         }
         ["for", "the", "rest", "of", "the", "game"] => Some(Until::Forever),
+        ["until", "your", "next", "upkeep"] => Some(Until::YourNextUpkeep),
         _ => turn_duration_from_suffix_phrase(phrase).map(until_from_turn_duration_phrase),
     }
 }
@@ -717,6 +719,7 @@ pub(crate) fn parse_simple_restriction_duration_suffix<'a>(
 ) -> Option<(&'a [OwnedLexToken], Until)> {
     let phrases = [
         &["until", "your", "next", "turn"][..],
+        &["until", "your", "next", "upkeep"][..],
         &["until", "the", "end", "of", "your", "next", "turn"][..],
         &["until", "end", "of", "your", "next", "turn"][..],
         &["until", "the", "end", "of", "turn"][..],

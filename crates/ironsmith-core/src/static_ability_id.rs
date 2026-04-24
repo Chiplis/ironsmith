@@ -96,6 +96,7 @@ pub enum StaticAbilityId {
     SetCreatureSubtypes,
     AddColors,
     CopyActivatedAbilities,
+    CopyTriggeredAbilities,
     ManascapeRefractor,
     SquirrelNest,
     MycosynthLattice,
@@ -312,6 +313,7 @@ impl StaticAbilityId {
             | SetCreatureSubtypes
             | AddColors
             | CopyActivatedAbilities
+            | CopyTriggeredAbilities
             | ManascapeRefractor
             | SquirrelNest
             | MycosynthLattice

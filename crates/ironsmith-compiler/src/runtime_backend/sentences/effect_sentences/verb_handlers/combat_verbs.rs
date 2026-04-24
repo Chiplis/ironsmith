@@ -124,8 +124,15 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
+    let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
     let object = parse_attach_object_phrase(&object_tokens)?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    if object_words.as_slice() == ["it"] && target_words.as_slice() == ["the", "token"] {
+        return Ok(EffectAst::Attach {
+            object: TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(&object_tokens)),
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
+        });
+    }
     let target = if matches!(target_words.as_slice(), ["it"] | ["them"]) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
     } else {

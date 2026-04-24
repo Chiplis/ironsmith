@@ -264,6 +264,8 @@ pub(super) fn parse_object_filter_inner(
         .filter(|word| !is_article(word))
         .collect();
 
+    try_apply_distinct_powers_clause(&mut filter, &mut all_words);
+
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
     // "that were put there from the battlefield this turn" means the card entered
@@ -303,6 +305,8 @@ pub(super) fn parse_object_filter_inner(
         &mut all_words,
         &mut segment_tokens,
     );
+
+    try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // Avoid treating reference phrases like "... with mana value equal to the number of charge
     // counters on this artifact" as additional type selectors on the filtered object.
@@ -542,8 +546,12 @@ pub(super) fn parse_object_filter_inner(
         filter.has_tap_activated_ability = true;
     }
 
+    let mut referenced_zones = Vec::new();
     for idx in 0..all_words.len() {
         if let Some(zone) = parse_zone_word(all_words[idx]) {
+            if !slice_contains(&referenced_zones, &zone) {
+                referenced_zones.push(zone);
+            }
             let is_reference_zone_for_spell = if contains_unqualified_spell_word {
                 idx > 0
                     && matches!(
@@ -596,6 +604,13 @@ pub(super) fn parse_object_filter_inner(
                 }
             }
         }
+    }
+    if referenced_zones.len() > 1 && filter.any_of.is_empty() {
+        filter.zone = None;
+        filter.any_of = referenced_zones
+            .into_iter()
+            .map(|zone| ObjectFilter::default().in_zone(zone))
+            .collect();
     }
 
     let clause_words = all_words.clone();
@@ -1056,6 +1071,7 @@ pub(super) fn parse_object_filter_inner(
     } else if let Some(types) = segment_types.into_iter().next() {
         let has_and = contains_filter_word(&all_words, "and");
         let has_or = contains_filter_word(&all_words, "or");
+        let has_and_or = contains_filter_word(&all_words, "and/or");
         if types.len() > 1 {
             if has_and && !has_or {
                 filter.card_types = types;
@@ -1064,6 +1080,12 @@ pub(super) fn parse_object_filter_inner(
             }
         } else if types.len() == 1 {
             filter.card_types = types;
+        }
+        if (has_and_or || (has_and && has_or))
+            && !filter.card_types.is_empty()
+            && !filter.subtypes.is_empty()
+        {
+            filter.type_or_subtype_union = true;
         }
     }
 
@@ -1637,6 +1659,22 @@ fn try_apply_could_be_targeted_by_that_spell_clause(
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
             ObjectRef::tagged(TagKey::from(IT_TAG)),
         ));
+        all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+    for phrase in [
+        ["with", "different", "powers"].as_slice(),
+        ["that", "have", "different", "powers"].as_slice(),
+        ["that", "has", "different", "powers"].as_slice(),
+    ] {
+        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+            continue;
+        };
+        filter.distinct_powers = true;
         all_words.drain(idx..idx + phrase.len());
         return true;
     }

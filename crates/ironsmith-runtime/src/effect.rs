@@ -994,6 +994,15 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::PhaseOut(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_phase_out.insert(obj_id);
+                    }
+                }
+            }
             Restriction::AttackOrBlock(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

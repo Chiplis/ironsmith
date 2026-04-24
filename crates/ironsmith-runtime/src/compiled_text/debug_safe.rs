@@ -102,9 +102,11 @@ fn normalize_debug_safe_sentence_surface(line: &str) -> String {
 }
 
 fn compact_unprocessed_surface_markers(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
-    lines.into_iter()
+    lines
+        .into_iter()
         .map(|line| {
             let line = compact_scored_token_with_quoted_ability_line(&line).unwrap_or(line);
+            let line = compact_standard_named_token_payload_in_line(&line).unwrap_or(line);
             if has_structural_undaunted(def) {
                 let compact = compact_whitespace(line.trim());
                 if compact.eq_ignore_ascii_case("Spells cost {X} less to cast.")
@@ -201,6 +203,62 @@ fn normalize_debug_safe_card_reference_surface(def: &CardDefinition, line: &str)
             "When this creature or another ",
             &format!("When {source_name} or another "),
         );
+    if def.card.supertypes.contains(&Supertype::Legendary) && subject == "this creature" {
+        normalized = normalized
+            .replace(
+                "Whenever this creature enters",
+                &format!("Whenever {source_name} enters"),
+            )
+            .replace(
+                "When this creature enters",
+                &format!("When {source_name} enters"),
+            )
+            .replace(
+                "Whenever this creature dies",
+                &format!("Whenever {source_name} dies"),
+            )
+            .replace(
+                "When this creature dies",
+                &format!("When {source_name} dies"),
+            )
+            .replace(
+                "if this creature is tapped",
+                &format!("if {source_name} is tapped"),
+            )
+            .replace(
+                "If this creature is tapped",
+                &format!("If {source_name} is tapped"),
+            );
+    }
+    if def.card.supertypes.contains(&Supertype::Legendary) {
+        for self_ref in [
+            "this artifact",
+            "this creature",
+            "this enchantment",
+            "this land",
+            "this planeswalker",
+            "this permanent",
+        ] {
+            normalized = normalized
+                .replace(
+                    &format!("Exile {self_ref} and "),
+                    &format!("Exile {source_name} and "),
+                )
+                .replace(
+                    &format!("exile {self_ref} and "),
+                    &format!("exile {source_name} and "),
+                );
+        }
+        normalized = normalized
+            .replace(
+                "This has all activated abilities",
+                &format!("{source_name} has all activated abilities"),
+            )
+            .replace(
+                "this has all activated abilities",
+                &format!("{source_name} has all activated abilities"),
+            );
+    }
     if let Some(keyword) = source_keyword_during_your_turn(&normalized, subject) {
         normalized = format!("During your turn, {source_name} has {keyword}");
     }
@@ -916,6 +974,7 @@ fn compact_debug_safe_return_cost_scaffold(line: &str) -> Option<String> {
 
 fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>) -> Vec<String> {
     let lines = compact_structural_keyword_surfaces(lines);
+    let lines = compact_same_is_true_keyword_grant_lines(lines);
     let mut normalized = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     let subject = capitalize_first(subject_for_card(&def.card));
@@ -1022,6 +1081,120 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
     normalized
 }
 
+#[derive(Debug)]
+struct SameIsTrueKeywordGrantLine {
+    trigger_prefix: String,
+    condition_template: String,
+    subject: String,
+    verb: &'static str,
+    keyword: String,
+}
+
+fn compact_same_is_true_keyword_grant_lines(lines: Vec<String>) -> Vec<String> {
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        let Some(first) = parse_same_is_true_keyword_grant_line(&lines[idx]) else {
+            compacted.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut group = vec![first];
+        let mut end = idx + 1;
+        while end < lines.len() {
+            let Some(next) = parse_same_is_true_keyword_grant_line(&lines[end]) else {
+                break;
+            };
+            if next.trigger_prefix != group[0].trigger_prefix
+                || next.condition_template != group[0].condition_template
+                || next.subject != group[0].subject
+                || next.verb != group[0].verb
+            {
+                break;
+            }
+            group.push(next);
+            end += 1;
+        }
+
+        if group.len() < 3 {
+            compacted.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let first_keyword = group[0].keyword.clone();
+        let first_condition = group[0]
+            .condition_template
+            .replace("__KEYWORD__", &first_keyword);
+        let rest = group[1..]
+            .iter()
+            .map(|entry| entry.keyword.as_str())
+            .collect::<Vec<_>>();
+        compacted.push(format!(
+            "{}, {} {} {} until end of turn if {}. The same is true for {}.",
+            group[0].trigger_prefix,
+            group[0].subject,
+            group[0].verb,
+            first_keyword,
+            first_condition,
+            join_same_is_true_keywords(&rest)
+        ));
+        idx = end;
+    }
+    compacted
+}
+
+fn parse_same_is_true_keyword_grant_line(line: &str) -> Option<SameIsTrueKeywordGrantLine> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (trigger_prefix, rest) = trimmed.split_once(", if ")?;
+    let (condition, grant) = rest.split_once(", ")?;
+    let (subject, verb, keyword_tail) = if let Some((subject, tail)) = grant.split_once(" gain ") {
+        (subject, "gain", tail)
+    } else if let Some((subject, tail)) = grant.split_once(" gains ") {
+        (subject, "gains", tail)
+    } else {
+        return None;
+    };
+    let keyword = keyword_tail.strip_suffix(" until end of turn")?.to_string();
+    let condition_template = same_is_true_condition_template(condition, &keyword)?;
+    Some(SameIsTrueKeywordGrantLine {
+        trigger_prefix: trigger_prefix.to_string(),
+        condition_template,
+        subject: subject.to_string(),
+        verb,
+        keyword,
+    })
+}
+
+fn same_is_true_condition_template(condition: &str, keyword: &str) -> Option<String> {
+    if condition == format!("you control a creature with {keyword}") {
+        return Some("a creature you control has __KEYWORD__".to_string());
+    }
+    if condition == format!("you have a creature card with {keyword} in your graveyard")
+        || condition == format!("there is a creature card with {keyword} in your graveyard")
+    {
+        return Some("a creature card in your graveyard has __KEYWORD__".to_string());
+    }
+    None
+}
+
+fn join_same_is_true_keywords(keywords: &[&str]) -> String {
+    match keywords {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [first, second] => format!("{first} and {second}"),
+        _ => {
+            let mut parts = keywords[..keywords.len() - 1]
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect::<Vec<_>>();
+            parts.push(format!("and {}", keywords.last().expect("keyword exists")));
+            parts.join(", ")
+        }
+    }
+}
+
 fn normalize_citys_blessing_instead_surface(line: &str) -> String {
     if line
         == "At the beginning of your upkeep, if you have the city's blessing, you draw a card. Otherwise, each player draws a card."
@@ -1032,8 +1205,8 @@ fn normalize_citys_blessing_instead_surface(line: &str) -> String {
 }
 
 fn normalize_named_card_token_graveyard_surface(line: &str) -> String {
-    let Some((prefix, rest)) = line
-        .split_once("It has \"This token gets +X/+X, where X is the number of cards named ")
+    let Some((prefix, rest)) =
+        line.split_once("It has \"This token gets +X/+X, where X is the number of cards named ")
     else {
         return line.to_string();
     };

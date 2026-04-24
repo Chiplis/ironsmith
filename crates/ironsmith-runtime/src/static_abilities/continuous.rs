@@ -1814,6 +1814,7 @@ pub struct CopyActivatedAbilities {
     pub include_mana: bool,
     pub exclude_source_name: bool,
     pub exclude_source_id: bool,
+    pub force_once_each_turn: bool,
     pub condition: Option<crate::ConditionExpr>,
     pub display: String,
 }
@@ -1826,6 +1827,7 @@ impl CopyActivatedAbilities {
             include_mana: true,
             exclude_source_name: false,
             exclude_source_id: true,
+            force_once_each_turn: false,
             condition: None,
             display: "Has all activated abilities of matching objects".to_string(),
         }
@@ -1843,6 +1845,11 @@ impl CopyActivatedAbilities {
 
     pub fn with_exclude_source_id(mut self, exclude: bool) -> Self {
         self.exclude_source_id = exclude;
+        self
+    }
+
+    pub fn with_once_each_turn(mut self) -> Self {
+        self.force_once_each_turn = true;
         self
     }
 
@@ -1885,6 +1892,91 @@ impl StaticAbilityKind for CopyActivatedAbilities {
                     filter: self.filter.clone(),
                     counter: self.counter,
                     include_mana: self.include_mana,
+                    exclude_source_name: self.exclude_source_name,
+                    exclude_source_id: self.exclude_source_id,
+                    force_once_each_turn: self.force_once_each_turn,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+
+        let Some(source_obj) = game.object(source) else {
+            return false;
+        };
+        static_condition_is_active(condition, game, source, source_obj.controller)
+    }
+}
+
+/// Copy triggered abilities from objects matching a filter.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopyTriggeredAbilities {
+    pub filter: ObjectFilter,
+    pub exclude_source_name: bool,
+    pub exclude_source_id: bool,
+    pub condition: Option<crate::ConditionExpr>,
+    pub display: String,
+}
+
+impl CopyTriggeredAbilities {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self {
+            filter,
+            exclude_source_name: false,
+            exclude_source_id: true,
+            condition: None,
+            display: "Has all triggered abilities of matching objects".to_string(),
+        }
+    }
+
+    pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {
+        self.exclude_source_name = exclude;
+        self
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_display(mut self, display: String) -> Self {
+        self.display = display;
+        self
+    }
+}
+
+impl StaticAbilityKind for CopyTriggeredAbilities {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CopyTriggeredAbilities
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::CopyTriggeredAbilities {
+                    filter: self.filter.clone(),
                     exclude_source_name: self.exclude_source_name,
                     exclude_source_id: self.exclude_source_id,
                 },

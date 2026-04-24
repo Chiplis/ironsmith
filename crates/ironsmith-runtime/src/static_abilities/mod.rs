@@ -2017,6 +2017,10 @@ impl StaticAbility {
         Self::new(ability)
     }
 
+    pub fn copy_triggered_abilities(ability: CopyTriggeredAbilities) -> Self {
+        Self::new(ability)
+    }
+
     pub fn attached_ability_grant(ability: crate::ability::Ability, display: String) -> Self {
         Self::new(AttachedAbilityGrant::new(ability, display))
     }

@@ -2716,6 +2716,7 @@ pub(crate) fn parse_soulbond_shared_line(
                 vec![Zone::Battlefield],
                 Some(display.clone()),
                 None,
+                None,
                 ReferenceImports::default(),
             );
             return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
@@ -3285,6 +3286,7 @@ fn parse_triggered_granted_ability(
                 vec![Zone::Battlefield],
                 Some(crate::runtime_backend::token_word_refs(&trigger_tokens).join(" ")),
                 intervening_if,
+                None,
                 ReferenceImports::default(),
             )
         }

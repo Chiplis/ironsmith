@@ -490,6 +490,10 @@ pub struct CantEffectTracker {
     /// Permanents that can't transform.
     /// Example: "Non-Human Werewolves you control can't transform."
     pub cant_transform: HashSet<ObjectId>,
+
+    /// Permanents that can't phase out.
+    /// Example: "Target permanent can't phase out."
+    pub cant_phase_out: HashSet<ObjectId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -532,6 +536,17 @@ impl RestrictionEffectInstance {
             crate::effect::Until::YourNextTurn => {
                 !(current_turn > self.expires_end_of_turn
                     && game.turn.active_player == self.controller)
+            }
+            crate::effect::Until::YourNextUpkeep => {
+                if current_turn <= self.expires_end_of_turn
+                    || game.turn.active_player != self.controller
+                {
+                    true
+                } else if matches!(game.turn.phase, Phase::Beginning) {
+                    !matches!(game.turn.step, Some(Step::Upkeep | Step::Draw))
+                } else {
+                    false
+                }
             }
             crate::effect::Until::ControllersNextUntapStep => {
                 if current_turn <= self.expires_end_of_turn
@@ -691,6 +706,7 @@ impl CantEffectTracker {
             .extend(other.cant_target_players_from.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
+        self.cant_phase_out.extend(other.cant_phase_out);
     }
 
     /// Clear all tracked "can't" effects.
@@ -728,6 +744,7 @@ impl CantEffectTracker {
         self.cant_target_players_from.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
+        self.cant_phase_out.clear();
     }
 
     /// Check if a player can gain life.
@@ -1027,6 +1044,11 @@ impl CantEffectTracker {
     /// Check if a permanent can transform.
     pub fn can_transform(&self, permanent: ObjectId) -> bool {
         !self.cant_transform.contains(&permanent)
+    }
+
+    /// Check if a permanent can phase out.
+    pub fn can_phase_out(&self, permanent: ObjectId) -> bool {
+        !self.cant_phase_out.contains(&permanent)
     }
 
     /// Add a player to the "can't gain life" set.
@@ -2494,6 +2516,11 @@ impl GameState {
     /// Can this permanent transform?
     pub fn can_transform(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.can_transform(permanent)
+    }
+
+    /// Can this permanent phase out?
+    pub fn can_phase_out(&self, permanent: ObjectId) -> bool {
+        self.effect_store.cant_effects.can_phase_out(permanent)
     }
 
     /// Adds an object to the game.
@@ -4149,7 +4176,7 @@ impl GameState {
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
                     name: object.name.clone(),
-                    oracle_text: object.oracle_text.clone(),
+                    compiled_card_text: object.compiled_card_text.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
                     card_types: object.card_types.clone(),

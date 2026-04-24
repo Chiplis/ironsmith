@@ -584,6 +584,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             && left_subject.eq_ignore_ascii_case(right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
+            if lines[idx].contains(", if ") && lines[idx + 1].contains(", if ") {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
+            }
             if let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(&lines[idx]),
                 parse_conditional_subject_predicate(&lines[idx + 1]),

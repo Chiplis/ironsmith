@@ -909,6 +909,7 @@ pub(crate) fn parse_until_duration_triggered_clause(
                 Some(trigger_text.as_str()),
                 max_triggers_per_turn,
             ),
+            None,
             ReferenceImports::default(),
         ),
         display: trigger_text,

@@ -61,6 +61,24 @@ fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
     }
 }
 
+fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
+    let (label, body) = raw_line.trim().split_once('—')?;
+    let label = label.trim();
+    let body = body.trim_start();
+    if label.is_empty()
+        || label.contains('.')
+        || label.contains(':')
+        || label.split_whitespace().count() > 4
+    {
+        return None;
+    }
+    let body_lower = body.to_ascii_lowercase();
+    (body_lower.starts_with("when ")
+        || body_lower.starts_with("whenever ")
+        || body_lower.starts_with("at "))
+    .then_some(label)
+}
+
 fn raw_preserves_triggered_source(raw: &str, full: &str) -> bool {
     raw_label_prefix_preserves_triggered_source(raw, full)
         || normalize_triggered_source_text(raw) == normalize_triggered_source_text(full)
@@ -214,6 +232,7 @@ pub(crate) fn lower_rewrite_triggered_to_chunk(
     effect_text: &str,
     effect_parse_tokens: &[OwnedLexToken],
     intervening_if: Option<PredicateAst>,
+    presentation_label: Option<&str>,
     max_triggers_per_turn: Option<u32>,
     chosen_option_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
@@ -229,6 +248,7 @@ pub(crate) fn lower_rewrite_triggered_to_chunk(
             intervening_if,
             max_triggers_per_turn,
             chosen_option_label: chosen_option_label.map(str::to_string),
+            presentation_label: presentation_label.map(str::to_string),
         },
         full_parse_tokens,
         trigger_parse_tokens,
@@ -245,6 +265,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
     let source_text = triggered_line_source_text(line);
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
+    let presentation_label = line
+        .presentation_label
+        .as_deref()
+        .or_else(|| presentation_label_from_raw_trigger_line(&line.info.raw_line));
     let inferred_max_triggers_per_turn = line
         .max_triggers_per_turn
         .or(infer_trigger_cap_from_text(&line.full_text))
@@ -258,6 +282,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
             source_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
+            presentation_label,
         );
     }
 
@@ -290,6 +315,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                 source_text,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
+                presentation_label,
             );
         }
     }
@@ -303,6 +329,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
         source_text,
         inferred_max_triggers_per_turn,
         chosen_option_label,
+        presentation_label,
     )
 }
 
@@ -555,6 +582,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
             Some(line.info.raw_line.clone()),
             None,
+            None,
             ReferenceImports::default(),
         ))));
     }
@@ -603,6 +631,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             effects,
             infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
             Some(line.info.raw_line.clone()),
+            None,
             None,
             ReferenceImports::default(),
         ))));
@@ -690,6 +719,14 @@ fn lower_rewrite_static_to_chunk_impl(
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
+    if looks_like_ability_word_marker_text(line.text.as_str(), parse_tokens) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::keyword_marker(line.text.trim().to_string()).into(),
+            ),
+            chosen_option_label,
+        );
+    }
     if matches!(
         line.text.as_str(),
         "for each {B} in a cost, you may pay 2 life rather than pay that mana."
@@ -810,6 +847,20 @@ fn lower_rewrite_static_to_chunk_impl(
     )))
 }
 
+fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken]) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('.')
+        || trimmed.contains(':')
+        || trimmed.contains('—')
+        || trimmed.contains('-')
+    {
+        return false;
+    }
+    let words = token_word_refs(parse_tokens);
+    !words.is_empty() && words.len() <= 4
+}
+
 #[cfg(test)]
 pub(crate) fn lower_rewrite_keyword_to_chunk(
     info: LineInfo,
@@ -875,6 +926,7 @@ fn test_rewrite_triggered_line(raw_line: &str, full_text: &str) -> RewriteTrigge
         effect_text: String::new(),
         effect_parse_tokens: Vec::new(),
         intervening_if: None,
+        presentation_label: None,
         max_triggers_per_turn: Some(1),
         chosen_option_label: None,
     }
@@ -1009,6 +1061,7 @@ pub(crate) fn lower_exert_attack_keyword_line(
             effects: lowered.effects,
             choices: lowered.choices,
             intervening_if: None,
+            presentation_label: None,
         })
     } else {
         None

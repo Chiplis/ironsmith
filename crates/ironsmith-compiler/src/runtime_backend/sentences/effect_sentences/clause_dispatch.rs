@@ -26,9 +26,9 @@ use super::super::token_primitives::{
     slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
 };
 use super::super::util::{
-    contains_until_end_of_turn, parse_card_type, parse_color, parse_subject, parse_target_phrase,
-    parse_value, parser_trace, parser_trace_stack, span_from_tokens, starts_with_until_end_of_turn,
-    token_index_for_word_index, trim_commas,
+    contains_until_end_of_turn, parse_card_type, parse_color, parse_number, parse_subject,
+    parse_target_phrase, parse_value, parser_trace, parser_trace_stack, span_from_tokens,
+    starts_with_until_end_of_turn, token_index_for_word_index, trim_commas,
 };
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
@@ -52,7 +52,8 @@ use super::{
 };
 use crate::TagKey;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, PlayerAst, SubjectAst, TargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, PlayerAst, ReturnControllerAst,
+    SubjectAst, TargetAst,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -120,6 +121,47 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             "unsupported mana-triggered additional-mana clause (clause: '{}') [rule=mana-trigger-additional]",
             clause_words.join(" ")
         )));
+    }
+
+    if word_slice_starts_with(&clause_words, &["for", "each", "of", "those", "cards"])
+        && let Some(pay_idx) = find_word_index(&clause_words, "pay")
+        && let Some(or_put_idx) = find_word_sequence_index(&clause_words, &["or", "put"])
+        && or_put_idx > pay_idx
+        && clause_words.get(or_put_idx + 2..)
+            == Some(["the", "card", "on", "top", "of", "your", "library"].as_slice())
+    {
+        let pay_token_idx = token_index_for_word_index(tokens, pay_idx).unwrap_or(tokens.len());
+        let Some((life_amount, _used)) = parse_number(&tokens[pay_token_idx + 1..]) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing life payment amount in for-each card choice (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        let mut filter = ObjectFilter::default();
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        return Ok(EffectAst::ForEachObject {
+            filter,
+            effects: vec![EffectAst::UnlessAction {
+                effects: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                    zone: crate::zone::Zone::Library,
+                    to_top: true,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+                alternative: vec![EffectAst::LoseLife {
+                    amount: Value::Fixed(life_amount as i32),
+                    player: PlayerAst::You,
+                }],
+                player: PlayerAst::You,
+            }],
+        });
     }
 
     if word_slice_starts_with(&clause_words, &["for", "each", "opponent"])
@@ -325,11 +367,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
         let subject_word_view = ClauseDispatchCompatWords::new(&subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
-        let source = if subject_words.is_empty()
-            || matches!(
-                subject_words.as_slice(),
-                ["it"] | ["this"] | ["this", "creature"]
-            ) {
+        let source = if matches!(subject_words.as_slice(), ["it"]) {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
+        } else if subject_words.is_empty()
+            || matches!(subject_words.as_slice(), ["this"] | ["this", "creature"])
+        {
             TargetAst::Source(None)
         } else {
             parse_target_phrase(&subject_tokens)?

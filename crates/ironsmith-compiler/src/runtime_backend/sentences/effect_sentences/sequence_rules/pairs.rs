@@ -201,6 +201,97 @@ pub(super) fn parse_look_at_top_then_put_one_hand_other_bottom(
     ]))
 }
 
+pub(super) fn parse_look_at_top_then_put_one_hand_other_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let words = sentence_words(&second_tokens);
+    let starts_with_hand_choice =
+        slice_starts_with(
+            &words,
+            &["put", "one", "of", "them", "into", "your", "hand"],
+        ) || slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
+    if !starts_with_hand_choice {
+        return Ok(None);
+    }
+    let content_words = words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    let puts_other_graveyard =
+        contains_word_sequence(&content_words, &["other", "into", "graveyard"])
+            || contains_word_sequence(&content_words, &["other", "into", "your", "graveyard"])
+            || contains_word_sequence(&content_words, &["rest", "into", "your", "graveyard"])
+            || contains_word_sequence(&content_words, &["rest", "into", "graveyard"]);
+    if !puts_other_graveyard {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let hand_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "hand");
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+    let mut in_chosen_filter = ObjectFilter::default();
+    in_chosen_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+
+    Ok(Some(vec![
+        EffectAst::LookAtTopCards {
+            player,
+            count,
+            tag: looked_tag.clone(),
+        },
+        EffectAst::ChooseObjects {
+            filter: hand_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: hand_tag.clone(),
+        },
+        EffectAst::ForEachTagged {
+            tag: hand_tag.clone(),
+            effects: vec![EffectAst::MoveToZone {
+                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                zone: Zone::Hand,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            }],
+        },
+        EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(hand_tag, in_chosen_filter),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::MoveToZone {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    zone: Zone::Graveyard,
+                    to_top: false,
+                    battlefield_controller: ReturnControllerAst::Preserve,
+                    battlefield_tapped: false,
+                    attached_to: None,
+                }],
+            }],
+        },
+    ]))
+}
+
 pub(super) fn parse_choose_same_controller_targets_then_sacrifice_one(
     sentences: &[SentenceInput],
     sentence_idx: usize,

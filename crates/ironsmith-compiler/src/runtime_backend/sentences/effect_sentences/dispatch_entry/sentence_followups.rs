@@ -609,6 +609,26 @@ fn post_rule_future_zone_and_self_replacement(
     Ok(None)
 }
 
+fn post_rule_delayed_trigger_result_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let [EffectAst::IfResult { .. } | EffectAst::WhenResult { .. }] = sentence_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    let Some(EffectAst::DelayedTriggerThisTurn { effects, .. }) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    effects.extend(sentence_effects.drain(..));
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
 const PRE_PARSE_FOLLOWUP_RULES: &[SentenceFollowupRuleDef] = &[
     SentenceFollowupRuleDef {
         id: "library-shuffle",
@@ -672,5 +692,11 @@ const POST_PARSE_FOLLOWUP_RULES: &[SentencePostParseRuleDef] = &[
         priority: 20,
         heads: &[],
         run: post_rule_future_zone_and_self_replacement,
+    },
+    SentencePostParseRuleDef {
+        id: "delayed-trigger-result-followup",
+        priority: 30,
+        heads: &["if", "when"],
+        run: post_rule_delayed_trigger_result_followup,
     },
 ];

@@ -197,6 +197,7 @@ pub(super) fn parse_triggered_line_cst(
                 effect_parse_tokens: Vec::new(),
                 max_triggers_per_turn: trailing_cap,
                 intervening_if: None,
+                presentation_label: None,
                 chosen_option_label: None,
             })
         }

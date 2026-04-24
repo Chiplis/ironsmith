@@ -6290,6 +6290,32 @@ pub(crate) fn parse_copy_activated_abilities_line(
     {
         filter_tokens.remove(0);
     }
+    let after_of_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let once_each_turn_start = after_of_words.windows(11).position(|window| {
+        window
+            .iter()
+            .zip([
+                "you",
+                "may",
+                "activate",
+                "each",
+                "of",
+                "those",
+                "abilities",
+                "only",
+                "once",
+                "each",
+                "turn",
+            ])
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+    });
+    let force_once_each_turn = once_each_turn_start.is_some();
+    if let Some(start) = once_each_turn_start
+        && let Some(token_idx) = token_index_for_word_index(&filter_tokens, start)
+    {
+        filter_tokens.truncate(token_idx);
+        filter_tokens = trim_edge_punctuation(&filter_tokens);
+    }
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -6298,30 +6324,52 @@ pub(crate) fn parse_copy_activated_abilities_line(
         Err(_) => return Ok(None),
     };
 
-    let after_of_words = crate::runtime_backend::token_word_refs(&filter_tokens);
-    let counter = after_of_words
-        .iter()
-        .zip(after_of_words.iter().skip(1))
-        .find_map(|(word, next)| {
-            if *next == "counter" {
-                parse_counter_type_word(word)
-            } else {
-                None
-            }
-        });
+    let counter = parse_counter_type_from_tokens(&filter_tokens);
 
     let exclude_source_name = find_window_by(&clause_words, 5, |window| {
         window == ["same", "name", "as", "this", "creature"]
             || window == ["same", "name", "as", "thiss", "creature"]
     })
     .is_some();
+    let display = if force_once_each_turn {
+        if let Some(start) = find_window_by(&clause_words, 11, |window| {
+            window
+                .iter()
+                .zip([
+                    "you",
+                    "may",
+                    "activate",
+                    "each",
+                    "of",
+                    "those",
+                    "abilities",
+                    "only",
+                    "once",
+                    "each",
+                    "turn",
+                ])
+                .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+        }) {
+            format!(
+                "{}. You may activate each of those abilities only once each turn",
+                clause_words[..start].join(" ").trim()
+            )
+        } else {
+            clause_words.join(" ")
+        }
+    } else {
+        clause_words.join(" ")
+    };
 
     let mut ability = crate::static_abilities::CopyActivatedAbilities::new(filter)
         .with_exclude_source_name(exclude_source_name)
         .with_exclude_source_id(true)
-        .with_display(clause_words.join(" "));
+        .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);
+    }
+    if force_once_each_turn {
+        ability = ability.with_once_each_turn();
     }
 
     let ability = StaticAbility::copy_activated_abilities(ability);

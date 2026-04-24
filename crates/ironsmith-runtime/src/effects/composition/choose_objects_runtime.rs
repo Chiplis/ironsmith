@@ -610,6 +610,50 @@ fn normalize_chosen_distinct_names(
     normalized
 }
 
+fn object_power_for_distinct_choice(game: &GameState, id: ObjectId) -> Option<i32> {
+    game.calculated_power(id)
+        .or_else(|| game.object(id).and_then(|object| object.power()))
+}
+
+fn normalize_chosen_distinct_powers(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let mut powers = std::collections::HashSet::new();
+    let mut normalized = Vec::new();
+    for id in chosen {
+        if normalized.len() >= max {
+            break;
+        }
+        let Some(power) = object_power_for_distinct_choice(game, id) else {
+            continue;
+        };
+        if powers.insert(power) {
+            normalized.push(id);
+        }
+    }
+
+    if fill_to_min && normalized.len() < min {
+        for id in candidates {
+            if normalized.len() >= min || normalized.len() >= max {
+                break;
+            }
+            let Some(power) = object_power_for_distinct_choice(game, *id) else {
+                continue;
+            };
+            if powers.insert(power) {
+                normalized.push(*id);
+            }
+        }
+    }
+
+    normalized
+}
+
 fn public_search_candidates(game: &GameState, candidates: &[ObjectId]) -> Vec<ObjectId> {
     candidates
         .iter()
@@ -910,6 +954,11 @@ pub(crate) fn run_choose_objects(
     } else {
         chosen
     };
+    let chosen = if effect.filter.distinct_powers {
+        normalize_chosen_distinct_powers(game, chosen, &candidates, min, max, !allow_hidden_partial)
+    } else {
+        chosen
+    };
     if search_zones.iter().any(Zone::is_hidden) {
         ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
     }
@@ -937,7 +986,7 @@ pub(crate) fn run_choose_objects(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::card::CardBuilder;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::DecisionMaker;
     use crate::effect::ExecutionFact;
     use crate::effects::ExecutionContext;
@@ -960,6 +1009,19 @@ mod tests {
     fn create_library_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
         let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
             .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    fn create_library_creature_with_power(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+        power: i32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, 1))
             .build();
         game.create_object_from_card(&card, owner, Zone::Library)
     }
@@ -1021,6 +1083,27 @@ mod tests {
             normalized,
             vec![ObjectId::from_raw(3), ObjectId::from_raw(1)]
         );
+    }
+
+    #[test]
+    fn test_normalize_chosen_distinct_powers_replaces_duplicate_power() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first_two = create_library_creature_with_power(&mut game, "First Two", alice, 2);
+        let second_two = create_library_creature_with_power(&mut game, "Second Two", alice, 2);
+        let three = create_library_creature_with_power(&mut game, "Three", alice, 3);
+        let candidates = vec![first_two, second_two, three];
+
+        let normalized = normalize_chosen_distinct_powers(
+            &game,
+            vec![first_two, second_two],
+            &candidates,
+            2,
+            2,
+            true,
+        );
+
+        assert_eq!(normalized, vec![first_two, three]);
     }
 
     #[test]

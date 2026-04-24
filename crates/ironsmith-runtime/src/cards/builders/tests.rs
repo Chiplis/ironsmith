@@ -30257,7 +30257,7 @@ fn debug_surface_keeps_complex_source_text_regressions() {
         (
             "Mirror of Life Trapping",
             "Whenever a creature enters",
-            "return all other permanent card exiled with this artifact to the battlefield",
+            "return all other permanent cards exiled with this artifact to the battlefield under their owners' control",
         ),
         (
             "Gandalf, Westward Voyager",
@@ -34560,8 +34560,9 @@ fn parse_oracle_grasping_current_keeps_named_multi_zone_search_surface() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("search your library and/or graveyard for a card named jace ingenious mind mage")
-            && rendered.contains("reveal it")
+        rendered.contains(
+            "search your library and/or graveyard for a card named jace ingenious mind mage"
+        ) && rendered.contains("reveal it")
             && rendered.contains("put it into your hand")
             && rendered.contains("if you searched your library this way, shuffle"),
         "expected Grasping Current scored text to keep the multi-zone search wording, got {rendered}"
@@ -34626,7 +34627,9 @@ fn parse_oracle_consult_the_star_charts_keeps_kicker_choice_override_surface() {
     assert!(
         rendered.contains("look at the top the number of lands you control cards of your library")
             && rendered.contains("put one of those cards into your hand")
-            && rendered.contains("if this spell was kicked, put two of those cards into your hand instead")
+            && rendered.contains(
+                "if this spell was kicked, put two of those cards into your hand instead"
+            )
             && rendered.contains("put the rest on the bottom of your library"),
         "expected Consult the Star Charts scored text to keep the kicked count override, got {rendered}"
     );

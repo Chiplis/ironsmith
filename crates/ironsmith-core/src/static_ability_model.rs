@@ -161,6 +161,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     GrantAbility(Box<GrantAbility<T, E, C, Cond>>),
     GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond>>),
     CopyActivatedAbilities(CopyActivatedAbilities),
+    CopyTriggeredAbilities(CopyTriggeredAbilities),
     CostReduction(CostReduction),
     CostReductionManaCost(CostReductionManaCost),
     CostIncrease(CostIncrease),
@@ -444,6 +445,7 @@ where
                 effects: triggered.effects.try_map_effects(map_effect)?,
                 choices: triggered.choices,
                 intervening_if: triggered.intervening_if,
+                presentation_label: None,
             })
         }
 
@@ -665,6 +667,9 @@ where
             }
             StaticAbilityPayload::CopyActivatedAbilities(copy) => {
                 StaticAbilityPayload::CopyActivatedAbilities(copy)
+            }
+            StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
+                StaticAbilityPayload::CopyTriggeredAbilities(copy)
             }
             StaticAbilityPayload::CostReduction(reduction) => {
                 StaticAbilityPayload::CostReduction(reduction)
@@ -1180,6 +1185,13 @@ impl<
                 id: Some(StaticAbilityId::CopyActivatedAbilities),
                 label: "copy activated abilities".to_string(),
                 payload: StaticAbilityPayload::CopyActivatedAbilities(payload.clone()),
+            };
+        }
+        if let Some(payload) = label_any.downcast_ref::<CopyTriggeredAbilities>() {
+            return Self {
+                id: Some(StaticAbilityId::CopyTriggeredAbilities),
+                label: payload.display.clone(),
+                payload: StaticAbilityPayload::CopyTriggeredAbilities(payload.clone()),
             };
         }
         if let Some(payload) = label_any.downcast_ref::<CostReduction>() {
@@ -2747,6 +2759,13 @@ impl<
             payload: StaticAbilityPayload::CopyActivatedAbilities(copy),
         }
     }
+    pub fn copy_triggered_abilities(copy: CopyTriggeredAbilities) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CopyTriggeredAbilities),
+            label: copy.display.clone(),
+            payload: StaticAbilityPayload::CopyTriggeredAbilities(copy),
+        }
+    }
     pub fn mana_spend_permission(perm: ManaSpendPermission, display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -3007,30 +3026,70 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
+    pub counter: Option<CounterType>,
     pub exclude_source_name: bool,
+    pub exclude_source_id: bool,
+    pub force_once_each_turn: bool,
+    pub display: String,
 }
 
 impl CopyActivatedAbilities {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
             filter,
+            counter: None,
             exclude_source_name: false,
+            exclude_source_id: true,
+            force_once_each_turn: false,
+            display: "Has all activated abilities of matching objects".to_string(),
         }
     }
     pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {
         self.exclude_source_name = exclude;
         self
     }
-    pub fn with_exclude_source_id(self, _exclude: bool) -> Self {
+    pub fn with_exclude_source_id(mut self, exclude: bool) -> Self {
+        self.exclude_source_id = exclude;
         self
     }
-    pub fn with_display(self, _display: impl Into<String>) -> Self {
+    pub fn with_display(mut self, display: impl Into<String>) -> Self {
+        self.display = display.into();
         self
     }
-    pub fn with_counter(self, _counter: CounterType) -> Self {
+    pub fn with_counter(mut self, counter: CounterType) -> Self {
+        self.counter = Some(counter);
+        self
+    }
+    pub fn with_once_each_turn(mut self) -> Self {
+        self.force_once_each_turn = true;
         self
     }
     pub fn with_condition(self, _condition: Condition) -> Self {
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopyTriggeredAbilities {
+    pub filter: ObjectFilter,
+    pub exclude_source_name: bool,
+    pub display: String,
+}
+
+impl CopyTriggeredAbilities {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self {
+            filter,
+            exclude_source_name: false,
+            display: "Has all triggered abilities of matching objects".to_string(),
+        }
+    }
+    pub fn with_exclude_source_name(mut self, exclude: bool) -> Self {
+        self.exclude_source_name = exclude;
+        self
+    }
+    pub fn with_display(mut self, display: impl Into<String>) -> Self {
+        self.display = display.into();
         self
     }
 }

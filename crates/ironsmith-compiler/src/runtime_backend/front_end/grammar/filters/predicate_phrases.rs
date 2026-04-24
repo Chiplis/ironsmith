@@ -360,6 +360,60 @@ fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<Predic
     None
 }
 
+fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 7 {
+        return None;
+    }
+    let count = parse_named_number(words[0])?;
+    if words.get(1).copied() != Some("or") || words.get(2).copied() != Some("more") {
+        return None;
+    }
+    let have_idx = find_index(words, |word| matches!(*word, "has" | "have"))?;
+    if have_idx <= 3 {
+        return None;
+    }
+    let object_words = &words[3..have_idx];
+    let counter_words = &words[have_idx + 1..];
+    if object_words.is_empty() || counter_words.is_empty() {
+        return None;
+    }
+    let (counter_constraint, consumed) = parse_filter_counter_constraint_words(counter_words)?;
+    if consumed != counter_words.len() {
+        return None;
+    }
+
+    let object_tokens = object_words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let other = object_tokens
+        .first()
+        .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+    let mut filter = parse_object_filter(&object_tokens, other).ok()?;
+    filter.with_counter = Some(counter_constraint);
+    if filter.zone.is_none()
+        && filter.card_types.iter().any(|card_type| {
+            matches!(
+                card_type,
+                CardType::Artifact
+                    | CardType::Creature
+                    | CardType::Enchantment
+                    | CardType::Land
+                    | CardType::Planeswalker
+                    | CardType::Battle
+            )
+        })
+    {
+        filter.zone = Some(Zone::Battlefield);
+    }
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
+}
+
 fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAst> {
     let cleaned = words
         .iter()
@@ -460,6 +514,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_counted_objects_have_counter_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if filtered.len() == 6
         && filtered[0] == "you"
         && filtered[1] == "have"
@@ -493,6 +551,29 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             left: Value::LifeTotal(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
             right: Value::Fixed(amount),
+        });
+    }
+
+    if let Some(has_idx) = find_index(&filtered, |word| *word == "has" || *word == "have")
+        && has_idx > 0
+        && has_idx + 1 < filtered.len()
+        && slice_contains(&filtered[..has_idx], &"control")
+        && let Some((constraint, consumed)) =
+            parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
+        && has_idx + 1 + consumed == filtered.len()
+    {
+        let mut subject_words = filtered[..has_idx].to_vec();
+        subject_words.retain(|word| *word != "you" && *word != "control" && *word != "controls");
+        let subject_tokens = subject_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let mut filter = parse_object_filter(&subject_tokens, false)?;
+        apply_filter_keyword_constraint(&mut filter, constraint, false);
+        filter.controller = Some(PlayerFilter::You);
+        return Ok(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter,
         });
     }
 
@@ -1414,6 +1495,39 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if matches!(
         filtered.as_slice(),
         [
+            "land",
+            "you",
+            "controlled",
+            "was",
+            "put",
+            "into",
+            "graveyard",
+            "from",
+            "battlefield",
+            "this",
+            "turn"
+        ] | [
+            "lands",
+            "you",
+            "controlled",
+            "were",
+            "put",
+            "into",
+            "graveyard",
+            "from",
+            "battlefield",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+            ObjectFilter::land().controlled_by(PlayerFilter::You),
+        ));
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        [
             "permanent",
             "left",
             "battlefield",
@@ -1450,6 +1564,51 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ]
     ) {
         return Ok(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        [
+            "artifact",
+            "entered",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "artifact",
+            "enter",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "artifacts",
+            "entered",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "artifacts",
+            "enter",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::ObjectEnteredBattlefieldThisTurn(
+            ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+        ));
     }
 
     if matches!(
@@ -1517,6 +1676,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.len() >= 7
+        && filtered[0] == "you"
+        && filtered[1] == "lost"
+        && let Some((count, used)) = parse_number(&tokens[2..])
+        && filtered[2 + used..] == ["or", "more", "life", "this", "turn"]
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::LifeLostThisTurn(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+
     if filtered.as_slice() == ["you", "gained", "life", "this", "turn"] {
         return Ok(PredicateAst::PlayerGainedLifeThisTurnOrMore {
             player: PlayerAst::You,
@@ -1564,6 +1736,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         || filtered.as_slice() == ["you", "cast", "this", "spell"]
     {
         return Ok(PredicateAst::SourceWasCast);
+    }
+    if matches!(
+        filtered.as_slice(),
+        ["it", "was", "cast"]
+            | ["that", "creature", "was", "cast"]
+            | ["that", "permanent", "was", "cast"]
+            | ["that", "object", "was", "cast"]
+    ) {
+        return Ok(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)));
     }
 
     if filtered.len() >= 6
@@ -1804,6 +1985,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "artifact"
                 | "card"
                 | "creature"
+                | "enchantment"
                 | "land"
                 | "object"
                 | "permanent"
@@ -1996,6 +2178,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     && filter.excluded_card_types.is_empty()
                 {
                     return Ok(PredicateAst::ItIsLandCard);
+                }
+                if filtered.get(0).copied() == Some("that")
+                    && filtered.get(1).copied() == Some("enchantment")
+                {
+                    return Ok(PredicateAst::TaggedMatches(
+                        TagKey::from("triggering"),
+                        filter,
+                    ));
                 }
                 return Ok(PredicateAst::ItMatches(filter));
             }

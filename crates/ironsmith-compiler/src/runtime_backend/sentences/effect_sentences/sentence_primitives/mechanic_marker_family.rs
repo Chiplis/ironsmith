@@ -729,7 +729,12 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         "delayed-trigger-this-turn",
         740,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("if")],
+        &[
+            LexRuleHeadHint::Single("if"),
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("when"),
+            LexRuleHeadHint::Single("whenever"),
+        ],
         parse_sentence_delayed_trigger_this_turn
     ),
     primitive!(

@@ -3845,6 +3845,10 @@ fn is_stopword(token: &str) -> bool {
             | "these"
             | "it"
             | "its"
+            | "him"
+            | "his"
+            | "her"
+            | "hers"
             | "them"
             | "their"
             | "they"
@@ -5711,6 +5715,21 @@ mod tests {
             similarity >= 0.50,
             "expected normalization to preserve baseline similarity, got {similarity}"
         );
+    }
+
+    #[test]
+    fn compare_semantics_ignores_gendered_self_pronouns_for_source_library_move() {
+        let oracle = "When this creature dies, put him on the bottom of his owner's library. If you do, return the exiled cards to their owners' hands.";
+        let compiled = vec![String::from(
+            "When this creature dies, put this creature on the bottom of its owner's library. If you do, return the exiled cards to their owners' hands.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            similarity >= 0.99,
+            "expected gendered self-pronouns to compare as source references, got {similarity}"
+        );
+        assert!(!mismatch);
     }
 
     #[test]

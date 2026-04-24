@@ -218,27 +218,29 @@ pub fn generate_continuous_effects_from_static_abilities(
         if let Some(object) = game.object(object_id) {
             let mut object_effects = Vec::new();
             let zone = object.zone;
-            let (controller, abilities) = if zone == crate::zone::Zone::Battlefield
-                && text_box_scope.includes(object_id)
-            {
-                let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
-                    crate::continuous::text_box_characteristics_with_effects(
-                        object_id,
-                        game.objects_map(),
-                        &registered_effects,
-                        &game.battlefield,
-                        &game.commanders,
-                        game,
-                    )
-                    .map(|chars| TextBoxOverlay::new(chars.oracle_text, chars.abilities))
-                    .unwrap_or_else(|| {
-                        TextBoxOverlay::new(object.oracle_text.clone(), object.abilities.clone())
-                    })
-                });
-                (object.controller, overlay.abilities.clone())
-            } else {
-                (object.controller, object.abilities.clone())
-            };
+            let (controller, abilities) =
+                if zone == crate::zone::Zone::Battlefield && text_box_scope.includes(object_id) {
+                    let overlay = text_box_cache.entry(object_id).or_insert_with(|| {
+                        crate::continuous::text_box_characteristics_with_effects(
+                            object_id,
+                            game.objects_map(),
+                            &registered_effects,
+                            &game.battlefield,
+                            &game.commanders,
+                            game,
+                        )
+                        .map(|chars| TextBoxOverlay::new(chars.compiled_card_text, chars.abilities))
+                        .unwrap_or_else(|| {
+                            TextBoxOverlay::new(
+                                object.compiled_card_text.clone(),
+                                object.abilities.clone(),
+                            )
+                        })
+                    });
+                    (object.controller, overlay.abilities.clone())
+                } else {
+                    (object.controller, object.abilities.clone())
+                };
 
             // Process each static ability on the object
             for ability in &abilities {

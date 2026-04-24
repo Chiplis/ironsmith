@@ -575,16 +575,14 @@ pub(super) fn can_stack_trigger_this_turn(
     match condition {
         crate::ConditionExpr::FirstTimeThisTurn
         | crate::ConditionExpr::MaxTimesEachTurn(_)
-        | crate::ConditionExpr::DoThisMaxTimesEachTurn(_) => {
-            verify_intervening_if(
-                game,
-                condition,
-                trigger.controller,
-                &trigger.triggering_event,
-                trigger.source,
-                Some(trigger.trigger_identity),
-            )
-        }
+        | crate::ConditionExpr::DoThisMaxTimesEachTurn(_) => verify_intervening_if(
+            game,
+            condition,
+            trigger.controller,
+            &trigger.triggering_event,
+            trigger.source,
+            Some(trigger.trigger_identity),
+        ),
         _ => true,
     }
 }

@@ -270,6 +270,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
             vec![Zone::Battlefield],
             Some(line_text),
             None,
+            None,
             ReferenceImports::default(),
         )
         .into_runtime();

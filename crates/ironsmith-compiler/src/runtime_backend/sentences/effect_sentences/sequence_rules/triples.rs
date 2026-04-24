@@ -528,9 +528,15 @@ pub(super) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     }
 
     let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let puts_rest_graveyard = matches!(third_words.first(), Some("put" | "puts"))
-        && third_words.find_word("rest").is_some()
-        && third_words.find_word("graveyard").is_some();
+    let third_word_refs = third_words.word_refs();
+    let third_rest_words = if third_word_refs.first().copied() == Some("then") {
+        &third_word_refs[1..]
+    } else {
+        &third_word_refs[..]
+    };
+    let puts_rest_graveyard = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
+        && third_rest_words.contains(&"rest")
+        && third_rest_words.contains(&"graveyard");
     if !puts_rest_graveyard {
         return Ok(None);
     }
@@ -551,6 +557,145 @@ pub(super) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         reveal: reveal_chosen,
         if_not_chosen: Vec::new(),
     });
+    Ok(Some(effects))
+}
+
+fn parse_any_number_from_looked_cards_action(
+    tokens: &[OwnedLexToken],
+) -> Option<(ObjectFilter, Zone, bool)> {
+    let action_tokens = trim_commas(tokens);
+    let action_words = TokenWordView::new(&action_tokens);
+    let action_word_refs = action_words.word_refs();
+    if !slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
+        return None;
+    }
+
+    let Some((from_among_word_idx, from_among_len)) =
+        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return None;
+    };
+    if from_among_word_idx <= 3 {
+        return None;
+    }
+    let filter_start = action_words.token_index_for_word_index(3)?;
+    let filter_end = action_words
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(action_tokens.len());
+    let filter_tokens = trim_commas(&action_tokens[filter_start..filter_end]);
+    let mut filter = effect_sentences::parse_looked_card_choice_filter(&filter_tokens)?;
+    effect_sentences::normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
+    let (zone, tapped) = if slice_starts_with(after_from_words, &["into", "your", "hand"])
+        || slice_starts_with(after_from_words, &["into", "hand"])
+    {
+        (Zone::Hand, false)
+    } else if slice_starts_with(after_from_words, &["onto", "the", "battlefield", "tapped"])
+        || slice_starts_with(after_from_words, &["onto", "battlefield", "tapped"])
+    {
+        (Zone::Battlefield, true)
+    } else if slice_starts_with(after_from_words, &["onto", "the", "battlefield"])
+        || slice_starts_with(after_from_words, &["onto", "battlefield"])
+    {
+        (Zone::Battlefield, false)
+    } else {
+        return None;
+    };
+
+    Some((filter, zone, tapped))
+}
+
+pub(super) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["put"], true) else {
+        return Ok(None);
+    };
+    let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
+    let Some((filter, zone, tapped)) =
+        parse_any_number_from_looked_cards_action(action_match.tail_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
+    let third_word_refs = third_words.word_refs();
+    let third_rest_words = if third_word_refs.first().copied() == Some("then") {
+        &third_word_refs[1..]
+    } else {
+        &third_word_refs[..]
+    };
+    let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
+        && third_rest_words.contains(&"rest")
+        && third_rest_words.contains(&"bottom")
+        && third_rest_words.contains(&"library");
+    if !puts_rest_bottom {
+        return Ok(None);
+    }
+    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(
+        sentences[sentence_idx].lowered(),
+        if reveal_top { "revealed" } else { "looked" },
+    );
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut choose_filter = filter;
+    choose_filter.zone = Some(Zone::Library);
+    choose_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: looked_tag.clone(),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: looked_tag.clone(),
+        });
+    }
+    effects.push(EffectAst::ChooseObjects {
+        filter: choose_filter,
+        count: ChoiceCount::any_number(),
+        count_value: None,
+        player: chooser,
+        tag: chosen_tag.clone(),
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            zone,
+            to_top: false,
+            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+            battlefield_tapped: tapped,
+            attached_to: None,
+        }],
+    });
+    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+        tag: looked_tag,
+        keep_tagged: Some(chosen_tag),
+        order,
+        player: chooser,
+    });
+
     Ok(Some(effects))
 }
 
@@ -1226,10 +1371,16 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
     }
 
     let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
-    let puts_rest_bottom = matches!(third_words.first(), Some("put" | "puts"))
-        && third_words.find_word("rest").is_some()
-        && third_words.find_word("bottom").is_some()
-        && third_words.find_word("library").is_some();
+    let third_word_refs = third_words.word_refs();
+    let third_rest_words = if third_word_refs.first().copied() == Some("then") {
+        &third_word_refs[1..]
+    } else {
+        &third_word_refs[..]
+    };
+    let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
+        && third_rest_words.contains(&"rest")
+        && third_rest_words.contains(&"bottom")
+        && third_rest_words.contains(&"library");
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -1252,6 +1403,141 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
             if_not_chosen: Vec::new(),
         },
     );
+    Ok(Some(effects))
+}
+
+pub(super) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
+    else {
+        return Ok(None);
+    };
+    let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
+    let reveal_tokens = trim_commas(action_match.tail_tokens);
+    let reveal_words = TokenWordView::new(&reveal_tokens);
+    if reveal_words.is_empty() {
+        return Ok(None);
+    }
+    let reveal_word_refs = reveal_words.word_refs();
+
+    let Some((from_among_word_idx, from_among_len)) =
+        effect_sentences::find_from_among_looked_cards_phrase(&reveal_words)
+    else {
+        return Ok(None);
+    };
+
+    let filter_end = reveal_words
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(reveal_tokens.len());
+    let filter_tokens = trim_commas(&reveal_tokens[..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter =
+        if let Some(filter) = effect_sentences::parse_looked_card_reveal_filter(&filter_tokens) {
+            filter
+        } else {
+            return Ok(None);
+        };
+    effect_sentences::normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
+    let puts_on_top = (slice_starts_with(after_from_words, &["and", "put", "it", "on", "top"])
+        || slice_starts_with(after_from_words, &["put", "it", "on", "top"])
+        || slice_starts_with(
+            after_from_words,
+            &["and", "put", "that", "card", "on", "top"],
+        )
+        || slice_starts_with(after_from_words, &["put", "that", "card", "on", "top"]))
+        && slice_contains(after_from_words, &"library");
+    if !puts_on_top {
+        return Ok(None);
+    }
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
+    let third_word_refs = third_words.word_refs();
+    let third_rest_words = if third_word_refs.first().copied() == Some("then") {
+        &third_word_refs[1..]
+    } else {
+        &third_word_refs[..]
+    };
+    let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
+        && third_rest_words.contains(&"rest")
+        && third_rest_words.contains(&"bottom")
+        && third_rest_words.contains(&"library");
+    if !puts_rest_bottom {
+        return Ok(None);
+    }
+    let Some(order) = effect_sentences::parse_consult_remainder_order(&third_words.word_refs())
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(
+        sentences[sentence_idx].lowered(),
+        if reveal_top { "revealed" } else { "looked" },
+    );
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut choose_filter = filter;
+    choose_filter.zone = Some(Zone::Library);
+    choose_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: looked_tag.clone(),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: looked_tag.clone(),
+        });
+    }
+    effects.push(EffectAst::ChooseObjects {
+        filter: choose_filter,
+        count: ChoiceCount::up_to(1),
+        count_value: None,
+        player: chooser,
+        tag: chosen_tag.clone(),
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::RevealTagged {
+            tag: chosen_tag.clone(),
+        }],
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::MoveToZone {
+            target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            zone: Zone::Library,
+            to_top: true,
+            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
+            attached_to: None,
+        }],
+    });
+    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+        tag: looked_tag,
+        keep_tagged: Some(chosen_tag),
+        order,
+        player: chooser,
+    });
+
     Ok(Some(effects))
 }
 

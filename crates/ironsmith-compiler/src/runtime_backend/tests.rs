@@ -1391,6 +1391,33 @@ fn rewrite_structure_triggered_conditional_clause_parser_keeps_count_based_battl
 }
 
 #[test]
+fn rewrite_structure_triggered_conditional_clause_parser_keeps_counter_count_gate() {
+    let tokens = lex_line(
+        "At the beginning of your end step, if two or more permanents you don't control have an aim counter on them, destroy one of those permanents at random.",
+        0,
+    )
+    .expect("rewrite lexer should classify counter-count conditional trigger");
+    let spec = super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+        .expect("structure helper should detect counter-count conditional trigger");
+
+    assert_eq!(
+        spec.trigger_tokens
+            .iter()
+            .map(|token| token.slice.as_str())
+            .collect::<Vec<_>>(),
+        vec!["the", "beginning", "of", "your", "end", "step"]
+    );
+    let predicate_debug = format!("{:?}", spec.predicate);
+    assert!(
+        predicate_debug.contains("ValueComparison"),
+        "{predicate_debug}"
+    );
+    assert!(predicate_debug.contains("Count("), "{predicate_debug}");
+    assert!(predicate_debug.contains("aim"), "{predicate_debug}");
+    assert!(predicate_debug.contains("NotYou"), "{predicate_debug}");
+}
+
+#[test]
 fn rewrite_structure_triggered_conditional_clause_parser_splits_happily_ever_after_gate() {
     let tokens = lex_line(
         "At the beginning of your upkeep, if there are five colors among permanents you control, there are six or more card types among permanents you control and/or cards in your graveyard, and your life total is greater than or equal to your starting life total, you win the game.",
@@ -1905,6 +1932,23 @@ fn rewrite_statement_lowering_parses_shape_anew_via_parser_path() -> Result<(), 
 }
 
 #[test]
+fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consult() {
+    let text = "For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then puts the rest on the bottom of their library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify Chaos Mutation followup");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("for-each exiled reveal-until-bottom sentence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn rewrite_statement_lowering_parses_nissas_encouragement_via_parser_path()
 -> Result<(), CardTextError> {
     let text = "Search your library and graveyard for a card named Forest, a card named Brambleweft Behemoth, and a card named Nissa, Genesis Mage. Reveal those cards, put them into your hand, then shuffle.";
@@ -1965,6 +2009,7 @@ fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
         &trigger_tokens,
         "placeholder effect text",
         &effect_tokens,
+        None,
         None,
         None,
         None,
@@ -2484,6 +2529,116 @@ fn rewrite_verb_handlers_keep_trailing_if_damage_clause_after_structure_cutover(
         }
         other => panic!("expected conditional damage clause, got {other:?}"),
     }
+}
+
+#[test]
+fn rewrite_if_clause_binds_that_enchantment_and_created_token_references() {
+    let tokens = lex_line(
+        "If that enchantment is an Aura, you may attach it to the token.",
+        0,
+    )
+    .expect("rewrite lexer should classify conditional attach clause");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("conditional attach clause should parse");
+
+    let [
+        crate::cards::builders::EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected conditional attach clause, got {parsed:?}");
+    };
+    assert!(if_false.is_empty());
+    let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate else {
+        panic!("expected that-enchantment predicate to bind triggering object, got {predicate:?}");
+    };
+    assert_eq!(tag.as_str(), "triggering");
+    assert_eq!(filter.subtypes, vec![crate::Subtype::Aura]);
+
+    let effects = match if_true.as_slice() {
+        [crate::cards::builders::EffectAst::May { effects }]
+        | [
+            crate::cards::builders::EffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,
+            },
+        ] => effects,
+        other => panic!("expected may-wrapper around attach effect, got {other:?}"),
+    };
+    let [crate::cards::builders::EffectAst::Attach { object, target }] = effects.as_slice() else {
+        panic!("expected attach effect, got {effects:?}");
+    };
+    assert!(matches!(
+        object,
+        crate::cards::builders::TargetAst::Tagged(tag, _) if tag.as_str() == "triggering"
+    ));
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+}
+
+#[test]
+fn rewrite_exile_from_hand_or_graveyard_preserves_both_choice_zones() {
+    let tokens = lex_line(
+        "You may exile an artifact or creature card from your hand or graveyard and put a cage counter on it.",
+        0,
+    )
+    .expect("rewrite lexer should classify hand-or-graveyard exile clause");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("hand-or-graveyard exile clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("Hand"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    assert!(debug.contains("cage"), "{debug}");
+}
+
+#[test]
+fn rewrite_copy_activated_abilities_static_preserves_counter_display_and_once_limit() {
+    let tokens = lex_line(
+        "This has all activated abilities of all cards you own in exile with cage counters on them. You may activate each of those abilities only once each turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify copied-activated-ability static line");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("copied-activated-ability static line should parse")
+        .expect("copied-activated-ability static line should produce an ability");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("CopyActivatedAbilities"), "{debug}");
+    assert!(debug.contains("cage"), "{debug}");
+    assert!(debug.contains("force_once_each_turn: true"), "{debug}");
+    assert!(
+        debug.contains("You may activate each of those abilities only once each turn"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_if_clause_binds_it_was_cast_to_tagged_object() {
+    let tokens = lex_line("If it was cast, exile it.", 0)
+        .expect("rewrite lexer should classify tagged cast-history predicate");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("tagged cast-history conditional should parse");
+
+    let [crate::cards::builders::EffectAst::Conditional { predicate, .. }] = parsed.as_slice()
+    else {
+        panic!("expected conditional exile clause, got {parsed:?}");
+    };
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::TaggedWasCast(tag)
+            if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
 }
 
 #[test]
@@ -3218,6 +3373,21 @@ fn rewrite_lexed_cant_sentence_preserves_hyphenated_spell_filter_for_next_turn_s
     assert!(
         debug.contains("excluded_card_types: [Creature]"),
         "expected non-Creature spell filter to survive parsing, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_cant_sentence_supports_phase_out_until_next_upkeep() {
+    let text = "Until your next upkeep, target permanent can't phase out.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify phase-out restriction");
+
+    let parsed =
+        parse_cant_effect_sentence_lexed(&lexed).expect("phase-out cant sentence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("YourNextUpkeep") && debug.contains("PhaseOut"),
+        "expected phase-out restriction with next-upkeep duration, got {debug}"
     );
 }
 
@@ -7334,6 +7504,29 @@ fn rewrite_lexed_effect_sentence_supports_delayed_this_turn_trigger_via_lexed_tr
 }
 
 #[test]
+fn rewrite_lexed_effect_sentence_supports_leading_this_turn_targeted_unblocked_trigger() {
+    let lexed = lex_line(
+        "This turn, when target creature you control attacks and isn't blocked, you may gain life equal to its power. If you do, it assigns no combat damage this turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify leading delayed this-turn trigger sentence");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("leading delayed this-turn trigger sentence should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+    assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(
+        debug.contains("PreventAllCombatDamageFromSource"),
+        "{debug}"
+    );
+    assert!(debug.contains("source: Tagged"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_preserves_conditional_for_leading_instead_followup() {
     let text = "If it's a Human, instead it gets +3/+3 and gains indestructible until end of turn.";
     let lexed =
@@ -7470,6 +7663,21 @@ fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_bottom_bundle() {
 }
 
 #[test]
+fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_graveyard_bundle() {
+    let text = "look at the top two cards of your library. put one of them into your hand and the other into your graveyard.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify looked-card bundle");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("looked-card hand/graveyard sequence");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_tap_lock_followup() {
     let sentences = registry_sentence_inputs(
         "tap all creatures target player controls. they don't untap during their controllers' next untap steps for as long as this artifact remains tapped.",
@@ -7546,6 +7754,43 @@ fn rewrite_lexed_destroy_all_keeps_named_counter_filter() {
 }
 
 #[test]
+fn rewrite_lexed_destroy_one_of_those_at_random_keeps_tagged_random_target() {
+    let lexed = lex_line("Destroy one of those permanents at random.", 0)
+        .expect("rewrite lexer should classify destroy-one-of-those text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("destroy-one-of-those sentence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("Destroy"), "{debug}");
+    assert!(debug.contains("WithCount"), "{debug}");
+    assert!(debug.contains("random: true"), "{debug}");
+    assert!(debug.contains("TaggedObjectConstraint"), "{debug}");
+}
+
+#[test]
+fn rewrite_lowered_intervening_counter_gate_binds_destroy_to_gate_filter()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Counter Gate Variant")
+        .card_types(vec![CardType::Enchantment]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "At the beginning of your end step, if two or more permanents you don't control have an aim counter on them, destroy one of those permanents at random."
+            .to_string(),
+        false,
+    )?;
+    let debug = format!("{definition:#?}");
+
+    assert!(debug.contains("DestroyEffect"), "{debug}");
+    assert!(debug.contains("random: true"), "{debug}");
+    assert!(
+        debug.matches("with_counter: Some").count() >= 2,
+        "expected both the intervening condition and destroy target to keep the counter filter, got {debug}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_consult_cast_bottom_bundle() {
     let sentences = registry_sentence_inputs(
         "Exile cards from the top of your library until you exile a nonland card. You may cast that card without paying its mana cost. Put all cards exiled this way that weren't cast this way on the bottom of your library in a random order.",
@@ -7605,6 +7850,29 @@ fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bundle() {
     assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
     assert!(
         debug.contains("PutSomeIntoHandRestOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_looked_cards_reveal_top_rest_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Look at the top four cards of your library. You may reveal a creature or land card from among them and put it on top of your library. Put the rest on the bottom of your library in a random order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_registered_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match looked-cards reveal-top bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "look-at-top-reveal-match-put-top-rest-bottom");
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("to_top: true"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
 }
@@ -8708,6 +8976,19 @@ fn rewrite_activation_cost_string_entrypoint_matches_named_card_token_path() {
 }
 
 #[test]
+fn rewrite_activation_cost_parser_handles_exile_self_and_named_artifacts() {
+    let cost = parse_activation_cost_rewrite(
+        "Exile The Book of Vile Darkness and artifacts you control named Eye of Vecna and Hand of Vecna",
+    )
+    .expect("activation-cost parser should keep named artifact exile costs distinct");
+
+    let debug = format!("{cost:?}");
+    assert!(debug.contains("ExileSelfAndNamedArtifacts"), "{debug}");
+    assert!(debug.contains("eye of vecna"), "{debug}");
+    assert!(debug.contains("hand of vecna"), "{debug}");
+}
+
+#[test]
 fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants() {
     let tap_tokens = lex_line("Tap another untapped creature you control", 0)
         .expect("lexer should classify tap-chosen activation cost");
@@ -9532,6 +9813,58 @@ fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicate_parses() 
         super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
         crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn
     );
+}
+
+#[test]
+fn rewrite_grammar_land_you_controlled_put_into_graveyard_predicate_parses() {
+    let tokens = lex_line(
+        "a land you controlled was put into a graveyard from the battlefield this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify land graveyard-history predicate");
+
+    let parsed = super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("ObjectPutIntoGraveyardFromBattlefieldThisTurn"),
+        "{debug}"
+    );
+    assert!(debug.contains("Land"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+}
+
+#[test]
+fn rewrite_grammar_artifact_entered_under_your_control_predicate_parses() {
+    let tokens = lex_line(
+        "an artifact entered the battlefield under your control this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify artifact-entered predicate");
+
+    let parsed = super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("ObjectEnteredBattlefieldThisTurn"),
+        "{debug}"
+    );
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+}
+
+#[test]
+fn rewrite_grammar_you_lost_life_this_turn_threshold_predicate_parses() {
+    let tokens = lex_line("you lost 2 or more life this turn", 0)
+        .expect("rewrite lexer should classify life-lost threshold predicate");
+
+    let parsed = super::parse_predicate_lexed(&tokens).expect("predicate should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ValueComparison"), "{debug}");
+    assert!(debug.contains("LifeLostThisTurn(You)"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
+    assert!(debug.contains("Fixed(2)"), "{debug}");
 }
 
 #[test]

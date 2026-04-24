@@ -1342,6 +1342,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.drawn_this_turn
+            && !game
+                .turn_store
+                .turn_history
+                .object_was_drawn_this_turn(object.id)
+        {
+            return false;
+        }
+
         // Zone check (with special handling for stack entries)
         let wants_stack = self.zone == Some(Zone::Stack)
             || self.stack_kind.is_some()
@@ -3106,6 +3115,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.distinct_names {
             parts.push("with different names".to_string());
         }
+        if self.distinct_powers {
+            parts.push("with different powers".to_string());
+        }
 
         // Handle name
         if let Some(ref name) = self.name {
@@ -3303,6 +3315,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.drawn_this_turn {
+            parts.push("drawn this turn".to_string());
         }
 
         match (controller_suffix, owner_suffix) {
@@ -4014,6 +4029,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Lifelink => Some("lifelink"),
         Menace => Some("menace"),
         Reach => Some("reach"),
+        Skulk => Some("skulk"),
         Shroud => Some("shroud"),
         Trample => Some("trample"),
         Vigilance => Some("vigilance"),
@@ -4512,6 +4528,13 @@ mod tests {
             .with_subtype(crate::types::Subtype::Warlock)
             .with_subtype(crate::types::Subtype::Wizard);
         assert_eq!(filter.description(), "outlaw or Wizard creature");
+    }
+
+    #[test]
+    fn test_filter_description_includes_skulk() {
+        let mut filter = ObjectFilter::creature();
+        filter.static_abilities.push(StaticAbilityId::Skulk);
+        assert_eq!(filter.description(), "creature with skulk");
     }
 
     #[test]

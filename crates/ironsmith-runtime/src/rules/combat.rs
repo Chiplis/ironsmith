@@ -665,7 +665,7 @@ mod tests {
             supertypes: vec![],
             card_types: vec![CardType::Creature],
             subtypes: vec![],
-            oracle_text: String::new(),
+            compiled_card_text: String::new(),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: None,
             other_face_name: None,

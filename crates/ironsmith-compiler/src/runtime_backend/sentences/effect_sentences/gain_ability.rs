@@ -1376,6 +1376,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
                         Some(display.as_str()),
                         max_triggers_per_turn,
                     ),
+                    None,
                     ReferenceImports::default(),
                 ),
                 _ => {
@@ -1449,6 +1450,7 @@ fn parse_granted_triggered_otherwise_ability(
         vec![conditional],
         vec![Zone::Battlefield],
         Some(display.to_string()),
+        None,
         None,
         ReferenceImports::default(),
     )))

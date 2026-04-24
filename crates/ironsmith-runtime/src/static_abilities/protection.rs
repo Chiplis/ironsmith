@@ -84,7 +84,7 @@ impl StaticAbilityKind for Protection {
             ProtectionFrom::CardType(ct) => format!("Protection from {}", ct.plural_name()),
             ProtectionFrom::Creatures => "Protection from creatures".to_string(),
             ProtectionFrom::Permanents(filter) => {
-                let description = filter.description();
+                let description = describe_protection_permanent_filter(filter);
                 let description = if matches!(filter.zone, Some(crate::zone::Zone::Stack))
                     && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
                     && !description.ends_with("spells")
@@ -111,6 +111,41 @@ impl StaticAbilityKind for Protection {
 
     fn protection_from(&self) -> Option<&ProtectionFrom> {
         Some(&self.from)
+    }
+}
+
+fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
+    if filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.len() == 1
+        && filter.excluded_card_types.is_empty()
+        && filter.excluded_subtypes.is_empty()
+        && filter.supertypes.is_empty()
+        && filter.excluded_supertypes.is_empty()
+        && filter.colors.is_none()
+        && filter.excluded_colors.is_empty()
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && filter.zone.is_none()
+        && !filter.token
+        && !filter.nontoken
+    {
+        return pluralize_subtype_for_protection(filter.subtypes[0]);
+    }
+
+    filter.description()
+}
+
+fn pluralize_subtype_for_protection(subtype: crate::types::Subtype) -> String {
+    let name = subtype.to_string();
+    match name.as_str() {
+        "Elf" => "Elves".to_string(),
+        "Dwarf" => "Dwarves".to_string(),
+        "Human" => "Humans".to_string(),
+        "Wolf" => "Wolves".to_string(),
+        "Zombie" => "Zombies".to_string(),
+        _ if name.ends_with('s') => name,
+        _ => format!("{name}s"),
     }
 }
 

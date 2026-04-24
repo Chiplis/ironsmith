@@ -536,6 +536,7 @@ fn add_monarch_designation_triggers(
                 )]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -563,6 +564,7 @@ fn add_monarch_designation_triggers(
                 )]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -609,6 +611,7 @@ fn add_initiative_designation_triggers(
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -638,6 +641,7 @@ fn add_initiative_designation_triggers(
                 )]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -670,6 +674,7 @@ fn add_ring_designation_triggers(
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -702,6 +707,7 @@ fn add_ring_designation_triggers(
                 effects: ResolutionProgram::from_effects(vec![delayed]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -729,6 +735,7 @@ fn add_ring_designation_triggers(
                 ])]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             },
             trigger_event,
         );
@@ -875,6 +882,7 @@ pub(crate) fn check_triggers_with_view(
                         effects: trigger_ability.effects.clone(),
                         choices: trigger_ability.choices.clone(),
                         intervening_if: trigger_ability.intervening_if.clone(),
+                        presentation_label: None,
                     },
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
@@ -939,6 +947,7 @@ pub(crate) fn check_triggers_with_view(
                             effects: trigger_ability.effects.clone(),
                             choices: trigger_ability.choices.clone(),
                             intervening_if: trigger_ability.intervening_if.clone(),
+                            presentation_label: None,
                         },
                         triggering_event: trigger_event.clone(),
                         source_stable_id: snapshot.stable_id,
@@ -1015,6 +1024,7 @@ pub(crate) fn check_triggers_with_view(
                 )]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             };
             let trigger_identity = compute_trigger_identity(&ability);
 
@@ -1059,6 +1069,7 @@ pub(crate) fn check_triggers_with_view(
                 effects: ResolutionProgram::from_effects(effects),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             };
             let trigger_identity = compute_trigger_identity(&ability);
 
@@ -1154,6 +1165,7 @@ fn collect_state_triggers_for_object(
                 effects: trigger_ability.effects.clone(),
                 choices: trigger_ability.choices.clone(),
                 intervening_if: trigger_ability.intervening_if.clone(),
+                presentation_label: None,
             },
             triggering_event: trigger_event,
             source_stable_id: obj.stable_id,
@@ -1312,6 +1324,7 @@ pub fn check_delayed_triggers(
                     effects: delayed.effects.clone(),
                     choices: delayed.choices.clone(),
                     intervening_if: None,
+                    presentation_label: None,
                 },
                 triggering_event: trigger_event.clone(),
                 source_stable_id,
@@ -1407,6 +1420,7 @@ fn check_triggers_in_zone(
                     effects: trigger_ability.effects.clone(),
                     choices: trigger_ability.choices.clone(),
                     intervening_if: trigger_ability.intervening_if.clone(),
+                    presentation_label: None,
                 },
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,

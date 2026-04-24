@@ -237,6 +237,7 @@ impl TriggeredSplitCandidate {
             effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
             intervening_if: self.intervening_if,
+            presentation_label: None,
             max_triggers_per_turn: self.max_triggers_per_turn,
             chosen_option_label: None,
         }
@@ -1980,6 +1981,17 @@ fn is_named_ability_label(label: &str) -> bool {
     )
 }
 
+fn looks_like_ability_word_label(label: &str, preserve_as_choice_label: bool) -> bool {
+    if preserve_as_choice_label {
+        return false;
+    }
+    let trimmed = label.trim();
+    !trimmed.is_empty()
+        && !trimmed.contains('.')
+        && !trimmed.contains(':')
+        && trimmed.split_whitespace().count() <= 4
+}
+
 fn rewrite_line_normalized(
     line: &PreprocessedLine,
     normalized: &str,
@@ -2175,6 +2187,9 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
+            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+                triggered.presentation_label = Some(label.trim().to_string());
+            }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
             return Ok(Some(LineDispatchResult::single(
@@ -2189,6 +2204,9 @@ fn try_parse_labeled_line_dispatch(
         )? {
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+            }
+            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+                triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);

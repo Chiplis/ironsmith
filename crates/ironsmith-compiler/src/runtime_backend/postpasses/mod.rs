@@ -180,6 +180,7 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
             )]),
             choices: vec![],
             intervening_if: Some(Condition::ThisSpellPaidLabel("Offspring".to_string())),
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     };

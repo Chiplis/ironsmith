@@ -72,6 +72,9 @@ pub(crate) enum ActivationCostSegmentCst {
         choice_count: ChoiceCount,
         filter_text: String,
     },
+    ExileSelfAndNamedArtifacts {
+        names: Vec<String>,
+    },
     ExileTopLibrary {
         count: u32,
     },
@@ -879,6 +882,10 @@ fn parse_exile_segment_tokens(
         });
     }
 
+    if let Some(segment) = parse_exile_self_and_named_artifacts_cost(tail) {
+        return Ok(segment);
+    }
+
     let Some(subject_tokens) = token_slice_from_word_index(tokens, &words, 1) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite exile parser does not yet support '{raw}'"
@@ -896,6 +903,41 @@ fn parse_exile_segment_tokens(
         choice_count,
         filter_text,
     })
+}
+
+fn parse_exile_self_and_named_artifacts_cost(tail: &[&str]) -> Option<ActivationCostSegmentCst> {
+    let marker_idx = tail.windows(5).enumerate().find_map(|(idx, window)| {
+        (window == ["and", "artifacts", "you", "control", "named"]
+            || window == ["and", "artifact", "you", "control", "named"])
+        .then_some(idx)
+    })?;
+    if marker_idx == 0 {
+        return None;
+    }
+    let source_words = &tail[..marker_idx];
+    if source_words.is_empty() || source_words == ["the", "top"] {
+        return None;
+    }
+    let name_words = &tail[marker_idx + 5..];
+    if name_words.is_empty() {
+        return None;
+    }
+
+    let mut names = Vec::new();
+    let mut start = 0usize;
+    for (idx, word) in name_words.iter().enumerate() {
+        if *word == "and" {
+            if start < idx {
+                names.push(name_words[start..idx].join(" "));
+            }
+            start = idx + 1;
+        }
+    }
+    if start < name_words.len() {
+        names.push(name_words[start..].join(" "));
+    }
+    names.retain(|name| !name.trim().is_empty());
+    (names.len() >= 2).then_some(ActivationCostSegmentCst::ExileSelfAndNamedArtifacts { names })
 }
 
 fn parse_return_segment_tokens(
@@ -1826,6 +1868,30 @@ pub(crate) fn lower_activation_cost_cst(
                 costs.push(Cost::validated_effect(Effect::exile(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
+            }
+            ActivationCostSegmentCst::ExileSelfAndNamedArtifacts { names } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::exile_self());
+                for name in names {
+                    let tag = format!("exile_cost_{exile_tag_id}");
+                    exile_tag_id += 1;
+                    let mut filter = ObjectFilter {
+                        zone: Some(crate::zone::Zone::Battlefield),
+                        controller: Some(PlayerFilter::You),
+                        card_types: vec![CardType::Artifact],
+                        ..Default::default()
+                    };
+                    filter.name = Some(name.clone());
+                    costs.push(Cost::validated_effect(Effect::choose_objects(
+                        filter,
+                        ChoiceCount::exactly(1),
+                        PlayerFilter::You,
+                        tag.clone(),
+                    )));
+                    costs.push(Cost::validated_effect(Effect::exile(
+                        crate::target::ChooseSpec::tagged(tag),
+                    )));
+                }
             }
             ActivationCostSegmentCst::ExileTopLibrary { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

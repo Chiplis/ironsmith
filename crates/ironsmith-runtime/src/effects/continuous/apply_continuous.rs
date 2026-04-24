@@ -252,9 +252,10 @@ impl EffectExecutor for ApplyContinuousEffect {
             let resolved_modification =
                 resolve_set_pt_modification(self, game, ctx, &modification)?;
             let expires_end_of_turn = match self.until {
-                Until::EndOfTurn | Until::YourNextTurn | Until::ControllersNextUntapStep => {
-                    game.turn.turn_number
-                }
+                Until::EndOfTurn
+                | Until::YourNextTurn
+                | Until::YourNextUpkeep
+                | Until::ControllersNextUntapStep => game.turn.turn_number,
                 _ => u32::MAX,
             };
             let mut effect = ContinuousEffect::new(

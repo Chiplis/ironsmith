@@ -51,7 +51,7 @@ fn synthetic_snapshot(
         supertypes: Vec::new(),
         card_types: Vec::new(),
         subtypes: Vec::new(),
-        oracle_text: String::new(),
+        compiled_card_text: String::new(),
         other_face: None,
         other_face_name: None,
         linked_face_layout: crate::card::LinkedFaceLayout::None,

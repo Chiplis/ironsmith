@@ -35,6 +35,38 @@ fn source_was_cast(
         .is_some()
 }
 
+fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &ExecutionContext) -> bool {
+    let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
+        return false;
+    };
+    for snapshot in tagged {
+        if let Some(event) = &ctx.triggering_event
+            && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
+            && etb.from == Zone::Stack
+            && etb.object == snapshot.object_id
+        {
+            return true;
+        }
+        if let Some(event) = &ctx.triggering_event
+            && let Some(zc) = event.downcast::<crate::events::ZoneChangeEvent>()
+            && zc.from == Zone::Stack
+            && zc.to == Zone::Battlefield
+            && zc.objects.contains(&snapshot.object_id)
+        {
+            return true;
+        }
+        if game
+            .turn_store
+            .turn_history
+            .spell_cast_order(snapshot.object_id)
+            .is_some()
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn this_spell_was_cast_from_zone(
     game: &GameState,
     source: ObjectId,
@@ -150,6 +182,104 @@ mod tests {
             !evaluate_condition(&game, &condition, &ctx)
                 .expect("higher life total should evaluate cleanly"),
             "expected an opposing higher life total to fail the condition"
+        );
+    }
+
+    #[test]
+    fn evaluate_object_put_into_graveyard_from_battlefield_condition_uses_lki_controller() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.new_object_id();
+        let land = CardBuilder::new(CardId::from_raw(9), "Test Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+        let snapshot = {
+            let object = game.object(land_id).expect("land exists");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        };
+        let zone_change = crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                land_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot.clone()),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&zone_change, Some(snapshot), None);
+
+        let condition = Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+            crate::target::ObjectFilter::land().controlled_by(PlayerFilter::You),
+        );
+
+        assert!(
+            evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, alice)
+            )
+            .expect("land-graveyard condition should evaluate"),
+            "expected Alice's historical land to satisfy the condition"
+        );
+        assert!(
+            !evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, bob)
+            )
+            .expect("land-graveyard condition should evaluate"),
+            "expected Bob not to satisfy Alice's historical land condition"
+        );
+    }
+
+    #[test]
+    fn evaluate_object_entered_battlefield_condition_uses_lki_controller() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.new_object_id();
+        let artifact = CardBuilder::new(CardId::from_raw(10), "Test Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let snapshot = {
+            let object = game.object(artifact_id).expect("artifact exists");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        };
+        let etb = crate::events::RawEvent::new(
+            crate::events::EnterBattlefieldEvent::new(artifact_id, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&etb, Some(snapshot), None);
+
+        let condition = Condition::ObjectEnteredBattlefieldThisTurn(
+            crate::target::ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+        );
+
+        assert!(
+            evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, alice)
+            )
+            .expect("artifact-entered condition should evaluate"),
+            "expected Alice's historical artifact ETB to satisfy the condition"
+        );
+        assert!(
+            !evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, bob)
+            )
+            .expect("artifact-entered condition should evaluate"),
+            "expected Bob not to satisfy Alice's historical artifact condition"
         );
     }
 }
@@ -275,6 +405,57 @@ struct SharedConditionContext<'a> {
     trigger_identity: Option<TriggerIdentity>,
 }
 
+fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
+    game: &GameState,
+    ctx: SharedConditionContext<'_>,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .any(|record| {
+            record
+                .event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+                .is_some_and(|event| event.from == Zone::Battlefield && event.to == Zone::Graveyard)
+                && record
+                    .object_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+        })
+}
+
+fn object_matching_entered_battlefield_this_turn(
+    game: &GameState,
+    ctx: SharedConditionContext<'_>,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    game.turn_store
+        .turn_history
+        .event_records
+        .iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .any(|record| {
+            let entered = record
+                .event
+                .downcast::<crate::events::EnterBattlefieldEvent>()
+                .is_some()
+                || record
+                    .event
+                    .downcast::<crate::events::zones::ZoneChangeEvent>()
+                    .is_some_and(|event| event.is_etb());
+            entered
+                && record
+                    .object_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+        })
+}
+
 fn condition_filter_context(
     game: &GameState,
     you: PlayerId,
@@ -388,7 +569,14 @@ fn evaluate_condition_shared_core(
                 .permanents_left_battlefield_under_controller(ctx.controller)
                 > 0,
         ),
+        Condition::ObjectEnteredBattlefieldThisTurn(filter) => Some(
+            object_matching_entered_battlefield_this_turn(game, ctx, filter),
+        ),
+        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => Some(
+            object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, ctx, filter),
+        ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
+        Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellWasCastFromZone(_) => None,
         Condition::NoSpellsWereCastLastTurn => {
             Some(game.turn_store.spells_cast_last_turn_total == 0)
@@ -538,6 +726,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::OpponentLostLifeThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
+        Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
+        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
         Condition::SourceWasCast => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
         Condition::NoSpellsWereCastLastTurn => {}
@@ -570,6 +760,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
         Condition::TaggedObjectMatches(..) => {}
+        Condition::TaggedObjectWasCast(..) => {}
         Condition::TaggedObjectIsSoulbondPaired(..) => {}
         Condition::EnchantedPermanentAttackedThisTurn => {}
         Condition::TargetMatches(..) => {}
@@ -1306,6 +1497,7 @@ pub fn evaluate_condition_external(
 
         // Conditions requiring targets / effect execution context are not evaluable here.
         Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
         | Condition::TargetMatches(_)
@@ -1337,6 +1529,8 @@ pub fn evaluate_condition_external(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
         | Condition::SpellsWereCastLastTurnOrMore(_)
@@ -1974,7 +2168,7 @@ fn evaluate_condition_simple(
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
-        Condition::TaggedObjectMatches(_, _) => false,
+        Condition::TaggedObjectMatches(_, _) | Condition::TaggedObjectWasCast(_) => false,
         Condition::TaggedObjectIsSoulbondPaired(_) => false,
         Condition::EnchantedPermanentAttackedThisTurn => false,
         Condition::TargetMatches(_) => false,
@@ -2012,6 +2206,8 @@ fn evaluate_condition_simple(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
         | Condition::SpellsWereCastLastTurnOrMore(_)
@@ -2778,6 +2974,7 @@ fn evaluate_condition(
             }
             Ok(false)
         }
+        Condition::TaggedObjectWasCast(tag) => Ok(tagged_object_was_cast(game, tag, ctx)),
         Condition::TaggedObjectIsSoulbondPaired(tag) => {
             let tagged_id = ctx
                 .get_tagged(tag.as_str())
@@ -3008,6 +3205,8 @@ fn evaluate_condition(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectEnteredBattlefieldThisTurn(_)
+        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
         | Condition::SourceWasCast
         | Condition::NoSpellsWereCastLastTurn
         | Condition::SpellsWereCastLastTurnOrMore(_)

@@ -3,11 +3,11 @@ use super::super::object_filters::is_comparison_or_delimiter;
 use super::super::token_primitives::{
     parse_leading_may_action_lexed, slice_contains, slice_starts_with, word_view_has_prefix,
 };
-use super::super::util::{is_article, parse_number, trim_commas};
-use super::dispatch_entry::{
-    find_from_among_looked_cards_phrase, leading_may_actor_to_player,
-    parse_prefixed_top_of_your_library_count,
+use super::super::util::{is_article, parse_number, parse_number_or_x_value_lexed, trim_commas};
+use super::super::value_helpers::{
+    parse_value_from_lexed, parse_where_x_greatest_commander_mana_value,
 };
+use super::dispatch_entry::{find_from_among_looked_cards_phrase, leading_may_actor_to_player};
 use super::search_library::{
     normalize_search_library_filter, parse_search_library_disjunction_filter,
 };
@@ -21,10 +21,64 @@ use crate::zone::Zone;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
+fn parse_prefixed_top_of_your_library_value<T: Copy>(
+    tokens: &[OwnedLexToken],
+    prefixes: &[(&[&str], T)],
+) -> Option<(T, crate::effect::Value)> {
+    let tokens = trim_commas(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    let (count_word_idx, marker) = prefixes.iter().find_map(|(prefix, marker)| {
+        word_view_has_prefix(&word_view, prefix).then_some((prefix.len(), *marker))
+    })?;
+    let count_start = word_view.token_index_for_word_index(count_word_idx)?;
+    let count_tokens = &tokens[count_start..];
+    let (count, used) = parse_number_or_x_value_lexed(count_tokens)?;
+    let tail_tokens = trim_commas(&count_tokens[used..]);
+    let tail_word_view = TokenWordView::new(&tail_tokens);
+    let tail_words = tail_word_view.word_refs();
+    if !matches!(
+        tail_words.get(..4),
+        Some(["card", "of", "your", "library"] | ["cards", "of", "your", "library"])
+    ) {
+        return None;
+    }
+
+    if tail_words.len() == 4 {
+        return Some((marker, count));
+    }
+
+    if count == crate::effect::Value::X
+        && matches!(tail_words.get(4..7), Some(["where", "x", "is"]))
+    {
+        let value_start = tail_word_view.token_index_for_word_index(7)?;
+        let value_tokens = trim_commas(&tail_tokens[value_start..]);
+        if let Some((resolved, used_value)) = parse_value_from_lexed(&value_tokens)
+            && TokenWordView::new(&value_tokens[used_value..]).is_empty()
+        {
+            return Some((marker, resolved));
+        }
+        let value_words = TokenWordView::new(&value_tokens);
+        let value_word_refs = value_words.word_refs();
+        let commander_start = match value_word_refs.as_slice() {
+            ["the", "greatest", "mana", "value", "of", ..] => Some(5usize),
+            ["greatest", "mana", "value", "of", ..] => Some(4usize),
+            _ => None,
+        };
+        if let Some(commander_start) = commander_start
+            && let Some(resolved) =
+                parse_where_x_greatest_commander_mana_value(&value_tokens, commander_start)
+        {
+            return Some((marker, resolved));
+        }
+    }
+
+    None
+}
+
 pub(crate) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
-    let (revealed, count) = parse_prefixed_top_of_your_library_count(
+    let (revealed, count) = parse_prefixed_top_of_your_library_value(
         tokens,
         &[
             (&["look", "at", "the", "top"][..], false),
@@ -33,11 +87,7 @@ pub(crate) fn parse_top_cards_view_sentence(
             (&["reveal", "top"][..], true),
         ],
     )?;
-    Some((
-        PlayerAst::You,
-        crate::effect::Value::Fixed(count as i32),
-        revealed,
-    ))
+    Some((PlayerAst::You, count, revealed))
 }
 
 fn strip_up_to_one_looked_card_choice_prefix(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {

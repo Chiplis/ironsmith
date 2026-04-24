@@ -629,7 +629,7 @@ fn fallback_stack_entry_ability_text(
         }
 
         let oracle_lines: Vec<String> = source_obj
-            .oracle_text
+            .compiled_card_text
             .lines()
             .filter_map(normalize_stack_display_text)
             .collect();

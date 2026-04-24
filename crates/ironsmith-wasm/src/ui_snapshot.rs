@@ -179,7 +179,7 @@ fn object_characteristic_signature(
     let current = game.current_characteristics(obj.id);
     let (
         name,
-        oracle_text,
+        compiled_card_text,
         power,
         toughness,
         card_types,
@@ -192,7 +192,7 @@ fn object_characteristic_signature(
     ) = if let Some(chars) = current {
         (
             chars.name,
-            chars.oracle_text,
+            chars.compiled_card_text,
             chars.power,
             chars.toughness,
             chars.card_types,
@@ -206,7 +206,7 @@ fn object_characteristic_signature(
     } else {
         (
             obj.name.clone(),
-            obj.oracle_text.clone(),
+            obj.compiled_card_text.clone(),
             obj.power(),
             obj.toughness(),
             obj.card_types.clone(),
@@ -252,7 +252,7 @@ fn object_characteristic_signature(
         format!("supertypes:{supertype_signature}"),
         format!("types:{card_type_signature}"),
         format!("subtypes:{subtype_signature}"),
-        format!("oracle:{oracle_text}"),
+        format!("oracle:{compiled_card_text}"),
         format!(
             "pt:{}/{}",
             power.map_or("-".to_string(), |p| p.to_string()),
@@ -450,11 +450,11 @@ pub(super) fn grouped_battlefield_for_player(
             });
             let mana_cost =
                 representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
-            let oracle_text = representative
+            let compiled_card_text = representative
                 .map(|obj| {
                     game.current_characteristics(obj.id)
-                        .map(|chars| chars.oracle_text)
-                        .unwrap_or_else(|| obj.oracle_text.clone())
+                        .map(|chars| chars.compiled_card_text)
+                        .unwrap_or_else(|| obj.compiled_card_text.clone())
                 })
                 .unwrap_or_default();
             let counters = representative
@@ -471,7 +471,7 @@ pub(super) fn grouped_battlefield_for_player(
                 member_stable_ids,
                 lane: key.lane.as_str().to_string(),
                 mana_cost,
-                oracle_text,
+                oracle_text: compiled_card_text,
                 power_toughness,
                 counter_signature: key.counter_signature.clone(),
                 counters,
@@ -1123,7 +1123,7 @@ pub(super) fn build_object_details_snapshot(
         type_line_display,
         type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-        oracle_text: obj.oracle_text.clone(),
+        oracle_text: obj.compiled_card_text.clone(),
         power,
         toughness,
         loyalty: obj.loyalty(),

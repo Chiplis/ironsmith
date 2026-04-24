@@ -968,6 +968,7 @@ fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKe
         | StaticAbilityId::Shadow
         | StaticAbilityId::Horsemanship
         | StaticAbilityId::Flanking
+        | StaticAbilityId::Skulk
         | StaticAbilityId::Changeling => Some(Static(static_id)),
         _ => None,
     }
@@ -1039,7 +1040,8 @@ pub(crate) fn parse_filter_counter_constraint_words(
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
     let counter_type = if descriptor_tokens.len() == 1 {
-        parse_counter_type_word(descriptor_words[0])?
+        parse_counter_type_word(descriptor_words[0])
+            .unwrap_or_else(|| CounterType::Named(intern_counter_name(descriptor_words[0])))
     } else {
         parse_counter_type_from_tokens(&descriptor_tokens)?
     };
@@ -1970,8 +1972,14 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             token_words.join(" ")
         )));
     }
-    if words_have_suffix(token_words.as_slice(), &["chosen", "at", "random"])
-        && let Some(random_idx) = token_word_view.token_index_for_word_index(token_words.len() - 3)
+    if words_have_suffix(token_words.as_slice(), &["chosen", "at", "random"]) {
+        if let Some(random_idx) = token_word_view.token_index_for_word_index(token_words.len() - 3)
+        {
+            tokens = &tokens[..random_idx];
+            random_choice = true;
+        }
+    } else if words_have_suffix(token_words.as_slice(), &["at", "random"])
+        && let Some(random_idx) = token_word_view.token_index_for_word_index(token_words.len() - 2)
     {
         tokens = &tokens[..random_idx];
         random_choice = true;
@@ -2013,6 +2021,31 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             Box::new(target),
             choice_count_from_value(&value, true),
         ));
+    }
+    if all_words.len() >= 4
+        && all_words.get(1).copied() == Some("of")
+        && matches!(all_words.get(2).copied(), Some("those" | "them"))
+        && let Some((count, used)) = parse_number(tokens)
+        && used == 1
+        && let Some(object_start) = token_word_view.token_index_for_word_index(3)
+    {
+        let object_tokens = trim_commas(&tokens[object_start..]);
+        if !object_tokens.is_empty() {
+            let other = object_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+            let mut filter = parse_object_filter(&object_tokens, other)?;
+            filter =
+                filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            let mut count = ChoiceCount::exactly(count as usize);
+            if random_choice {
+                count = count.at_random();
+            }
+            return Ok(wrap_target_count(
+                TargetAst::Object(filter, None, span),
+                Some(count),
+            ));
+        }
     }
     if all_words
         .first()

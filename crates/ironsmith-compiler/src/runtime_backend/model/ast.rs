@@ -304,6 +304,7 @@ pub(crate) enum PredicateAst {
     ItMatches(ObjectFilter),
     TargetMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
+    TaggedWasCast(TagKey),
     EnchantedPermanentAttackedThisTurn,
     PlayerTaggedObjectMatches {
         player: PlayerAst,
@@ -462,6 +463,8 @@ pub(crate) enum PredicateAst {
     CreatureDiedThisTurnOrMore(u32),
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
+    ObjectEnteredBattlefieldThisTurn(ObjectFilter),
+    ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     YouHaveFullParty,
     YouAttackedThisTurn,
     SourceWasCast,

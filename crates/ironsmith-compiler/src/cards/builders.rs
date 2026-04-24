@@ -667,6 +667,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
@@ -745,6 +746,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -978,6 +980,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1035,6 +1038,7 @@ impl CardDefinitionBuilder {
                     counter_type: crate::object::CounterType::Time,
                     count: 1,
                 }),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
         })
@@ -1057,6 +1061,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
                     crate::object::CounterType::Time,
                 )),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Exile],
         })
@@ -1135,6 +1140,7 @@ impl CardDefinitionBuilder {
                 .into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1161,6 +1167,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1224,6 +1231,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(label)),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
@@ -1244,6 +1252,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: Some(crate::ConditionExpr::XValueAtLeast(5)),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1292,6 +1301,7 @@ impl CardDefinitionBuilder {
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
                 choices: vec![],
                 intervening_if: Some(bless_condition),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1330,6 +1340,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1370,6 +1381,7 @@ impl CardDefinitionBuilder {
                     crate::target::ChooseSpec::creature(),
                 )],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones,
         })
@@ -1397,6 +1409,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target_spec],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1457,6 +1470,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1619,6 +1633,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
                     crate::object::CounterType::Fade,
                 )),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1687,6 +1702,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1726,6 +1742,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1759,6 +1776,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1857,6 +1875,7 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -1911,6 +1930,7 @@ impl CardDefinitionBuilder {
                         min_count: 1,
                     },
                 ))),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
         })
@@ -1959,6 +1979,7 @@ impl CardDefinitionBuilder {
                         min_count: 1,
                     },
                 ))),
+                presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
         })

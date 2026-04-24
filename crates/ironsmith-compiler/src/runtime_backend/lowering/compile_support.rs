@@ -40,7 +40,7 @@ use crate::ids::CardId;
 #[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
 #[allow(unused_imports)]
-use crate::static_abilities::StaticAbility;
+use crate::static_abilities::{CopyTriggeredAbilities, StaticAbility};
 #[allow(unused_imports)]
 use crate::target::ChooseSpec;
 #[allow(unused_imports)]
@@ -187,6 +187,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::TaggedMatches(tag, filter) => {
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
             Condition::TaggedObjectMatches(resolved_tag, resolve_it_tag(filter, &refs)?)
+        }
+        PredicateAst::TaggedWasCast(tag) => {
+            let resolved_tag = resolve_it_tag_key(tag, &refs)?;
+            Condition::TaggedObjectWasCast(resolved_tag)
         }
         PredicateAst::EnchantedPermanentAttackedThisTurn => {
             Condition::EnchantedPermanentAttackedThisTurn
@@ -462,6 +466,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        }
+        PredicateAst::ObjectEnteredBattlefieldThisTurn(filter) => {
+            Condition::ObjectEnteredBattlefieldThisTurn(filter.clone())
+        }
+        PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
+            Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter.clone())
         }
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
@@ -950,7 +960,7 @@ fn choose_followup_player_filter(
 pub(crate) fn hand_exile_filter_and_count(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
-) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
+) -> Result<Option<(ObjectFilter, ChoiceCount, Vec<Zone>)>, CardTextError> {
     let (filter, count) = match target {
         TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1)),
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
@@ -961,10 +971,53 @@ pub(crate) fn hand_exile_filter_and_count(
     };
 
     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-    if resolved_filter.zone != Some(Zone::Hand) {
+    let zones = hand_exile_choice_zones(&resolved_filter);
+    let Some(zones) = zones else {
         return Ok(None);
+    };
+    Ok(Some((resolved_filter, count, zones)))
+}
+
+fn hand_exile_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
+    if filter.zone == Some(Zone::Hand) {
+        return Some(vec![Zone::Hand]);
     }
-    Ok(Some((resolved_filter, count)))
+    if filter.zone.is_some() || filter.any_of.is_empty() {
+        return None;
+    }
+
+    let mut zones = Vec::new();
+    for option in &filter.any_of {
+        if option.zone.is_none() {
+            return None;
+        }
+        let mut bare = option.clone();
+        let zone = bare.zone.take()?;
+        if bare != ObjectFilter::default() || !matches!(zone, Zone::Hand | Zone::Graveyard) {
+            return None;
+        }
+        if !zones.contains(&zone) {
+            zones.push(zone);
+        }
+    }
+    if zones.contains(&Zone::Hand) {
+        Some(zones)
+    } else {
+        None
+    }
+}
+
+fn strip_choice_zones_from_filter(filter: &mut ObjectFilter, zones: &[Zone]) {
+    if filter.zone.is_some_and(|zone| zones.contains(&zone)) {
+        filter.zone = None;
+    }
+    filter.any_of.retain(|option| {
+        let mut bare = option.clone();
+        let Some(zone) = bare.zone.take() else {
+            return true;
+        };
+        bare != ObjectFilter::default() || !zones.contains(&zone)
+    });
 }
 
 pub(crate) fn lower_hand_exile_target(
@@ -972,9 +1025,10 @@ pub(crate) fn lower_hand_exile_target(
     face_down: bool,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let Some((mut filter, count)) = hand_exile_filter_and_count(target, ctx)? else {
+    let Some((mut filter, count, zones)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
     };
+    strip_choice_zones_from_filter(&mut filter, &zones);
 
     let mut chooser = filter
         .owner
@@ -1002,7 +1056,7 @@ pub(crate) fn lower_hand_exile_target(
 
     prelude.push(Effect::new(
         crate::effects::ChooseObjectsEffect::new(filter, count, chooser, tag_key.clone())
-            .in_zone(Zone::Hand),
+            .in_zones(zones),
     ));
     prelude.push(Effect::new(
         crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag_key))
@@ -1155,10 +1209,10 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
         return Ok(None);
     }
 
-    let Some((filter, count)) = hand_exile_filter_and_count(target, ctx)? else {
+    let Some((filter, count, zones)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
     };
-    if !count.is_single() {
+    if !count.is_single() || zones.as_slice() != [Zone::Hand] {
         return Ok(None);
     }
 
@@ -2088,6 +2142,7 @@ pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability
             )]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2104,6 +2159,7 @@ pub(crate) fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Abili
             )]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2120,6 +2176,7 @@ pub(crate) fn token_becomes_tapped_deals_damage_target_player_ability(amount: i3
             )]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2138,6 +2195,7 @@ pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> A
             )]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2228,6 +2286,7 @@ pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
             ]),
             choices: Vec::new(),
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2248,6 +2307,7 @@ pub(crate) fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) 
             ]),
             choices: Vec::new(),
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2269,6 +2329,7 @@ pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Abil
             )]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2289,6 +2350,7 @@ pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name
             ]),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2552,10 +2614,14 @@ pub(crate) fn extract_leading_explicit_token_name(words: &[&str]) -> Option<Stri
         name_words.push(*word);
     }
 
-    if name_words.len() < 2 {
-        None
-    } else {
+    if name_words.len() >= 2
+        || words
+            .get(1)
+            .is_some_and(|word| is_descriptor(word) || parse_token_pt(word).is_some())
+    {
         Some(title_case_words(&name_words))
+    } else {
+        None
     }
 }
 
@@ -2738,6 +2804,7 @@ pub(crate) fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
             effects: effects.into(),
             choices: vec![target],
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2761,6 +2828,7 @@ pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
             ]),
             choices: Vec::new(),
             intervening_if: None,
+            presentation_label: None,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -3240,6 +3308,16 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if has_word("indestructible") {
             builder = builder.indestructible();
         }
+        if has_words(&["all", "triggered", "abilities"]) && has_word("exiled") && has_word("cards")
+        {
+            let filter = ObjectFilter::default().in_zone(Zone::Exile);
+            builder = builder.with_ability(Ability::static_ability(
+                StaticAbility::copy_triggered_abilities(
+                    CopyTriggeredAbilities::new(filter)
+                        .with_display("all triggered abilities of the exiled cards"),
+                ),
+            ));
+        }
         if let Some(toxic_idx) = find_window_by(words.as_slice(), 2, |window| window[0] == "toxic")
         {
             if let Ok(amount) = words[toxic_idx + 1].parse::<u32>() {
@@ -3335,6 +3413,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     ]),
                     choices: Vec::new(),
                     intervening_if: None,
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
@@ -3402,6 +3481,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     ]),
                     choices: Vec::new(),
                     intervening_if: None,
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
@@ -3558,6 +3638,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     ]),
                     choices: Vec::new(),
                     intervening_if: None,
+                    presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
@@ -3948,7 +4029,8 @@ mod parse_compile_tests {
 
     #[test]
     fn token_definition_named_construct_skips_urza_construct_shell() {
-        let source_text = "0/0 colorless Construct artifact creature token named Twin that's attacking.";
+        let source_text =
+            "0/0 colorless Construct artifact creature token named Twin that's attacking.";
 
         let def =
             token_definition_for(source_text).expect("named construct token should still build");

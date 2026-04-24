@@ -182,7 +182,7 @@ mod tests {
                     supertypes: Vec::new(),
                     card_types: vec![CardType::Creature],
                     subtypes: Vec::new(),
-                    oracle_text: String::new(),
+                    compiled_card_text: String::new(),
                     other_face: None,
                     other_face_name: None,
                     linked_face_layout: crate::card::LinkedFaceLayout::TransformLike,

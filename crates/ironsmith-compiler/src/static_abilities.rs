@@ -2,9 +2,9 @@ pub use ironsmith_core::{
     ActivatedAbilityCostCondition, Anthem, AnthemCountExpression, AnthemValue,
     AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
     CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
-    CopyActivatedAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
-    CostReductionManaCost, DefendingPlayerAttackCondition, GraveyardCountMetric, LandwalkKind,
-    ManaSpendPermission, PregameActionKind, PregameBeginOnBattlefieldSpec,
+    CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
+    CostReduction, CostReductionManaCost, DefendingPlayerAttackCondition, GraveyardCountMetric,
+    LandwalkKind, ManaSpendPermission, PregameActionKind, PregameBeginOnBattlefieldSpec,
     RemoveCardTypesForFilter, SetColorsForFilter, StaticAbilityId, ThisSpellCastRestrictionKind,
     ThisSpellCastTiming,
 };

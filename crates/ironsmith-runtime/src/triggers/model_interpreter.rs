@@ -381,7 +381,13 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
+            ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked => {
+                Self::this_attacks_and_isnt_blocked()
+            }
             ironsmith_core::DelayedTriggerSpec::Attacks(filter) => Self::attacks(filter),
+            ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter) => {
+                Self::attacks_and_isnt_blocked(filter)
+            }
             ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter) => {
                 Self::attacks_one_or_more(filter)
             }

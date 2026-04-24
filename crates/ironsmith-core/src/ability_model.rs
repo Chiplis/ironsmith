@@ -79,6 +79,7 @@ pub struct TriggeredAbility<T, E> {
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
     pub intervening_if: Option<Condition>,
+    pub presentation_label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,6 +114,7 @@ where
                 effects: effects.into(),
                 choices: vec![],
                 intervening_if: None,
+                presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
         }
@@ -256,6 +258,7 @@ where
                 effects: triggered.effects.try_map_effects(&mut map_effect)?,
                 choices: triggered.choices,
                 intervening_if: triggered.intervening_if,
+                presentation_label: triggered.presentation_label,
             }),
             AbilityKind::Activated(activated) => AbilityKind::Activated(ActivatedAbility {
                 mana_cost: activated.mana_cost.try_map(&mut map_cost)?,

@@ -455,6 +455,7 @@ pub(crate) fn resolve_restriction_it_tag(
             Restriction::be_countered(resolve_it_tag(filter, refs)?)
         }
         Restriction::Transform(filter) => Restriction::transform(resolve_it_tag(filter, refs)?),
+        Restriction::PhaseOut(filter) => Restriction::phase_out(resolve_it_tag(filter, refs)?),
         Restriction::AttackOrBlock(filter) => {
             Restriction::attack_or_block(resolve_it_tag(filter, refs)?)
         }
