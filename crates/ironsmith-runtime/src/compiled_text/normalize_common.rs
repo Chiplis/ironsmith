@@ -3408,6 +3408,16 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             tail.trim()
         );
     }
+    if let Some((prefix, tail)) =
+        split_once_ascii_ci(&normalized, ", for each opponent, that player ")
+        && !tail.trim().is_empty()
+    {
+        return format!(
+            "{}, each opponent {}",
+            capitalize_first(prefix.trim()),
+            tail.trim()
+        );
+    }
     if let Some(rest) = normalized.strip_prefix("For each player, that player ")
         && !rest.trim().is_empty()
     {
@@ -9533,6 +9543,16 @@ mod tests {
                 right: Value::Fixed(2),
             }),
             "two or more permanents you don't control have an aim counter on them"
+        );
+    }
+
+    #[test]
+    fn normalize_for_each_opponent_clause_inside_trigger_text() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "At the beginning of your end step, for each opponent, that player loses 3 life."
+            ),
+            "At the beginning of your end step, each opponent loses 3 life."
         );
     }
 }

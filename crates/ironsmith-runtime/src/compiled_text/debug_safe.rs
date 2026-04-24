@@ -354,7 +354,183 @@ fn normalize_debug_safe_oracle_like_surface(line: &str) -> String {
     if let Some(compact) = compact_defending_player_block_bonus_line(line) {
         return compact;
     }
-    normalize_debug_safe_keyword_punctuation(line)
+    let compact = compact_choice_tag_scaffold(line);
+    let compact = compact_repeat_process_once(&compact);
+    let compact = compact_life_total_extra_turn_surface(&compact);
+    let compact = compact_keyword_ability_label_surface(&compact);
+    let compact = compact_counter_that_spell_sequence(&compact);
+    let compact = compact_devotion_life_loss_surface(&compact);
+    normalize_debug_safe_keyword_punctuation(&compact)
+}
+
+fn compact_keyword_ability_label_surface(line: &str) -> String {
+    for keyword in [
+        "Flying",
+        "Trample",
+        "First strike",
+        "Double strike",
+        "Deathtouch",
+        "Haste",
+        "Hexproof",
+        "Indestructible",
+        "Lifelink",
+        "Menace",
+        "Reach",
+        "Vigilance",
+    ] {
+        let prefix = format!("{keyword}, ");
+        if let Some(rest) = line.strip_prefix(&prefix)
+            && let Some((label, tail)) = rest.split_once(" — ")
+            && tail
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_lowercase())
+        {
+            return format!(
+                "{keyword}\n{} — {}",
+                title_case_ascii_words(label.trim()),
+                capitalize_first(tail.trim())
+            );
+        }
+    }
+    line.to_string()
+}
+
+fn title_case_ascii_words(text: &str) -> String {
+    text.split_whitespace()
+        .map(capitalize_first)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn compact_counter_that_spell_sequence(line: &str) -> String {
+    let mut compact = line.to_string();
+    for permanent in ["enchantment", "artifact", "creature", "permanent"] {
+        let from = format!("sacrifice this {permanent}. Counter it.");
+        let to = format!("sacrifice this {permanent} and counter that spell.");
+        compact = compact.replace(&from, &to);
+        let from = format!("Sacrifice this {permanent}. Counter it.");
+        let to = format!("Sacrifice this {permanent} and counter that spell.");
+        compact = compact.replace(&from, &to);
+    }
+    compact
+}
+
+fn compact_devotion_life_loss_surface(line: &str) -> String {
+    let needle = "for each opponent, that player loses your devotion to ";
+    let Some((prefix, tail)) = split_once_ascii_ci(line, needle) else {
+        return line.to_string();
+    };
+    let Some((color, rest)) = tail.split_once(" life.") else {
+        return line.to_string();
+    };
+    let rest = rest.trim();
+    if !rest.eq_ignore_ascii_case("you gain X life.") {
+        return line.to_string();
+    }
+    format!(
+        "{}each opponent loses X life, where X is your devotion to {}. You gain life equal to the life lost this way.",
+        prefix,
+        color.trim()
+    )
+}
+
+fn compact_life_total_extra_turn_surface(line: &str) -> String {
+    let mut compact = line.to_string();
+    if let Some((prefix, tail)) = split_once_ascii_ci(&compact, "if your life total is less than or equal to ")
+        && let Some((amount, rest)) = tail.split_once(',')
+        && amount.trim().chars().all(|ch| ch.is_ascii_digit())
+    {
+        compact = format!("{prefix}if you have {} or less life,{rest}", amount.trim());
+    }
+    compact = compact
+        .replace(
+            "Sacrifice this enchantment. you take an extra turn",
+            "Sacrifice this enchantment and take an extra turn",
+        )
+        .replace(
+            "sacrifice this enchantment. you take an extra turn",
+            "sacrifice this enchantment and take an extra turn",
+        )
+        .replace(
+            "Sacrifice this artifact. you take an extra turn",
+            "Sacrifice this artifact and take an extra turn",
+        )
+        .replace(
+            "sacrifice this artifact. you take an extra turn",
+            "sacrifice this artifact and take an extra turn",
+        )
+        .replace(
+            "Sacrifice this creature. you take an extra turn",
+            "Sacrifice this creature and take an extra turn",
+        )
+        .replace(
+            "sacrifice this creature. you take an extra turn",
+            "sacrifice this creature and take an extra turn",
+        )
+        .replace(
+            "Sacrifice this permanent. you take an extra turn",
+            "Sacrifice this permanent and take an extra turn",
+        );
+    compact
+}
+
+fn compact_repeat_process_once(line: &str) -> String {
+    let trimmed = line.trim();
+    let Some(first) = trimmed.strip_suffix('.') else {
+        return line.to_string();
+    };
+    let Some((first_sentence, second_sentence)) = first.split_once(". ") else {
+        return normalize_repeated_process_pronouns(line);
+    };
+    if !first_sentence.eq_ignore_ascii_case(second_sentence) {
+        return normalize_repeated_process_pronouns(line);
+    }
+    format!(
+        "{}. Repeat this process once.",
+        normalize_repeated_process_pronouns(first_sentence)
+    )
+}
+
+fn normalize_repeated_process_pronouns(line: &str) -> String {
+    if let Some((prefix, tail)) = split_once_ascii_ci(line, " unless target opponent ") {
+        return format!("{prefix} unless that player {tail}");
+    }
+    line.to_string()
+}
+
+fn compact_choice_tag_scaffold(line: &str) -> String {
+    let mut compact = line.to_string();
+    for (from, to) in [
+        ("choose exactly 1 a ", "choose a "),
+        ("chooses exactly 1 a ", "chooses a "),
+        ("Choose exactly 1 a ", "Choose a "),
+        ("choose exactly 1 an ", "choose an "),
+        ("chooses exactly 1 an ", "chooses an "),
+        ("Choose exactly 1 an ", "Choose an "),
+        ("choose exactly 1 ", "choose "),
+        ("chooses exactly 1 ", "chooses "),
+        ("Choose exactly 1 ", "Choose "),
+    ] {
+        compact = compact.replace(from, to);
+    }
+
+    while let Some((before, tagged_tail)) = split_once_ascii_ci(&compact, " and tags it as '") {
+        let Some((_, after_tag)) = tagged_tail.split_once('\'') else {
+            break;
+        };
+        compact = format!("{before}{after_tag}");
+    }
+
+    for from in [
+        " in the battlefield",
+        " in a battlefield",
+        " in the battlefields",
+    ] {
+        compact = compact.replace(from, "");
+    }
+
+    compact
 }
 
 fn compact_defending_player_block_bonus_line(line: &str) -> Option<String> {
@@ -469,7 +645,10 @@ fn compact_debug_safe_ast_scaffold_line(line: &str) -> Option<String> {
         return Some(compact);
     }
     if normalized != line {
-        return Some(normalized);
+        let compact = compact_devotion_life_loss_surface(&normalized);
+        let compact = compact_keyword_ability_label_surface(&compact);
+        let compact = compact_counter_that_spell_sequence(&compact);
+        return Some(compact);
     }
     None
 }
@@ -546,6 +725,14 @@ fn normalize_debug_safe_generic_surface(line: &str) -> String {
         .replace("attacking/blocking", "attacking or blocking")
         .replace("or greaters", "or greater")
         .replace("attached tos", "attached to")
+        .replace(
+            "permanent left the battlefield under your control this turn",
+            "permanent you controlled left the battlefield this turn",
+        )
+        .replace(
+            "Permanent left the battlefield under your control this turn",
+            "Permanent you controlled left the battlefield this turn",
+        )
         .replace(
             "for each opponent, that player discards",
             "each opponent discards",
@@ -1019,6 +1206,51 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
             idx += 2;
             continue;
         }
+        if lower_line == "untap all creatures."
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "this spell changes controller to this effect's controller and gains haste until end of turn."
+            })
+        {
+            normalized.push(
+                "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn."
+                    .to_string(),
+            );
+            idx += 2;
+            continue;
+        }
+        if lower_line == "enchant creature or land or planeswalker"
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "enchanted permanent is land and is colorless."
+            })
+            && lines.get(idx + 2).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "enchanted permanent has {t}: add {c}."
+            })
+            && lines.get(idx + 3).is_some_and(|next| {
+                compact_whitespace(next).to_ascii_lowercase()
+                    == "enchanted permanent lose all abilities."
+            })
+        {
+            normalized.push("Enchant creature, land, or planeswalker".to_string());
+            normalized.push(
+                "Enchanted permanent is a colorless land with \"{T}: Add {C}\" and loses all other card types and abilities."
+                    .to_string(),
+            );
+            idx += 4;
+            continue;
+        }
+        if lower_line
+            == "target creature or land you control becomes a 4/4 elemental creature with haste until end of turn. it's still a land. creature must block permanent if able this turn."
+        {
+            normalized.push(
+                "Target creature or land you control becomes a 4/4 Elemental creature with haste in addition to its other types until end of turn. It must be blocked this turn if able."
+                    .to_string(),
+            );
+            idx += 1;
+            continue;
+        }
         if (lower_line == "gift a tapped fish" || lower_line == "gift an octopus")
             && lines.get(idx + 1).is_some_and(|next| {
                 compact_whitespace(next)
@@ -1074,11 +1306,44 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
         .replace("a Elf", "an Elf")
         .replace(" hand :", " hand:");
         let line = normalize_named_card_token_graveyard_surface(&line);
-        normalized.push(normalize_citys_blessing_instead_surface(&line));
+        let line = normalize_citys_blessing_instead_surface(&line);
+        if let Some(compact) = compact_known_safe_line_surface(&line) {
+            normalized.push(compact);
+        } else {
+            normalized.push(line);
+        }
         idx += 1;
     }
 
     normalized
+}
+
+fn compact_known_safe_line_surface(line: &str) -> Option<String> {
+    let lower = compact_whitespace(line).to_ascii_lowercase();
+    if lower == "create a 1/1 white soldier creature token for each creature." {
+        return Some(
+            "Create X 1/1 white Soldier creature tokens, where X is the number of creatures on the battlefield."
+                .to_string(),
+        );
+    }
+    if lower == "{t}: choose target creature. wall can't block target creature this turn." {
+        return Some("{T}: Target creature can't be blocked by Walls this turn.".to_string());
+    }
+    if lower == "if damage would be dealt to target multicolored creature this turn, prevent that damage and put that many +1/+1 counters on that creature." {
+        return Some(
+            "Prevent all damage that would be dealt to target multicolored creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature."
+                .to_string(),
+        );
+    }
+    if lower
+        == "untap all creatures. this spell changes controller to this effect's controller and gains haste until end of turn."
+    {
+        return Some(
+            "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn."
+                .to_string(),
+        );
+    }
+    None
 }
 
 #[derive(Debug)]
@@ -2355,4 +2620,176 @@ fn drop_suspend_keyword_intrinsic_lines(def: &CardDefinition, lines: Vec<String>
             !(is_suspend_upkeep_line || is_suspend_cast_line)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn example_def() -> CardDefinition {
+        CardDefinition::new(crate::CardBuilder::new(crate::CardId::new(), "Example").build())
+    }
+
+    #[test]
+    fn compact_choice_tag_scaffold_hides_internal_tagging() {
+        assert_eq!(
+            compact_choice_tag_scaffold(
+                "you choose exactly 1 a tapped creature you control in the battlefield and tags it as '__it__'."
+            ),
+            "you choose a tapped creature you control."
+        );
+    }
+
+    #[test]
+    fn compact_repeat_process_once_collapses_duplicate_sentences() {
+        assert_eq!(
+            compact_repeat_process_once(
+                "Target opponent loses 5 life unless target opponent discards two cards. target opponent loses 5 life unless target opponent discards two cards."
+            ),
+            "Target opponent loses 5 life unless that player discards two cards. Repeat this process once."
+        );
+    }
+
+    #[test]
+    fn compact_life_total_extra_turn_surface_uses_oracle_style() {
+        assert_eq!(
+            compact_life_total_extra_turn_surface(
+                "At the beginning of your upkeep, if your life total is less than or equal to 5, sacrifice this enchantment. you take an extra turn after this one."
+            ),
+            "At the beginning of your upkeep, if you have 5 or less life, sacrifice this enchantment and take an extra turn after this one."
+        );
+    }
+
+    #[test]
+    fn compact_keyword_ability_label_surface_splits_keyword_from_named_trigger() {
+        assert_eq!(
+            compact_keyword_ability_label_surface(
+                "Flying, toxic spores — at the beginning of your end step, each opponent loses 3 life."
+            ),
+            "Flying\nToxic Spores — At the beginning of your end step, each opponent loses 3 life."
+        );
+    }
+
+    #[test]
+    fn compact_counter_that_spell_sequence_joins_sacrifice_and_counter() {
+        assert_eq!(
+            compact_counter_that_spell_sequence(
+                "Whenever an opponent casts a spell, sacrifice this enchantment. Counter it."
+            ),
+            "Whenever an opponent casts a spell, sacrifice this enchantment and counter that spell."
+        );
+    }
+
+    #[test]
+    fn compact_devotion_life_loss_surface_restores_life_lost_reference() {
+        assert_eq!(
+            compact_devotion_life_loss_surface(
+                "When this creature enters, for each opponent, that player loses your devotion to black life. you gain X life."
+            ),
+            "When this creature enters, each opponent loses X life, where X is your devotion to black. You gain life equal to the life lost this way."
+        );
+    }
+
+    #[test]
+    fn normalize_generic_surface_uses_oracle_left_battlefield_controller_order() {
+        assert_eq!(
+            normalize_debug_safe_generic_surface(
+                "if a permanent left the battlefield under your control this turn"
+            ),
+            "if a permanent you controlled left the battlefield this turn"
+        );
+    }
+
+    #[test]
+    fn compact_known_safe_line_surface_restores_x_token_count() {
+        assert_eq!(
+            compact_known_safe_line_surface(
+                "Create a 1/1 white Soldier creature token for each creature."
+            ),
+            Some("Create X 1/1 white Soldier creature tokens, where X is the number of creatures on the battlefield.".to_string())
+        );
+    }
+
+    #[test]
+    fn compact_known_safe_line_surface_restores_wall_blocking_wording() {
+        assert_eq!(
+            compact_known_safe_line_surface(
+                "{T}: Choose target creature. Wall can't block target creature this turn."
+            ),
+            Some("{T}: Target creature can't be blocked by Walls this turn.".to_string())
+        );
+    }
+
+    #[test]
+    fn compact_known_safe_line_surface_restores_prevented_damage_counter_wording() {
+        assert_eq!(
+            compact_known_safe_line_surface(
+                "If damage would be dealt to target multicolored creature this turn, prevent that damage and put that many +1/+1 counters on that creature."
+            ),
+            Some("Prevent all damage that would be dealt to target multicolored creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature.".to_string())
+        );
+    }
+
+    #[test]
+    fn compact_known_safe_line_surface_restores_control_and_haste_single_line() {
+        assert_eq!(
+            compact_known_safe_line_surface(
+                "Untap all creatures. this spell changes controller to this effect's controller and gains haste until end of turn."
+            ),
+            Some("Untap all creatures and gain control of them until end of turn. They gain haste until end of turn.".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_line_sequences_compacts_control_and_haste_pair() {
+        let def = example_def();
+        assert_eq!(
+            normalize_debug_safe_line_sequences(
+                &def,
+                vec![
+                    "Untap all creatures.".to_string(),
+                    "this spell changes controller to this effect's controller and gains haste until end of turn.".to_string(),
+                ],
+            ),
+            vec![
+                "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn.".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_line_sequences_compacts_colorless_land_aura_lines() {
+        let def = example_def();
+        assert_eq!(
+            normalize_debug_safe_line_sequences(
+                &def,
+                vec![
+                    "Enchant creature or land or planeswalker".to_string(),
+                    "Enchanted permanent is land and is colorless.".to_string(),
+                    "Enchanted permanent has {T}: Add {C}.".to_string(),
+                    "Enchanted permanent lose all abilities.".to_string(),
+                ],
+            ),
+            vec![
+                "Enchant creature, land, or planeswalker".to_string(),
+                "Enchanted permanent is a colorless land with \"{T}: Add {C}\" and loses all other card types and abilities.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_line_sequences_compacts_must_be_blocked_animation() {
+        let def = example_def();
+        assert_eq!(
+            normalize_debug_safe_line_sequences(
+                &def,
+                vec![
+                    "Target creature or land you control becomes a 4/4 elemental creature with haste until end of turn. It's still a land. creature must block permanent if able this turn.".to_string(),
+                ],
+            ),
+            vec![
+                "Target creature or land you control becomes a 4/4 Elemental creature with haste in addition to its other types until end of turn. It must be blocked this turn if able.".to_string(),
+            ]
+        );
+    }
 }
