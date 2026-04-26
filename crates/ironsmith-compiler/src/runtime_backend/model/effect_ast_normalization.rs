@@ -128,8 +128,14 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 
 fn is_noop_effect(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::GrantAbilitiesAll { abilities, .. }
-        | EffectAst::GrantAbilitiesChoiceAll { abilities, .. } => abilities.is_empty(),
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesAll { abilities, .. }
+                | crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesChoiceAll {
+                    abilities, ..
+                },
+            ..
+        }) => abilities.is_empty(),
         _ => false,
     }
 }
@@ -145,11 +151,11 @@ mod tests {
 
     #[test]
     fn normalize_removes_empty_global_grant_effect() {
-        let effects = vec![EffectAst::GrantAbilitiesAll {
-            filter: ObjectFilter::default(),
-            abilities: Vec::new(),
-            duration: Until::EndOfTurn,
-        }];
+        let effects = vec![EffectAst::subject_verb_grant_abilities_all(
+            ObjectFilter::default(),
+            Vec::new(),
+            Until::EndOfTurn,
+        )];
 
         let normalized = normalize_effects_ast(&effects);
         assert!(normalized.is_empty());
@@ -159,15 +165,18 @@ mod tests {
     fn normalize_removes_empty_global_grant_effect_inside_wrappers() {
         let effects = vec![EffectAst::May {
             effects: vec![
-                EffectAst::GrantAbilitiesAll {
-                    filter: ObjectFilter::default(),
-                    abilities: Vec::new(),
-                    duration: Until::EndOfTurn,
-                },
-                EffectAst::Draw {
-                    count: Value::Fixed(1),
-                    player: PlayerAst::You,
-                },
+                EffectAst::subject_verb_grant_abilities_all(
+                    ObjectFilter::default(),
+                    Vec::new(),
+                    Until::EndOfTurn,
+                ),
+                EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    crate::cards::builders::SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                ),
             ],
         }];
 
@@ -176,25 +185,37 @@ mod tests {
             panic!("expected wrapped may effect");
         };
         assert_eq!(effects.len(), 1);
-        assert!(matches!(effects[0], EffectAst::Draw { .. }));
+        assert!(matches!(
+            effects[0],
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                ..
+            })
+        ));
     }
 
     #[test]
     fn normalize_rewrites_repeat_this_process_tail_into_loop_effect() {
         let effects = vec![
             EffectAst::May {
-                effects: vec![EffectAst::Draw {
-                    count: Value::Fixed(1),
-                    player: PlayerAst::You,
-                }],
+                effects: vec![EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    crate::cards::builders::SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
             },
             EffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: vec![
-                    EffectAst::GainLife {
-                        amount: Value::Fixed(1),
-                        player: PlayerAst::You,
-                    },
+                    EffectAst::subject_verb(
+                        crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        crate::cards::builders::SubjectVerbActionAst::GainLife {
+                            amount: Value::Fixed(1),
+                        },
+                    ),
                     EffectAst::RepeatThisProcess,
                 ],
             },
@@ -214,14 +235,20 @@ mod tests {
     #[test]
     fn normalize_rewrites_optional_repeat_this_process_tail_into_loop_effect() {
         let effects = vec![
-            EffectAst::Draw {
-                count: Value::Fixed(1),
-                player: PlayerAst::You,
-            },
-            EffectAst::LoseLife {
-                amount: Value::Fixed(1),
-                player: PlayerAst::You,
-            },
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::LoseLife {
+                    amount: Value::Fixed(1),
+                },
+            ),
             EffectAst::RepeatThisProcessMay,
         ];
 

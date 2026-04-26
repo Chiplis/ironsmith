@@ -65,9 +65,13 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     };
     for effect in effects {
         match effect {
-            EffectAst::DestroyAll { filter }
-            | EffectAst::DestroyAllNoRegeneration { filter }
-            | EffectAst::ExileAll { filter, .. } => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::DestroyAll { filter, .. }
+                    | SubjectVerbActionAst::ExileAll { filter, .. },
+                ..
+            })
+            => {
                 if filter.with_counter.is_none() {
                     filter.with_counter = Some(counter_constraint);
                 }
@@ -123,17 +127,9 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
     let first_target = parse_target_phrase(&first_target_tokens)?;
     let source_ref = TargetAst::Tagged(TagKey::from(IT_TAG), None);
     Ok(Some(vec![
-        EffectAst::TargetOnly {
-            target: source.clone(),
-        },
-        EffectAst::DealDamageEqualToPower {
-            source: source_ref.clone(),
-            target: first_target,
-        },
-        EffectAst::DealDamageEqualToPower {
-            source: source_ref.clone(),
-            target: source_ref,
-        },
+        EffectAst::subject_verb_target_only(source.clone()),
+        EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), first_target),
+        EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), source_ref),
     ]))
 }
 
@@ -156,10 +152,21 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
     if effects.len() != 2 {
         return Ok(None);
     }
-    if !matches!(effects[0], EffectAst::Tap { .. } | EffectAst::TapAll { .. }) {
+    let first_is_tap = matches!(
+        &effects[0],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Tap { .. } | SubjectVerbActionAst::TapAll { .. },
+            ..
+        })
+    );
+    if !first_is_tap {
         return Ok(None);
     }
-    let EffectAst::DealDamage { amount, target } = &mut effects[1] else {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DealDamage { amount, target },
+        ..
+    }) = &mut effects[1]
+    else {
         return Ok(None);
     };
     if !matches!(amount, Value::X) {
@@ -463,9 +470,18 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+        parse_effect_sentence_lexed_inner(tokens)
+    })
+}
+
+fn parse_effect_sentence_lexed_inner(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
         match effect {
-            EffectAst::SearchLibrary { player, .. } => Some(*player),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::SearchLibrary { player, .. },
+                ..
+            }) => Some(*player),
             _ => None,
         }
     }
@@ -474,8 +490,11 @@ pub(crate) fn parse_effect_sentence_lexed(
         for idx in 0..effects.len() {
             let is_default_shuffle = matches!(
                 effects.get(idx),
-                Some(EffectAst::ShuffleLibrary { player })
-                    if matches!(*player, PlayerAst::You | PlayerAst::Implicit)
+                Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject,
+                    action: SubjectVerbActionAst::ShuffleLibrary,
+                }))
+                    if matches!(subject.player, PlayerAst::You | PlayerAst::Implicit)
             );
             if !is_default_shuffle {
                 continue;
@@ -488,48 +507,19 @@ pub(crate) fn parse_effect_sentence_lexed(
                 continue;
             };
             if !matches!(search_player, PlayerAst::You | PlayerAst::Implicit) {
-                if let EffectAst::ShuffleLibrary { player } = &mut effects[idx] {
-                    *player = search_player;
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject,
+                    action: SubjectVerbActionAst::ShuffleLibrary,
+                }) = &mut effects[idx]
+                {
+                    subject.player = search_player;
                 }
             }
         }
     }
 
-    if let Some(meld_effect) = parse_exile_then_meld_sentence(tokens)? {
-        return Ok(vec![meld_effect]);
-    }
-    if let Some(effect) =
-        crate::runtime_backend::sentences::effect_sentences::special_sentence_family::parse_control_combat_choices_sentence(tokens)?
-    {
-        return Ok(vec![effect]);
-    }
-    if let Some(effect) = parse_if_damage_would_be_dealt_put_counters_sentence(tokens)? {
-        return Ok(vec![effect]);
-    }
-    if let Some(effects) = super::parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(tokens)
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) =
-        super::consult_family::parse_consult_reveal_until_put_all_revealed_into_hand_sentence(
-            tokens,
-        )?
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) =
-        super::consult_family::parse_each_player_exile_top_then_cast_any_number_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
-        return Ok(effects);
-    }
-    let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
-    let clause_words = clause_word_storage.to_word_refs();
-    if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
-        let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
-        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+    if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
+        crate::parse_trace::event(format!("effect-route: {route}"));
         normalize_search_followup_shuffles(&mut effects);
         return Ok(effects);
     }
@@ -539,30 +529,22 @@ pub(crate) fn parse_effect_sentence_lexed(
     Ok(effects)
 }
 
-fn parse_exile_then_meld_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    super::special_sentence_family::parse_exile_then_meld_sentence(tokens)
-}
-
-fn parse_if_damage_would_be_dealt_put_counters_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    super::special_sentence_family::parse_if_damage_would_be_dealt_put_counters_sentence(tokens)
-}
-
 fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     fn replace_search_filter_x(effect: &mut EffectAst, replacement: &Value) {
         let (filter, count, count_value) = match effect {
-            EffectAst::SearchLibrary {
-                filter,
-                count,
-                count_value,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SearchLibrary {
+                        filter,
+                        count,
+                        count_value,
+                        ..
+                    },
                 ..
-            }
-            | EffectAst::ChooseObjects {
+            }) => (filter, count, count_value),
+            EffectAst::ChooseObjects {
                 filter,
                 count,
                 count_value,
@@ -772,7 +754,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
             ))),
         ),
-        _ => parse_where_x_value_clause_lexed(&primary_where_tokens).ok_or_else(|| {
+        _ => parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause (clause: '{}')",
                 clause_words.join(" ")

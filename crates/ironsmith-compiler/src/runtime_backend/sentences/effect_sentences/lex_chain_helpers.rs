@@ -75,6 +75,8 @@ const CLASH_PREFIXES: &[&[&str]] = &[&["clash"], &["clashes"]];
 const THAT_MANY_FOLLOWUP_PREFIXES: &[&[&str]] = &[
     &["draw", "that", "many"],
     &["draws", "that", "many"],
+    &["discard", "that", "many"],
+    &["discards", "that", "many"],
     &["create", "that", "many"],
     &["creates", "that", "many"],
 ];
@@ -650,6 +652,23 @@ fn should_keep_and_for_become_with_quoted_ability(
         || starts_with_inline_token_rules_tail(remaining)
 }
 
+fn should_keep_and_for_shared_subject_gain_clause(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = token_word_refs(current);
+    let has_shared_subject_modifier = current_words
+        .iter()
+        .any(|word| matches!(*word, "get" | "gets" | "become" | "becomes"));
+    if !has_shared_subject_modifier {
+        return false;
+    }
+    remaining
+        .iter()
+        .find_map(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "gain" | "gains" | "has" | "have" | "lose" | "loses"))
+}
+
 pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut start = 0usize;
@@ -674,6 +693,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_exchange_zones_lexed(current, remaining)
             || should_keep_and_for_power_toughness_axis_lexed(current, remaining)
             || should_keep_and_for_become_with_quoted_ability(current, remaining)
+            || should_keep_and_for_shared_subject_gain_clause(current, remaining)
         {
             continue;
         }
@@ -802,13 +822,15 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 continue;
             }
             if !inside_quotes
-                && matches!(segment[i].kind, TokenKind::Comma)
-                && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
+                && (matches!(segment[i].kind, TokenKind::Comma)
+                    && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
+                    || segment[i].is_word("then"))
             {
+                let then_idx = if segment[i].is_word("then") { i } else { i + 1 };
                 let before_then = trim_lexed_commas(&segment[..i]);
                 let starts_with_clash =
                     grammar::words_match_any_prefix(before_then, CLASH_PREFIXES).is_some();
-                let after_then = trim_lexed_commas(&segment[i + 2..]);
+                let after_then = trim_lexed_commas(&segment[then_idx + 1..]);
                 let after_words = token_word_refs(after_then);
                 let has_back_ref = after_words
                     .iter()
@@ -898,8 +920,13 @@ pub(crate) fn split_segments_on_comma_then_lexed(
             }
         }
         if let Some(idx) = split_point {
+            let then_idx = if segment[idx].is_word("then") {
+                idx
+            } else {
+                idx + 1
+            };
             let first_part = trim_lexed_commas(&segment[..idx]);
-            let second_part = trim_lexed_commas(&segment[idx + 2..]);
+            let second_part = trim_lexed_commas(&segment[then_idx + 1..]);
             if !first_part.is_empty() {
                 result.push(first_part);
             }

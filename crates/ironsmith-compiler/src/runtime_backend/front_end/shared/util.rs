@@ -1638,6 +1638,21 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::MostLifeTied);
     }
+    if words_have_prefix(
+        slice,
+        &[
+            "the", "player", "who", "has", "the", "lowest", "life", "total",
+        ],
+    ) || words_have_prefix(
+        slice,
+        &["player", "who", "has", "the", "lowest", "life", "total"],
+    ) || words_have_prefix(
+        slice,
+        &["the", "player", "with", "the", "lowest", "life", "total"],
+    ) || words_have_prefix(slice, &["player", "with", "the", "lowest", "life", "total"])
+    {
+        return SubjectAst::Player(PlayerAst::LowestLifeTied);
+    }
 
     if let Some(have_idx) = find_index(slice, |word| *word == "have" || *word == "has") {
         if have_idx + 1 < slice.len() {
@@ -3511,15 +3526,22 @@ pub(crate) fn parse_morph_keyword_line(
         return Ok(None);
     };
 
-    let is_megamorph = match first_word {
-        "morph" => false,
-        "megamorph" => true,
+    let (is_megamorph, is_disguise) = match first_word {
+        "morph" => (false, false),
+        "megamorph" => (true, false),
+        "disguise" => (false, true),
         _ => return Ok(None),
     };
 
     let tail = tokens.get(1..).unwrap_or_default();
     if tail.is_empty() {
-        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
+        let mechanic = if is_disguise {
+            "disguise"
+        } else if is_megamorph {
+            "megamorph"
+        } else {
+            "morph"
+        };
         return Err(CardTextError::ParseError(format!(
             "{mechanic} keyword missing cost"
         )));
@@ -3552,7 +3574,13 @@ pub(crate) fn parse_morph_keyword_line(
     }
 
     let unsupported_cost_clause = || {
-        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
+        let mechanic = if is_disguise {
+            "disguise"
+        } else if is_megamorph {
+            "megamorph"
+        } else {
+            "morph"
+        };
         CardTextError::ParseError(format!(
             "unsupported {mechanic} cost clause (line: '{}')",
             render_token_slice(&cost_tokens).trim()
@@ -3569,13 +3597,25 @@ pub(crate) fn parse_morph_keyword_line(
         }
     };
     if cost.is_free() {
-        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
+        let mechanic = if is_disguise {
+            "disguise"
+        } else if is_megamorph {
+            "megamorph"
+        } else {
+            "morph"
+        };
         return Err(CardTextError::ParseError(format!(
             "{mechanic} keyword missing cost"
         )));
     }
 
-    let label = if is_megamorph { "Megamorph" } else { "Morph" };
+    let label = if is_disguise {
+        "Disguise"
+    } else if is_megamorph {
+        "Megamorph"
+    } else {
+        "Morph"
+    };
     let text = format!("{label}—{}", cost.display());
     let static_ability = if is_megamorph {
         StaticAbility::megamorph(cost)

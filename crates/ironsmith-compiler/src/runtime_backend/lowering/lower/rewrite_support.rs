@@ -144,10 +144,27 @@ pub(super) fn rewrite_normalize_additional_cost_sacrifice_tags(
     let mut replaced = false;
     for effect in rest {
         match effect {
-            EffectAst::Sacrifice { filter, .. } | EffectAst::SacrificeAll { filter, .. }
-                if filter_references_tag(filter, IT_TAG) =>
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::Sacrifice { filter, .. }
+                        if filter_references_tag(filter, IT_TAG)
+                ) =>
             {
-                replaced |= replace_filter_tag(filter, IT_TAG, &sacrificed_tag);
+                if let SubjectVerbActionAst::Sacrifice { filter, .. } = &mut subject_verb.action {
+                    replaced |= replace_filter_tag(filter, IT_TAG, &sacrificed_tag);
+                }
+            }
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::SacrificeAll { filter }
+                        if filter_references_tag(filter, IT_TAG)
+                ) =>
+            {
+                if let SubjectVerbActionAst::SacrificeAll { filter } = &mut subject_verb.action {
+                    replaced |= replace_filter_tag(filter, IT_TAG, &sacrificed_tag);
+                }
             }
             _ => {}
         }

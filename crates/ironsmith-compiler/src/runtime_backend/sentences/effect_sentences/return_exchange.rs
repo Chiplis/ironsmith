@@ -301,18 +301,18 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     {
         let filter = parse_object_filter(target_tokens, false)?;
         let effect = if is_battlefield {
-            EffectAst::ReturnAllToBattlefield { filter, tapped }
+            EffectAst::subject_verb_return_all_to_battlefield(filter, tapped)
         } else if is_graveyard {
-            EffectAst::MoveToZone {
-                target: TargetAst::Object(filter, None, None),
-                zone: Zone::Graveyard,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            }
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Object(filter, None, None),
+                Zone::Graveyard,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
         } else {
-            EffectAst::ReturnAllToHand { filter }
+            EffectAst::subject_verb_return_all_to_hand(filter)
         };
         return Ok(wrap_return_with_delayed_timing(effect, delayed_timing));
     }
@@ -359,7 +359,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 }
             }
             return Ok(wrap_return_with_delayed_timing(
-                EffectAst::ReturnAllToHandOfChosenColor { filter },
+                EffectAst::subject_verb_return_all_to_hand_of_chosen_color(filter),
                 delayed_timing,
             ));
         }
@@ -447,18 +447,18 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             };
         }
         let effect = if is_battlefield {
-            EffectAst::ReturnAllToBattlefield { filter, tapped }
+            EffectAst::subject_verb_return_all_to_battlefield(filter, tapped)
         } else if is_graveyard {
-            EffectAst::MoveToZone {
-                target: TargetAst::Object(filter, None, None),
-                zone: Zone::Graveyard,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            }
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Object(filter, None, None),
+                Zone::Graveyard,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
         } else {
-            EffectAst::ReturnAllToHand { filter }
+            EffectAst::subject_verb_return_all_to_hand(filter)
         };
         return Ok(wrap_return_with_delayed_timing(effect, delayed_timing));
     }
@@ -487,24 +487,24 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         parse_target_phrase(target_tokens)?
     };
     let effect = if is_battlefield {
-        EffectAst::ReturnToBattlefield {
+        EffectAst::subject_verb_return_to_battlefield(
             target,
             tapped,
             transformed,
             converted,
-            controller: return_controller,
-        }
+            return_controller,
+        )
     } else if is_graveyard {
-        EffectAst::MoveToZone {
+        EffectAst::subject_verb_move_to_zone(
             target,
-            zone: Zone::Graveyard,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        }
+            Zone::Graveyard,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
     } else {
-        EffectAst::ReturnToHand { target, random }
+        EffectAst::subject_verb_return_to_hand(target, random)
     };
     Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
 }
@@ -631,10 +631,12 @@ pub(crate) fn parse_exchange(
     if grammar::words_match_any_prefix(tokens, LIFE_TOTALS_PREFIXES).is_some() {
         if clause_words.as_slice() == ["life", "totals"] {
             return match subject {
-                Some(SubjectAst::Player(PlayerAst::Target)) => Ok(EffectAst::ExchangeLifeTotals {
-                    player1: PlayerAst::Target,
-                    player2: PlayerAst::Target,
-                }),
+                Some(SubjectAst::Player(PlayerAst::Target)) => {
+                    Ok(EffectAst::subject_verb_exchange_life_totals(
+                        PlayerAst::Target,
+                        PlayerAst::Target,
+                    ))
+                }
                 _ => Err(CardTextError::ParseError(format!(
                     "unsupported life-total exchange clause (clause: '{}')",
                     clause_words.join(" ")
@@ -668,7 +670,9 @@ pub(crate) fn parse_exchange(
             _ => PlayerAst::You,
         };
 
-        return Ok(EffectAst::ExchangeLifeTotals { player1, player2 });
+        return Ok(EffectAst::subject_verb_exchange_life_totals(
+            player1, player2,
+        ));
     }
     if grammar::words_match_any_prefix(tokens, TEXT_BOXES_OF_PREFIXES).is_some() {
         let remainder = if let Some((_, rest)) =
@@ -689,7 +693,7 @@ pub(crate) fn parse_exchange(
             ))
         })?;
 
-        return Ok(EffectAst::ExchangeTextBoxes { target });
+        return Ok(EffectAst::subject_verb_exchange_text_boxes(target));
     }
     let zone_exchange = if slice_starts_with(&clause_words, &["your"]) {
         Some((PlayerAst::You, 1))
@@ -726,11 +730,7 @@ pub(crate) fn parse_exchange(
             .and_then(|word| parse_zone_word(*word))
         && consumed + 3 == clause_words.len()
     {
-        return Ok(EffectAst::ExchangeZones {
-            player,
-            zone1,
-            zone2,
-        });
+        return Ok(EffectAst::subject_verb_exchange_zones(player, zone1, zone2));
     }
     if grammar::words_match_prefix(tokens, &["control", "of"]).is_none() {
         if grammar::contains_word(tokens, "life")
@@ -768,11 +768,9 @@ pub(crate) fn parse_exchange(
                 ))
             })?;
 
-            return Ok(EffectAst::ExchangeValues {
-                left,
-                right,
-                duration,
-            });
+            return Ok(EffectAst::subject_verb_exchange_values(
+                left, right, duration,
+            ));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported exchange clause (clause: '{}')",
@@ -789,11 +787,11 @@ pub(crate) fn parse_exchange(
         let (right_tokens, shared_type) = split_shared_type_clause(after_and)?;
         let right_target = parse_target_phrase(right_tokens).ok();
         if let (Some(permanent1), Some(permanent2)) = (left_target, right_target) {
-            return Ok(EffectAst::ExchangeControlHeterogeneous {
+            return Ok(EffectAst::subject_verb_exchange_control_heterogeneous(
                 permanent1,
                 permanent2,
                 shared_type,
-            });
+            ));
         }
     }
 
@@ -815,9 +813,9 @@ pub(crate) fn parse_exchange(
     let (filter_tokens, shared_type) = split_shared_type_clause(&tokens[idx..])?;
 
     let filter = parse_object_filter(filter_tokens, false)?;
-    Ok(EffectAst::ExchangeControl {
+    Ok(EffectAst::subject_verb_exchange_control(
         filter,
         count,
         shared_type,
-    })
+    ))
 }

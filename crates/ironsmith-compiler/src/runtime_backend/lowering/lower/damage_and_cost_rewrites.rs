@@ -62,11 +62,11 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
     }
     let reduction = crate::mana::ManaCost::from_symbols(reduction_symbols);
 
-    Some(EffectAst::ReduceNextSpellCostThisTurn {
-        player: crate::cards::builders::PlayerAst::You,
+    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
+        crate::cards::builders::PlayerAst::You,
         filter,
         reduction,
-    })
+    ))
 }
 
 pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
@@ -106,14 +106,14 @@ pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
 
     Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
-            EffectAst::DealDamage {
-                amount: amount.clone(),
-                target: crate::cards::builders::TargetAst::Player(
+            EffectAst::subject_verb_damage(
+                amount.clone(),
+                crate::cards::builders::TargetAst::Player(
                     crate::PlayerFilter::IteratedPlayer,
                     None,
                 ),
-            },
-            EffectAst::DealDamageEach { amount, filter },
+            ),
+            EffectAst::subject_verb_damage_each(amount, filter),
         ],
     }])
 }

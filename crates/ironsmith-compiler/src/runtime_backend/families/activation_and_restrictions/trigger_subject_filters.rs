@@ -1292,14 +1292,14 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
 }
 
 pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
-    let cast = EffectAst::CastTagged {
-        tag: spec.tag.clone(),
-        player: PlayerAst::Implicit,
-        allow_land: matches!(spec.verb, MayCastItVerb::Play),
-        as_copy: spec.as_copy,
-        without_paying_mana_cost: spec.without_paying_mana_cost,
-        cost_reduction: spec.cost_reduction.clone(),
-    };
+    let cast = EffectAst::subject_verb_cast_tagged(
+        spec.tag.clone(),
+        PlayerAst::Implicit,
+        matches!(spec.verb, MayCastItVerb::Play),
+        spec.as_copy,
+        spec.without_paying_mana_cost,
+        spec.cost_reduction.clone(),
+    );
     let may = EffectAst::May {
         effects: vec![cast],
     };
@@ -1334,8 +1334,16 @@ pub(crate) fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
 
 pub(crate) fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::CreateTokenWithMods { name, .. } => {
-            token_name_mentions_eldrazi_spawn_or_scion(name)
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                    name,
+                    ..
+                } if token_name_mentions_eldrazi_spawn_or_scion(name)
+            ) =>
+        {
+            true
         }
         _ => {
             let mut found = false;
@@ -1351,10 +1359,21 @@ pub(crate) fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool 
 
 pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::CreateTokenWithMods { .. }
-        | EffectAst::CreateTokenCopy { .. }
-        | EffectAst::CreateTokenCopyFromSource { .. }
-        | EffectAst::Populate { .. } => true,
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                crate::runtime_backend::ast::SubjectVerbActionAst::Populate { .. }
+                    | crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                        ..
+                    }
+                    | crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenCopy { .. }
+                    | crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        ..
+                    }
+            ) =>
+        {
+            true
+        }
         _ => {
             let mut found = false;
             for_each_nested_effects(effect, false, |nested| {
@@ -1378,7 +1397,22 @@ pub(crate) fn last_created_token_info(effects: &[EffectAst]) -> Option<(String, 
 
 pub(crate) fn created_token_info_from_effect(effect: &EffectAst) -> Option<(String, PlayerAst)> {
     match effect {
-        EffectAst::CreateTokenWithMods { name, player, .. } => Some((name.clone(), *player)),
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                name,
+                player,
+                ..
+            } => Some((name.clone(), *player)),
+            _ => {
+                let mut found = None;
+                for_each_nested_effects(effect, true, |nested| {
+                    if found.is_none() {
+                        found = last_created_token_info(nested);
+                    }
+                });
+                found
+            }
+        },
         _ => {
             let mut found = None;
             for_each_nested_effects(effect, true, |nested| {
@@ -1445,9 +1479,9 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
 
     let _ = last_created_token_info(prior_effects)?;
 
-    Some(EffectAst::ExileWhenSourceLeaves {
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-    })
+    Some(EffectAst::subject_verb_exile_when_source_leaves(
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+    ))
 }
 
 pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
@@ -1472,9 +1506,9 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
 
     let _ = last_created_token_info(prior_effects)?;
 
-    Some(EffectAst::SacrificeSourceWhenLeaves {
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-    })
+    Some(EffectAst::subject_verb_sacrifice_source_when_leaves(
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+    ))
 }
 
 pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -1644,86 +1678,111 @@ pub(crate) fn append_token_reminder_to_effect(
         return false;
     };
     match effect {
-        EffectAst::CreateTokenCopy {
-            has_haste,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        }
-        | EffectAst::CreateTokenCopyFromSource {
-            has_haste,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        }
-        | EffectAst::Populate {
-            has_haste,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        } => {
-            if reminder_words == ["haste"] {
-                *has_haste = true;
-                return true;
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            crate::runtime_backend::ast::SubjectVerbActionAst::Populate {
+                has_haste,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
+            } => {
+                if reminder_words == ["haste"] {
+                    *has_haste = true;
+                    return true;
+                }
+                let (sacrifice_next_end_step, exile_next_end_step) =
+                    parse_next_end_step_token_delay_flags(reminder_words);
+                if sacrifice_next_end_step {
+                    *sacrifice_at_next_end_step = true;
+                    return true;
+                }
+                if exile_next_end_step {
+                    *exile_at_next_end_step = true;
+                    return true;
+                }
+                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                    && is_end_of_combat_words(reminder_words);
+                if exile_end_of_combat {
+                    *exile_at_end_of_combat = true;
+                    return true;
+                }
+                false
             }
-            let (sacrifice_next_end_step, exile_next_end_step) =
-                parse_next_end_step_token_delay_flags(reminder_words);
-            if sacrifice_next_end_step {
-                *sacrifice_at_next_end_step = true;
+            crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenCopy {
+                has_haste,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
             }
-            if exile_next_end_step {
-                *exile_at_next_end_step = true;
+            | crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenCopyFromSource {
+                has_haste,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
+            } => {
+                if reminder_words == ["haste"] {
+                    *has_haste = true;
+                    return true;
+                }
+                let (sacrifice_next_end_step, exile_next_end_step) =
+                    parse_next_end_step_token_delay_flags(reminder_words);
+                if sacrifice_next_end_step {
+                    *sacrifice_at_next_end_step = true;
+                }
+                if exile_next_end_step {
+                    *exile_at_next_end_step = true;
+                }
+                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                    && is_end_of_combat_words(reminder_words);
+                if exile_end_of_combat {
+                    *exile_at_end_of_combat = true;
+                }
+                *has_haste
+                    || *sacrifice_at_next_end_step
+                    || *exile_at_next_end_step
+                    || *exile_at_end_of_combat
             }
-            let exile_end_of_combat =
-                slice_contains(&reminder_words, &"exile") && is_end_of_combat_words(reminder_words);
-            if exile_end_of_combat {
-                *exile_at_end_of_combat = true;
+            crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                name,
+                dynamic_power_toughness,
+                exile_at_end_of_combat,
+                sacrifice_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
+            } => {
+                if let Some((power, toughness)) = parse_dynamic_token_pt_reminder(reminder_words) {
+                    *dynamic_power_toughness = Some((power, toughness));
+                    return true;
+                }
+                if !name.chars().last().is_some_and(|ch| ch == ' ') {
+                    name.push(' ');
+                }
+                name.push_str(reminder);
+                let (sacrifice_next_end_step, exile_next_end_step) =
+                    parse_next_end_step_token_delay_flags(reminder_words);
+                if sacrifice_next_end_step {
+                    *sacrifice_at_next_end_step = true;
+                }
+                if exile_next_end_step {
+                    *exile_at_next_end_step = true;
+                }
+                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                    && is_end_of_combat_words(reminder_words);
+                if exile_end_of_combat {
+                    *exile_at_end_of_combat = true;
+                }
+                let sacrifice_end_of_combat = slice_contains(&reminder_words, &"sacrifice")
+                    && is_end_of_combat_words(reminder_words);
+                if sacrifice_end_of_combat {
+                    *sacrifice_at_end_of_combat = true;
+                }
+                true
             }
-            *has_haste
-                || *sacrifice_at_next_end_step
-                || *exile_at_next_end_step
-                || *exile_at_end_of_combat
-        }
-        EffectAst::CreateTokenWithMods {
-            name,
-            dynamic_power_toughness,
-            exile_at_end_of_combat,
-            sacrifice_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        } => {
-            if let Some((power, toughness)) = parse_dynamic_token_pt_reminder(reminder_words) {
-                *dynamic_power_toughness = Some((power, toughness));
-                return true;
-            }
-            if !name.chars().last().is_some_and(|ch| ch == ' ') {
-                name.push(' ');
-            }
-            name.push_str(reminder);
-            let (sacrifice_next_end_step, exile_next_end_step) =
-                parse_next_end_step_token_delay_flags(reminder_words);
-            if sacrifice_next_end_step {
-                *sacrifice_at_next_end_step = true;
-            }
-            if exile_next_end_step {
-                *exile_at_next_end_step = true;
-            }
-            let exile_end_of_combat =
-                slice_contains(&reminder_words, &"exile") && is_end_of_combat_words(reminder_words);
-            if exile_end_of_combat {
-                *exile_at_end_of_combat = true;
-            }
-            let sacrifice_end_of_combat = slice_contains(&reminder_words, &"sacrifice")
-                && is_end_of_combat_words(reminder_words);
-            if sacrifice_end_of_combat {
-                *sacrifice_at_end_of_combat = true;
-            }
-            true
-        }
+            _ => false,
+        },
         _ => {
             let mut applied = false;
             for_each_nested_effects_mut(effect, false, |nested| {

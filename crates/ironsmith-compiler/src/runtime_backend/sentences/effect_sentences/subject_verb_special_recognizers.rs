@@ -16,127 +16,6 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 
-pub(crate) fn parse_exile_then_meld_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["exile", "them"]).is_none() {
-        return Ok(None);
-    }
-    let Some(meld_idx) = find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
-    else {
-        return Ok(None);
-    };
-    let result_words = &clause_words[meld_idx + 4..];
-    if result_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing meld result name (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    Ok(Some(EffectAst::Meld {
-        result_name: result_words.join(" "),
-        enters_tapped: false,
-        enters_attacking: false,
-    }))
-}
-
-pub(crate) fn parse_if_damage_would_be_dealt_put_counters_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["if", "damage", "would", "be", "dealt", "to"])
-        .is_none()
-    {
-        return Ok(None);
-    }
-
-    let Some(this_turn_rel) = crate::runtime_backend::grammar::primitives::find_phrase_start(
-        &tokens[6..],
-        &["this", "turn"],
-    ) else {
-        return Ok(None);
-    };
-    let this_turn_idx = 6 + this_turn_rel;
-    let tail = &clause_words[this_turn_idx + 2..];
-    let valid_tail = matches!(
-        tail,
-        [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
-            "it"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
-            "that", "creature"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
-            "it"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
-            "that", "creature"
-        ]
-    );
-    if !valid_tail {
-        return Ok(None);
-    }
-
-    let target_tokens = &tokens[6..this_turn_idx];
-    if target_tokens.is_empty() {
-        return Ok(None);
-    }
-    let target = parse_target_phrase_lexed(target_tokens)?;
-
-    Ok(Some(EffectAst::PreventDamageToTargetPutCounters {
-        amount: None,
-        target,
-        duration: Until::EndOfTurn,
-        counter_type: CounterType::PlusOnePlusOne,
-    }))
-}
-
-pub(crate) fn parse_control_combat_choices_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.as_slice()
-        == [
-            "you",
-            "choose",
-            "which",
-            "creatures",
-            "attack",
-            "this",
-            "turn",
-        ]
-    {
-        return Ok(Some(EffectAst::ControlCombatChoicesThisTurn {
-            attackers: true,
-            blockers: false,
-        }));
-    }
-    if words.as_slice()
-        == [
-            "you",
-            "choose",
-            "which",
-            "creatures",
-            "block",
-            "this",
-            "turn",
-            "and",
-            "how",
-            "those",
-            "creatures",
-            "block",
-        ]
-    {
-        return Ok(Some(EffectAst::ControlCombatChoicesThisTurn {
-            attackers: false,
-            blockers: true,
-        }));
-    }
-    Ok(None)
-}
-
 fn parse_keyword_bundle_static_ability(words: &[&str]) -> Option<(StaticAbilityId, usize)> {
     const KEYWORD_PHRASES: &[(&[&str], StaticAbilityId)] = &[
         (&["first", "strike"], StaticAbilityId::FirstStrike),
@@ -289,11 +168,13 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
 
     let effects = ability_ids
         .into_iter()
-        .map(|ability_id| EffectAst::PumpAll {
-            filter: base_filter.clone().with_static_ability(ability_id),
-            power: power.clone(),
-            toughness: toughness.clone(),
-            duration: duration.clone(),
+        .map(|ability_id| {
+            EffectAst::subject_verb_pump_all(
+                base_filter.clone().with_static_ability(ability_id),
+                power.clone(),
+                toughness.clone(),
+                duration.clone(),
+            )
         })
         .collect::<Vec<_>>();
 
@@ -330,30 +211,30 @@ pub(crate) fn parse_scaled_target_power_sentence(
                     fallback
                 });
             let value_spec = Box::new(ChooseSpec::target(ChooseSpec::Object(amount_source_filter)));
-            EffectAst::Pump {
-                power: if include_power {
+            EffectAst::subject_verb_pump(
+                if include_power {
                     scaled_stat(Value::PowerOf(value_spec.clone()))
                 } else {
                     Value::Fixed(0)
                 },
-                toughness: if include_toughness {
+                if include_toughness {
                     scaled_stat(Value::ToughnessOf(value_spec))
                 } else {
                     Value::Fixed(0)
                 },
-                target: target.clone(),
-                duration: Until::EndOfTurn,
-                condition: None,
-            }
+                target.clone(),
+                Until::EndOfTurn,
+                None,
+            )
         };
     let scale_pt_all = |filter: ObjectFilter, include_power: bool, include_toughness: bool| {
-        EffectAst::ScalePowerToughnessAll {
+        EffectAst::subject_verb_scale_power_toughness_all(
             filter,
-            power: include_power,
-            toughness: include_toughness,
+            include_power,
+            include_toughness,
             multiplier,
-            duration: Until::EndOfTurn,
-        }
+            Until::EndOfTurn,
+        )
     };
     let parse_double_life_total_subject =
         |subject_words: &[&str]| -> Option<(PlayerAst, PlayerFilter)> {
@@ -390,10 +271,10 @@ pub(crate) fn parse_scaled_target_power_sentence(
             parse_double_life_total_subject(&words[1..life_total_idx])
         && life_total_idx + 2 == words.len()
     {
-        return Ok(Some(vec![EffectAst::SetLifeTotal {
-            amount: Value::Scaled(Box::new(Value::LifeTotal(player_filter)), 2),
+        return Ok(Some(vec![EffectAst::subject_verb_set_life_total(
             player,
-        }]));
+            Value::Scaled(Box::new(Value::LifeTotal(player_filter)), 2),
+        )]));
     }
 
     let mana_prefix = [
@@ -403,7 +284,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         && words.starts_with(&mana_prefix)
         && let Some(player) = parse_double_mana_pool_subject(&words[mana_prefix.len()..])
     {
-        return Ok(Some(vec![EffectAst::DoubleManaPool { player }]));
+        return Ok(Some(vec![EffectAst::subject_verb_double_mana_pool(player)]));
     }
 
     let duration_start =
@@ -546,16 +427,13 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
         && grammar::contains_word(view.tokens, "cost")
     {
         return Ok(Some(vec![
-            EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-                tag: TagKey::from(IT_TAG),
-                player: PlayerAst::You,
-            },
+            EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(TagKey::from(IT_TAG), PlayerAst::You),
         ]));
     }
     Ok(None)
 }
 
-pub(super) const SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 5] = [
+pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 5] = [
     LexRuleDef {
         id: "redirect-next-damage",
         priority: 100,
@@ -593,5 +471,5 @@ pub(super) const SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>
     },
 ];
 
-pub(super) const SPECIAL_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
-    LexRuleIndex::new(&SPECIAL_PRE_DIAGNOSTIC_RULES_LEXED);
+pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+    LexRuleIndex::new(&SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED);

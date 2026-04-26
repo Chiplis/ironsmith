@@ -1,7 +1,10 @@
 use super::*;
 
 pub(super) enum PreParseFollowupResult {
-    Handled { consumed_sentences: usize },
+    Handled {
+        consumed_sentences: usize,
+        route: Option<&'static str>,
+    },
     Plan(SentenceParsePlan),
 }
 
@@ -25,14 +28,14 @@ type PostParseFollowupRuleFn = for<'a> fn(
 )
     -> Result<Option<PostParseFollowupResult>, CardTextError>;
 
-struct SentenceFollowupRuleDef {
+struct SubjectVerbFollowupRuleDef {
     id: &'static str,
     priority: u16,
     heads: &'static [&'static str],
     run: PreParseFollowupRuleFn,
 }
 
-struct SentencePostParseRuleDef {
+struct SubjectVerbPostParseRuleDef {
     id: &'static str,
     priority: u16,
     heads: &'static [&'static str],
@@ -40,7 +43,13 @@ struct SentencePostParseRuleDef {
 }
 
 fn effect_contains_search_library(effect: &EffectAst) -> bool {
-    if matches!(effect, EffectAst::SearchLibrary { .. }) {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SearchLibrary { .. },
+            ..
+        })
+    ) {
         return true;
     }
 
@@ -105,24 +114,55 @@ fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool 
         .is_some_and(|head| heads.iter().any(|candidate| head == candidate))
 }
 
+fn pre_followup_subject_verb_route(id: &str) -> &'static str {
+    match id {
+        "library-shuffle" => {
+            "subject-verb verb=Shuffle subject=implicit recognizer=library-followup"
+        }
+        "still-lands" => {
+            "subject-verb verb=Remain subject=implicit recognizer=land-animation-followup"
+        }
+        "cant-be-regenerated" => {
+            "subject-verb verb=Cant subject=implicit recognizer=regeneration-followup"
+        }
+        "copy-and-cast" => "subject-verb verb=Copy subject=implicit recognizer=copy-cast-followup",
+        "token-followups" => "subject-verb verb=Create subject=implicit recognizer=token-followup",
+        "exile-this-way" => "subject-verb verb=Exile subject=implicit recognizer=this-way-followup",
+        "destroy-those-creatures" => {
+            "subject-verb verb=Destroy subject=implicit recognizer=referential-followup"
+        }
+        "otherwise" => "subject-verb verb=Do subject=implicit recognizer=otherwise-followup",
+        _ => "subject-verb verb=Do subject=implicit recognizer=pre-parse-followup",
+    }
+}
+
 pub(super) fn run_pre_parse_followup_registry(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let mut matching_rules = PRE_PARSE_FOLLOWUP_RULES
+    let mut matching_rules = PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
     matching_rules.sort_by_key(|rule| rule.priority);
 
     for rule in matching_rules {
-        if let Some(result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
+        if let Some(mut result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
             parser_trace(
-                format!("parse_effect_sentences:followup-pre:{}", rule.id).as_str(),
+                format!(
+                    "parse_effect_sentences:subject-verb-followup-pre:{}",
+                    rule.id
+                )
+                .as_str(),
                 sentence_tokens,
             );
+            if let PreParseFollowupResult::Handled { route, .. } = &mut result
+                && route.is_none()
+            {
+                *route = Some(pre_followup_subject_verb_route(rule.id));
+            }
             return Ok(Some(result));
         }
     }
@@ -136,7 +176,7 @@ pub(super) fn run_post_parse_followup_registry(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let mut matching_rules = POST_PARSE_FOLLOWUP_RULES
+    let mut matching_rules = POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
         .collect::<Vec<_>>();
@@ -151,7 +191,11 @@ pub(super) fn run_post_parse_followup_registry(
             sentence_effects,
         )? {
             parser_trace(
-                format!("parse_effect_sentences:followup-post:{}", rule.id).as_str(),
+                format!(
+                    "parse_effect_sentences:subject-verb-followup-post:{}",
+                    rule.id
+                )
+                .as_str(),
                 sentence_tokens,
             );
             return Ok(Some(result));
@@ -172,16 +216,20 @@ fn pre_rule_library_shuffle_followups(
             .iter()
             .any(effect_needs_followup_library_shuffle)
         {
-            state.effects.push(EffectAst::ShuffleLibrary {
-                player: PlayerAst::You,
-            });
+            state.effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route: None,
             }));
         }
         if state.effects.iter().any(effect_contains_search_library) {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route: None,
             }));
         }
     }
@@ -189,11 +237,14 @@ fn pre_rule_library_shuffle_followups(
     if is_then_that_player_shuffles_sentence(sentence_tokens)
         && state.effects.iter().any(effect_contains_search_library)
     {
-        state.effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::That,
-        });
+        state.effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::That,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
 
@@ -213,12 +264,17 @@ fn pre_rule_still_lands_followup(
         && (state.effects.iter().rev().any(|effect| {
             matches!(
                 effect,
-                EffectAst::BecomeBasePtCreature { .. } | EffectAst::AddCardTypes { .. }
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::BecomeBasePtCreature { .. }
+                        | SubjectVerbActionAst::AddCardTypes { .. },
+                    ..
+                })
             )
         }) || previous_sentence_is_land_animation)
     {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     Ok(None)
@@ -273,6 +329,7 @@ fn pre_rule_cant_be_regenerated_followup(
     if apply_cant_be_regenerated_to_last_destroy_effect(state.effects) {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     if is_cant_be_regenerated_this_turn_followup_sentence(sentence_tokens)
@@ -280,6 +337,7 @@ fn pre_rule_cant_be_regenerated_followup(
     {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     Err(CardTextError::ParseError(format!(
@@ -301,6 +359,7 @@ fn pre_rule_copy_and_cast_followups(
         state.effects.push(build_may_cast_tagged_effect(&spec));
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
 
@@ -328,6 +387,7 @@ fn pre_rule_copy_and_cast_followups(
         if attach_copy_cost_reduction_to_effects(state.effects, &reduction) {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route: None,
             }));
         }
         return Err(CardTextError::ParseError(format!(
@@ -340,6 +400,7 @@ fn pre_rule_copy_and_cast_followups(
         state.effects.push(build_may_cast_tagged_effect(&spec));
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
 
@@ -360,6 +421,7 @@ fn pre_rule_token_followups(
         {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route: None,
             }));
         }
         return Err(CardTextError::ParseError(format!(
@@ -373,6 +435,7 @@ fn pre_rule_token_followups(
         state.effects.push(effect);
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     if let Some(effect) =
@@ -381,14 +444,24 @@ fn pre_rule_token_followups(
         state.effects.push(effect);
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     if is_generic_token_reminder_sentence(sentence_tokens)
         && state.effects.last().is_some_and(effect_creates_any_token)
     {
         if append_token_reminder_to_last_create_effect(state.effects, sentence_tokens) {
+            let reminder_words = crate::runtime_backend::token_word_refs(sentence_tokens);
+            let route = matches!(
+                reminder_words.as_slice(),
+                ["exile", ..] | ["sacrifice", ..]
+            )
+            .then_some(
+                "subject-verb verb=Exile subject=implicit recognizer=token-copy-delayed-followup",
+            );
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route,
             }));
         }
         return Err(CardTextError::ParseError(format!(
@@ -416,12 +489,16 @@ fn pre_rule_token_followups(
         *state.carried_context = None;
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
+            route: None,
         }));
     }
     if let Some(followup) = parse_token_copy_followup_sentence(sentence_tokens) {
         if try_apply_token_copy_followup(state.effects, followup)? {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
+                route: Some(
+                    "subject-verb verb=Exile subject=implicit recognizer=token-copy-delayed-followup",
+                ),
             }));
         }
         let mut plan = SentenceParsePlan::new(sentence_tokens.to_vec());
@@ -512,7 +589,10 @@ fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
 
 fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     effects.iter().rev().find_map(|effect| match effect {
-        EffectAst::RemoveAbilitiesAll { filter, .. } => Some(filter.clone()),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. },
+            ..
+        }) => Some(filter.clone()),
         _ => None,
     })
 }
@@ -529,9 +609,12 @@ fn pre_rule_destroy_those_creatures_followup(
     let Some(filter) = last_remove_abilities_all_filter(state.effects) else {
         return Ok(None);
     };
-    state.effects.push(EffectAst::DestroyAll { filter });
+    state
+        .effects
+        .push(EffectAst::subject_verb_destroy_all(filter));
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
+        route: None,
     }))
 }
 
@@ -629,50 +712,50 @@ fn post_rule_delayed_trigger_result_followup(
     }))
 }
 
-const PRE_PARSE_FOLLOWUP_RULES: &[SentenceFollowupRuleDef] = &[
-    SentenceFollowupRuleDef {
+const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    SubjectVerbFollowupRuleDef {
         id: "library-shuffle",
         priority: 10,
         heads: &["if", "then", "that"],
         run: pre_rule_library_shuffle_followups,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "still-lands",
         priority: 20,
         heads: &["theyre", "they", "its", "it"],
         run: pre_rule_still_lands_followup,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "cant-be-regenerated",
         priority: 30,
         heads: &["it", "they"],
         run: pre_rule_cant_be_regenerated_followup,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "copy-and-cast",
         priority: 40,
         heads: &["copy", "that"],
         run: pre_rule_copy_and_cast_followups,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "token-followups",
         priority: 50,
         heads: &[],
         run: pre_rule_token_followups,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "exile-this-way",
         priority: 55,
         heads: &["if"],
         run: pre_rule_exile_this_way_followup,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "destroy-those-creatures",
         priority: 58,
         heads: &["destroy", "then"],
         run: pre_rule_destroy_those_creatures_followup,
     },
-    SentenceFollowupRuleDef {
+    SubjectVerbFollowupRuleDef {
         id: "otherwise",
         priority: 60,
         heads: &["otherwise"],
@@ -680,20 +763,20 @@ const PRE_PARSE_FOLLOWUP_RULES: &[SentenceFollowupRuleDef] = &[
     },
 ];
 
-const POST_PARSE_FOLLOWUP_RULES: &[SentencePostParseRuleDef] = &[
-    SentencePostParseRuleDef {
+const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
+    SubjectVerbPostParseRuleDef {
         id: "token-copy-and-extra-turn",
         priority: 10,
         heads: &[],
         run: post_rule_token_copy_and_extra_turn,
     },
-    SentencePostParseRuleDef {
+    SubjectVerbPostParseRuleDef {
         id: "future-zone-and-self-replacement",
         priority: 20,
         heads: &[],
         run: post_rule_future_zone_and_self_replacement,
     },
-    SentencePostParseRuleDef {
+    SubjectVerbPostParseRuleDef {
         id: "delayed-trigger-result-followup",
         priority: 30,
         heads: &["if", "when"],

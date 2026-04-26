@@ -79,14 +79,14 @@ pub(crate) use super::parse_search_library_sentence_lexed;
 pub(crate) use super::search_library::{
     normalize_search_library_filter, parse_restriction_duration,
 };
-pub(crate) use super::sentence_primitives::{
-    POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-    PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+pub(crate) use super::subject_verb_primitives::{
+    POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX, POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+    PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX, PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
     parse_sentence_exile_source_with_counters, parse_sentence_exile_source_with_counters_lexed,
     parse_sentence_put_onto_battlefield_with_counters_on_it,
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
     parse_sentence_return_with_counters_on_it, parse_sentence_return_with_counters_on_it_lexed,
-    run_sentence_primitives_lexed, try_build_unless,
+    run_subject_verb_primitives_lexed, try_build_unless,
 };
 pub(crate) use super::zone_counter_helpers::{
     apply_exile_subject_hand_owner_context, apply_shuffle_subject_graveyard_owner_context,

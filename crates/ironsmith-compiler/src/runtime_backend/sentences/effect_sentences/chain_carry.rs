@@ -11,6 +11,7 @@ use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
 use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
     parse_permission_clause_spec_lexed, parse_unsupported_play_cast_permission_clause_lexed,
@@ -23,6 +24,7 @@ use super::super::token_primitives::{
 };
 use super::super::util::is_source_reference_words;
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
+use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
     split_effect_chain_on_and_lexed, split_segments_on_comma_effect_head_lexed,
@@ -40,7 +42,8 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -257,127 +260,9 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     let mut filter = crate::target::ObjectFilter::default().in_zone(Zone::Library);
     filter.owner = Some(owner_filter.clone());
     Ok(Some(vec![
-        EffectAst::ExileAll {
-            filter,
-            face_down: true,
-        },
-        EffectAst::ShuffleGraveyardIntoLibrary {
-            player: owner_player,
-        },
+        EffectAst::subject_verb_exile_all(filter, true),
+        EffectAst::subject_verb_shuffle_graveyard_into_library(owner_player),
     ]))
-}
-
-pub(crate) fn parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let clause_tokens = trim_lexed_commas(tokens);
-    let clause_words = token_word_refs(clause_tokens);
-    let then_word_idx = clause_words.iter().position(|word| *word == "then")?;
-    let clause_word_view = TokenWordView::new(clause_tokens);
-    let then_token_idx = clause_word_view.token_index_for_word_index(then_word_idx)?;
-    let prefix_tokens = trim_lexed_commas(&clause_tokens[..then_token_idx]);
-    let (player, count, reveal_top) = super::parse_top_cards_view_sentence(prefix_tokens)?;
-
-    let tail_start = clause_word_view
-        .token_index_after_words(then_word_idx + 1)
-        .unwrap_or(clause_tokens.len());
-    let tail_tokens = trim_lexed_commas(&clause_tokens[tail_start..]);
-    let tail_word_view = TokenWordView::new(&tail_tokens);
-    if tail_word_view.first() != Some("put") {
-        return None;
-    }
-
-    let count_start = tail_word_view.token_index_for_word_index(1)?;
-    let count_tokens = &tail_tokens[count_start..];
-    let (put_count, used) = parse_number_from_lexed(count_tokens)?;
-    let tail_refs = TokenWordView::new(&count_tokens[used..]).word_refs();
-
-    let mut idx = 0usize;
-    if tail_refs.get(idx).copied() == Some("of") {
-        idx += 1;
-    }
-    match tail_refs.get(idx).copied() {
-        Some("them") => idx += 1,
-        Some("those") => {
-            idx += 1;
-            if matches!(tail_refs.get(idx).copied(), Some("card" | "cards")) {
-                idx += 1;
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
-    }
-
-    if tail_refs.get(idx).copied() != Some("into") {
-        return None;
-    }
-    idx += 1;
-
-    let chooser = if tail_refs.get(idx).copied() == Some("your") {
-        idx += 1;
-        PlayerAst::You
-    } else if tail_refs.get(idx).copied() == Some("their") {
-        idx += 1;
-        PlayerAst::That
-    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
-        idx += 2;
-        PlayerAst::That
-    } else {
-        player
-    };
-
-    if tail_refs.get(idx).copied() != Some("hand") {
-        return None;
-    }
-    idx += 1;
-    if tail_refs.get(idx).copied() != Some("and") {
-        return None;
-    }
-    idx += 1;
-    if tail_refs.get(idx).copied() == Some("the") {
-        idx += 1;
-    }
-    if tail_refs.get(idx).copied() != Some("rest") {
-        return None;
-    }
-    idx += 1;
-    if tail_refs.get(idx).copied() != Some("into") {
-        return None;
-    }
-    idx += 1;
-
-    if tail_refs.get(idx).copied() == Some("your") || tail_refs.get(idx).copied() == Some("their") {
-        idx += 1;
-    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
-        idx += 2;
-    }
-
-    if !matches!(
-        tail_refs.get(idx).copied(),
-        Some("graveyard" | "graveyards")
-    ) {
-        return None;
-    }
-    idx += 1;
-    if idx != tail_refs.len() {
-        return None;
-    }
-
-    let looked_tag = crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG);
-    let mut effects = vec![EffectAst::LookAtTopCards {
-        player,
-        count,
-        tag: looked_tag.clone(),
-    }];
-    if reveal_top {
-        effects.push(EffectAst::RevealTagged { tag: looked_tag });
-    }
-    effects.push(EffectAst::PutSomeIntoHandRestIntoGraveyard {
-        player: chooser,
-        count: put_count as u32,
-    });
-    Some(effects)
 }
 
 pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -405,7 +290,8 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
         return Ok(effects);
     }
-    if let Some(effects) = parse_top_cards_put_counted_into_hand_rest_graveyard_chain_lexed(tokens)
+    if let Some(effects) =
+        super::dispatch_inner::parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(tokens)
     {
         return Ok(effects);
     }
@@ -422,11 +308,11 @@ pub(crate) fn parse_effect_chain_lexed(
                 clause_words.join(" ")
             )));
         }
-        return Ok(vec![EffectAst::Meld {
-            result_name: result_words.join(" "),
-            enters_tapped: false,
-            enters_attacking: false,
-        }]);
+        return Ok(vec![EffectAst::subject_verb_meld(
+            result_words.join(" "),
+            false,
+            false,
+        )]);
     }
 
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
@@ -477,7 +363,7 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![unless_action]);
     }
 
-    parse_effect_chain_with_sentence_primitives_lexed(tokens)
+    parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
 fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
@@ -589,11 +475,11 @@ pub(crate) fn parse_or_action_clause_lexed(
             continue;
         }
 
-        let first_effects = match parse_effect_chain_with_sentence_primitives_lexed(first) {
+        let first_effects = match parse_effect_chain_with_subject_verb_primitives_lexed(first) {
             Ok(effects) if !effects.is_empty() => effects,
             _ => continue,
         };
-        let second_effects = match parse_effect_chain_with_sentence_primitives_lexed(second) {
+        let second_effects = match parse_effect_chain_with_subject_verb_primitives_lexed(second) {
             Ok(effects) if !effects.is_empty() => effects,
             _ => continue,
         };
@@ -610,7 +496,9 @@ pub(crate) fn parse_or_action_clause_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{CardDefinitionBuilder, EffectAst, PlayerAst};
+    use crate::cards::builders::{
+        CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    };
     use crate::ids::CardId;
 
     use super::super::super::lexer::lex_line;
@@ -698,16 +586,19 @@ mod tests {
         let effects =
             parse_effect_chain_lexed(&tokens).expect("looked-cards split clause should parse");
 
-        assert!(matches!(
-            effects.as_slice(),
+        match effects.as_slice() {
             [
-                EffectAst::LookAtTopCards { .. },
-                EffectAst::PutSomeIntoHandRestIntoGraveyard {
-                    player: PlayerAst::You,
-                    count: 1,
-                },
-            ]
-        ));
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::LookAtTopCards { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject,
+                    action: SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count: 1 },
+                }),
+            ] => assert_eq!(subject.player, PlayerAst::You),
+            other => panic!("expected looked-cards split effects, got {other:?}"),
+        }
     }
 
     #[test]
@@ -729,17 +620,26 @@ mod tests {
         assert!(
             effects.iter().any(|effect| matches!(
                 effect,
-                EffectAst::ExileAll {
-                    face_down: true,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ExileAll {
+                        face_down: true,
+                        ..
+                    },
                     ..
-                }
+                })
             )),
             "expected a face-down exile-all effect in the parsed chain: {debug}"
         );
         assert!(
-            effects
-                .iter()
-                .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. })),
+            effects.iter().any(|effect| {
+                matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary,
+                        ..
+                    })
+                )
+            }),
             "expected a graveyard shuffle effect in the parsed chain: {debug}"
         );
     }
@@ -776,11 +676,11 @@ mod tests {
     }
 }
 
-pub(crate) fn parse_effect_chain_with_sentence_primitives_lexed(
+pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if tokens.first().is_some_and(|token| token.is_word("and")) {
-        return parse_effect_chain_with_sentence_primitives_lexed(&tokens[1..]);
+        return parse_effect_chain_with_subject_verb_primitives_lexed(&tokens[1..]);
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -797,17 +697,20 @@ pub(crate) fn parse_effect_chain_with_sentence_primitives_lexed(
         )));
     }
 
-    if let Some(effects) = run_sentence_primitives_lexed(
+    if let Some(effects) = run_subject_verb_primitives_lexed(
         tokens,
-        PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
-        &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+        &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )? {
         return Ok(effects);
     }
-    if let Some(effects) = run_sentence_primitives_lexed(
+    if let Some(effects) = parse_subject_verb_extension_sentence(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = run_subject_verb_primitives_lexed(
         tokens,
-        POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-        &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+        &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )? {
         return Ok(effects);
     }
@@ -976,6 +879,27 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             }
             continue;
         }
+        if let Some(segment_effects) = parse_subject_verb_extension_sentence(&segment)? {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                }
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
+                    carried_duration = Some(duration);
+                }
+                effects.push(effect);
+            }
+            previous_segment = Some(segment);
+            continue;
+        }
         if let Some(followup) = parse_token_copy_followup_sentence_lexed(&segment)
             && try_apply_token_copy_followup(&mut effects, followup)?
         {
@@ -985,6 +909,28 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             effects.extend(segment_effects);
             previous_segment = Some(segment);
             continue;
+        }
+        let segment_words = token_word_refs(&segment);
+        if segment_words.starts_with(&["all", "abilities", "and"])
+            && matches!(segment_words.get(3).copied(), Some("gain" | "gains"))
+        {
+            let Some(gain_idx) = segment
+                .iter()
+                .position(|token| token.is_word("gain") || token.is_word("gains"))
+            else {
+                continue;
+            };
+            let mut gain_tokens = Vec::new();
+            gain_tokens.push(synthetic_lexed_word("it"));
+            gain_tokens.extend(segment[gain_idx..].iter().cloned());
+            if let Some(mut effect) = parse_simple_gain_ability_clause_lexed(&gain_tokens)? {
+                if let Some(duration) = &carried_duration {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                effects.push(effect);
+                previous_segment = Some(segment);
+                continue;
+            }
         }
         let mut effect = parse_effect_clause_with_trailing_if_lexed(&segment)?;
         if let Some(context) = carried_context {
@@ -1028,27 +974,31 @@ fn leading_duration_for_followup_carry(tokens: &[OwnedLexToken]) -> Option<Until
 
 fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> {
     let duration = match effect {
-        EffectAst::Pump { duration, .. }
-        | EffectAst::PumpAll { duration, .. }
-        | EffectAst::GrantAbilitiesToTarget { duration, .. }
-        | EffectAst::GrantAbilitiesAll { duration, .. }
-        | EffectAst::GrantAbilitiesChoiceToTarget { duration, .. }
-        | EffectAst::RemoveAbilitiesFromTarget { duration, .. }
-        | EffectAst::RemoveAbilitiesAll { duration, .. }
-        | EffectAst::AddCardTypes { duration, .. }
-        | EffectAst::RemoveCardTypes { duration, .. }
-        | EffectAst::AddSubtypes { duration, .. }
-        | EffectAst::SetBasePowerToughness { duration, .. }
-        | EffectAst::SetBasePower { duration, .. }
-        | EffectAst::SetColors { duration, .. }
-        | EffectAst::MakeColorless { duration, .. }
-        | EffectAst::GainControl { duration, .. }
-        | EffectAst::BecomeBasicLandType { duration, .. }
-        | EffectAst::BecomeBasicLandTypeChoice { duration, .. }
-        | EffectAst::BecomeColorChoice { duration, .. }
-        | EffectAst::BecomeCreatureTypeChoice { duration, .. }
-        | EffectAst::BecomeCopy { duration, .. }
-        | EffectAst::BecomeBasePtCreature { duration, .. } => duration,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GainControl { duration, .. }
+                | SubjectVerbActionAst::Pump { duration, .. }
+                | SubjectVerbActionAst::PumpAll { duration, .. }
+                | SubjectVerbActionAst::SetBasePowerToughness { duration, .. }
+                | SubjectVerbActionAst::SetBasePower { duration, .. }
+                | SubjectVerbActionAst::BecomeBasePtCreature { duration, .. }
+                | SubjectVerbActionAst::AddCardTypes { duration, .. }
+                | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
+                | SubjectVerbActionAst::AddSubtypes { duration, .. }
+                | SubjectVerbActionAst::SetColors { duration, .. }
+                | SubjectVerbActionAst::MakeColorless { duration, .. }
+                | SubjectVerbActionAst::BecomeBasicLandType { duration, .. }
+                | SubjectVerbActionAst::BecomeBasicLandTypeChoice { duration, .. }
+                | SubjectVerbActionAst::BecomeColorChoice { duration, .. }
+                | SubjectVerbActionAst::BecomeCreatureTypeChoice { duration, .. }
+                | SubjectVerbActionAst::BecomeCopy { duration, .. }
+                | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. }
+                | SubjectVerbActionAst::GrantAbilitiesAll { duration, .. }
+                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { duration, .. }
+                | SubjectVerbActionAst::RemoveAbilitiesFromTarget { duration, .. }
+                | SubjectVerbActionAst::RemoveAbilitiesAll { duration, .. },
+            ..
+        }) => duration,
         _ => return None,
     };
 
@@ -1061,90 +1011,94 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
 
 fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
     match effect {
-        EffectAst::Pump {
-            duration: effect_duration,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GainControl {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::Pump {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::PumpAll {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::SetBasePowerToughness {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::SetBasePower {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeBasePtCreature {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddCardTypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::RemoveCardTypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddSubtypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::SetColors {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::MakeColorless {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeBasicLandType {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeBasicLandTypeChoice {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeColorChoice {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeCreatureTypeChoice {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::BecomeCopy {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesAll {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::RemoveAbilitiesAll {
+                    duration: effect_duration,
+                    ..
+                },
             ..
-        }
-        | EffectAst::PumpAll {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::GrantAbilitiesToTarget {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::GrantAbilitiesAll {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::GrantAbilitiesChoiceToTarget {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::RemoveAbilitiesFromTarget {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::RemoveAbilitiesAll {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::AddCardTypes {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::RemoveCardTypes {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::AddSubtypes {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::SetBasePowerToughness {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::SetBasePower {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::SetColors {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::MakeColorless {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::GainControl {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeBasicLandType {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeBasicLandTypeChoice {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeColorChoice {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeCreatureTypeChoice {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeCopy {
-            duration: effect_duration,
-            ..
-        }
-        | EffectAst::BecomeBasePtCreature {
-            duration: effect_duration,
-            ..
-        } if matches!(effect_duration, Until::Forever) => {
+        }) if matches!(effect_duration, Until::Forever) => {
             *effect_duration = duration.clone();
         }
         _ => {}
@@ -1312,17 +1266,24 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
     while idx + 1 < effects.len() {
         let mark_next_end_step_exile = match (&effects[idx], &effects[idx + 1]) {
             (
-                EffectAst::CreateTokenCopy { .. } | EffectAst::CreateTokenCopyFromSource { .. },
-                EffectAst::MoveToZone {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::CreateTokenCopy { .. }
+                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(subject_verb),
+            ) => match &subject_verb.action {
+                SubjectVerbActionAst::MoveToZone {
                     target,
                     zone: Zone::Exile,
                     ..
-                },
-            ) => target_is_generic_token_filter(target),
-            (
-                EffectAst::CreateTokenCopy { .. } | EffectAst::CreateTokenCopyFromSource { .. },
-                EffectAst::Exile { target, .. },
-            ) => target_is_generic_token_filter(target),
+                }
+                | SubjectVerbActionAst::Exile { target, .. } => {
+                    target_is_generic_token_filter(target)
+                }
+                _ => false,
+            },
             _ => false,
         };
 
@@ -1332,14 +1293,18 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
         }
 
         match &mut effects[idx] {
-            EffectAst::CreateTokenCopy {
-                exile_at_next_end_step,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopy {
+                        exile_at_next_end_step,
+                        ..
+                    }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        exile_at_next_end_step,
+                        ..
+                    },
                 ..
-            }
-            | EffectAst::CreateTokenCopyFromSource {
-                exile_at_next_end_step,
-                ..
-            } => {
+            }) => {
                 *exile_at_next_end_step = true;
             }
             _ => {}
@@ -1365,8 +1330,16 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     while idx + 1 < effects.len() {
         let mark_next_end_step_sacrifice = match (&effects[idx], &effects[idx + 1]) {
             (
-                EffectAst::CreateTokenCopy { .. } | EffectAst::CreateTokenCopyFromSource { .. },
-                EffectAst::Sacrifice { filter, count, .. },
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::CreateTokenCopy { .. }
+                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Sacrifice { filter, count, .. },
+                    ..
+                }),
             ) => *count == 1 && filter.token,
             _ => false,
         };
@@ -1377,14 +1350,18 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
         }
 
         match &mut effects[idx] {
-            EffectAst::CreateTokenCopy {
-                sacrifice_at_next_end_step,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopy {
+                        sacrifice_at_next_end_step,
+                        ..
+                    }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        sacrifice_at_next_end_step,
+                        ..
+                    },
                 ..
-            }
-            | EffectAst::CreateTokenCopyFromSource {
-                sacrifice_at_next_end_step,
-                ..
-            } => {
+            }) => {
                 *sacrifice_at_next_end_step = true;
             }
             _ => {}
@@ -1409,21 +1386,25 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
     while idx + 1 < effects.len() {
         let mark_end_of_combat_exile = match (&effects[idx], &effects[idx + 1]) {
             (
-                EffectAst::CreateTokenCopy { .. }
-                | EffectAst::CreateTokenCopyFromSource { .. }
-                | EffectAst::CreateTokenWithMods { .. },
-                EffectAst::MoveToZone {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::CreateTokenCopy { .. }
+                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+                        | SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(subject_verb),
+            ) => match &subject_verb.action {
+                SubjectVerbActionAst::MoveToZone {
                     target,
                     zone: Zone::Exile,
                     ..
-                },
-            ) => target_is_generic_token_filter(target),
-            (
-                EffectAst::CreateTokenCopy { .. }
-                | EffectAst::CreateTokenCopyFromSource { .. }
-                | EffectAst::CreateTokenWithMods { .. },
-                EffectAst::Exile { target, .. },
-            ) => target_is_generic_token_filter(target),
+                }
+                | SubjectVerbActionAst::Exile { target, .. } => {
+                    target_is_generic_token_filter(target)
+                }
+                _ => false,
+            },
             _ => false,
         };
 
@@ -1433,18 +1414,22 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
         }
 
         match &mut effects[idx] {
-            EffectAst::CreateTokenCopy {
-                exile_at_end_of_combat,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopy {
+                        exile_at_end_of_combat,
+                        ..
+                    }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        exile_at_end_of_combat,
+                        ..
+                    }
+                    | SubjectVerbActionAst::CreateTokenWithMods {
+                        exile_at_end_of_combat,
+                        ..
+                    },
                 ..
-            }
-            | EffectAst::CreateTokenCopyFromSource {
-                exile_at_end_of_combat,
-                ..
-            }
-            | EffectAst::CreateTokenWithMods {
-                exile_at_end_of_combat,
-                ..
-            } => {
+            }) => {
                 *exile_at_end_of_combat = true;
             }
             _ => {}
@@ -1698,7 +1683,9 @@ fn previous_segment_has_carryable_subject(previous: &[OwnedLexToken]) -> bool {
     }
 
     let subject_words = token_word_refs(subject_tokens);
-    is_source_reference_words(&subject_words) || starts_with_target_indicator(&subject_tokens)
+    is_source_reference_words(&subject_words)
+        || starts_with_target_indicator(&subject_tokens)
+        || parse_object_filter(subject_tokens, false).is_ok()
 }
 
 fn expand_gain_lose_followup_segment_lexed(
@@ -1791,59 +1778,53 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
     if matches!(effect, EffectAst::ForEachOpponent { .. }) {
         return Some(CarryContext::ForEachOpponent);
     }
-    if let EffectAst::TargetOnly { target } = effect
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::TargetOnly { target } = &subject_verb.action
         && let Some(context) = player_target_carry_context(target)
     {
         return Some(context);
     }
-    if let EffectAst::Exile { target, .. } | EffectAst::ExileUntilSourceLeaves { target, .. } =
-        effect
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
         && let Some(player) = player_owner_filter_from_target_for_carry(target)
     {
         return Some(CarryContext::Player(player));
     }
-    if let EffectAst::ExileAll { filter, .. } = effect
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. },
+        ..
+    }) = effect
+        && let Some(player) = player_owner_filter_from_target_for_carry(target)
+    {
+        return Some(CarryContext::Player(player));
+    }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ExileAll { filter, .. },
+        ..
+    }) = effect
         && let Some(owner) = filter.owner.as_ref()
         && let Some(player) = player_ast_from_filter_for_carry(owner)
     {
         return Some(CarryContext::Player(player));
     }
-    if matches!(effect, EffectAst::ChoosePlayer { .. }) {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ChoosePlayer { .. },
+            ..
+        })
+    ) {
         return Some(CarryContext::Player(PlayerAst::That));
     }
 
     let player = match effect {
-        EffectAst::Draw { player, .. }
-        | EffectAst::ChooseObjects { player, .. }
-        | EffectAst::DiscardHand { player }
-        | EffectAst::Discard { player, .. }
-        | EffectAst::GainLife { player, .. }
-        | EffectAst::LoseLife { player, .. }
-        | EffectAst::Sacrifice { player, .. }
-        | EffectAst::Scry { player, .. }
-        | EffectAst::Surveil { player, .. }
-        | EffectAst::Mill { player, .. }
-        | EffectAst::PoisonCounters { player, .. }
-        | EffectAst::EnergyCounters { player, .. }
-        | EffectAst::TicketCounters { player, .. }
-        | EffectAst::RevealTop { player }
-        | EffectAst::RevealHand { player }
-        | EffectAst::PutIntoHand { player, .. }
-        | EffectAst::PayMana { player, .. }
-        | EffectAst::PayEnergy { player, .. }
-        | EffectAst::AddMana { player, .. }
-        | EffectAst::AddManaScaled { player, .. }
-        | EffectAst::AddManaAnyColor { player, .. }
-        | EffectAst::AddManaAnyOneColor { player, .. }
-        | EffectAst::AddManaChosenColor { player, .. }
-        | EffectAst::AddManaFromLandCouldProduce { player, .. }
-        | EffectAst::AddManaCommanderIdentity { player, .. }
-        | EffectAst::CreateTokenCopy { player, .. }
-        | EffectAst::CreateTokenCopyFromSource { player, .. }
-        | EffectAst::CreateTokenWithMods { player, .. } => *player,
-        EffectAst::SearchLibrary {
-            chooser, player, ..
-        } => {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    chooser, player, ..
+                },
+            ..
+        }) => {
             if !matches!(player, PlayerAst::Implicit) {
                 *player
             } else if !matches!(chooser, PlayerAst::Implicit) {
@@ -1852,6 +1833,8 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
                 return None;
             }
         }
+        EffectAst::SubjectVerb(_) => subject_verb_player_action_player(effect)?,
+        EffectAst::ChooseObjects { player, .. } => *player,
         _ => return None,
     };
 
@@ -1864,40 +1847,161 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
 
 pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::Draw { player, .. }
-        | EffectAst::ChooseObjects { player, .. }
-        | EffectAst::DiscardHand { player }
-        | EffectAst::Discard { player, .. }
-        | EffectAst::GainLife { player, .. }
-        | EffectAst::LoseLife { player, .. }
-        | EffectAst::Sacrifice { player, .. }
-        | EffectAst::Scry { player, .. }
-        | EffectAst::Surveil { player, .. }
-        | EffectAst::Mill { player, .. }
-        | EffectAst::PoisonCounters { player, .. }
-        | EffectAst::EnergyCounters { player, .. }
-        | EffectAst::TicketCounters { player, .. }
-        | EffectAst::RevealTop { player }
-        | EffectAst::RevealHand { player }
-        | EffectAst::PutIntoHand { player, .. }
-        | EffectAst::PayMana { player, .. }
-        | EffectAst::PayEnergy { player, .. }
-        | EffectAst::AddMana { player, .. }
-        | EffectAst::AddManaScaled { player, .. }
-        | EffectAst::AddManaAnyColor { player, .. }
-        | EffectAst::AddManaAnyOneColor { player, .. }
-        | EffectAst::AddManaChosenColor { player, .. }
-        | EffectAst::AddManaFromLandCouldProduce { player, .. }
-        | EffectAst::AddManaCommanderIdentity { player, .. }
-        | EffectAst::CreateTokenCopy { player, .. }
-        | EffectAst::CreateTokenCopyFromSource { player, .. }
-        | EffectAst::CreateTokenWithMods { player, .. } => {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    chooser, player, ..
+                },
+            ..
+        }) => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
+        EffectAst::SubjectVerb(_) => {
+            matches!(
+                subject_verb_player_action_player(effect),
+                Some(PlayerAst::Implicit)
+            )
+        }
+        EffectAst::ChooseObjects { player, .. } => {
             matches!(*player, PlayerAst::Implicit)
         }
-        EffectAst::SearchLibrary {
-            chooser, player, ..
-        } => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
         _ => false,
+    }
+}
+
+fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut PlayerAst> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenCopy { player, .. }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. }
+                | SubjectVerbActionAst::CreateTokenWithMods { player, .. },
+            ..
+        }) => Some(player),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player, .. },
+            action:
+                SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::LoseLife { .. }
+                | SubjectVerbActionAst::GainLife { .. }
+                | SubjectVerbActionAst::RevealHand
+                | SubjectVerbActionAst::RevealTop
+                | SubjectVerbActionAst::RevealCardsFromHand { .. }
+                | SubjectVerbActionAst::Mill { .. }
+                | SubjectVerbActionAst::Scry { .. }
+                | SubjectVerbActionAst::Surveil { .. }
+                | SubjectVerbActionAst::Discard { .. }
+                | SubjectVerbActionAst::DiscardHand
+                | SubjectVerbActionAst::PoisonCounters { .. }
+                | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::TicketCounters { .. }
+                | SubjectVerbActionAst::PayEnergy { .. }
+                | SubjectVerbActionAst::PayMana { .. }
+                | SubjectVerbActionAst::DoubleManaPool
+                | SubjectVerbActionAst::SetLifeTotal { .. }
+                | SubjectVerbActionAst::SkipTurn
+                | SubjectVerbActionAst::SkipCombatPhases
+                | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+                | SubjectVerbActionAst::SkipDrawStep
+                | SubjectVerbActionAst::RingTemptsYou
+                | SubjectVerbActionAst::VentureIntoDungeon { .. }
+                | SubjectVerbActionAst::BecomeMonarch
+                | SubjectVerbActionAst::TakeInitiative
+                | SubjectVerbActionAst::CreateEmblem { .. }
+                | SubjectVerbActionAst::LoseGame
+                | SubjectVerbActionAst::WinGame
+                | SubjectVerbActionAst::FlipCoin
+                | SubjectVerbActionAst::RollDie { .. }
+                | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+                | SubjectVerbActionAst::ReorderGraveyard
+                | SubjectVerbActionAst::ChooseColor
+                | SubjectVerbActionAst::ChooseCardType { .. }
+                | SubjectVerbActionAst::ChooseNamedOption { .. }
+                | SubjectVerbActionAst::ChooseCreatureType { .. }
+                | SubjectVerbActionAst::ChooseCardName { .. }
+                | SubjectVerbActionAst::ChoosePlayer { .. }
+                | SubjectVerbActionAst::AddMana { .. }
+                | SubjectVerbActionAst::AddManaScaled { .. }
+                | SubjectVerbActionAst::AddManaAnyColor { .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
+                | SubjectVerbActionAst::AddManaChosenColor { .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::PutIntoHand { .. }
+                | SubjectVerbActionAst::AdditionalLandPlays { .. }
+                | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
+                | SubjectVerbActionAst::Sacrifice { .. }
+                | SubjectVerbActionAst::ShuffleLibrary,
+        }) => Some(player),
+        _ => None,
+    }
+}
+
+fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenCopy { player, .. }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. }
+                | SubjectVerbActionAst::CreateTokenWithMods { player, .. },
+            ..
+        }) => Some(*player),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player, .. },
+            action:
+                SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::LoseLife { .. }
+                | SubjectVerbActionAst::GainLife { .. }
+                | SubjectVerbActionAst::RevealHand
+                | SubjectVerbActionAst::RevealTop
+                | SubjectVerbActionAst::RevealCardsFromHand { .. }
+                | SubjectVerbActionAst::Mill { .. }
+                | SubjectVerbActionAst::Scry { .. }
+                | SubjectVerbActionAst::Surveil { .. }
+                | SubjectVerbActionAst::Discard { .. }
+                | SubjectVerbActionAst::DiscardHand
+                | SubjectVerbActionAst::PoisonCounters { .. }
+                | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::TicketCounters { .. }
+                | SubjectVerbActionAst::PayEnergy { .. }
+                | SubjectVerbActionAst::PayMana { .. }
+                | SubjectVerbActionAst::DoubleManaPool
+                | SubjectVerbActionAst::SetLifeTotal { .. }
+                | SubjectVerbActionAst::SkipTurn
+                | SubjectVerbActionAst::SkipCombatPhases
+                | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+                | SubjectVerbActionAst::SkipDrawStep
+                | SubjectVerbActionAst::RingTemptsYou
+                | SubjectVerbActionAst::VentureIntoDungeon { .. }
+                | SubjectVerbActionAst::BecomeMonarch
+                | SubjectVerbActionAst::TakeInitiative
+                | SubjectVerbActionAst::CreateEmblem { .. }
+                | SubjectVerbActionAst::LoseGame
+                | SubjectVerbActionAst::WinGame
+                | SubjectVerbActionAst::FlipCoin
+                | SubjectVerbActionAst::RollDie { .. }
+                | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+                | SubjectVerbActionAst::ReorderGraveyard
+                | SubjectVerbActionAst::ChooseColor
+                | SubjectVerbActionAst::ChooseCardType { .. }
+                | SubjectVerbActionAst::ChooseNamedOption { .. }
+                | SubjectVerbActionAst::ChooseCreatureType { .. }
+                | SubjectVerbActionAst::ChooseCardName { .. }
+                | SubjectVerbActionAst::ChoosePlayer { .. }
+                | SubjectVerbActionAst::AddMana { .. }
+                | SubjectVerbActionAst::AddManaScaled { .. }
+                | SubjectVerbActionAst::AddManaAnyColor { .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
+                | SubjectVerbActionAst::AddManaChosenColor { .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::PutIntoHand { .. }
+                | SubjectVerbActionAst::AdditionalLandPlays { .. }
+                | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
+                | SubjectVerbActionAst::Sacrifice { .. }
+                | SubjectVerbActionAst::ShuffleLibrary,
+        }) => Some(*player),
+        _ => None,
     }
 }
 
@@ -1913,43 +2017,28 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                 other => other,
             };
             match effect {
-                EffectAst::Draw { player, .. }
-                | EffectAst::ChooseObjects { player, .. }
-                | EffectAst::DiscardHand { player }
-                | EffectAst::Discard { player, .. }
-                | EffectAst::GainLife { player, .. }
-                | EffectAst::LoseLife { player, .. }
-                | EffectAst::Scry { player, .. }
-                | EffectAst::Surveil { player, .. }
-                | EffectAst::Mill { player, .. }
-                | EffectAst::PoisonCounters { player, .. }
-                | EffectAst::EnergyCounters { player, .. }
-                | EffectAst::TicketCounters { player, .. }
-                | EffectAst::RevealTop { player }
-                | EffectAst::RevealHand { player }
-                | EffectAst::PutIntoHand { player, .. }
-                | EffectAst::PayMana { player, .. }
-                | EffectAst::PayEnergy { player, .. }
-                | EffectAst::AddMana { player, .. }
-                | EffectAst::AddManaScaled { player, .. }
-                | EffectAst::AddManaAnyColor { player, .. }
-                | EffectAst::AddManaAnyOneColor { player, .. }
-                | EffectAst::AddManaChosenColor { player, .. }
-                | EffectAst::AddManaFromLandCouldProduce { player, .. }
-                | EffectAst::AddManaCommanderIdentity { player, .. }
-                | EffectAst::CreateTokenCopy { player, .. }
-                | EffectAst::CreateTokenCopyFromSource { player, .. }
-                | EffectAst::CreateTokenWithMods { player, .. } => {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::SearchLibrary {
+                            chooser, player, ..
+                        },
+                    ..
+                }) => {
+                    if matches!(*chooser, PlayerAst::Implicit) {
+                        *chooser = carried_player;
+                    }
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
                     }
                 }
-                EffectAst::SearchLibrary {
-                    chooser, player, ..
-                } => {
-                    if matches!(*chooser, PlayerAst::Implicit) {
-                        *chooser = carried_player;
+                EffectAst::SubjectVerb(_) => {
+                    if let Some(player) = subject_verb_player_action_player_mut(effect)
+                        && *player == PlayerAst::Implicit
+                    {
+                        *player = carried_player;
                     }
+                }
+                EffectAst::ChooseObjects { player, .. } => {
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
                     }
@@ -2006,10 +2095,13 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
         CarryContext::Player(_) => {
             matches!(
                 effect,
-                EffectAst::Draw {
-                    player: PlayerAst::Implicit,
-                    ..
-                }
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::Implicit,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw { .. },
+                })
             ) && matches!(clause_words.first().copied(), Some("draw"))
         }
         CarryContext::ForEachPlayer
@@ -2017,16 +2109,15 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
         | CarryContext::ForEachOpponent => {
             let is_implicit_vision_effect = matches!(
                 effect,
-                EffectAst::Draw {
-                    player: PlayerAst::Implicit,
-                    ..
-                } | EffectAst::Scry {
-                    player: PlayerAst::Implicit,
-                    ..
-                } | EffectAst::Surveil {
-                    player: PlayerAst::Implicit,
-                    ..
-                }
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::Implicit,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw { .. }
+                        | SubjectVerbActionAst::Scry { .. }
+                        | SubjectVerbActionAst::Surveil { .. },
+                })
             );
             is_implicit_vision_effect
                 && matches!(
@@ -2043,177 +2134,66 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
 
 pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
     match effect {
-        EffectAst::Draw {
-            player: effect_player,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::RetargetStackObject { .. },
+        }) => {
+            if matches!(subject.player, PlayerAst::Implicit) {
+                subject.player = player;
+            }
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::CopySpellForEachTarget {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::CastTagged {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    player: effect_player,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    player: effect_player,
+                    ..
+                },
             ..
-        }
-        | EffectAst::DiscardHand {
-            player: effect_player,
-        }
-        | EffectAst::Discard {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GainLife {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::LoseLife {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::Sacrifice {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::Scry {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::Surveil {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::Mill {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::PoisonCounters {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::EnergyCounters {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::TicketCounters {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::RevealTop {
-            player: effect_player,
-        }
-        | EffectAst::RevealHand {
-            player: effect_player,
-        }
-        | EffectAst::PutIntoHand {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::PayMana {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::PayEnergy {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddMana {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaScaled {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaAnyColor {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaAnyOneColor {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaChosenColor {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaFromLandCouldProduce {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::AddManaCommanderIdentity {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::SearchLibrary {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::ShuffleHandAndGraveyardIntoLibrary {
-            player: effect_player,
-        }
-        | EffectAst::ShuffleGraveyardIntoLibrary {
-            player: effect_player,
-        }
-        | EffectAst::ShuffleLibrary {
-            player: effect_player,
-        }
-        | EffectAst::AdditionalLandPlays {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GrantPlayTaggedUntilEndOfTurn {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GrantPlayTaggedUntilYourNextTurn {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GrantPlayTaggedForAsLongAsExiled {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CastTagged {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::GrantBySpec {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CreateTokenCopy {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CreateTokenCopyFromSource {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CreateTokenWithMods {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CopySpell {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::CopySpellForEachTarget {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::SkipTurn {
-            player: effect_player,
-        }
-        | EffectAst::SkipCombatPhases {
-            player: effect_player,
-        }
-        | EffectAst::SkipNextCombatPhaseThisTurn {
-            player: effect_player,
-        }
-        | EffectAst::SkipDrawStep {
-            player: effect_player,
-        }
-        | EffectAst::RetargetStackObject {
-            chooser: effect_player,
-            ..
-        } => {
+        }) => {
             if matches!(*effect_player, PlayerAst::Implicit) {
+                *effect_player = player;
+            }
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    player: effect_player,
+                    ..
+                },
+            ..
+        }) => {
+            if matches!(*effect_player, PlayerAst::Implicit) {
+                *effect_player = player;
+            }
+        }
+        EffectAst::SubjectVerb(_) => {
+            if let Some(effect_player) = subject_verb_player_action_player_mut(effect)
+                && matches!(*effect_player, PlayerAst::Implicit)
+            {
                 *effect_player = player;
             }
         }
@@ -2367,10 +2347,10 @@ pub(crate) fn parse_or_action_clause(
     parse_or_action_clause_lexed(tokens)
 }
 
-pub(crate) fn parse_effect_chain_with_sentence_primitives(
+pub(crate) fn parse_effect_chain_with_subject_verb_primitives(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    parse_effect_chain_with_sentence_primitives_lexed(tokens)
+    parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_chain_inner(

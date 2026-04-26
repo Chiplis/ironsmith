@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -473,11 +474,11 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                 .collect::<Vec<_>>();
             parse_effect_sentences_lexed(&join_sentences_with_period(&grouped))?
         };
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Library],
+            TagKey::from("divvy_source"),
+        ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
@@ -487,32 +488,34 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             zones: vec![Zone::Library],
             search_mode: None,
         });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
+        effects.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
         effects.push(EffectAst::ForEachTagged {
             tag: TagKey::from("divvy_source"),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                 if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             }],
         });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
         return Ok(Some(LineAst::Triggered {
             trigger,
             effects,
@@ -539,22 +542,22 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             if_true: vec![EffectAst::MayByPlayer {
                 player: PlayerAst::That,
                 effects: vec![
-                    EffectAst::ConsultTopOfLibrary {
-                        player: PlayerAst::That,
-                        mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
-                        filter: creature_card_filter,
-                        stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
-                        all_tag: revealed_tag.clone(),
-                        match_tag: creature_tag.clone(),
-                    },
-                    EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(creature_tag.clone(), None),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    },
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::That,
+                        crate::cards::builders::LibraryConsultModeAst::Reveal,
+                        creature_card_filter,
+                        crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+                        revealed_tag.clone(),
+                        creature_tag.clone(),
+                    ),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(creature_tag.clone(), None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
                     EffectAst::ForEachTagged {
                         tag: revealed_tag,
                         effects: vec![EffectAst::Conditional {
@@ -562,14 +565,14 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                                 creature_tag.as_str(),
                             ),
                             if_true: Vec::new(),
-                            if_false: vec![EffectAst::MoveToZone {
-                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                                zone: Zone::Graveyard,
-                                to_top: false,
-                                battlefield_controller: ReturnControllerAst::Preserve,
-                                battlefield_tapped: false,
-                                attached_to: None,
-                            }],
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Graveyard,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
                         }],
                     },
                 ],
@@ -599,14 +602,14 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         creature_card_filter.zone = Some(Zone::Graveyard);
         creature_card_filter.owner = Some(PlayerFilter::You);
         let effects = vec![
-            EffectAst::Discard {
-                count: crate::effect::Value::Fixed(1),
-                player: PlayerAst::You,
-                random: true,
-                any_number: false,
-                filter: None,
-                tag: Some(discarded_tag.clone()),
-            },
+            EffectAst::subject_verb_discard(
+                PlayerAst::You,
+                crate::effect::Value::Fixed(1),
+                true,
+                false,
+                None,
+                Some(discarded_tag.clone()),
+            ),
             EffectAst::Conditional {
                 predicate: PredicateAst::PlayerTaggedObjectMatches {
                     player: PlayerAst::You,
@@ -614,13 +617,13 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                     filter: creature_card_filter,
                 },
                 if_true: vec![EffectAst::UnlessPays {
-                    effects: vec![EffectAst::ReturnToBattlefield {
-                        target: TargetAst::Tagged(discarded_tag, None),
-                        tapped: false,
-                        transformed: false,
-                        converted: false,
-                        controller: ReturnControllerAst::Preserve,
-                    }],
+                    effects: vec![EffectAst::subject_verb_return_to_battlefield(
+                        TargetAst::Tagged(discarded_tag, None),
+                        false,
+                        false,
+                        false,
+                        ReturnControllerAst::Preserve,
+                    )],
                     player: PlayerAst::Any,
                     cost: TotalCost::from_cost(Cost::life(5)),
                 }],
@@ -657,15 +660,15 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                 player: PlayerAst::That,
                 tag: TagKey::from("divvy_chosen"),
             },
-            EffectAst::Cant {
-                restriction: crate::effect::Restriction::attack(
+            EffectAst::subject_verb_cant(
+                crate::effect::Restriction::attack(
                     ObjectFilter::creature()
                         .controlled_by(PlayerFilter::IteratedPlayer)
                         .not_tagged(TagKey::from("divvy_chosen")),
                 ),
-                duration: Until::EndOfTurn,
-                condition: None,
-            },
+                Until::EndOfTurn,
+                None,
+            ),
         ];
         return Ok(Some(LineAst::Triggered {
             trigger,
@@ -1083,7 +1086,10 @@ pub(crate) fn lower_exert_attack_keyword_line(
 fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], label: &str) {
     for effect in effects {
         match effect {
-            EffectAst::CopySpell { target, count, .. } => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CopySpell { target, count, .. },
+                ..
+            }) => {
                 let crate::cards::builders::TargetAst::Source(_) = target else {
                     continue;
                 };
@@ -1204,10 +1210,13 @@ impl StandardGiftVariant {
 
     fn effects(self) -> Vec<EffectAst> {
         match self {
-            Self::Card => vec![EffectAst::Draw {
-                count: crate::effect::Value::Fixed(1),
-                player: PlayerAst::Chosen,
-            }],
+            Self::Card => vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::Chosen,
+                SubjectVerbActionAst::Draw {
+                    count: crate::effect::Value::Fixed(1),
+                },
+            )],
             Self::Treasure => vec![standard_gift_create_token_effect("Treasure", false)],
             Self::Food => vec![standard_gift_create_token_effect("Food", false)],
             Self::TappedFish => {
@@ -1216,10 +1225,10 @@ impl StandardGiftVariant {
                     true,
                 )]
             }
-            Self::ExtraTurn => vec![EffectAst::ExtraTurnAfterTurn {
-                player: PlayerAst::Chosen,
-                anchor: crate::cards::builders::ExtraTurnAnchorAst::CurrentTurn,
-            }],
+            Self::ExtraTurn => vec![EffectAst::subject_verb_extra_turn_after_turn(
+                PlayerAst::Chosen,
+                crate::cards::builders::ExtraTurnAnchorAst::CurrentTurn,
+            )],
             Self::Octopus => {
                 vec![standard_gift_create_token_effect(
                     "8/8 blue Octopus creature",
@@ -1240,19 +1249,23 @@ impl StandardGiftVariant {
 }
 
 fn standard_gift_create_token_effect(name: &str, tapped: bool) -> EffectAst {
-    EffectAst::CreateTokenWithMods {
-        name: name.to_string(),
-        count: crate::effect::Value::Fixed(1),
-        dynamic_power_toughness: None,
-        player: PlayerAst::Chosen,
-        attached_to: None,
-        tapped,
-        attacking: false,
-        exile_at_end_of_combat: false,
-        sacrifice_at_end_of_combat: false,
-        sacrifice_at_next_end_step: false,
-        exile_at_next_end_step: false,
-    }
+    EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Chosen,
+        SubjectVerbActionAst::CreateTokenWithMods {
+            name: name.to_string(),
+            count: crate::effect::Value::Fixed(1),
+            dynamic_power_toughness: None,
+            player: PlayerAst::Chosen,
+            attached_to: None,
+            tapped,
+            attacking: false,
+            exile_at_end_of_combat: false,
+            sacrifice_at_end_of_combat: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
+        },
+    )
 }
 
 fn standard_gift_variant(text: &str) -> Option<StandardGiftVariant> {
@@ -1354,10 +1367,17 @@ pub(crate) fn try_lower_optional_cost_with_cast_trigger(
             player,
             ..
         },
-        EffectAst::SacrificeAll {
-            filter: sacrificed_filter,
-            player: sacrificed_player,
-        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: sacrificed_player,
+                    ..
+                },
+            action:
+                SubjectVerbActionAst::SacrificeAll {
+                    filter: sacrificed_filter,
+                },
+        }),
     ] = head_effects.as_slice()
     else {
         return Ok(None);

@@ -2238,6 +2238,14 @@ pub(crate) fn apply_spell_cost_modifiers(
                 total_increase = total_increase.saturating_add(extra);
             }
         }
+        if let Some(per_target_cost) =
+            static_ability.cost_increase_mana_cost_per_additional_target()
+        {
+            let additional_targets = chosen_target_count.saturating_sub(1);
+            for _ in 0..additional_targets {
+                increase_pips.extend(per_target_cost.pips().iter().cloned());
+            }
+        }
     }
 
     let current_turn = game.turn.turn_number;
@@ -2398,6 +2406,24 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                 {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                 }
+                if let Some(per_target_amount) =
+                    static_ability.cost_increase_per_additional_target()
+                {
+                    let additional_targets = chosen_target_count.saturating_sub(1);
+                    if additional_targets > 0 {
+                        let extra =
+                            (per_target_amount as i32).saturating_mul(additional_targets as i32);
+                        total_increase = total_increase.saturating_add(extra);
+                    }
+                }
+                if let Some(per_target_cost) =
+                    static_ability.cost_increase_mana_cost_per_additional_target()
+                {
+                    let additional_targets = chosen_target_count.saturating_sub(1);
+                    for _ in 0..additional_targets {
+                        increase_pips.extend(per_target_cost.pips().iter().cloned());
+                    }
+                }
             }
         } else {
             for static_ability in perm
@@ -2475,6 +2501,24 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                     )
                 {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                }
+                if let Some(per_target_amount) =
+                    static_ability.cost_increase_per_additional_target()
+                {
+                    let additional_targets = chosen_target_count.saturating_sub(1);
+                    if additional_targets > 0 {
+                        let extra =
+                            (per_target_amount as i32).saturating_mul(additional_targets as i32);
+                        total_increase = total_increase.saturating_add(extra);
+                    }
+                }
+                if let Some(per_target_cost) =
+                    static_ability.cost_increase_mana_cost_per_additional_target()
+                {
+                    let additional_targets = chosen_target_count.saturating_sub(1);
+                    for _ in 0..additional_targets {
+                        increase_pips.extend(per_target_cost.pips().iter().cloned());
+                    }
                 }
             }
         }

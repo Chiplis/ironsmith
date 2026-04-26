@@ -18,7 +18,8 @@ pub fn grizzly_bears() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Bear])
         .power_toughness(PowerToughness::fixed(2, 2))
-        .build()
+        .parse_text("")
+        .unwrap()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

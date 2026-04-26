@@ -592,10 +592,10 @@ pub(crate) fn parse_triggered_line_lexed(
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::ThisBecomesMonstrous,
             effects: vec![EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::DealDamage {
-                    amount: Value::CardsInHand(PlayerFilter::IteratedPlayer),
-                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                }],
+                effects: vec![EffectAst::subject_verb_damage(
+                    Value::CardsInHand(PlayerFilter::IteratedPlayer),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
             }],
             max_triggers_per_turn: None,
         });

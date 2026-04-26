@@ -48,7 +48,7 @@ pub(crate) mod document_parser {
     pub(crate) use crate::runtime_backend::cst::KeywordLineKindCst;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GrantedAbilityAst {
     KeywordAction(KeywordAction),
     MustAttack,
@@ -80,7 +80,8 @@ pub(crate) fn replace_whole_word_case_insensitive(
 pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
 
 pub(crate) use crate::runtime_backend::ast::{
-    EffectAst, PredicateAst, StaticAbilityAst, TriggerSpec,
+    EffectAst, PredicateAst, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, SubjectVerbSubjectAst, TriggerSpec,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

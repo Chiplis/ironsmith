@@ -17,12 +17,13 @@ use super::super::util::{
 };
 use super::sentence_helpers::*;
 use super::{
-    find_verb, parse_effect_chain, parse_effect_chain_with_sentence_primitives, parse_effect_clause,
+    find_verb, parse_effect_chain, parse_effect_chain_with_subject_verb_primitives,
+    parse_effect_clause,
 };
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
-    TagKey, TargetAst, TextSpan,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -52,7 +53,7 @@ pub(crate) fn parse_search_library_sentence(
     super::super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed(
         tokens,
         segment_starts_effect_lexed,
-        super::chain_carry::parse_effect_chain_with_sentence_primitives_lexed,
+        super::chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed,
         super::clause_dispatch::parse_effect_clause_lexed,
     )
 }
@@ -571,23 +572,27 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         );
         let has_hand_clause = grammar::contains_word(&target_tokens, "hand");
         if has_source_and_graveyard_clause {
-            effects.push(EffectAst::MoveToZone {
-                target: TargetAst::Source(None),
-                zone: Zone::Library,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            });
+            effects.push(EffectAst::subject_verb_move_to_zone(
+                TargetAst::Source(None),
+                Zone::Library,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            ));
             if owner_library_destination {
-                effects.push(EffectAst::ShuffleLibrary {
-                    player: PlayerAst::ItsOwner,
-                });
+                effects.push(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    PlayerAst::ItsOwner,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                ));
             }
         } else if has_hand_clause {
-            effects.push(EffectAst::ShuffleHandAndGraveyardIntoLibrary { player });
+            effects.push(EffectAst::subject_verb_shuffle_hand_and_graveyard_into_library(player));
         } else {
-            effects.push(EffectAst::ShuffleGraveyardIntoLibrary { player });
+            effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
+                player,
+            ));
         }
         if each_player_subject {
             return append_trailing(vec![EffectAst::ForEachPlayer {
@@ -600,10 +605,9 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     let mut target = parse_target_phrase(&target_tokens)?;
     apply_shuffle_subject_graveyard_owner_context(&mut target, subject);
 
-    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
-        target,
-        player,
-    }])
+    append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
+        player, target,
+    )])
 }
 
 pub(crate) fn parse_shuffle_object_into_library_sentence(
@@ -712,23 +716,25 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         ) {
             if !trailing_tokens.is_empty() {
                 return append_trailing(vec![
-                    EffectAst::MoveToZone {
+                    EffectAst::subject_verb_move_to_zone(
                         target,
-                        zone: Zone::Library,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    },
-                    EffectAst::ShuffleLibrary {
-                        player: PlayerAst::ItsOwner,
-                    },
+                        Zone::Library,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::LibraryOwner,
+                        PlayerAst::ItsOwner,
+                        SubjectVerbActionAst::ShuffleLibrary,
+                    ),
                 ]);
             }
-            return append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
+            return append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
+                PlayerAst::ItsOwner,
                 target,
-                player: PlayerAst::ItsOwner,
-            }]);
+            )]);
         }
         return Ok(None);
     }
@@ -741,29 +747,27 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         return append_trailing(vec![EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
             effects: vec![
-                EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(
-                        TagKey::from(IT_TAG),
-                        span_from_tokens(&target_tokens),
-                    ),
-                    zone: Zone::Library,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                },
-                EffectAst::ShuffleLibrary {
-                    player: PlayerAst::ItsOwner,
-                },
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
+                    Zone::Library,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+                EffectAst::subject_verb(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    PlayerAst::ItsOwner,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                ),
             ],
         }]);
     }
     let target = parse_target_phrase(&target_tokens)?;
 
-    append_trailing(vec![EffectAst::ShuffleObjectsIntoLibrary {
-        target,
-        player,
-    }])
+    append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
+        player, target,
+    )])
 }
 
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
@@ -870,14 +874,8 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
     second_filter.owner = Some(owner);
 
     Ok(Some(vec![
-        EffectAst::ExileAll {
-            filter: first_filter,
-            face_down: false,
-        },
-        EffectAst::ExileAll {
-            filter: second_filter,
-            face_down: false,
-        },
+        EffectAst::subject_verb_exile_all(first_filter, false),
+        EffectAst::subject_verb_exile_all(second_filter, false),
     ]))
 }
 
@@ -940,14 +938,8 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
             player: subject_player,
             tag: TagKey::from(IT_TAG),
         },
-        EffectAst::Exile {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-            face_down: false,
-        },
-        EffectAst::ExileAll {
-            filter: graveyard_filter,
-            face_down: false,
-        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(TagKey::from(IT_TAG), None), false),
+        EffectAst::subject_verb_exile_all(graveyard_filter, false),
     ]))
 }
 
@@ -983,28 +975,28 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         return Ok(Some(vec![EffectAst::ForEachTagged {
             tag: IT_TAG.into(),
             effects: vec![
-                EffectAst::ConsultTopOfLibrary {
-                    player: PlayerAst::Implicit,
-                    mode: LibraryConsultModeAst::Reveal,
+                EffectAst::subject_verb_consult_top_of_library(
+                    PlayerAst::Implicit,
+                    LibraryConsultModeAst::Reveal,
                     filter,
-                    stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-                    all_tag: revealed_tag.clone(),
-                    match_tag: matched_tag.clone(),
-                },
-                EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(matched_tag.clone(), None),
-                    zone: Zone::Battlefield,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                },
-                EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-                    tag: revealed_tag,
-                    keep_tagged: Some(matched_tag),
-                    order: LibraryBottomOrderAst::Random,
-                    player: PlayerAst::Implicit,
-                },
+                    LibraryConsultStopRuleAst::FirstMatch,
+                    revealed_tag.clone(),
+                    matched_tag.clone(),
+                ),
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(matched_tag.clone(), None),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+                EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                    revealed_tag,
+                    Some(matched_tag),
+                    LibraryBottomOrderAst::Random,
+                    PlayerAst::Implicit,
+                ),
             ],
         }]));
     }
@@ -1059,25 +1051,27 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             return Ok(Some(vec![EffectAst::ForEachTagged {
                 tag: IT_TAG.into(),
                 effects: vec![
-                    EffectAst::ConsultTopOfLibrary {
-                        player: PlayerAst::Implicit,
-                        mode: LibraryConsultModeAst::Reveal,
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::Implicit,
+                        LibraryConsultModeAst::Reveal,
                         filter,
-                        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-                        all_tag: revealed_tag,
-                        match_tag: matched_tag.clone(),
-                    },
-                    EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(matched_tag, None),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    },
-                    EffectAst::ShuffleLibrary {
-                        player: PlayerAst::Implicit,
-                    },
+                        LibraryConsultStopRuleAst::FirstMatch,
+                        revealed_tag,
+                        matched_tag.clone(),
+                    ),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(matched_tag, None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::LibraryOwner,
+                        PlayerAst::Implicit,
+                        SubjectVerbActionAst::ShuffleLibrary,
+                    ),
                 ],
             }]));
         }
@@ -1105,28 +1099,28 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             return Ok(Some(vec![EffectAst::ForEachTagged {
                 tag: IT_TAG.into(),
                 effects: vec![
-                    EffectAst::ConsultTopOfLibrary {
-                        player: PlayerAst::Implicit,
-                        mode: LibraryConsultModeAst::Reveal,
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::Implicit,
+                        LibraryConsultModeAst::Reveal,
                         filter,
-                        stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-                        all_tag: revealed_tag.clone(),
-                        match_tag: matched_tag.clone(),
-                    },
-                    EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(matched_tag.clone(), None),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    },
-                    EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-                        tag: revealed_tag,
-                        keep_tagged: Some(matched_tag),
-                        order: LibraryBottomOrderAst::Random,
-                        player: PlayerAst::Implicit,
-                    },
+                        LibraryConsultStopRuleAst::FirstMatch,
+                        revealed_tag.clone(),
+                        matched_tag.clone(),
+                    ),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(matched_tag.clone(), None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                        revealed_tag,
+                        Some(matched_tag),
+                        LibraryBottomOrderAst::Random,
+                        PlayerAst::Implicit,
+                    ),
                 ],
             }]));
         }
@@ -1188,10 +1182,9 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     });
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
-        effects: vec![EffectAst::ReturnAllToBattlefield {
-            filter,
-            tapped: false,
-        }],
+        effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
+            filter, false,
+        )],
     }]))
 }
 
@@ -1306,7 +1299,7 @@ pub(crate) fn parse_earthbend_sentence(
         ))
     })?;
 
-    Ok(Some(EffectAst::Earthbend { counters: count }))
+    Ok(Some(EffectAst::subject_verb_earthbend(count)))
 }
 
 pub(crate) fn parse_enchant_sentence(
@@ -1326,92 +1319,11 @@ pub(crate) fn parse_enchant_sentence(
         Some(["you"]) => crate::object::AuraAttachmentFilter::Player(PlayerFilter::You),
         _ => crate::object::AuraAttachmentFilter::Object(parse_object_filter(remaining, false)?),
     };
-    Ok(Some(EffectAst::Enchant { filter }))
+    Ok(Some(EffectAst::subject_verb_enchant(filter)))
 }
 
 pub(crate) fn parse_restriction_duration(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
     parse_restriction_duration_lexed(tokens)
-}
-
-pub(crate) fn parse_play_from_graveyard_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let Some((duration, rest)) = parse_simple_restriction_duration_prefix(tokens) else {
-        return Ok(None);
-    };
-    if duration != crate::effect::Until::EndOfTurn {
-        return Ok(None);
-    };
-
-    let remaining_words: Vec<&str> = token_words(trim_lexed_commas(rest))
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-
-    let expected = [
-        "you",
-        "may",
-        "play",
-        "lands",
-        "and",
-        "cast",
-        "spells",
-        "from",
-        "your",
-        "graveyard",
-    ];
-
-    if remaining_words == expected {
-        return Ok(Some(EffectAst::PlayFromGraveyardUntilEot {
-            player: PlayerAst::You,
-        }));
-    }
-
-    Ok(None)
-}
-
-pub(crate) fn parse_exile_instead_of_graveyard_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let line_words = token_words(tokens);
-    if line_words.first().copied() != Some("if") {
-        return Ok(None);
-    }
-
-    let has_graveyard_clause =
-        grammar::words_find_phrase(tokens, &["into", "your", "graveyard", "from"]).is_some()
-            || grammar::words_find_phrase(tokens, &["your", "graveyard", "from"]).is_some()
-            || (grammar::contains_word(tokens, "your")
-                && grammar::contains_word(tokens, "graveyard"));
-    let has_would_put =
-        grammar::words_find_phrase(tokens, &["card", "would", "be", "put"]).is_some();
-    let has_this_turn =
-        grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn");
-    if !has_graveyard_clause || !has_would_put || !has_this_turn {
-        return Ok(None);
-    }
-
-    let remainder = if let Some((_before, after)) =
-        grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-    {
-        after
-    } else {
-        return Ok(None);
-    };
-
-    let remaining_words: Vec<&str> = token_words(remainder)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-
-    let expected = ["exile", "that", "card", "instead"];
-    if remaining_words == expected {
-        return Ok(Some(EffectAst::ExileInsteadOfGraveyardThisTurn {
-            player: PlayerAst::You,
-        }));
-    }
-
-    Ok(None)
 }

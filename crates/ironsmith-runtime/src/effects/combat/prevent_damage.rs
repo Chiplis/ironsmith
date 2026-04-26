@@ -1,8 +1,6 @@
 //! Prevent damage effect implementation.
 
-use super::prevention_helpers::{
-    PreventionTargetResolveMode, register_prevention_shield, resolve_prevention_target_from_spec,
-};
+use super::prevention_helpers::{register_prevention_shield, resolve_prevention_target_from_spec};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
@@ -88,12 +86,7 @@ impl EffectExecutor for PreventDamageEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
-        let protected = resolve_prevention_target_from_spec(
-            game,
-            &self.target,
-            ctx,
-            PreventionTargetResolveMode::LegacyDamageFallback,
-        )?;
+        let protected = resolve_prevention_target_from_spec(game, &self.target, ctx)?;
         register_prevention_shield(
             game,
             ctx,

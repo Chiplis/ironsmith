@@ -1,5 +1,15 @@
 use super::*;
 
+fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::PutCounters { target, .. } => Some(target.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -44,37 +54,13 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     };
 
     Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat {
-        effects: vec![EffectAst::Sacrifice {
+        effects: vec![EffectAst::subject_verb_sacrifice(
+            PlayerAst::Implicit,
             filter,
-            player: PlayerAst::Implicit,
-            count: 1,
-            target: None,
-        }],
+            1,
+            None,
+        )],
     }]))
-}
-
-pub(crate) fn parse_sentence_each_player_choose_and_sacrifice_rest(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_each_player_choose_and_sacrifice_rest(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_exile_instead_of_graveyard(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_exile_instead_of_graveyard_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_monstrosity(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_monstrosity_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_for_each_counter_removed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_for_each_counter_removed_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
 pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
@@ -111,9 +97,9 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::ForEachCounterKindPutOrRemove {
-        target,
-    }]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_for_each_counter_kind_put_or_remove(target),
+    ]))
 }
 
 pub(crate) fn parse_put_counter_ladder_segments(
@@ -150,13 +136,13 @@ pub(crate) fn parse_put_counter_ladder_segments(
 
         let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
         let target = parse_target_phrase(&target_tokens)?;
-        effects.push(EffectAst::PutCounters {
+        effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            count: Value::Fixed(count as i32),
+            Value::Fixed(count as i32),
             target,
-            target_count: None,
-            distributed: false,
-        });
+            None,
+            false,
+        ));
     }
 
     Ok(Some(effects))
@@ -232,13 +218,13 @@ pub(crate) fn parse_sentence_put_counter_sequence(
                 let mut effects = Vec::new();
                 for descriptor in descriptors {
                     let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
-                    effects.push(EffectAst::PutCounters {
+                    effects.push(EffectAst::subject_verb_put_counters(
                         counter_type,
-                        count: Value::Fixed(count as i32),
-                        target: target.clone(),
-                        target_count: None,
-                        distributed: false,
-                    });
+                        Value::Fixed(count as i32),
+                        target.clone(),
+                        None,
+                        false,
+                    ));
                 }
                 return Ok(Some(effects));
             }
@@ -263,16 +249,11 @@ pub(crate) fn parse_sentence_put_counter_sequence(
             && let Some(mut gain_effects) = parse_gain_ability_sentence(&second_clause)?
         {
             let source_target = match &first {
-                EffectAst::PutCounters { target, .. } => Some(target.clone()),
-                EffectAst::Conditional { if_true, .. }
-                    if if_true.len() == 1
-                        && matches!(if_true.first(), Some(EffectAst::PutCounters { .. })) =>
-                {
-                    if let Some(EffectAst::PutCounters { target, .. }) = if_true.first() {
-                        Some(target.clone())
-                    } else {
-                        None
-                    }
+                effect if subject_verb_put_counters_target(effect).is_some() => {
+                    subject_verb_put_counters_target(effect)
+                }
+                EffectAst::Conditional { if_true, .. } if if_true.len() == 1 => {
+                    if_true.first().and_then(subject_verb_put_counters_target)
                 }
                 _ => None,
             };
@@ -280,10 +261,14 @@ pub(crate) fn parse_sentence_put_counter_sequence(
             if let Some(source_target) = source_target {
                 for effect in &mut gain_effects {
                     match effect {
-                        EffectAst::Pump { target, .. }
-                        | EffectAst::GrantAbilitiesToTarget { target, .. }
-                        | EffectAst::GrantToTarget { target, .. }
-                        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. } => {
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action:
+                                SubjectVerbActionAst::Pump { target, .. }
+                                | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+                                | SubjectVerbActionAst::GrantToTarget { target, .. }
+                                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. },
+                            ..
+                        }) => {
                             if let TargetAst::Tagged(tag, _) = target
                                 && tag.as_str() == IT_TAG
                             {
@@ -358,10 +343,13 @@ pub(crate) fn parse_sentence_put_counter_sequence(
 pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
     matches!(
         effect,
-        EffectAst::Pump { .. }
-            | EffectAst::PumpByLastEffect { .. }
-            | EffectAst::SetBasePowerToughness { .. }
-            | EffectAst::SetBasePower { .. }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Pump { .. }
+                | SubjectVerbActionAst::PumpByLastEffect { .. }
+                | SubjectVerbActionAst::SetBasePowerToughness { .. }
+                | SubjectVerbActionAst::SetBasePower { .. },
+            ..
+        })
     )
 }
 
@@ -430,10 +418,7 @@ pub(crate) fn parse_gets_then_fights_sentence(
 
     Ok(Some(vec![
         pump_effect,
-        EffectAst::Fight {
-            creature1,
-            creature2,
-        },
+        EffectAst::subject_verb_fight(creature1, creature2),
     ]))
 }
 
@@ -571,23 +556,23 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         )));
     }
 
-    let mut effects = vec![EffectAst::ReturnToBattlefield {
-        target: parse_target_phrase(&target_tokens)?,
+    let mut effects = vec![EffectAst::subject_verb_return_to_battlefield(
+        parse_target_phrase(&target_tokens)?,
         tapped,
-        transformed: false,
-        converted: false,
-        controller: battlefield_controller,
-    }];
+        false,
+        false,
+        battlefield_controller,
+    )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
     for descriptor in descriptors {
         let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
-        effects.push(EffectAst::PutCounters {
+        effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            count: Value::Fixed(count as i32),
-            target: tagged_target.clone(),
-            target_count: None,
-            distributed: false,
-        });
+            Value::Fixed(count as i32),
+            tagged_target.clone(),
+            None,
+            false,
+        ));
     }
 
     let wrapped = if let Some(timing) = delayed_timing {
@@ -723,24 +708,24 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         return Ok(None);
     }
 
-    let mut effects = vec![EffectAst::MoveToZone {
-        target: parse_target_phrase(&target_tokens)?,
-        zone: Zone::Battlefield,
-        to_top: false,
+    let mut effects = vec![EffectAst::subject_verb_move_to_zone(
+        parse_target_phrase(&target_tokens)?,
+        Zone::Battlefield,
+        false,
         battlefield_controller,
-        battlefield_tapped: false,
-        attached_to: None,
-    }];
+        false,
+        None,
+    )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
     for descriptor in descriptors {
         let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
-        effects.push(EffectAst::PutCounters {
+        effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            count: Value::Fixed(count as i32),
-            target: tagged_target.clone(),
-            target_count: None,
-            distributed: false,
-        });
+            Value::Fixed(count as i32),
+            tagged_target.clone(),
+            None,
+            false,
+        ));
     }
 
     Ok(Some(effects))
@@ -774,50 +759,49 @@ pub(crate) fn clone_return_effect_with_subtype(
     subtype: Subtype,
 ) -> Option<EffectAst> {
     match base {
-        EffectAst::ReturnToHand { target, random } => {
-            let mut cloned_target = target.clone();
-            replace_target_subtype(&mut cloned_target, subtype).then_some(EffectAst::ReturnToHand {
-                target: cloned_target,
-                random: *random,
-            })
-        }
-        EffectAst::ReturnToBattlefield {
-            target,
-            tapped,
-            transformed,
-            converted,
-            controller,
-        } => {
-            let mut cloned_target = target.clone();
-            replace_target_subtype(&mut cloned_target, subtype).then_some(
-                EffectAst::ReturnToBattlefield {
-                    target: cloned_target,
-                    tapped: *tapped,
-                    transformed: *transformed,
-                    converted: *converted,
-                    controller: *controller,
-                },
-            )
-        }
-        EffectAst::ReturnAllToHand { filter } => {
-            let mut cloned_filter = filter.clone();
-            cloned_filter.subtypes = vec![subtype];
-            Some(EffectAst::ReturnAllToHand {
-                filter: cloned_filter,
-            })
-        }
-        EffectAst::ReturnAllToBattlefield { filter, tapped } => {
-            let mut cloned_filter = filter.clone();
-            cloned_filter.subtypes = vec![subtype];
-            Some(EffectAst::ReturnAllToBattlefield {
-                filter: cloned_filter,
-                tapped: *tapped,
-            })
-        }
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::ReturnToHand { target, random } => {
+                let mut cloned_target = target.clone();
+                replace_target_subtype(&mut cloned_target, subtype).then_some(
+                    EffectAst::subject_verb_return_to_hand(cloned_target, *random),
+                )
+            }
+            SubjectVerbActionAst::ReturnAllToHand { filter } => {
+                let mut cloned_filter = filter.clone();
+                cloned_filter.subtypes = vec![subtype];
+                Some(EffectAst::subject_verb_return_all_to_hand(cloned_filter))
+            }
+            SubjectVerbActionAst::ReturnToBattlefield {
+                target,
+                tapped,
+                transformed,
+                converted,
+                controller,
+            } => {
+                let mut cloned_target = target.clone();
+                replace_target_subtype(&mut cloned_target, subtype).then_some(
+                    EffectAst::subject_verb_return_to_battlefield(
+                        cloned_target,
+                        *tapped,
+                        *transformed,
+                        *converted,
+                        *controller,
+                    ),
+                )
+            }
+            SubjectVerbActionAst::ReturnAllToBattlefield { filter, tapped } => {
+                let mut cloned_filter = filter.clone();
+                cloned_filter.subtypes = vec![subtype];
+                Some(EffectAst::subject_verb_return_all_to_battlefield(
+                    cloned_filter,
+                    *tapped,
+                ))
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
-
 pub(crate) fn parse_draw_then_connive_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -911,13 +895,13 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }
 
     let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
-    let put_counter = EffectAst::PutCounters {
+    let put_counter = EffectAst::subject_verb_put_counters(
         counter_type,
-        count: Value::Fixed(count as i32),
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-        target_count: None,
-        distributed: false,
-    };
+        Value::Fixed(count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        None,
+        false,
+    );
     let apply_only_if_creature = EffectAst::Conditional {
         predicate: PredicateAst::ItMatches(ObjectFilter::creature()),
         if_true: vec![put_counter],
@@ -973,24 +957,27 @@ pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
         || !effects.iter().any(|effect| {
             matches!(
                 effect,
-                EffectAst::MoveToZone {
-                    zone: Zone::Battlefield,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::MoveToZone {
+                        zone: Zone::Battlefield,
+                        ..
+                    } | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                        | SubjectVerbActionAst::ReturnAllToBattlefield { .. },
                     ..
-                } | EffectAst::ReturnToBattlefield { .. }
-                    | EffectAst::ReturnAllToBattlefield { .. }
+                })
             )
         })
     {
         return Ok(None);
     }
 
-    effects.push(EffectAst::PutCounters {
+    effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
-        count: Value::Fixed(count as i32),
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-        target_count: None,
-        distributed: false,
-    });
+        Value::Fixed(count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        None,
+        false,
+    ));
 
     Ok(Some(effects))
 }
@@ -1027,15 +1014,15 @@ pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters
             .iter()
             .all(|token| token.as_word().is_some())
     {
-        vec![EffectAst::Sacrifice {
-            filter: ObjectFilter {
+        vec![EffectAst::subject_verb_sacrifice(
+            PlayerAst::Implicit,
+            ObjectFilter {
                 source: true,
                 ..Default::default()
             },
-            player: PlayerAst::Implicit,
-            count: 1,
-            target: None,
-        }]
+            1,
+            None,
+        )]
     } else {
         parse_effect_chain_inner(&sacrifice_tokens)?
     };
@@ -1152,19 +1139,23 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     if !per_player_effects.iter().any(|effect| {
         matches!(
             effect,
-            EffectAst::ReturnToBattlefield { .. } | EffectAst::ReturnAllToBattlefield { .. }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToBattlefield { .. }
+                    | SubjectVerbActionAst::ReturnAllToBattlefield { .. },
+                ..
+            })
         )
     }) {
         return Ok(None);
     }
 
-    per_player_effects.push(EffectAst::PutCounters {
+    per_player_effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
-        count: Value::Fixed(count as i32),
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-        target_count: None,
-        distributed: false,
-    });
+        Value::Fixed(count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        None,
+        false,
+    ));
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: per_player_effects,

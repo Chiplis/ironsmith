@@ -185,18 +185,24 @@ pub(super) fn subject_is_plural(subject: &str) -> bool {
 }
 
 pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
+    let mut best: Option<(usize, &str)> = None;
     for verb in [
         " gets ", " get ", " has ", " have ", " gains ", " gain ", " is ", " are ",
     ] {
-        if let Some((subject, rest)) = line.split_once(verb) {
-            let subject = subject.trim();
-            let rest = rest.trim();
-            if !subject.is_empty() && !rest.is_empty() {
-                return Some((subject, verb.trim(), rest));
-            }
+        if let Some(idx) = line.find(verb)
+            && best.is_none_or(|(best_idx, _)| idx < best_idx)
+        {
+            best = Some((idx, verb));
         }
     }
-    None
+    let (idx, verb) = best?;
+    let subject = line[..idx].trim();
+    let rest = line[idx + verb.len()..].trim();
+    if !subject.is_empty() && !rest.is_empty() {
+        Some((subject, verb.trim(), rest))
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -592,11 +598,50 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             if let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(&lines[idx]),
                 parse_conditional_subject_predicate(&lines[idx + 1]),
-            ) && can_merge_conditional_state_bundle(&left_conditional, &right_conditional)
-            {
-                merged.push(lines[idx].clone());
-                idx += 1;
-                continue;
+            ) {
+                if left_conditional
+                    .subject
+                    .eq_ignore_ascii_case(&right_conditional.subject)
+                    && left_conditional
+                        .condition
+                        .eq_ignore_ascii_case(&right_conditional.condition)
+                    && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
+                {
+                    let left_predicate =
+                        normalize_keyword_predicate_case(&left_conditional.predicate);
+                    let right_predicate =
+                        normalize_keyword_predicate_case(&right_conditional.predicate);
+                    let right_verb = if matches!(
+                        right_conditional.verb.as_str(),
+                        "has" | "have" | "gains" | "gain"
+                    ) {
+                        have_verb_for_subject(&left_conditional.subject).to_string()
+                    } else {
+                        right_conditional.verb.clone()
+                    };
+                    let condition = left_conditional
+                        .condition
+                        .trim_start_matches("As long as ")
+                        .trim_start_matches("as long as ")
+                        .trim()
+                        .to_string();
+                    merged.push(format!(
+                        "{} {} {} and {} {} as long as {}",
+                        left_conditional.subject,
+                        left_conditional.verb,
+                        left_predicate,
+                        right_verb,
+                        right_predicate,
+                        condition
+                    ));
+                    idx += 2;
+                    continue;
+                }
+                if can_merge_conditional_state_bundle(&left_conditional, &right_conditional) {
+                    merged.push(lines[idx].clone());
+                    idx += 1;
+                    continue;
+                }
             }
             let left_raw = left_rest.trim_end_matches('.').trim();
             let right_raw = right_rest.trim_end_matches('.').trim();
@@ -888,6 +933,46 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
+            if let (Some(left_conditional), Some(right_conditional)) = (
+                parse_conditional_subject_predicate(left),
+                parse_conditional_subject_predicate(right),
+            ) && left_conditional
+                .subject
+                .eq_ignore_ascii_case(&right_conditional.subject)
+                && left_conditional
+                    .condition
+                    .eq_ignore_ascii_case(&right_conditional.condition)
+                && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
+            {
+                let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
+                let right_predicate =
+                    normalize_keyword_predicate_case(&right_conditional.predicate);
+                let right_verb = if matches!(
+                    right_conditional.verb.as_str(),
+                    "has" | "have" | "gains" | "gain"
+                ) {
+                    have_verb_for_subject(&left_conditional.subject).to_string()
+                } else {
+                    right_conditional.verb.clone()
+                };
+                let condition = left_conditional
+                    .condition
+                    .trim_start_matches("As long as ")
+                    .trim_start_matches("as long as ")
+                    .trim()
+                    .to_string();
+                merged.push(format!(
+                    "{} {} {} and {} {} as long as {}",
+                    left_conditional.subject,
+                    left_conditional.verb,
+                    left_predicate,
+                    right_verb,
+                    right_predicate,
+                    condition
+                ));
+                idx += 2;
+                continue;
+            }
             if let Some((left_condition, left_body)) = left.split_once(", ")
                 && let Some((right_condition, right_body)) = right.split_once(", ")
                 && left_condition.eq_ignore_ascii_case(right_condition)

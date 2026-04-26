@@ -1,6 +1,6 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst,
-    SubjectAst, TagKey, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -11,7 +11,7 @@ use crate::zone::Zone;
 
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
-use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{render_token_slice, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -103,16 +103,19 @@ pub(crate) fn is_probable_token_name_word(word: &str) -> bool {
 
 pub(crate) fn parse_copy_modifiers_from_tail(
     tail_words: &[&str],
-) -> (
-    Option<ColorSet>,
-    Option<Vec<CardType>>,
-    Option<Vec<Subtype>>,
-    Vec<CardType>,
-    Vec<Subtype>,
-    Vec<Supertype>,
-    Option<(i32, i32)>,
-    Vec<StaticAbility>,
-) {
+) -> Result<
+    (
+        Option<ColorSet>,
+        Option<Vec<CardType>>,
+        Option<Vec<Subtype>>,
+        Vec<CardType>,
+        Vec<Subtype>,
+        Vec<Supertype>,
+        Option<(i32, i32)>,
+        Vec<StaticAbility>,
+    ),
+    CardTextError,
+> {
     let mut set_colors = None;
     let mut set_card_types = None;
     let mut set_subtypes = None;
@@ -127,7 +130,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         .map(|idx| &tail_words[idx + 1..])
         .unwrap_or_default();
     if modifier_words.is_empty() {
-        return (
+        return Ok((
             set_colors,
             set_card_types,
             set_subtypes,
@@ -136,7 +139,15 @@ pub(crate) fn parse_copy_modifiers_from_tail(
             removed_supertypes,
             set_base_power_toughness,
             granted_abilities,
-        );
+        ));
+    }
+
+    if (word_slice_contains(modifier_words, "lose") || word_slice_contains(modifier_words, "loses"))
+        && word_slice_contains(modifier_words, "soulbond")
+    {
+        return Err(CardTextError::ParseError(
+            "removing soulbond requires non-marker semantics".to_string(),
+        ));
     }
 
     if word_slice_contains_sequence(modifier_words, &["isnt", "legendary"])
@@ -292,7 +303,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         }
     }
 
-    (
+    Ok((
         set_colors,
         set_card_types,
         set_subtypes,
@@ -301,7 +312,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         removed_supertypes,
         set_base_power_toughness,
         granted_abilities,
-    )
+    ))
 }
 
 pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
@@ -780,7 +791,7 @@ pub(crate) fn parse_create(
                 removed_supertypes,
                 set_base_power_toughness,
                 granted_abilities,
-            ) = parse_copy_modifiers_from_tail(&tail_words);
+            ) = parse_copy_modifiers_from_tail(&tail_words)?;
             let half_pt = grammar::contains_word(&tail_tokens, "half")
                 && grammar::contains_word(&tail_tokens, "power")
                 && grammar::contains_word(&tail_tokens, "toughness");
@@ -820,54 +831,62 @@ pub(crate) fn parse_create(
                 if !source_tokens.is_empty() {
                     let source = parse_target_phrase(&source_tokens)?;
                     let references_iterated_object = target_references_it(&source);
-                    let create = EffectAst::CreateTokenCopyFromSource {
-                        source,
-                        count: resolve_create_count(references_iterated_object),
+                    let create = EffectAst::subject_verb(
+                        SubjectVerbRoleAst::Actor,
                         player,
-                        enters_tapped,
-                        enters_attacking,
-                        attack_target_player_or_planeswalker_controlled_by,
-                        half_power_toughness_round_up: half_pt,
-                        has_haste,
-                        exile_at_end_of_combat: false,
-                        sacrifice_at_next_end_step,
-                        exile_at_next_end_step,
-                        set_colors,
-                        set_card_types,
-                        set_subtypes,
-                        added_card_types,
-                        added_subtypes,
-                        removed_supertypes,
-                        set_base_power_toughness,
-                        granted_abilities,
-                    };
+                        SubjectVerbActionAst::CreateTokenCopyFromSource {
+                            source,
+                            count: resolve_create_count(references_iterated_object),
+                            player,
+                            enters_tapped,
+                            enters_attacking,
+                            attack_target_player_or_planeswalker_controlled_by,
+                            half_power_toughness_round_up: half_pt,
+                            has_haste,
+                            exile_at_end_of_combat: false,
+                            sacrifice_at_next_end_step,
+                            exile_at_next_end_step,
+                            set_colors,
+                            set_card_types,
+                            set_subtypes,
+                            added_card_types,
+                            added_subtypes,
+                            removed_supertypes,
+                            set_base_power_toughness,
+                            granted_abilities,
+                        },
+                    );
                     return Ok(wrap_for_each_player_condition(wrap_delayed_create(
                         wrap_for_each_when_needed(create, references_iterated_object),
                     )));
                 }
             }
             let references_iterated_object = true;
-            let create = EffectAst::CreateTokenCopy {
-                object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
-                count: resolve_create_count(references_iterated_object),
+            let create = EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
                 player,
-                enters_tapped,
-                enters_attacking,
-                attack_target_player_or_planeswalker_controlled_by,
-                half_power_toughness_round_up: half_pt,
-                has_haste,
-                exile_at_end_of_combat: false,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                set_colors,
-                set_card_types,
-                set_subtypes,
-                added_card_types,
-                added_subtypes,
-                removed_supertypes,
-                set_base_power_toughness,
-                granted_abilities,
-            };
+                SubjectVerbActionAst::CreateTokenCopy {
+                    object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
+                    count: resolve_create_count(references_iterated_object),
+                    player,
+                    enters_tapped,
+                    enters_attacking,
+                    attack_target_player_or_planeswalker_controlled_by,
+                    half_power_toughness_round_up: half_pt,
+                    has_haste,
+                    exile_at_end_of_combat: false,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    set_colors,
+                    set_card_types,
+                    set_subtypes,
+                    added_card_types,
+                    added_subtypes,
+                    removed_supertypes,
+                    set_base_power_toughness,
+                    granted_abilities,
+                },
+            );
             return Ok(wrap_for_each_player_condition(wrap_delayed_create(
                 wrap_for_each_when_needed(create, references_iterated_object),
             )));
@@ -1011,19 +1030,23 @@ pub(crate) fn parse_create(
     let references_iterated_object = attached_to_target
         .as_ref()
         .is_some_and(target_references_it);
-    let create = EffectAst::CreateTokenWithMods {
-        name,
-        count: resolve_create_count(references_iterated_object),
-        dynamic_power_toughness,
+    let create = EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
         player,
-        attached_to: attached_to_target,
-        tapped,
-        attacking,
-        exile_at_end_of_combat: false,
-        sacrifice_at_end_of_combat: false,
-        sacrifice_at_next_end_step,
-        exile_at_next_end_step,
-    };
+        SubjectVerbActionAst::CreateTokenWithMods {
+            name,
+            count: resolve_create_count(references_iterated_object),
+            dynamic_power_toughness,
+            player,
+            attached_to: attached_to_target,
+            tapped,
+            attacking,
+            exile_at_end_of_combat: false,
+            sacrifice_at_end_of_combat: false,
+            sacrifice_at_next_end_step,
+            exile_at_next_end_step,
+        },
+    );
     Ok(wrap_for_each_player_condition(wrap_delayed_create(
         wrap_for_each_when_needed(create, references_iterated_object),
     )))
@@ -1075,6 +1098,7 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     .is_some()
     {
         let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
@@ -1227,10 +1251,7 @@ pub(crate) fn parse_investigate(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     if tokens.is_empty() {
-        return Ok(EffectAst::Investigate {
-            count: Value::Fixed(1),
-            player,
-        });
+        return Ok(EffectAst::subject_verb_investigate(player, Value::Fixed(1)));
     }
 
     if tokens.first().is_some_and(|token| token.is_word("for"))
@@ -1246,7 +1267,7 @@ pub(crate) fn parse_investigate(
 
         let count = parse_investigate_for_each_count(filter_tokens)?;
 
-        return Ok(EffectAst::Investigate { count, player });
+        return Ok(EffectAst::subject_verb_investigate(player, count));
     }
 
     let (mut count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
@@ -1276,9 +1297,9 @@ pub(crate) fn parse_investigate(
         && let Some(where_idx) = trailing_words.iter().position(|word| *word == "where")
     {
         let where_token_idx = token_index_for_word_index(&trailing, where_idx).unwrap_or(0);
-        if let Some(where_count) = parse_where_x_value_clause(&trailing[where_token_idx..]) {
+        if let Some(where_count) = parse_value_binding_clause(&trailing[where_token_idx..]) {
             count = where_count;
-            return Ok(EffectAst::Investigate { count, player });
+            return Ok(EffectAst::subject_verb_investigate(player, count));
         }
     }
     let trailing_ok = trailing_words.is_empty()
@@ -1291,5 +1312,5 @@ pub(crate) fn parse_investigate(
         )));
     }
 
-    Ok(EffectAst::Investigate { count, player })
+    Ok(EffectAst::subject_verb_investigate(player, count))
 }

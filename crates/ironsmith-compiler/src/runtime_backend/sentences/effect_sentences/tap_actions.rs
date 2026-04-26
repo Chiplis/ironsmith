@@ -34,7 +34,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter = parse_object_filter(&tokens[1..], false)?;
-        return Ok(EffectAst::TapAll { filter });
+        return Ok(EffectAst::subject_verb_tap_all(filter));
     }
     // Handle "tap or untap <target>" as a choice between tapping and untapping.
     if tokens.first().is_some_and(|t| t.is_word("or"))
@@ -42,12 +42,10 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     {
         let target_tokens = &tokens[2..];
         let target = parse_target_phrase(target_tokens)?;
-        return Ok(EffectAst::TapOrUntap {
-            target: target.clone(),
-        });
+        return Ok(EffectAst::subject_verb_tap_or_untap(target.clone()));
     }
     let target = parse_target_phrase(tokens)?;
-    Ok(EffectAst::Tap { target })
+    Ok(EffectAst::subject_verb_tap(target))
 }
 
 fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
@@ -130,8 +128,8 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
             .or_else(|| Some(PlayerFilter::target_player()));
     }
 
-    Ok(Some(EffectAst::TapOrUntapAll {
+    Ok(Some(EffectAst::subject_verb_tap_or_untap_all(
         tap_filter,
         untap_filter,
-    }))
+    )))
 }

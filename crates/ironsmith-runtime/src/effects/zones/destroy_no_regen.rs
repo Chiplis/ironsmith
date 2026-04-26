@@ -61,7 +61,7 @@ impl DestroyNoRegenerationEffect {
         //
         // We clear both:
         // - trait-based one-shot replacement effects (current regeneration implementation)
-        // - legacy shield counters (older implementation)
+        // - older shield counters (older implementation)
         game.effect_store
             .replacement_effects
             .remove_one_shot_effects_from_source(object_id);

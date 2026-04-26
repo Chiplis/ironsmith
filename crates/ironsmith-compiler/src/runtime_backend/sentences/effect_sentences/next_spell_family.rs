@@ -161,11 +161,9 @@ fn parse_when_next_cast_grant_sentence(
         return Ok(None);
     };
 
-    Ok(Some(vec![EffectAst::GrantNextSpellAbilityThisTurn {
-        player,
-        filter,
-        ability,
-    }]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_grant_next_spell_ability_this_turn(player, filter, ability),
+    ]))
 }
 
 pub(crate) fn parse_next_spell_grant_sentence_lexed(
@@ -218,16 +216,16 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
         };
 
         return Ok(Some(vec![
-            EffectAst::GrantNextSpellAbilityThisTurn {
+            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
                 player,
-                filter: first_filter,
-                ability: ability.clone(),
-            },
-            EffectAst::GrantNextSpellAbilityThisTurn {
+                first_filter,
+                ability.clone(),
+            ),
+            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
                 player,
-                filter: second_filter,
+                second_filter,
                 ability,
-            },
+            ),
         ]));
     }
 
@@ -251,9 +249,7 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
     let Some(player) = next_spell_grant_player_ast(&filter) else {
         return Ok(None);
     };
-    Ok(Some(vec![EffectAst::GrantNextSpellAbilityThisTurn {
-        player,
-        filter,
-        ability,
-    }]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_grant_next_spell_ability_this_turn(player, filter, ability),
+    ]))
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::ast::SubjectVerbActionAst;
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
@@ -431,7 +432,7 @@ pub(crate) fn resolve_activated_mana_x_requirements(
                 ))
             })?;
         let where_tokens = &sentence_tokens[where_token_idx..];
-        let where_value = parse_where_x_value_clause_lexed(where_tokens).ok_or_else(|| {
+        let where_value = parse_value_binding_clause_lexed(where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause in mana ability (clause: '{clause}')"
             ))
@@ -460,12 +461,17 @@ pub(crate) fn resolve_activated_mana_x_requirements(
 
 pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::AddManaScaled { amount, .. }
-        | EffectAst::AddManaAnyColor { amount, .. }
-        | EffectAst::AddManaAnyOneColor { amount, .. }
-        | EffectAst::AddManaChosenColor { amount, .. }
-        | EffectAst::AddManaFromLandCouldProduce { amount, .. }
-        | EffectAst::AddManaCommanderIdentity { amount, .. } => value_contains_unbound_x(amount),
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::AddManaScaled { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+                value_contains_unbound_x(amount)
+            }
+            _ => false,
+        },
         _ => {
             let mut contains_unbound_x = false;
             for_each_nested_effects(effect, true, |nested| {
@@ -837,10 +843,19 @@ pub(crate) fn parse_devotion_player_from_words(
     if matches!(left, [.., "your"]) {
         return Some(PlayerFilter::You);
     }
+    if matches!(left, [.., "their"]) {
+        return Some(PlayerFilter::IteratedPlayer);
+    }
     if matches!(left, [.., "opponent"] | [.., "opponents"]) {
         return Some(PlayerFilter::Opponent);
     }
-    if matches!(left, [.., "that", "players"] | [.., "that", "player"]) {
+    if matches!(
+        left,
+        [.., "that", "players"]
+            | [.., "that", "player"]
+            | [.., "that", "player's"]
+            | [.., "that", "players'"]
+    ) {
         return Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)));
     }
     None

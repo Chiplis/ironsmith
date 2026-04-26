@@ -49,6 +49,7 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::Attacking => Ok(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Ok(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Ok(PlayerFilter::MostLifeTied),
+        PlayerAst::LowestLifeTied => Ok(PlayerFilter::LowestLifeTied),
         PlayerAst::Target | PlayerAst::TargetOpponent => Err(CardTextError::ParseError(
             "target player requires explicit targeting".to_string(),
         )),
@@ -577,6 +578,13 @@ pub(crate) fn resolve_value_it_tag(
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
+        Value::Devotion { player, color } => Ok(Value::Devotion {
+            player: resolve_contextual_player_filter(player, refs)?,
+            color: *color,
+        }),
+        Value::DevotionToChosenColor(player) => Ok(Value::DevotionToChosenColor(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
         Value::PowerOf(spec) => Ok(Value::PowerOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

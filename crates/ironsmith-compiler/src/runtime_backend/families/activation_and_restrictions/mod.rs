@@ -20,8 +20,8 @@ use super::effect_sentences::{
 use super::grammar::primitives as grammar;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
-    parse_dynamic_cost_modifier_value, parse_static_condition_clause, parse_where_x_value_clause,
-    parse_where_x_value_clause_lexed,
+    parse_dynamic_cost_modifier_value, parse_static_condition_clause, parse_value_binding_clause,
+    parse_value_binding_clause_lexed,
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{OwnedLexToken, TokenKind};

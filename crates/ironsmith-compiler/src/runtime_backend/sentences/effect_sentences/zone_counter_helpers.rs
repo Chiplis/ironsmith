@@ -1,7 +1,7 @@
 use crate::cards::TextSpan;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
-    SubjectAst, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -396,10 +396,9 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                     render_clause_words(tokens)
                 ))
             })?;
-        return Ok(wrap_conditional(EffectAst::MoveAllCounters {
-            from,
-            to: target,
-        }));
+        return Ok(wrap_conditional(EffectAst::subject_verb_move_all_counters(
+            from, target,
+        )));
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter type (clause: '{}')",
@@ -418,7 +417,10 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     {
         let mut predicate = trailing_predicate.clone();
         if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
-            && let EffectAst::PutOrRemoveCounters { target, .. } = &mut effect
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutOrRemoveCounters { target, .. },
+                ..
+            }) = &mut effect
             && merge_it_match_filter_into_target(target, filter)
         {
             predicate = None;
@@ -449,13 +451,13 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         {
             predicate = None;
         }
-        let effect = EffectAst::PutCounters {
+        let effect = EffectAst::subject_verb_put_counters(
             counter_type,
-            count: count_value.clone(),
+            count_value.clone(),
             target,
-            target_count: Some(target_count),
-            distributed: false,
-        };
+            Some(target_count),
+            false,
+        );
         return Ok(if let Some(predicate) = predicate {
             EffectAst::Conditional {
                 predicate,
@@ -472,11 +474,11 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         .is_some_and(|token| token.is_word("each"))
     {
         let filter = parse_object_filter(&target_tokens[1..], false)?;
-        return Ok(wrap_conditional(EffectAst::PutCountersAll {
+        return Ok(wrap_conditional(EffectAst::subject_verb_put_counters_all(
             counter_type,
-            count: count_value,
+            count_value,
             filter,
-        }));
+        )));
     }
     let for_each_idx = grammar::find_prefix(&target_tokens, || grammar::phrase(&["for", "each"]))
         .map(|(idx, _, _)| idx);
@@ -505,13 +507,8 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                     count = Value::Add(Box::new(count), Box::new(base.clone()));
                 }
             }
-            let effect = EffectAst::PutCounters {
-                counter_type,
-                count,
-                target,
-                target_count: None,
-                distributed: false,
-            };
+            let effect =
+                EffectAst::subject_verb_put_counters(counter_type, count, target, None, false);
             return Ok(if let Some(predicate) = predicate {
                 EffectAst::Conditional {
                     predicate,
@@ -530,13 +527,8 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     {
         predicate = None;
     }
-    let effect = EffectAst::PutCounters {
-        counter_type,
-        count: count_value,
-        target,
-        target_count: None,
-        distributed: false,
-    };
+    let effect =
+        EffectAst::subject_verb_put_counters(counter_type, count_value, target, None, false);
     Ok(if let Some(predicate) = predicate {
         EffectAst::Conditional {
             predicate,
@@ -630,20 +622,20 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
         return Ok(None);
     }
 
-    let first_effect = EffectAst::PutCounters {
-        counter_type: first_counter,
-        count: Value::Fixed(first_count as i32),
-        target: target.clone(),
-        target_count: None,
-        distributed: false,
-    };
-    let second_effect = EffectAst::PutCounters {
-        counter_type: second_counter,
-        count: Value::Fixed(second_count as i32),
-        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-        target_count: None,
-        distributed: false,
-    };
+    let first_effect = EffectAst::subject_verb_put_counters(
+        first_counter,
+        Value::Fixed(first_count as i32),
+        target.clone(),
+        None,
+        false,
+    );
+    let second_effect = EffectAst::subject_verb_put_counters(
+        second_counter,
+        Value::Fixed(second_count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        None,
+        false,
+    );
 
     Ok(Some(vec![first_effect, second_effect]))
 }
@@ -752,16 +744,16 @@ fn parse_put_or_remove_counter_choice(
     );
     let remove_mode_text = sentence_case_mode_text(&render_clause_words(&remove_tokens));
 
-    Ok(Some(EffectAst::PutOrRemoveCounters {
+    Ok(Some(EffectAst::subject_verb_put_or_remove_counters(
         put_counter_type,
-        put_count: Value::Fixed(put_count as i32),
+        Value::Fixed(put_count as i32),
         remove_counter_type,
         remove_count,
         put_mode_text,
         remove_mode_text,
         target,
         target_count,
-    }))
+    )))
 }
 
 pub(crate) fn parse_counter_target_count_prefix(
@@ -904,6 +896,7 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
+        PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
         | PlayerAst::ItsOwner => None,
@@ -1083,11 +1076,11 @@ fn parse_transform_like(
 }
 
 pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    parse_transform_like(tokens, |target| EffectAst::Transform { target })
+    parse_transform_like(tokens, EffectAst::subject_verb_transform)
 }
 
 pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    parse_transform_like(tokens, |target| EffectAst::Convert { target })
+    parse_transform_like(tokens, EffectAst::subject_verb_convert)
 }
 
 pub(crate) fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {

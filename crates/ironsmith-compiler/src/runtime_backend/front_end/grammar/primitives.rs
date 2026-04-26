@@ -251,7 +251,7 @@ pub(crate) fn parse_all_or_none<'a, O>(
 }
 
 #[cfg(test)]
-/// Adapts a winnow parser into the `SentencePrimitiveParser` convention:
+/// Adapts a winnow parser into the `SubjectVerbPrimitiveParser` convention:
 ///
 /// - Winnow backtrack (pattern mismatch) → `Ok(None)`
 /// - Winnow cut (hard parse error) → `Err(CardTextError)`

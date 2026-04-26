@@ -1,15 +1,27 @@
-use super::super::dispatch_entry::{
+use super::super::super::dispatch_entry::{
     is_put_rest_on_bottom_of_library_sentence, parse_counted_looked_cards_into_your_hand_tokens,
     parse_if_no_card_into_hand_this_way_sentence,
     parse_if_this_spell_was_kicked_counted_looked_cards_into_hand,
     parse_if_you_dont_put_card_from_among_them_into_your_hand,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, ObjectFilter, PlayerAst, PredicateAst, TagKey, TargetAst,
+    CardTextError, EffectAst, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::zone::Zone;
+
+fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
+    let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
+        action: SubjectVerbActionAst::LookAtTopCards { .. },
+    }) = effect
+    else {
+        return None;
+    };
+    Some(*player)
+}
 
 fn find_word_sequence(words: &[&str], pattern: &[&str]) -> Option<usize> {
     if pattern.is_empty() || words.len() < pattern.len() {
@@ -65,7 +77,11 @@ fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
         .any(|effect| {
             matches!(
                 effect,
-                EffectAst::RevealTagged { tag } if tag == &searched_tag
+                EffectAst::SubjectVerb(subject_verb)
+                    if matches!(
+                        &subject_verb.action,
+                        SubjectVerbActionAst::RevealTagged { tag } if tag == &searched_tag
+                    )
             )
         })
         .then_some(searched_tag)
@@ -120,7 +136,7 @@ fn then_shuffle(tokens: &[crate::runtime_backend::front_end::lexer::OwnedLexToke
     words == ["then", "shuffle"] || words == ["shuffle"]
 }
 
-pub(super) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
+pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -129,7 +145,10 @@ pub(super) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
     else {
         return Ok(None);
     };
-    let [EffectAst::LookAtTopCards { player, .. }] = first_effects.as_slice() else {
+    let [first_effect] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+    let Some(player) = look_at_top_cards_player(first_effect) else {
         return Ok(None);
     };
 
@@ -151,19 +170,22 @@ pub(super) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
         first_effects[0].clone(),
         EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::ThisSpellWasKicked,
-            if_true: vec![EffectAst::PutSomeIntoHandRestOnBottomOfLibrary {
-                player: *player,
-                count: kicked_count,
-            }],
-            if_false: vec![EffectAst::PutSomeIntoHandRestOnBottomOfLibrary {
-                player: *player,
-                count: base_count,
-            }],
+            if_true: vec![
+                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
+                    player,
+                    kicked_count,
+                ),
+            ],
+            if_false: vec![
+                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
+                    player, base_count,
+                ),
+            ],
         },
     ]))
 }
 
-pub(super) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom(
+pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -172,9 +194,12 @@ pub(super) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
     else {
         return Ok(None);
     };
-    let [EffectAst::LookAtTopCards { .. }] = first_effects.as_slice() else {
+    let [first_effect] = first_effects.as_slice() else {
         return Ok(None);
     };
+    if look_at_top_cards_player(first_effect).is_none() {
+        return Ok(None);
+    }
 
     let Some((chooser, battlefield_filter, tapped)) =
         effect_sentences::parse_may_put_filtered_looked_card_onto_battlefield(
@@ -194,15 +219,15 @@ pub(super) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
 
     Ok(Some(vec![
         first_effects[0].clone(),
-        EffectAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-            player: chooser,
+        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_or_into_hand_rest_on_bottom_of_library(
+            chooser,
             battlefield_filter,
             tapped,
-        },
+        ),
     ]))
 }
 
-pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_hand(
+pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -217,10 +242,14 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_ha
         return Ok(None);
     };
 
-    let Some(EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-        if_not_chosen: existing,
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
+                if_not_chosen: existing,
+                ..
+            },
         ..
-    }) = effects.get_mut(1)
+    })) = effects.get_mut(1)
     else {
         return Ok(None);
     };
@@ -228,7 +257,7 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_ha
     Ok(Some(effects))
 }
 
-pub(super) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle(
+pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -253,25 +282,27 @@ pub(super) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle
 
     effects.push(EffectAst::Conditional {
         predicate: PredicateAst::TaggedMatches(searched_tag.clone(), named_filter),
-        if_true: vec![EffectAst::MoveToZone {
-            target: TargetAst::Tagged(searched_tag.clone(), None),
-            zone: Zone::Battlefield,
-            to_top: false,
-            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        }],
-        if_false: vec![EffectAst::MoveToZone {
-            target: TargetAst::Tagged(searched_tag, None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        }],
+        if_true: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(searched_tag.clone(), None),
+            Zone::Battlefield,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+        if_false: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(searched_tag, None),
+            Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
     });
-    effects.push(EffectAst::ShuffleLibrary {
-        player: PlayerAst::You,
-    });
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::You,
+        SubjectVerbActionAst::ShuffleLibrary,
+    ));
     Ok(Some(effects))
 }

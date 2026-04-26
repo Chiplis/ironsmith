@@ -26,7 +26,7 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     let from = parse_target_phrase(from_tokens)?;
     let to = parse_target_phrase(to_tokens)?;
 
-    Ok(EffectAst::MoveAllCounters { from, to })
+    Ok(EffectAst::subject_verb_move_all_counters(from, to))
 }
 
 pub(crate) fn parse_draw(
@@ -140,10 +140,13 @@ pub(crate) fn parse_draw(
         trim_commas(&rest[card_word_idx + 1..])
     };
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    let mut effect = EffectAst::Draw {
-        count: count.clone(),
+    let mut effect = subject_verb_player_resource_effect(
+        SubjectVerbRoleAst::AffectedPlayer,
         player,
-    };
+        SubjectVerbActionAst::Draw {
+            count: count.clone(),
+        },
+    );
 
     if !tail.is_empty() {
         let tail_words = crate::runtime_backend::token_word_refs(&tail);
@@ -173,10 +176,13 @@ pub(crate) fn parse_draw(
                             )));
                         }
                     }
-                    effect = EffectAst::Draw {
-                        count: count.clone(),
+                    effect = subject_verb_player_resource_effect(
+                        SubjectVerbRoleAst::AffectedPlayer,
                         player,
-                    };
+                        SubjectVerbActionAst::Draw {
+                            count: count.clone(),
+                        },
+                    );
                 } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
                     effect = parsed;
                 } else {
@@ -343,10 +349,14 @@ fn parse_draw_for_each_player_condition(
     );
 
     let mut draw_effect = draw_effect;
-    if let EffectAst::Draw { player, .. } = &mut draw_effect
-        && *player == PlayerAst::Implicit
-    {
-        *player = PlayerAst::You;
+    match &mut draw_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player, .. },
+            action: SubjectVerbActionAst::Draw { .. },
+        }) if *player == PlayerAst::Implicit => {
+            *player = PlayerAst::You;
+        }
+        _ => {}
     }
 
     let effects = vec![EffectAst::Conditional {
@@ -573,7 +583,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         let target = parse_counter_target_phrase(spec.leading_tokens)?;
         return Ok(EffectAst::Conditional {
             predicate: spec.predicate,
-            if_true: vec![EffectAst::Counter { target }],
+            if_true: vec![EffectAst::subject_verb_counter(target)],
             if_false: Vec::new(),
         });
     }
@@ -591,9 +601,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if target_spell_second_this_turn {
         return Ok(EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
-            if_true: vec![EffectAst::Counter {
-                target: TargetAst::Spell(span_from_tokens(&tokens[1..3])),
-            }],
+            if_true: vec![EffectAst::subject_verb_counter(TargetAst::Spell(span_from_tokens(&tokens[1..3])))],
             if_false: Vec::new(),
         });
     }
@@ -642,14 +650,11 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         ) || has_x_mana_payment;
         match crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
             Ok(Some(cost)) => {
-                let should_keep_legacy_dynamic_path = has_dynamic_payment_tail
+                let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
                     && cost.as_one_of().is_none()
                     && cost.dynamic_mana_cost().is_none();
-                if !should_keep_legacy_dynamic_path {
-                    return Ok(EffectAst::CounterUnlessPays {
-                        target,
-                        cost,
-                    });
+                if !should_keep_subject_verb_dynamic_path {
+                    return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
                 }
             }
             Ok(None) => {
@@ -782,7 +787,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                         trailing_words.join(" ")
                     )));
                 }
-            } else if let Some(value) = parse_where_x_value_clause(&trailing_tokens) {
+            } else if let Some(value) = parse_value_binding_clause(&trailing_tokens) {
                 if mana.as_slice() == [ManaSymbol::X] {
                     x_value = Some(value);
                 } else {
@@ -835,7 +840,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         {
             let where_tokens = trim_commas(&unless_tokens[where_idx..]);
             let where_words = crate::runtime_backend::token_word_refs(&where_tokens);
-            x_value = parse_where_x_value_clause(&where_tokens).or_else(|| {
+            x_value = parse_value_binding_clause(&where_tokens).or_else(|| {
                 if where_words
                     .iter()
                     .any(|word| matches!(*word, "graveyard" | "graveyards"))
@@ -861,18 +866,18 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             });
         }
 
-        return Ok(EffectAst::CounterUnlessPays {
+        return Ok(EffectAst::subject_verb_counter_unless_pays(
             target,
-            cost: counter_unless_payment_total_cost(
+            counter_unless_payment_total_cost(
                 mana,
                 life,
                 additional_generic,
                 x_value,
                 dynamic_display_hint,
             ),
-        });
+        ));
     }
 
     let target = parse_counter_target_phrase(tokens)?;
-    Ok(EffectAst::Counter { target })
+    Ok(EffectAst::subject_verb_counter(target))
 }

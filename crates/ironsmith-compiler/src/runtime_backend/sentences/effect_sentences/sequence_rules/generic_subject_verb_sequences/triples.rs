@@ -1,4 +1,4 @@
-use super::super::dispatch_entry::{
+use super::super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
     find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
     parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
@@ -8,7 +8,8 @@ use super::super::dispatch_entry::{
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, LibraryConsultModeAst, LibraryConsultStopRuleAst,
-    ObjectFilter, PlayerAst, PredicateAst, TagKey, TargetAst, TextSpan,
+    ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::find_word_sequence_start;
@@ -26,6 +27,17 @@ use crate::target::ChooseSpec;
 use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
+
+fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
+        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
+    }) = effect
+    else {
+        return None;
+    };
+    Some((*player, count.clone()))
+}
 
 fn abundant_harvest_choice_sentence(words: &[&str]) -> bool {
     matches!(words, ["choose", "land", "or", "nonland"])
@@ -48,32 +60,32 @@ fn abundant_harvest_branch_effects(
     let all_tag = helper_tag_for_tokens(tokens, "revealed");
     let match_tag = helper_tag_for_tokens(tokens, "chosen");
     vec![
-        EffectAst::ConsultTopOfLibrary {
-            player: PlayerAst::You,
-            mode: LibraryConsultModeAst::Reveal,
+        EffectAst::subject_verb_consult_top_of_library(
+            PlayerAst::You,
+            LibraryConsultModeAst::Reveal,
             filter,
-            stop_rule: LibraryConsultStopRuleAst::FirstMatch,
-            all_tag: all_tag.clone(),
-            match_tag: match_tag.clone(),
-        },
-        EffectAst::MoveToZone {
-            target: TargetAst::Tagged(match_tag.clone(), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        },
-        EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-            tag: all_tag,
-            keep_tagged: Some(match_tag),
+            LibraryConsultStopRuleAst::FirstMatch,
+            all_tag.clone(),
+            match_tag.clone(),
+        ),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(match_tag.clone(), None),
+            Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            all_tag,
+            Some(match_tag),
             order,
-            player: PlayerAst::You,
-        },
+            PlayerAst::You,
+        ),
     ]
 }
 
-pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
+pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -100,7 +112,8 @@ pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     if !moves_to_hand || !slice_contains(&third_words, &"rest") {
         return Ok(None);
     }
-    let Some(order) = super::super::dispatch_entry::parse_consult_remainder_order(&third_words)
+    let Some(order) =
+        super::super::super::dispatch_entry::parse_consult_remainder_order(&third_words)
     else {
         return Ok(None);
     };
@@ -115,10 +128,10 @@ pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     };
 
     Ok(Some(vec![
-        EffectAst::ChooseNamedOption {
-            player: PlayerAst::You,
-            options: vec!["land".to_string(), "nonland".to_string()],
-        },
+        EffectAst::subject_verb_choose_named_option(
+            PlayerAst::You,
+            vec!["land".to_string(), "nonland".to_string()],
+        ),
         EffectAst::Conditional {
             predicate: PredicateAst::SourceChosenOption("land".to_string()),
             if_true: abundant_harvest_branch_effects(
@@ -135,7 +148,7 @@ pub(super) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     ]))
 }
 
-pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
+pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -149,10 +162,14 @@ pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
         return Ok(None);
     };
 
-    let Some(EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-        if_not_chosen: existing,
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
+                if_not_chosen: existing,
+                ..
+            },
         ..
-    }) = effects.get_mut(1)
+    })) = effects.get_mut(1)
     else {
         return Ok(None);
     };
@@ -160,7 +177,7 @@ pub(super) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     Ok(Some(effects))
 }
 
-pub(super) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
+pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -255,11 +272,11 @@ pub(super) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
         });
 
     let mut effects = search_effects;
-    effects.push(EffectAst::ChooseCardName {
-        player: PlayerAst::That,
-        filter: None,
-        tag: chosen_name_tag,
-    });
+    effects.push(EffectAst::subject_verb_choose_card_name(
+        PlayerAst::That,
+        None,
+        chosen_name_tag,
+    ));
     effects.push(EffectAst::Conditional {
         predicate: PredicateAst::And(
             Box::new(PredicateAst::TaggedMatches(
@@ -272,25 +289,27 @@ pub(super) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
             )))),
         ),
         if_true: vec![EffectAst::May {
-            effects: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(searched_tag.clone(), None),
-                zone: Zone::Battlefield,
-                to_top: false,
-                battlefield_controller: crate::cards::builders::ReturnControllerAst::You,
-                battlefield_tapped: false,
-                attached_to: None,
-            }],
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(searched_tag.clone(), None),
+                Zone::Battlefield,
+                false,
+                crate::cards::builders::ReturnControllerAst::You,
+                false,
+                None,
+            )],
         }],
         if_false: Vec::new(),
     });
-    effects.push(EffectAst::ShuffleLibrary {
-        player: PlayerAst::That,
-    });
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::That,
+        SubjectVerbActionAst::ShuffleLibrary,
+    ));
 
     Ok(Some(effects))
 }
 
-pub(super) fn parse_search_face_down_exile_conditional_cast_else_hand(
+pub(crate) fn parse_search_face_down_exile_conditional_cast_else_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -312,10 +331,14 @@ pub(super) fn parse_search_face_down_exile_conditional_cast_else_hand(
     }) && first_effects.iter().any(|effect| {
         matches!(
             effect,
-            EffectAst::Exile {
-                target: TargetAst::Tagged(tag, _),
-                face_down: true,
-            } if *tag == searched_tag
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Tagged(tag, _),
+                        face_down: true,
+                    },
+                ..
+            }) if *tag == searched_tag
         )
     });
     if !has_face_down_search {
@@ -345,14 +368,14 @@ pub(super) fn parse_search_face_down_exile_conditional_cast_else_hand(
         predicate: combined_predicate,
         if_true: vec![
             EffectAst::May {
-                effects: vec![EffectAst::CastTagged {
-                    tag: searched_tag.clone(),
-                    player: PlayerAst::Implicit,
-                    allow_land: false,
-                    as_copy: false,
-                    without_paying_mana_cost: true,
-                    cost_reduction: None,
-                }],
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    searched_tag.clone(),
+                    PlayerAst::Implicit,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
             },
             EffectAst::IfResult {
                 predicate: IfResultPredicate::WasDeclined,
@@ -364,7 +387,7 @@ pub(super) fn parse_search_face_down_exile_conditional_cast_else_hand(
     Ok(Some(effects))
 }
 
-pub(super) fn parse_exile_until_match_cast_rest_bottom(
+pub(crate) fn parse_exile_until_match_cast_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -383,7 +406,10 @@ pub(super) fn parse_exile_until_match_cast_rest_bottom(
     let Some(order) = parse_consult_bottom_remainder_clause(
         third,
         match parts.effects.last() {
-            Some(EffectAst::ConsultTopOfLibrary { mode, .. }) => *mode,
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ConsultTopOfLibrary { mode, .. },
+                ..
+            })) => *mode,
             _ => return Ok(None),
         },
     ) else {
@@ -392,27 +418,33 @@ pub(super) fn parse_exile_until_match_cast_rest_bottom(
 
     let mut effects = parts.effects;
     effects.extend(consult_cast_effects(&clause, parts.match_tag.clone())?);
-    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-        tag: parts.all_tag,
-        keep_tagged: None,
-        order,
-        player: parts.player,
-    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            parts.all_tag,
+            None,
+            order,
+            parts.player,
+        ),
+    );
     Ok(Some(effects))
 }
 
-pub(super) fn parse_exile_until_match_cast_else_hand(
+pub(crate) fn parse_exile_until_match_cast_else_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(parts) = parse_consult_traversal_sentence(sentences[sentence_idx].lowered())? else {
         return Ok(None);
     };
-    let Some(EffectAst::ConsultTopOfLibrary {
-        mode: crate::cards::builders::LibraryConsultModeAst::Exile,
-        stop_rule,
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                mode: crate::cards::builders::LibraryConsultModeAst::Exile,
+                stop_rule,
+                ..
+            },
         ..
-    }) = parts.effects.last()
+    })) = parts.effects.last()
     else {
         return Ok(None);
     };
@@ -473,7 +505,7 @@ pub(super) fn parse_exile_until_match_cast_else_hand(
     Ok(Some(effects))
 }
 
-pub(super) fn parse_top_cards_put_match_into_hand_rest_graveyard(
+pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -541,22 +573,24 @@ pub(super) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         return Ok(None);
     }
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: TagKey::from(crate::cards::builders::IT_TAG),
-    }];
+        TagKey::from(crate::cards::builders::IT_TAG),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(TagKey::from(
+            crate::cards::builders::IT_TAG,
+        )));
     }
-    effects.push(EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-        player: chooser,
-        filter,
-        reveal: reveal_chosen,
-        if_not_chosen: Vec::new(),
-    });
+    effects.push(
+        EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
+            chooser,
+            filter,
+            reveal_chosen,
+            Vec::new(),
+        ),
+    );
     Ok(Some(effects))
 }
 
@@ -607,7 +641,7 @@ fn parse_any_number_from_looked_cards_action(
     Some((filter, zone, tapped))
 }
 
-pub(super) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
+pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -661,15 +695,13 @@ pub(super) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: looked_tag.clone(),
-    }];
+        looked_tag.clone(),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: looked_tag.clone(),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
     effects.push(EffectAst::ChooseObjects {
         filter: choose_filter,
@@ -680,21 +712,23 @@ pub(super) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
             zone,
-            to_top: false,
-            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-            battlefield_tapped: tapped,
-            attached_to: None,
-        }],
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            tapped,
+            None,
+        )],
     });
-    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-        tag: looked_tag,
-        keep_tagged: Some(chosen_tag),
-        order,
-        player: chooser,
-    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
+            order,
+            chooser,
+        ),
+    );
 
     Ok(Some(effects))
 }
@@ -842,7 +876,7 @@ fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(tokens: &[Owned
             .is_some()
 }
 
-pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(
+pub(crate) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -867,15 +901,13 @@ pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
     let battlefield_tag =
         helper_tag_for_tokens(sentences[sentence_idx + 2].lowered(), "battlefield");
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: looked_tag.clone(),
-    }];
+        looked_tag.clone(),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: looked_tag.clone(),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
 
     for filter in choice_filters {
@@ -917,14 +949,14 @@ pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
         player,
         tag: battlefield_tag.clone(),
     });
-    effects.push(EffectAst::MoveToZone {
-        target: TargetAst::Tagged(battlefield_tag.clone(), None),
-        zone: Zone::Battlefield,
-        to_top: false,
-        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped: false,
-        attached_to: None,
-    });
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(battlefield_tag.clone(), None),
+        Zone::Battlefield,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
         effects: vec![EffectAst::Conditional {
@@ -933,14 +965,14 @@ pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
                 ObjectFilter::tagged(battlefield_tag.clone()),
             ),
             if_true: Vec::new(),
-            if_false: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-                zone: Zone::Hand,
-                to_top: false,
-                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            }],
+            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                Zone::Hand,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
         }],
     });
     effects.push(EffectAst::ForEachTagged {
@@ -951,14 +983,14 @@ pub(super) fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand
                 ObjectFilter::tagged(chosen_tag),
             ),
             if_true: Vec::new(),
-            if_false: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-                zone: Zone::Graveyard,
-                to_top: false,
-                battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            }],
+            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                Zone::Graveyard,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
         }],
     });
 
@@ -1045,19 +1077,13 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     };
 
     Ok(Some(vec![
-        EffectAst::LookAtTopCards {
-            player,
-            count,
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        },
-        EffectAst::RevealTagged {
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        },
-        EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
+        EffectAst::subject_verb_look_at_top_cards(player, count, TagKey::from(crate::cards::builders::IT_TAG)),
+        EffectAst::subject_verb_reveal_tagged(TagKey::from(crate::cards::builders::IT_TAG)),
+        EffectAst::subject_verb_choose_from_looked_cards_for_each_card_type_among_spells_cast_this_turn_into_hand_rest_on_bottom_of_library(
             player,
             spell_filter,
             order,
-        },
+        ),
     ]))
 }
 
@@ -1114,18 +1140,16 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     };
 
     Ok(Some(vec![
-        EffectAst::LookAtTopCards {
+        EffectAst::subject_verb_look_at_top_cards(
             player,
             count,
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        },
-        EffectAst::RevealTagged {
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        },
-        EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
+            TagKey::from(crate::cards::builders::IT_TAG),
+        ),
+        EffectAst::subject_verb_reveal_tagged(TagKey::from(crate::cards::builders::IT_TAG)),
+        EffectAst::subject_verb_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
             player,
             order,
-        },
+        ),
     ]))
 }
 
@@ -1172,13 +1196,17 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     else {
         return Ok(None);
     };
-    let EffectAst::GrantPlayTaggedUntilEndOfTurn {
-        player: permission_player,
-        allow_land,
-        without_paying_mana_cost,
-        allow_any_color_for_cast,
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                player: permission_player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                ..
+            },
         ..
-    } = permission
+    }) = permission
     else {
         return Ok(None);
     };
@@ -1188,15 +1216,13 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     let bottom_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "bottom");
     let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: looked_tag.clone(),
-    }];
+        looked_tag.clone(),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: looked_tag.clone(),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
 
     let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
@@ -1231,38 +1257,38 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
         tag: exiled_tag.clone(),
     });
 
-    effects.push(EffectAst::MoveToZone {
-        target: TargetAst::Tagged(hand_tag, None),
-        zone: Zone::Hand,
-        to_top: false,
-        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped: false,
-        attached_to: None,
-    });
-    effects.push(EffectAst::MoveToZone {
-        target: TargetAst::Tagged(bottom_tag, None),
-        zone: Zone::Library,
-        to_top: false,
-        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped: false,
-        attached_to: None,
-    });
-    effects.push(EffectAst::Exile {
-        target: TargetAst::Tagged(exiled_tag.clone(), None),
-        face_down: false,
-    });
-    effects.push(EffectAst::GrantPlayTaggedUntilEndOfTurn {
-        tag: exiled_tag,
-        player: permission_player,
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(hand_tag, None),
+        Zone::Hand,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(bottom_tag, None),
+        Zone::Library,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    effects.push(EffectAst::subject_verb_exile(
+        TargetAst::Tagged(exiled_tag.clone(), None),
+        false,
+    ));
+    effects.push(EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+        exiled_tag,
+        permission_player,
         allow_land,
         without_paying_mana_cost,
         allow_any_color_for_cast,
-    });
+    ));
 
     Ok(Some(effects))
 }
 
-pub(super) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
+pub(crate) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1290,29 +1316,29 @@ pub(super) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_res
         return Ok(None);
     };
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: TagKey::from(crate::cards::builders::IT_TAG),
-    }];
+        TagKey::from(crate::cards::builders::IT_TAG),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(TagKey::from(
+            crate::cards::builders::IT_TAG,
+        )));
     }
     effects.push(
-        EffectAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-            player: chooser,
+        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom_of_library(
+            chooser,
             battlefield_filter,
             hand_filter,
             tapped,
             order,
-        },
+        ),
     );
     Ok(Some(effects))
 }
 
-pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
+pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1321,7 +1347,10 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
     else {
         return Ok(None);
     };
-    let [EffectAst::LookAtTopCards { player, count, .. }] = first_effects.as_slice() else {
+    let [first_effect] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+    let Some((player, count)) = look_at_top_cards_parts(first_effect) else {
         return Ok(None);
     };
 
@@ -1330,7 +1359,7 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
     else {
         return Ok(None);
     };
-    let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, *player);
+    let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
     let reveal_tokens = trim_commas(action_match.tail_tokens);
     let reveal_words = TokenWordView::new(&reveal_tokens);
     if reveal_words.is_empty() {
@@ -1389,24 +1418,24 @@ pub(super) fn parse_look_at_top_reveal_match_put_rest_bottom(
         return Ok(None);
     };
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
-        player: *player,
-        count: count.clone(),
-        tag: TagKey::from(crate::cards::builders::IT_TAG),
-    }];
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        player,
+        count,
+        TagKey::from(crate::cards::builders::IT_TAG),
+    )];
     effects.push(
-        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-            player: chooser,
+        EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_on_bottom_of_library(
+            chooser,
             filter,
-            reveal: true,
+            true,
             order,
-            if_not_chosen: Vec::new(),
-        },
+            Vec::new(),
+        ),
     );
     Ok(Some(effects))
 }
 
-pub(super) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
+pub(crate) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1497,15 +1526,13 @@ pub(super) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
-    let mut effects = vec![EffectAst::LookAtTopCards {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        tag: looked_tag.clone(),
-    }];
+        looked_tag.clone(),
+    )];
     if reveal_top {
-        effects.push(EffectAst::RevealTagged {
-            tag: looked_tag.clone(),
-        });
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
     effects.push(EffectAst::ChooseObjects {
         filter: choose_filter,
@@ -1516,32 +1543,32 @@ pub(super) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::RevealTagged {
-            tag: chosen_tag.clone(),
-        }],
+        effects: vec![EffectAst::subject_verb_reveal_tagged(chosen_tag.clone())],
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-            zone: Zone::Library,
-            to_top: true,
-            battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        }],
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            Zone::Library,
+            true,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
     });
-    effects.push(EffectAst::PutTaggedRemainderOnBottomOfLibrary {
-        tag: looked_tag,
-        keep_tagged: Some(chosen_tag),
-        order,
-        player: chooser,
-    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
+            order,
+            chooser,
+        ),
+    );
 
     Ok(Some(effects))
 }
 
-pub(super) fn parse_prefix_then_consult_match_move_and_bottom_remainder(
+pub(crate) fn parse_prefix_then_consult_match_move_and_bottom_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1562,128 +1589,4 @@ pub(super) fn parse_prefix_then_consult_match_move_and_bottom_remainder(
     let mut effects = prefix_effects;
     effects.append(&mut combined);
     Ok(Some(effects))
-}
-
-pub(super) fn parse_prefix_then_consult_match_into_hand_exile_others(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(prefix_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-            .or_else(|_| effect_sentences::parse_effect_chain(sentences[sentence_idx].lowered()))
-    else {
-        return Ok(None);
-    };
-    if prefix_effects.is_empty() {
-        return Ok(None);
-    }
-    let Some(mut combined) =
-        super::pairs::parse_consult_match_into_hand_exile_others(sentences, sentence_idx + 1)?
-    else {
-        return Ok(None);
-    };
-    let mut effects = prefix_effects;
-    effects.append(&mut combined);
-    Ok(Some(effects))
-}
-
-pub(super) fn parse_tainted_pact_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words: Vec<&str> = crate::runtime_backend::token_word_refs(&first_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    if first_words.as_slice() != ["exile", "top", "card", "of", "your", "library"] {
-        return Ok(None);
-    }
-
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words: Vec<&str> = crate::runtime_backend::token_word_refs(&second_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let second_matches = second_words.as_slice()
-        == [
-            "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has",
-            "same", "name", "as", "another", "card", "exiled", "this", "way",
-        ]
-        || second_words.as_slice()
-            == [
-                "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same",
-                "name", "as", "another", "card", "exiled", "this", "way",
-            ];
-    if !second_matches {
-        return Ok(None);
-    }
-
-    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_words: Vec<&str> = crate::runtime_backend::token_word_refs(&third_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let third_matches = third_words.as_slice()
-        == [
-            "repeat",
-            "this",
-            "process",
-            "until",
-            "you",
-            "put",
-            "card",
-            "into",
-            "your",
-            "hand",
-            "or",
-            "you",
-            "exile",
-            "two",
-            "cards",
-            "with",
-            "same",
-            "name",
-            "whichever",
-            "comes",
-            "first",
-        ];
-    if !third_matches {
-        return Ok(None);
-    }
-
-    let current_tag = TagKey::from("tainted_pact_current");
-    let exiled_tag = TagKey::from("tainted_pact_exiled");
-    let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
-    Ok(Some(vec![EffectAst::RepeatProcess {
-        effects: vec![
-            EffectAst::ExileTopOfLibrary {
-                count: Value::Fixed(1),
-                player: crate::cards::builders::PlayerAst::You,
-                tags: vec![current_tag.clone()],
-                accumulated_tags: vec![exiled_tag.clone()],
-            },
-            EffectAst::Conditional {
-                predicate: PredicateAst::And(
-                    Box::new(PredicateAst::TaggedMatches(
-                        current_tag.clone(),
-                        ObjectFilter::default().in_zone(Zone::Exile),
-                    )),
-                    Box::new(PredicateAst::ValueComparison {
-                        left: Value::Count(all_exiled_filter.clone()),
-                        operator: crate::effect::ValueComparisonOperator::Equal,
-                        right: Value::DistinctNames(all_exiled_filter),
-                    }),
-                ),
-                if_true: vec![EffectAst::MayMoveToZone {
-                    target: TargetAst::Tagged(current_tag.clone(), None),
-                    zone: Zone::Hand,
-                    player: crate::cards::builders::PlayerAst::You,
-                }],
-                if_false: Vec::new(),
-            },
-        ],
-        continue_effect_index: 1,
-        continue_predicate: IfResultPredicate::WasDeclined,
-    }]))
 }

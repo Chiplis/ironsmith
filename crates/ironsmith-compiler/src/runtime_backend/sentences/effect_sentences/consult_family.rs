@@ -5,7 +5,7 @@ use winnow::prelude::*;
 use winnow::token::take_till;
 
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
-use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::token_primitives::{
     find_index, find_window_by, parse_turn_duration_prefix, parse_value_comparison_tokens,
@@ -40,12 +40,12 @@ pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option
         ],
     )?;
 
-    Some(vec![EffectAst::ExileTopOfLibrary {
-        count: Value::Fixed(count as i32),
-        player: PlayerAst::You,
-        tags: Vec::new(),
-        accumulated_tags: Vec::new(),
-    }])
+    Some(vec![EffectAst::subject_verb_exile_top_of_library(
+        PlayerAst::You,
+        Value::Fixed(count as i32),
+        Vec::new(),
+        Vec::new(),
+    )])
 }
 
 pub(crate) fn parse_consult_traversal_sentence(
@@ -202,14 +202,14 @@ pub(crate) fn parse_consult_traversal_sentence(
     );
     let match_tag = helper_tag_for_tokens(tokens, "chosen");
     let mut effects = prefix_effects;
-    effects.push(EffectAst::ConsultTopOfLibrary {
+    effects.push(EffectAst::subject_verb_consult_top_of_library(
         player,
         mode,
         filter,
         stop_rule,
-        all_tag: all_tag.clone(),
-        match_tag: match_tag.clone(),
-    });
+        all_tag.clone(),
+        match_tag.clone(),
+    ));
 
     Ok(Some(ConsultSentenceParts {
         effects,
@@ -217,134 +217,6 @@ pub(crate) fn parse_consult_traversal_sentence(
         all_tag,
         match_tag,
     }))
-}
-
-pub(crate) fn parse_consult_reveal_until_put_all_revealed_into_hand_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_tokens = trim_commas(tokens);
-    let Some(then_idx) = find_index(&sentence_tokens, |token: &OwnedLexToken| {
-        token.is_word("then")
-    }) else {
-        return Ok(None);
-    };
-
-    let consult_tokens = trim_commas(&sentence_tokens[..then_idx]);
-    let followup_tokens = trim_commas(&sentence_tokens[then_idx + 1..]);
-    if consult_tokens.is_empty() || followup_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(parts) = parse_consult_traversal_sentence(&consult_tokens)? else {
-        return Ok(None);
-    };
-    if !matches!(
-        parts.effects.last(),
-        Some(EffectAst::ConsultTopOfLibrary {
-            mode: LibraryConsultModeAst::Reveal,
-            ..
-        })
-    ) {
-        return Ok(None);
-    }
-
-    let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_all_revealed_into_hand = followup_words.as_slice()
-        == [
-            "put", "all", "cards", "revealed", "this", "way", "into", "your", "hand",
-        ]
-        || followup_words.as_slice() == ["put", "all", "revealed", "cards", "into", "your", "hand"];
-    if !puts_all_revealed_into_hand {
-        return Ok(None);
-    }
-
-    let mut effects = parts.effects;
-    effects.push(EffectAst::MoveToZone {
-        target: TargetAst::Tagged(parts.all_tag, None),
-        zone: Zone::Hand,
-        to_top: false,
-        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped: false,
-        attached_to: None,
-    });
-    Ok(Some(effects))
-}
-
-pub(crate) fn parse_each_player_exile_top_then_cast_any_number_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_tokens = trim_commas(tokens);
-    let Some(then_idx) = find_index(&sentence_tokens, |token: &OwnedLexToken| {
-        token.is_word("then")
-    }) else {
-        return Ok(None);
-    };
-
-    let exile_tokens = trim_commas(&sentence_tokens[..then_idx]);
-    let cast_tokens = trim_commas(&sentence_tokens[then_idx + 1..]);
-    if exile_tokens.is_empty() || cast_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let exile_words = TokenWordView::new(&exile_tokens).word_refs();
-    let starts_with_each_player_exile = slice_starts_with(
-        exile_words.as_slice(),
-        &["exile", "the", "top", "card", "of", "each"],
-    ) || slice_starts_with(
-        exile_words.as_slice(),
-        &["exile", "top", "card", "of", "each"],
-    );
-    let mentions_player_library = exile_words
-        .iter()
-        .any(|word| matches!(*word, "player" | "players"))
-        && exile_words.last().is_some_and(|word| *word == "library");
-    if !starts_with_each_player_exile || !mentions_player_library {
-        return Ok(None);
-    }
-
-    let cast_words = TokenWordView::new(&cast_tokens).word_refs();
-    let casts_any_number_from_those_cards = slice_starts_with(
-        cast_words.as_slice(),
-        &["you", "may", "cast", "any", "number", "of", "spells"],
-    ) && slice_contains(&cast_words, &"among")
-        && (slice_contains(&cast_words, &"those") || slice_contains(&cast_words, &"them"))
-        && slice_ends_with(
-            cast_words.as_slice(),
-            &["without", "paying", "their", "mana", "costs"],
-        );
-    if !casts_any_number_from_those_cards {
-        return Ok(None);
-    }
-
-    let exiled_tag = helper_tag_for_tokens(tokens, "exiled");
-    let cast_filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-        exiled_tag.clone(),
-        crate::target::TaggedOpbjectRelation::IsTaggedObject,
-    );
-
-    Ok(Some(vec![
-        EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::ExileTopOfLibrary {
-                count: Value::Fixed(1),
-                player: PlayerAst::That,
-                tags: Vec::new(),
-                accumulated_tags: vec![exiled_tag.clone()],
-            }],
-        },
-        EffectAst::ForEachObject {
-            filter: cast_filter,
-            effects: vec![EffectAst::May {
-                effects: vec![EffectAst::CastTagged {
-                    tag: TagKey::from(crate::cards::builders::IT_TAG),
-                    player: PlayerAst::You,
-                    allow_land: false,
-                    as_copy: false,
-                    without_paying_mana_cost: true,
-                    cost_reduction: None,
-                }],
-            }],
-        },
-    ]))
 }
 
 fn parse_passive_consult_stop_rule_and_filter(
@@ -971,14 +843,14 @@ pub(crate) fn parse_if_declined_put_match_into_hand(
         return None;
     }
 
-    Some(vec![EffectAst::MoveToZone {
-        target: TargetAst::Tagged(match_tag, None),
-        zone: Zone::Hand,
-        to_top: false,
-        battlefield_controller: crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped: false,
-        attached_to: None,
-    }])
+    Some(vec![EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(match_tag, None),
+        Zone::Hand,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    )])
 }
 
 pub(crate) fn consult_cast_effects(
@@ -996,23 +868,23 @@ pub(crate) fn consult_cast_effects(
             let without_paying_mana_cost =
                 matches!(clause.cost, ConsultCastCost::WithoutPayingManaCost);
             if clause.allow_land || matches!(clause.timing, ConsultCastTiming::UntilEndOfTurn) {
-                vec![EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                    tag: match_tag.clone(),
-                    player: clause.caster,
-                    allow_land: clause.allow_land,
+                vec![EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    match_tag.clone(),
+                    clause.caster,
+                    clause.allow_land,
                     without_paying_mana_cost,
-                    allow_any_color_for_cast: false,
-                }]
+                    false,
+                )]
             } else {
                 vec![EffectAst::May {
-                    effects: vec![EffectAst::CastTagged {
-                        tag: match_tag.clone(),
-                        player: clause.caster,
-                        allow_land: false,
-                        as_copy: false,
+                    effects: vec![EffectAst::subject_verb_cast_tagged(
+                        match_tag.clone(),
+                        clause.caster,
+                        false,
+                        false,
                         without_paying_mana_cost,
-                        cost_reduction: None,
-                    }],
+                        None,
+                    )],
                 }]
             }
         }
@@ -1023,17 +895,8 @@ pub(crate) fn consult_cast_effects(
                 ));
             }
             vec![
-                EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                    tag: match_tag.clone(),
-                    player: clause.caster,
-                    allow_land: false,
-                    without_paying_mana_cost: false,
-                    allow_any_color_for_cast: false,
-                },
-                EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-                    tag: match_tag.clone(),
-                    player: clause.caster,
-                },
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(match_tag.clone(), clause.caster, false, false, false),
+                EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(match_tag.clone(), clause.caster),
             ]
         }
     };

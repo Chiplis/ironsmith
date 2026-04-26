@@ -4,7 +4,7 @@
 use self::sentence_helpers::*;
 #[allow(unused_imports)]
 #[cfg(test)]
-use super::keyword_static::parse_where_x_value_clause;
+use super::keyword_static::parse_value_binding_clause;
 #[allow(unused_imports)]
 use super::object_filters::parse_object_filter;
 #[allow(unused_imports)]
@@ -16,7 +16,8 @@ use super::util::{
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, OwnedLexToken, PlayerAst, PredicateAst,
-    ReturnControllerAst, SubjectAst, TagKey, TargetAst, TextSpan,
+    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    TextSpan,
 };
 #[allow(unused_imports)]
 use crate::effect::{ChoiceCount, Value};
@@ -57,11 +58,11 @@ mod looked_cards_family;
 mod next_spell_family;
 mod search_library;
 mod sentence_helpers;
-mod sentence_primitives;
 mod sentence_registry;
 mod sentence_unsupported;
 mod sequence_rules;
-mod special_sentence_family;
+mod subject_verb_primitives;
+mod subject_verb_special_recognizers;
 mod verb_dispatch;
 mod verb_handlers;
 mod zone_counter_helpers;
@@ -69,14 +70,14 @@ mod zone_handlers;
 
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence;
 pub(crate) use super::grammar::effects::parse_cant_effect_sentence_with_grammar_entrypoint_lexed as parse_cant_effect_sentence_lexed;
-pub(crate) use chain_carry::parse_effect_chain_with_sentence_primitives_lexed;
+pub(crate) use chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed;
 pub(crate) use chain_carry::*;
 pub(crate) use chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
     collapse_token_copy_next_end_step_exile_followup,
     collapse_token_copy_next_end_step_sacrifice_followup, find_verb,
     maybe_apply_carried_player_with_clause, parse_effect_chain, parse_effect_chain_inner,
-    parse_effect_chain_with_sentence_primitives, parse_effect_clause_with_trailing_if,
+    parse_effect_chain_with_subject_verb_primitives, parse_effect_clause_with_trailing_if,
     parse_leading_player_may, parse_or_action_clause, remove_first_word, remove_through_first_word,
 };
 pub(crate) use clause_dispatch::parse_effect_clause_lexed;
@@ -104,5 +105,6 @@ pub(crate) use search_library::*;
 pub(crate) use sentence_helpers::{
     parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
 };
-pub(crate) use sentence_primitives::*;
-pub(crate) use sequence_rules::try_parse_registered_sequence_rule;
+#[cfg(test)]
+pub(crate) use sequence_rules::try_parse_subject_verb_sequence_rule;
+pub(crate) use subject_verb_primitives::*;

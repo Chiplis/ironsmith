@@ -2,10 +2,10 @@ use super::*;
 
 macro_rules! primitive {
     ($id:literal, $priority:expr, $stage:ident, $hints:expr, $parser:expr) => {
-        SentencePrimitive {
+        SubjectVerbPrimitive {
             id: $id,
             priority: $priority,
-            stage: SentencePrimitiveStage::$stage,
+            stage: SubjectVerbPrimitiveStage::$stage,
             head_hints: $hints,
             shape_mask: 0,
             parser: $parser,
@@ -13,7 +13,7 @@ macro_rules! primitive {
     };
 }
 
-pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
+pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
     primitive!(
         "implicit-become-clause",
         10,
@@ -133,13 +133,6 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_sacrifice_at_end_of_combat
     ),
     primitive!(
-        "each-player-choose-keep-rest-sacrifice",
-        150,
-        PreDiagnostic,
-        &[LexRuleHeadHint::Single("each")],
-        parse_sentence_each_player_choose_and_sacrifice_rest
-    ),
-    primitive!(
         "target-player-choose-then-put-on-top-library",
         160,
         PreDiagnostic,
@@ -160,23 +153,18 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         &[LexRuleHeadHint::Single("target")],
         parse_sentence_target_player_reveals_random_card_from_hand
     ),
-    primitive!(
-        "exile-instead-of-graveyard",
-        190,
-        PreDiagnostic,
-        &[LexRuleHeadHint::Single("exile")],
-        parse_sentence_exile_instead_of_graveyard
-    ),
 ];
 
-pub(crate) static PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
+pub(crate) static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
-        build_lex_rule_hint_index(PRE_CONDITIONAL_SENTENCE_PRIMITIVES.len(), |idx| {
-            PRE_CONDITIONAL_SENTENCE_PRIMITIVES[idx].head_hints.to_vec()
+        build_lex_rule_hint_index(PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES.len(), |idx| {
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES[idx]
+                .head_hints
+                .to_vec()
         })
     });
 
-pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
+pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
     primitive!(
         "exile-target-creature-with-greatest-power",
         10,
@@ -398,39 +386,11 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_sacrifice_one_or_more
     ),
     primitive!(
-        "monstrosity",
-        300,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("monstrosity")],
-        parse_sentence_monstrosity
-    ),
-    primitive!(
-        "for-each-counter-removed",
-        310,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_counter_removed
-    ),
-    primitive!(
         "for-each-counter-kind-put-or-remove",
         320,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
         parse_sentence_for_each_counter_kind_put_or_remove
-    ),
-    primitive!(
-        "take-extra-turn",
-        330,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("take")],
-        parse_sentence_take_extra_turn
-    ),
-    primitive!(
-        "earthbend",
-        340,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("earthbend")],
-        parse_sentence_earthbend
     ),
     primitive!(
         "transform-with-followup",
@@ -443,25 +403,11 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_transform_with_followup
     ),
     primitive!(
-        "enchant",
-        360,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("enchant")],
-        parse_sentence_enchant
-    ),
-    primitive!(
         "cant-effect",
         370,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("cant")],
         parse_sentence_cant_effect
-    ),
-    primitive!(
-        "prevent-damage",
-        380,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("prevent")],
-        parse_sentence_prevent_damage
     ),
     primitive!(
         "shared-color-target-fanout",
@@ -472,40 +418,6 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
             LexRuleHeadHint::Pair("target", "radiance"),
         ],
         parse_sentence_shared_color_target_fanout
-    ),
-    primitive!(
-        "gain-ability-to-source",
-        400,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("gain")],
-        parse_sentence_gain_ability_to_source
-    ),
-    primitive!(
-        "gain-ability",
-        410,
-        PostDiagnostic,
-        &[
-            LexRuleHeadHint::Single("all"),
-            LexRuleHeadHint::Single("each"),
-            LexRuleHeadHint::Single("gain"),
-            LexRuleHeadHint::Single("lose"),
-            LexRuleHeadHint::Single("loses"),
-        ],
-        parse_sentence_gain_ability
-    ),
-    primitive!(
-        "vote-with-you",
-        420,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("you")],
-        parse_sentence_you_and_each_opponent_voted_with_you
-    ),
-    primitive!(
-        "gain-life-equal-to-power",
-        430,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("gain")],
-        parse_sentence_gain_life_equal_to_power
     ),
     primitive!(
         "gain-x-plus-life",
@@ -571,13 +483,6 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_delayed_next_upkeep_unless_pays_lose_game
     ),
     primitive!(
-        "exile-then-return-same-object",
-        530,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("exile")],
-        parse_sentence_exile_then_return_same_object
-    ),
-    primitive!(
         "search-library",
         540,
         PostDiagnostic,
@@ -613,13 +518,6 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_target_player_exiles_creature_and_graveyard
     ),
     primitive!(
-        "play-from-graveyard",
-        590,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("play")],
-        parse_sentence_play_from_graveyard
-    ),
-    primitive!(
         "look-at-top-then-exile-one",
         600,
         PostDiagnostic,
@@ -652,50 +550,11 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parse_sentence_for_each_player_doesnt
     ),
     primitive!(
-        "for-each-opponent-doesnt",
-        640,
-        PostDiagnostic,
-        &[
-            LexRuleHeadHint::Single("for"),
-            LexRuleHeadHint::Single("then"),
-            LexRuleHeadHint::Single("each"),
-        ],
-        parse_sentence_for_each_opponent_doesnt
-    ),
-    primitive!(
         "each-opponent-loses-x-and-you-gain-x",
         650,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
         parse_sentence_each_opponent_loses_x_and_you_gain_x
-    ),
-    primitive!(
-        "vote-start",
-        660,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("starting")],
-        parse_sentence_vote_start
-    ),
-    primitive!(
-        "for-each-vote-clause",
-        670,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_vote_clause
-    ),
-    primitive!(
-        "vote-extra",
-        680,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("vote")],
-        parse_sentence_vote_extra
-    ),
-    primitive!(
-        "after-turn",
-        690,
-        PostDiagnostic,
-        &[LexRuleHeadHint::Single("after")],
-        parse_sentence_after_turn
     ),
     primitive!(
         "same-name-target-fanout",
@@ -806,10 +665,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     ),
 ];
 
-pub(crate) static POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
+pub(crate) static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
-        build_lex_rule_hint_index(POST_CONDITIONAL_SENTENCE_PRIMITIVES.len(), |idx| {
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES[idx]
+        build_lex_rule_hint_index(POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES.len(), |idx| {
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES[idx]
                 .head_hints
                 .to_vec()
         })
@@ -830,11 +689,15 @@ mod tests {
         assert!(
             matches!(
                 effects.as_slice(),
-                [EffectAst::RemoveCardTypes {
-                    target: TargetAst::Source(_),
-                    card_types,
-                    duration: Until::EndOfTurn,
-                }] if card_types.as_slice() == [CardType::Creature]
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::RemoveCardTypes {
+                            target: TargetAst::Source(_),
+                            card_types,
+                            duration: Until::EndOfTurn,
+                        },
+                    ..
+                })] if card_types.as_slice() == [CardType::Creature]
             ),
             "expected explicit self negative-type clause to parse into source-scoped remove-card-types until end of turn, got {effects:?}"
         );
@@ -843,18 +706,18 @@ mod tests {
     #[test]
     fn sentence_primitive_metadata_sets_stage_and_hints() {
         assert!(
-            PRE_CONDITIONAL_SENTENCE_PRIMITIVES
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
                 .iter()
                 .all(
-                    |primitive| primitive.stage == SentencePrimitiveStage::PreDiagnostic
+                    |primitive| primitive.stage == SubjectVerbPrimitiveStage::PreDiagnostic
                         && !primitive.head_hints.is_empty()
                 )
         );
         assert!(
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
                 .iter()
                 .all(
-                    |primitive| primitive.stage == SentencePrimitiveStage::PostDiagnostic
+                    |primitive| primitive.stage == SubjectVerbPrimitiveStage::PostDiagnostic
                         && !primitive.head_hints.is_empty()
                 )
         );

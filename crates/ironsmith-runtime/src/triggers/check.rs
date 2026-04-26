@@ -1469,6 +1469,16 @@ pub fn player_filter_matches_with_context(
                 game.player(player)
                     .is_some_and(|candidate| candidate.is_in_game() && candidate.life == max_life)
             }),
+        PlayerFilter::LowestLifeTied => game
+            .players
+            .iter()
+            .filter(|candidate| candidate.is_in_game())
+            .map(|candidate| candidate.life)
+            .min()
+            .is_some_and(|min_life| {
+                game.player(player)
+                    .is_some_and(|candidate| candidate.is_in_game() && candidate.life == min_life)
+            }),
         PlayerFilter::MostCardsInHand => game
             .players
             .iter()

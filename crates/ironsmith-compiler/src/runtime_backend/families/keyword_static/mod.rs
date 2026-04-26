@@ -3047,9 +3047,16 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !slice_starts_with(&words, &["this", "spell", "costs"]) {
+    let line_start = if slice_starts_with(&words, &["this", "spell", "costs"]) {
+        0
+    } else if let Some(idx) = words
+        .windows(3)
+        .position(|window| window == ["this", "spell", "costs"])
+    {
+        idx
+    } else {
         return Ok(None);
-    }
+    };
     if !slice_contains(&words, &"more")
         || !slice_contains(&words, &"target")
         || !slice_contains(&words, &"beyond")
@@ -3057,9 +3064,19 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
         return Ok(None);
     }
 
-    let costs_idx = find_index(tokens, |token| token.is_word("costs"))
+    let search_tokens = &tokens[line_start..];
+    let costs_idx = find_index(search_tokens, |token| token.is_word("costs"))
         .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
-    let amount_tokens = &tokens[costs_idx + 1..];
+    let amount_tokens = &search_tokens[costs_idx + 1..];
+    if let Some((cost, used)) = parse_cost_modifier_mana_cost(amount_tokens)
+        && amount_tokens
+            .get(used)
+            .is_some_and(|token| token.is_word("more"))
+    {
+        return Ok(Some(
+            StaticAbility::cost_increase_mana_cost_per_target_beyond_first(cost),
+        ));
+    }
     let (amount_value, _) =
         parse_cost_modifier_amount(amount_tokens).unwrap_or((Value::Fixed(1), 0));
     let amount = if let Value::Fixed(v) = amount_value {
@@ -3960,7 +3977,7 @@ pub(crate) fn parse_spells_cost_modifier_line(
                 ))
             })?;
         let where_tokens = trim_commas(&remaining_tokens[where_token_idx..]);
-        let x_value = parse_where_x_value_clause(&where_tokens).ok_or_else(|| {
+        let x_value = parse_value_binding_clause(&where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause in spells-cost modifier (clause: '{clause}')"
             ))

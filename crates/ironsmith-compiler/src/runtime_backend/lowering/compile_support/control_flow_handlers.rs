@@ -2,9 +2,10 @@ use super::*;
 
 fn tag_last_discard_in_effects(effects: &mut [EffectAst], tag: &TagKey) -> bool {
     for effect in effects.iter_mut().rev() {
-        if let EffectAst::Discard {
-            tag: discard_tag, ..
-        } = effect
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Discard {
+                tag: discard_tag, ..
+            } = &mut subject_verb.action
         {
             *discard_tag = Some(tag.clone());
             return true;
@@ -772,10 +773,14 @@ pub(crate) fn compile_effects_in_iterated_player_context(
 pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
-            EffectAst::CreateTokenWithMods { player, .. }
-            | EffectAst::CreateTokenCopy { player, .. }
-            | EffectAst::CreateTokenCopyFromSource { player, .. } => {
-                if matches!(player, PlayerAst::Implicit) {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+                ..
+            }) => {
+                if matches!(*player, PlayerAst::Implicit) {
                     *player = PlayerAst::You;
                 }
             }

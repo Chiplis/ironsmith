@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::SubjectVerbEffectAst;
 
 fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
     match predicate {
@@ -246,12 +247,20 @@ fn bind_condition_target_antecedent(target: &mut TargetAst, antecedent: &ObjectF
 
 fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
     match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::Untap { target }
+            | SubjectVerbActionAst::Destroy { target, .. }
+            | SubjectVerbActionAst::Exile { target, .. }
+            | SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
+                bind_condition_target_antecedent(target, antecedent);
+            }
+            _ => {}
+        },
         EffectAst::ChooseObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
             bind_condition_filter_antecedent(filter, antecedent);
-        }
-        EffectAst::Destroy { target } | EffectAst::DestroyNoRegeneration { target } => {
-            bind_condition_target_antecedent(target, antecedent);
         }
         EffectAst::Conditional {
             if_true, if_false, ..
@@ -274,22 +283,26 @@ fn bind_condition_antecedent_in_effects(effects: &mut [EffectAst], antecedent: &
 
 fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
     match effect {
-        EffectAst::BecomeBasePtCreature {
-            power,
-            toughness,
-            target,
-            card_types,
-            subtypes,
-            colors,
-            abilities,
-            granted_abilities,
-            duration,
-        } => {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::BecomeBasePtCreature {
+                    power,
+                    toughness,
+                    target,
+                    card_types,
+                    subtypes,
+                    colors,
+                    abilities,
+                    granted_abilities,
+                    duration,
+                },
+            ..
+        }) => {
             let target = match target {
                 TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => TargetAst::Source(span),
                 other => other,
             };
-            EffectAst::BecomeBasePtCreature {
+            EffectAst::subject_verb_become_base_pt_creature(
                 power,
                 toughness,
                 target,
@@ -299,7 +312,7 @@ fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
                 abilities,
                 granted_abilities,
                 duration,
-            }
+            )
         }
         EffectAst::Conditional {
             predicate,

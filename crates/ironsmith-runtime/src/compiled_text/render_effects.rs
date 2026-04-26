@@ -1082,7 +1082,16 @@ fn describe_choose_any_target_players_then_investigate_total_creatures(
     }
 
     let investigate = investigate_effect.downcast_ref::<crate::effects::InvestigateEffect>()?;
-    if investigate.player != PlayerFilter::You || investigate.count != Value::X {
+    let counts_targeted_players_creatures = matches!(
+        &investigate.count,
+        Value::Count(filter)
+            if filter.zone == Some(Zone::Battlefield)
+                && filter.card_types == vec![CardType::Creature]
+                && matches!(&filter.controller, Some(PlayerFilter::Target(inner)) if **inner == PlayerFilter::Any)
+    );
+    if investigate.player != PlayerFilter::You
+        || !(investigate.count == Value::X || counts_targeted_players_creatures)
+    {
         return None;
     }
 
@@ -1179,11 +1188,16 @@ fn choose_search_zones(choose: &crate::effects::ChooseObjectsEffect) -> Option<V
 fn normalize_search_descriptor_for_origin(descriptor: &str, searched_library: bool) -> String {
     let mut descriptor = descriptor.trim().to_string();
     if searched_library {
-        for suffix in [" in library", " in the library"] {
-            if let Some(stripped) = descriptor.strip_suffix(suffix) {
-                descriptor = stripped.trim().to_string();
-                break;
-            }
+        for phrase in [
+            " in your library",
+            " in target opponent's library",
+            " in target player's library",
+            " in that player's library",
+            " in their library",
+            " in library",
+            " in the library",
+        ] {
+            descriptor = descriptor.replace(phrase, "");
         }
     }
     descriptor
@@ -2687,7 +2701,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     fn count_filter_counts_tagged_hand_cards(filter: &ObjectFilter, tag: &TagKey) -> bool {
         filter.zone == Some(Zone::Hand)
             && filter.controller.is_none()
-            && filter.owner.is_none()
+            && filter
+                .owner
+                .as_ref()
+                .is_none_or(is_target_opponent_player_filter)
             && filter.card_types.is_empty()
             && filter.tagged_constraints.len() == 1
             && filter.tagged_constraints.iter().any(|constraint| {
@@ -9421,11 +9438,20 @@ pub(super) fn describe_inline_ability_with_self_subject(
                     line.push_str(": ");
                 }
                 let effects = super::ast_render::describe_resolution_program(&activated.effects);
-                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     &capitalize_first(self_subject),
                     true,
-                ));
+                );
+                let self_subject = if self_subject == "this spell" {
+                    "this creature"
+                } else {
+                    self_subject
+                };
+                effects = effects
+                    .replace("This spell", &capitalize_first(self_subject))
+                    .replace("this spell", self_subject);
+                line.push_str(&effects);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
@@ -10278,6 +10304,7 @@ mod tests {
         let shuffle = crate::effects::ShuffleLibraryEffect::new(PlayerFilter::target_opponent());
 
         let mut count_filter = ObjectFilter::default().in_zone(Zone::Hand);
+        count_filter.owner = Some(PlayerFilter::target_opponent());
         count_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
@@ -10309,6 +10336,23 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Choose a card name other than a basic land card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and exile them. That player shuffles, then creates a 2/2 black Zombie creature token for each card exiled from their hand this way"
+        );
+    }
+
+    #[test]
+    fn describe_draw_for_each_tagged_matching_preserves_hand_origin() {
+        let tag = TagKey::from("searched_multi_zone");
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = Some(PlayerFilter::target_opponent());
+        let draw = crate::effects::DrawForEachTaggedMatchingEffect::new(
+            PlayerFilter::target_opponent(),
+            tag,
+            filter,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[Effect::new(draw)]),
+            "target opponent draws a card for each card exiled from their hand this way"
         );
     }
 
@@ -10781,6 +10825,13 @@ fn title_case_card_name_fragment(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn title_case_named_card_selection(selection: &str) -> String {
+    let Some((head, name)) = selection.split_once(" named ") else {
+        return selection.to_string();
+    };
+    format!("{head} named {}", title_case_card_name_fragment(name))
 }
 
 pub(super) fn describe_cost_list(costs: &[crate::costs::Cost]) -> String {
@@ -12025,6 +12076,30 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
             return format!("{player} {verb} {}", with_indefinite_article(rest));
         }
     }
+    if let Value::Fixed(value) = sacrifice.count
+        && *value > 1
+    {
+        let mut noun = sacrifice.filter.description();
+        if let Some(rest) = noun.strip_prefix("target player's ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("that player's ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("the active player's ") {
+            noun = rest.to_string();
+        }
+        if let Some(rest) = noun.strip_prefix("a ") {
+            noun = rest.to_string();
+        } else if let Some(rest) = noun.strip_prefix("an ") {
+            noun = rest.to_string();
+        }
+        let count_text = number_word(*value)
+            .map(str::to_string)
+            .unwrap_or_else(|| value.to_string());
+        return format!(
+            "{player} {verb} {count_text} {}",
+            pluralize_noun_phrase(&noun)
+        );
+    }
     format!(
         "{} {} {} {}",
         player,
@@ -12700,6 +12775,14 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
     match &draw.count {
+        Value::Count(filter)
+            if filter.zone == Some(Zone::Hand)
+                && matches!((&draw.player, &filter.owner), (PlayerFilter::Target(draw_inner), Some(PlayerFilter::Target(owner_inner))) if draw_inner == owner_inner) =>
+        {
+            Some(format!(
+                "{player} {verb} cards equal to the number of cards in their hand"
+            ))
+        }
         Value::Count(filter) => Some(format!(
             "{player} {verb} a card for each {}",
             describe_for_each_filter(filter)
@@ -16733,7 +16816,7 @@ pub(super) fn describe_search_choose_for_each(
         let typed_text = if typed_filter == ObjectFilter::default() {
             "card".to_string()
         } else {
-            typed_filter.description()
+            normalize_search_descriptor_for_origin(&typed_filter.description(), searched_library)
         };
         let type_cards = describe_search_selection_with_cards(&typed_text);
         let count_prefix = if choose.count.max == Some(1) {
@@ -18830,6 +18913,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             }
             Zone::Battlefield => {
+                let target = if matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+                {
+                    "that card".to_string()
+                } else {
+                    target
+                };
                 let owner_control_suffix = if choose_spec_allows_multiple(&move_to_zone.target) {
                     " under their owners' control"
                 } else {
@@ -19490,10 +19579,36 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawForEachTaggedMatchingEffect>() {
         let player = describe_player_filter(&draw.player);
+        let counted = if draw.filter.zone == Some(Zone::Hand)
+            && draw.filter.controller.is_none()
+            && (draw.tag.as_str().starts_with("searched")
+                || draw.tag.as_str().starts_with("exiled")
+                || crate::cards::is_sentence_helper_tag(draw.tag.as_str(), "exiled"))
+        {
+            match &draw.filter.owner {
+                Some(PlayerFilter::You) => "card exiled from your hand this way".to_string(),
+                Some(PlayerFilter::NotYou) => {
+                    "card exiled from your opponent's hand this way".to_string()
+                }
+                Some(PlayerFilter::Specific(_))
+                | Some(PlayerFilter::Target(_))
+                | Some(PlayerFilter::IteratedPlayer)
+                | Some(PlayerFilter::ControllerOf(_)) => {
+                    "card exiled from their hand this way".to_string()
+                }
+                Some(owner) => format!(
+                    "card exiled from {} hand this way",
+                    describe_possessive_player_filter(owner)
+                ),
+                None => "card exiled from hand this way".to_string(),
+            }
+        } else {
+            describe_for_each_count_filter(&draw.filter)
+        };
         return format!(
             "{player} {} a card for each {}",
             player_verb(&player, "draw", "draws"),
-            describe_for_each_count_filter(&draw.filter)
+            counted
         );
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
@@ -20267,6 +20382,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
         };
+        let multi_zone = search_slots
+            .slots
+            .iter()
+            .any(|slot| slot.filter.zone.is_none());
+        let search_origin = if multi_zone {
+            format!(
+                "{} library and graveyard",
+                describe_possessive_player_filter(&search_slots.player)
+            )
+        } else {
+            format!(
+                "{} library",
+                describe_possessive_player_filter(&search_slots.player)
+            )
+        };
         let selections: Vec<String> = search_slots
             .slots
             .iter()
@@ -20288,6 +20418,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         selection = head.to_string();
                     }
                 }
+                let selection = title_case_named_card_selection(&selection);
                 describe_search_selection_with_cards(&selection)
             })
             .collect();
@@ -20300,22 +20431,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             };
             let reveal_clause = if separator == ". " {
                 "Reveal those cards"
+            } else if multi_zone && selections.len() == 2 {
+                "reveal them"
             } else {
                 "reveal those cards"
             };
             return format!(
-                "Search {} library for {}{}{reveal_clause}, put them {}, then shuffle",
-                describe_possessive_player_filter(&search_slots.player),
-                joined,
-                separator,
-                destination
+                "Search {search_origin} for {}{}{reveal_clause}, put them {}, then shuffle",
+                joined, separator, destination
             );
         }
         return format!(
-            "Search {} library for {}, put them {}, then shuffle",
-            describe_possessive_player_filter(&search_slots.player),
-            joined,
-            destination
+            "Search {search_origin} for {}, put them {}, then shuffle",
+            joined, destination
         );
     }
     if effect
@@ -24689,6 +24817,38 @@ fn describe_zone_change_triggering_card_to_your_library(
     ))
 }
 
+fn describe_annihilator_keyword(triggered: &crate::ability::TriggeredAbility) -> Option<String> {
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+        return None;
+    }
+    if !triggered
+        .trigger
+        .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
+        .is_some()
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let sacrifice = effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
+    if sacrifice.filter != ObjectFilter::permanent() || sacrifice.player != PlayerFilter::Defending
+    {
+        return None;
+    }
+    let Value::Fixed(amount) = sacrifice.count else {
+        return None;
+    };
+    Some(format!("Annihilator {amount}"))
+}
+
 pub(super) fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -24755,6 +24915,9 @@ pub(super) fn describe_ability(
             )]
         }
         AbilityKind::Triggered(triggered) => {
+            if let Some(rendered) = describe_annihilator_keyword(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered)
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
@@ -24908,11 +25071,17 @@ pub(super) fn describe_ability(
             if !activated.effects.is_empty() {
                 line.push_str(": ");
                 let effects = super::ast_render::describe_resolution_program(&activated.effects);
-                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
                     rewrite_it_deals,
-                ));
+                );
+                if subject != "This spell" {
+                    effects = effects
+                        .replace("This spell", subject)
+                        .replace("this spell", &lowercase_first(subject));
+                }
+                line.push_str(&effects);
             }
             if let Some(condition) = &activated.activation_condition {
                 let clause = describe_mana_activation_condition(condition);
@@ -24970,11 +25139,17 @@ pub(super) fn describe_ability(
             if !activated.effects.is_empty() {
                 line.push_str(": ");
                 let effects = super::ast_render::describe_resolution_program(&activated.effects);
-                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
                     rewrite_it_deals,
-                ));
+                );
+                if subject != "This spell" {
+                    effects = effects
+                        .replace("This spell", subject)
+                        .replace("this spell", &lowercase_first(subject));
+                }
+                line.push_str(&effects);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,

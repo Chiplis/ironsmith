@@ -257,6 +257,7 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
+        PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),

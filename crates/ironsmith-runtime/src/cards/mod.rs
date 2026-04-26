@@ -248,6 +248,454 @@ mod tests {
     #[cfg(feature = "generated-registry")]
     use crate::{game_state::GameState, ids::PlayerId};
 
+    #[test]
+    fn handwritten_builtin_card_constructors_compile_through_parser() {
+        let module_source = include_str!("mod.rs");
+        let constructor_names = registered_handwritten_constructor_names(module_source);
+        assert!(
+            !constructor_names.is_empty(),
+            "expected handwritten registry to register at least one constructor"
+        );
+
+        let definitions_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/definitions");
+        let definition_sources = std::fs::read_dir(&definitions_dir)
+            .expect("read cards/definitions directory")
+            .filter_map(|entry| {
+                let entry = entry.expect("read definitions directory entry");
+                let path = entry.path();
+                (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                    && path.file_name().and_then(|name| name.to_str()) != Some("mod.rs")
+                    && path.file_name().and_then(|name| name.to_str()) != Some("builder.rs"))
+                .then(|| {
+                    (
+                        path.display().to_string(),
+                        std::fs::read_to_string(&path).expect("read card definition source"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut failures = Vec::new();
+        for constructor_name in constructor_names {
+            match handwritten_constructor_body(&definition_sources, &constructor_name) {
+                Some((path, body)) if body.contains(".parse_text(") => {
+                    let _ = path;
+                }
+                Some((path, _body)) => failures.push(format!(
+                    "{constructor_name} in {path} does not call .parse_text("
+                )),
+                None => failures.push(format!(
+                    "{constructor_name} is registered but no pub fn {constructor_name}() -> CardDefinition body was found"
+                )),
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "handwritten builtin card constructors must compile rules text through the parser:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn handwritten_builtin_cards_have_no_card_specific_compiler_hooks() {
+        let module_source = include_str!("mod.rs");
+        let constructor_names = registered_handwritten_constructor_names(module_source);
+        let definitions_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/definitions");
+        let definition_sources = std::fs::read_dir(&definitions_dir)
+            .expect("read cards/definitions directory")
+            .filter_map(|entry| {
+                let entry = entry.expect("read definitions directory entry");
+                let path = entry.path();
+                (path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                    && path.file_name().and_then(|name| name.to_str()) != Some("mod.rs")
+                    && path.file_name().and_then(|name| name.to_str()) != Some("builder.rs"))
+                .then(|| {
+                    (
+                        path.display().to_string(),
+                        std::fs::read_to_string(&path).expect("read card definition source"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut card_terms = Vec::new();
+        for constructor_name in constructor_names {
+            let Some((_path, body)) =
+                handwritten_constructor_body(&definition_sources, &constructor_name)
+            else {
+                continue;
+            };
+            if let Some(name) = handwritten_constructor_card_name(body) {
+                let name = name.to_ascii_lowercase();
+                if is_distinctive_card_hook_term(&name) {
+                    card_terms.push(name);
+                }
+            }
+        }
+        card_terms.sort();
+        card_terms.dedup();
+
+        let compiler_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("workspace root")
+            .join("crates/ironsmith-compiler/src/runtime_backend");
+        let mut stack = vec![compiler_src];
+        let mut hits = Vec::new();
+        while let Some(path) = stack.pop() {
+            for entry in std::fs::read_dir(&path).expect("read compiler source") {
+                let path = entry.expect("read compiler entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if !path.extension().is_some_and(|ext| ext == "rs") {
+                    continue;
+                }
+                if path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name == "tests.rs" || name.ends_with("_tests.rs"))
+                {
+                    continue;
+                }
+
+                let source = strip_cfg_test_source(
+                    &std::fs::read_to_string(&path).expect("read compiler file"),
+                )
+                .to_ascii_lowercase();
+                for (line_index, line) in source.lines().enumerate() {
+                    for term in &card_terms {
+                        if line.contains(term) {
+                            hits.push(format!(
+                                "{}:{} contains {:?}",
+                                path.display(),
+                                line_index + 1,
+                                term
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        assert!(
+            hits.is_empty(),
+            "handwritten builtin cards must not compile through card-specific compiler hooks:\n{}",
+            hits.join("\n")
+        );
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn handwritten_builtin_effect_sentences_route_through_subject_verb() {
+        let constructor_names = registered_handwritten_constructor_names(include_str!("mod.rs"));
+        let mut failures = Vec::new();
+
+        for constructor_name in constructor_names {
+            let (_registry, trace) = ironsmith_compiler::parse_trace::capture(|| {
+                let mut registry = CardRegistry::new();
+                register_builtin_handwritten_cards_if_for_runtime_tests(
+                    &mut registry,
+                    |candidate| candidate == constructor_name,
+                );
+                registry
+            });
+
+            let rendered = trace.render();
+            let effect_sentence_count = rendered
+                .lines()
+                .filter(|line| line.contains("effect sentence:"))
+                .filter(|line| !line.contains("effect sentence: \"\""))
+                .count();
+            if effect_sentence_count == 0 {
+                continue;
+            }
+
+            let subject_verb_count = rendered.matches("effect-route: subject-verb").count();
+            let non_subject_routes = rendered
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix("effect-route: "))
+                .filter(|route| !route.starts_with("subject-verb"))
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+
+            if subject_verb_count < effect_sentence_count || !non_subject_routes.is_empty() {
+                failures.push(format!(
+                    "{constructor_name}: effect_sentences={effect_sentence_count}, subject_verb={subject_verb_count}, non_subject_routes={non_subject_routes:?}"
+                ));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "all handwritten builtin effect sentences must route through Subject/Verb:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn migrated_semantic_islands_route_through_generic_subject_verb_programs() {
+        let cases = [
+            (
+                "Generic Extra Turn",
+                "Take an extra turn after this one.",
+                "subject-verb verb=Take subject=implicit recognizer=extra-turn-after-anchor",
+            ),
+            (
+                "Generic Damage Prevention",
+                "Prevent all damage that would be dealt this turn to target creature.",
+                "subject-verb verb=Prevent subject=implicit recognizer=damage-prevention",
+            ),
+            (
+                "Generic Monstrosity",
+                "Monstrosity 3.",
+                "subject-verb verb=Monstrosity subject=implicit recognizer=keyword-action",
+            ),
+            (
+                "Generic Earthbend",
+                "Earthbend 2.",
+                "subject-verb verb=Earthbend subject=implicit recognizer=keyword-action",
+            ),
+            (
+                "Generic Enchant",
+                "Enchant creature.",
+                "subject-verb verb=Enchant subject=implicit recognizer=aura-attachment",
+            ),
+            (
+                "Generic Permission",
+                "Until end of turn, you may play lands and cast spells from your graveyard.",
+                "subject-verb verb=Play subject=explicit recognizer=zone-permission",
+            ),
+            (
+                "Generic Replacement",
+                "If a card would be put into your graveyard from anywhere this turn, exile that card instead.",
+                "subject-verb verb=Exile subject=implicit recognizer=instead-replacement",
+            ),
+            (
+                "Generic Choice Complement",
+                "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
+                "subject-verb verb=Choose subject=explicit recognizer=choice-complement-sacrifice",
+            ),
+            (
+                "Generic Flashback Grant",
+                "Target card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.",
+                "subject-verb verb=Gain subject=explicit recognizer=parameterized-flashback-grant",
+            ),
+            (
+                "Generic Library Iteration",
+                "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+                "subject-verb verb=Exile subject=explicit recognizer=tainted-pact-procedure",
+            ),
+            (
+                "Generic Vote Procedure",
+                "Starting with you, each player votes for death or taxes. For each death vote, each opponent sacrifices a creature. For each taxes vote, each opponent discards a card.",
+                "subject-verb verb=Vote subject=explicit recognizer=vote-procedure",
+            ),
+            (
+                "Generic Meld",
+                "Exile them, then meld them into Chittering Host.",
+                "subject-verb verb=Meld subject=explicit recognizer=meld-result",
+            ),
+            (
+                "Generic Combat Choice Control",
+                "You choose which creatures attack this turn.",
+                "subject-verb verb=Choose subject=explicit recognizer=combat-choice-control",
+            ),
+            (
+                "Generic Damage Replacement Counters",
+                "If damage would be dealt to target creature this turn, prevent that damage and put that many +1/+1 counters on it.",
+                "subject-verb verb=Prevent subject=implicit recognizer=damage-replacement-counters",
+            ),
+            (
+                "Generic Looked Cards Counted Remainder",
+                "Look at the top three cards of your library, then put two of them into your hand and the rest into your graveyard.",
+                "subject-verb verb=Look subject=explicit recognizer=counted-looked-cards-remainder",
+            ),
+            (
+                "Generic Consult Reveal Until Hand",
+                "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
+                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-hand",
+            ),
+            (
+                "Generic Each Player Exile Top Cast",
+                "Exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
+                "subject-verb verb=Exile subject=explicit recognizer=each-player-exile-top-cast",
+            ),
+            (
+                "Generic Cant Restriction",
+                "Target creature can't block this turn.",
+                "subject-verb verb=Cant subject=explicit recognizer=restriction",
+            ),
+            (
+                "Generic Where X Binding",
+                "Draw X cards, where X is the number of creatures you control.",
+                "subject-verb verb=Bind subject=implicit recognizer=value-binding",
+            ),
+        ];
+
+        let mut failures = Vec::new();
+        for (name, text, expected_route) in cases {
+            let (result, trace) = ironsmith_compiler::parse_trace::capture(|| {
+                CardDefinitionBuilder::new(CardId::new(), name).parse_text(text)
+            });
+            if let Err(err) = result {
+                failures.push(format!("{name}: parse failed: {err:?}"));
+                continue;
+            }
+            let rendered = trace.render();
+            if !rendered.contains(expected_route) {
+                failures.push(format!(
+                    "{name}: missing expected generic route {expected_route:?}\n{rendered}"
+                ));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "migrated semantic islands must compile through generic Subject/Verb programs:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    fn registered_handwritten_constructor_names(module_source: &str) -> Vec<String> {
+        module_source
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                let name = line.strip_prefix("maybe_register!(")?.strip_suffix(");")?;
+                Some(name.to_string())
+            })
+            .collect()
+    }
+
+    fn handwritten_constructor_body<'a>(
+        sources: &'a [(String, String)],
+        constructor_name: &str,
+    ) -> Option<(&'a str, &'a str)> {
+        let needle = format!("pub fn {constructor_name}(");
+        for (path, source) in sources {
+            let Some(start) = source.find(&needle) else {
+                continue;
+            };
+            let signature_tail = &source[start..];
+            let Some(open_offset) = signature_tail.find('{') else {
+                continue;
+            };
+            let signature = &signature_tail[..open_offset];
+            if !signature.contains("-> CardDefinition") {
+                continue;
+            }
+
+            let body_start = start + open_offset;
+            let Some(body_end) = matching_brace_end(source, body_start) else {
+                continue;
+            };
+            return Some((&path[..], &source[body_start..=body_end]));
+        }
+        None
+    }
+
+    fn handwritten_constructor_card_name(body: &str) -> Option<String> {
+        let builder_start = body.find("CardDefinitionBuilder::new(")?;
+        let after_builder = &body[builder_start..];
+        let first_quote = after_builder.find('"')?;
+        let name_start = builder_start + first_quote + 1;
+        let after_name_start = &body[name_start..];
+        let name_end = name_start + after_name_start.find('"')?;
+        Some(body[name_start..name_end].to_string())
+    }
+
+    fn is_distinctive_card_hook_term(name: &str) -> bool {
+        name.contains(' ')
+            && name.len() >= 8
+            && !matches!(
+                name,
+                "conqueror's foothold" | "grimclimb pathway" | "basic forest" | "basic island"
+            )
+    }
+
+    fn strip_cfg_test_source(source: &str) -> String {
+        let mut stripped = String::new();
+        let mut lines = source.lines().peekable();
+        while let Some(line) = lines.next() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("#[cfg(test)]")
+                || trimmed.starts_with("#[cfg(all(test,")
+                || trimmed.starts_with("#[cfg(any(test,")
+            {
+                while let Some(next) = lines.peek() {
+                    if next.trim().is_empty() {
+                        stripped.push('\n');
+                        lines.next();
+                    } else {
+                        break;
+                    }
+                }
+                if let Some(next) = lines.peek()
+                    && next.trim_start().starts_with("mod tests")
+                {
+                    let test_line = lines.next().expect("peeked test module line");
+                    stripped.push_str(&" ".repeat(test_line.len()));
+                    stripped.push('\n');
+                    if let Some(open_offset) = test_line.find('{') {
+                        let mut depth = 1usize;
+                        for byte in test_line.as_bytes()[open_offset + 1..].iter() {
+                            match *byte {
+                                b'{' => depth += 1,
+                                b'}' => {
+                                    depth = depth.saturating_sub(1);
+                                }
+                                _ => {}
+                            }
+                        }
+                        while depth > 0 {
+                            let Some(test_body_line) = lines.next() else {
+                                break;
+                            };
+                            for byte in test_body_line.as_bytes() {
+                                match *byte {
+                                    b'{' => depth += 1,
+                                    b'}' => {
+                                        depth = depth.saturating_sub(1);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            stripped.push_str(&" ".repeat(test_body_line.len()));
+                            stripped.push('\n');
+                        }
+                    }
+                    continue;
+                }
+            }
+            stripped.push_str(line);
+            stripped.push('\n');
+        }
+        stripped
+    }
+
+    fn matching_brace_end(source: &str, open_brace: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        for (offset, byte) in source.as_bytes()[open_brace..].iter().enumerate() {
+            match *byte {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        return Some(open_brace + offset);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_card_definition_creation() {

@@ -25,7 +25,7 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     }
 
     let where_tokens = &tokens[where_token_idx..];
-    let where_value = parse_where_x_value_clause(where_tokens).ok_or_else(|| {
+    let where_value = parse_value_binding_clause(where_tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported where-x value in opponent life-drain clause (clause: '{}')",
             sentence_words.join(" ")
@@ -34,40 +34,22 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
 
     Ok(Some(vec![
         EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::LoseLife {
-                amount: where_value.clone(),
-                player: PlayerAst::Implicit,
-            }],
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::LoseLife {
+                    amount: where_value.clone(),
+                },
+            )],
         },
-        EffectAst::GainLife {
-            amount: where_value,
-            player: PlayerAst::You,
-        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::GainLife {
+                amount: where_value,
+            },
+        ),
     ]))
-}
-
-pub(crate) fn parse_sentence_vote_start(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_vote_start_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_for_each_vote_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_for_each_vote_clause(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_vote_extra(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_vote_extra_sentence(tokens).map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_after_turn(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_after_turn_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
 pub(crate) fn parse_sentence_same_name_target_fanout(
@@ -193,24 +175,15 @@ pub(crate) fn parse_sentence_exile_multi_target(
                 player: PlayerAst::You,
                 tag: tag.clone(),
             },
-            EffectAst::Exile {
-                target: TargetAst::Tagged(tag, None),
-                face_down: false,
-            },
+            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
         ]));
     }
 
     apply_exile_subject_hand_owner_context(&mut first_target, None);
     apply_exile_subject_hand_owner_context(&mut second_target, None);
     Ok(Some(vec![
-        EffectAst::Exile {
-            target: first_target,
-            face_down: false,
-        },
-        EffectAst::Exile {
-            target: second_target,
-            face_down: false,
-        },
+        EffectAst::subject_verb_exile(first_target, false),
+        EffectAst::subject_verb_exile(second_target, false),
     ]))
 }
 
@@ -327,7 +300,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
             || filter.subtypes.len() > 1
             || filter.any_of.len() > 1)
     {
-        return Ok(Some(vec![EffectAst::Destroy { target }]));
+        return Ok(Some(vec![EffectAst::subject_verb_destroy(target)]));
     }
 
     let segments = split_destroy_target_segments(&target_tokens);
@@ -362,7 +335,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
             }
             Err(err) => return Err(err),
         };
-        effects.push(EffectAst::Destroy { target });
+        effects.push(EffectAst::subject_verb_destroy(target));
     }
 
     if effects.len() < 2 {
@@ -476,7 +449,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
             player: PlayerAst::You,
             tag: tag.clone(),
         },
-        EffectAst::RevealTagged { tag },
+        EffectAst::subject_verb_reveal_tagged(tag),
     ]))
 }
 
@@ -568,7 +541,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
             player,
             tag: tag.clone(),
         },
-        EffectAst::RevealTagged { tag },
+        EffectAst::subject_verb_reveal_tagged(tag),
     ]))
 }
 
@@ -678,11 +651,11 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     let Some(main_damage) = effects.first() else {
         return Ok(None);
     };
-    let EffectAst::DealDamage {
-        amount: main_amount,
-        target: main_target,
-    } = main_damage
-    else {
+    let (main_amount, main_target) = if let EffectAst::SubjectVerb(subject_verb) = main_damage
+        && let SubjectVerbActionAst::DealDamage { amount, target } = &subject_verb.action
+    {
+        (amount, target)
+    } else {
         return Ok(None);
     };
     if !matches!(
@@ -738,18 +711,18 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         return Ok(None);
     }
 
-    let alternative = EffectAst::DealDamage {
-        amount: alt_amount,
-        target: TargetAst::Player(
+    let alternative = EffectAst::subject_verb_damage(
+        alt_amount,
+        TargetAst::Player(
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
             None,
         ),
-    };
+    );
     let unless = EffectAst::UnlessAction {
-        effects: vec![EffectAst::DealDamage {
-            amount: main_amount.clone(),
-            target: main_target.clone(),
-        }],
+        effects: vec![EffectAst::subject_verb_damage(
+            main_amount.clone(),
+            main_target.clone(),
+        )],
         alternative: vec![alternative],
         player: PlayerAst::ItsController,
     };
@@ -821,10 +794,10 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
 
     Ok(Some(vec![EffectAst::Conditional {
         predicate: PredicateAst::Not(Box::new(PredicateAst::EnchantedPermanentAttackedThisTurn)),
-        if_true: vec![EffectAst::DealDamage {
+        if_true: vec![EffectAst::subject_verb_damage(
             amount,
-            target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-        }],
+            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+        )],
         if_false: Vec::new(),
     }]))
 }
@@ -895,16 +868,19 @@ pub(crate) fn parse_sentence_unless_pays(
         let target = parse_target_phrase(&target_tokens)?;
         return Ok(Some(vec![EffectAst::ForEachOpponent {
             effects: vec![
-                EffectAst::TargetOnly { target },
+                EffectAst::subject_verb_target_only(target),
                 EffectAst::UnlessAction {
-                    effects: vec![EffectAst::ReturnToHand {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        random: false,
-                    }],
-                    alternative: vec![EffectAst::Draw {
-                        count: Value::Fixed(1),
-                        player: PlayerAst::You,
-                    }],
+                    effects: vec![EffectAst::subject_verb_return_to_hand(
+                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        false,
+                    )],
+                    alternative: vec![EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::Draw {
+                            count: Value::Fixed(1),
+                        },
+                    )],
                     player: PlayerAst::ItsController,
                 },
             ],

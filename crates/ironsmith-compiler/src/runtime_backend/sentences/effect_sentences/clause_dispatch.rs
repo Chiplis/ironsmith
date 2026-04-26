@@ -42,18 +42,18 @@ use super::for_each_helpers::{
     parse_has_base_power_toughness_clause,
 };
 use super::search_library::parse_restriction_duration;
-use super::sentence_primitives::{find_unquoted_token_word, try_build_unless};
+use super::subject_verb_primitives::{find_unquoted_token_word, try_build_unless};
 use super::verb_dispatch::parse_effect_with_verb;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
 use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
 use super::{
-    Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_sentence_primitives,
+    Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
 use crate::TagKey;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, PlayerAst, ReturnControllerAst,
-    SubjectAst, TargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
+    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -64,6 +64,218 @@ mod helpers;
 mod next_turn_cant;
 
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommonPlayerActionPattern {
+    Amount,
+    ObjectSelection,
+    ZoneMovement,
+    Choice,
+    Payment,
+    StateChange,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerAmountClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+fn rest_starts_all_abilities_shared_gain(tokens: &[OwnedLexToken]) -> bool {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    words.starts_with(&["all", "abilities", "and"])
+        && matches!(words.get(3).copied(), Some("gain" | "gains"))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerObjectClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerZoneClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerChoiceClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerPaymentClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerStateClause<'a> {
+    subject: SubjectAst,
+    verb: Verb,
+    action_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CommonPlayerActionClause<'a> {
+    Amount(PlayerAmountClause<'a>),
+    Object(PlayerObjectClause<'a>),
+    Zone(PlayerZoneClause<'a>),
+    Choice(PlayerChoiceClause<'a>),
+    Payment(PlayerPaymentClause<'a>),
+    State(PlayerStateClause<'a>),
+}
+
+impl<'a> PlayerAmountClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+impl<'a> PlayerObjectClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+impl<'a> PlayerZoneClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+impl<'a> PlayerChoiceClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+impl<'a> PlayerPaymentClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+impl<'a> PlayerStateClause<'a> {
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        parse_effect_with_verb(self.verb, Some(self.subject), self.action_tokens)
+    }
+}
+
+fn common_player_action_pattern_for(
+    verb: Verb,
+    action_tokens: &[OwnedLexToken],
+) -> Option<CommonPlayerActionPattern> {
+    let words = TokenWordView::new(action_tokens);
+    if matches!(verb, Verb::Pay) {
+        return Some(CommonPlayerActionPattern::Payment);
+    }
+    if matches!(verb, Verb::Scry | Verb::Surveil) {
+        return Some(CommonPlayerActionPattern::Choice);
+    }
+    if matches!(
+        verb,
+        Verb::Sacrifice | Verb::Discard | Verb::Reveal | Verb::Look
+    ) {
+        return Some(CommonPlayerActionPattern::ObjectSelection);
+    }
+    if matches!(
+        verb,
+        Verb::Shuffle | Verb::Move | Verb::Put | Verb::Return | Verb::Exile
+    ) || words.word_refs().iter().any(|word| {
+        matches!(
+            *word,
+            "library" | "graveyard" | "hand" | "battlefield" | "exile"
+        )
+    }) {
+        return Some(CommonPlayerActionPattern::ZoneMovement);
+    }
+    if matches!(
+        verb,
+        Verb::Draw | Verb::Lose | Verb::Gain | Verb::Mill | Verb::Get | Verb::Add
+    ) {
+        return Some(CommonPlayerActionPattern::Amount);
+    }
+    if matches!(verb, Verb::Skip | Verb::Take | Verb::Become) {
+        return Some(CommonPlayerActionPattern::StateChange);
+    }
+    None
+}
+
+impl<'a> CommonPlayerActionClause<'a> {
+    fn recognize(
+        subject: SubjectAst,
+        verb: Verb,
+        action_tokens: &'a [OwnedLexToken],
+    ) -> Option<Self> {
+        if !matches!(subject, SubjectAst::Player(_)) {
+            return None;
+        }
+        let pattern = common_player_action_pattern_for(verb, action_tokens)?;
+        Some(match pattern {
+            CommonPlayerActionPattern::Amount => Self::Amount(PlayerAmountClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+            CommonPlayerActionPattern::ObjectSelection => Self::Object(PlayerObjectClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+            CommonPlayerActionPattern::ZoneMovement => Self::Zone(PlayerZoneClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+            CommonPlayerActionPattern::Choice => Self::Choice(PlayerChoiceClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+            CommonPlayerActionPattern::Payment => Self::Payment(PlayerPaymentClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+            CommonPlayerActionPattern::StateChange => Self::State(PlayerStateClause {
+                subject,
+                verb,
+                action_tokens,
+            }),
+        })
+    }
+
+    #[cfg(test)]
+    fn pattern(&self) -> CommonPlayerActionPattern {
+        match self {
+            Self::Amount(_) => CommonPlayerActionPattern::Amount,
+            Self::Object(_) => CommonPlayerActionPattern::ObjectSelection,
+            Self::Zone(_) => CommonPlayerActionPattern::ZoneMovement,
+            Self::Choice(_) => CommonPlayerActionPattern::Choice,
+            Self::Payment(_) => CommonPlayerActionPattern::Payment,
+            Self::State(_) => CommonPlayerActionPattern::StateChange,
+        }
+    }
+
+    fn lower(self) -> Result<EffectAst, CardTextError> {
+        match self {
+            Self::Amount(clause) => clause.lower(),
+            Self::Object(clause) => clause.lower(),
+            Self::Zone(clause) => clause.lower(),
+            Self::Choice(clause) => clause.lower(),
+            Self::Payment(clause) => clause.lower(),
+            Self::State(clause) => clause.lower(),
+        }
+    }
+}
 
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
@@ -81,7 +293,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         {
             stripped.remove(0);
         }
-        let mut effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        let mut effects = parse_effect_chain_with_subject_verb_primitives(&stripped)?;
         for effect in &mut effects {
             bind_implicit_player_context(effect, player);
         }
@@ -90,21 +302,49 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if tokens.first().is_some_and(|token| token.is_word("may")) {
         let stripped = remove_first_word(tokens, "may");
-        let effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        let effects = parse_effect_chain_with_subject_verb_primitives(&stripped)?;
         return Ok(EffectAst::May { effects });
     }
 
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+    if clause_words.starts_with(&["all", "abilities", "and"])
+        && matches!(clause_words.get(3).copied(), Some("gain" | "gains"))
+        && let Some(gain_idx) = tokens
+            .iter()
+            .position(|token| token.is_word("gain") || token.is_word("gains"))
+    {
+        let ability_words = &clause_words[gain_idx + 1..];
+        let mut abilities = Vec::new();
+        if ability_words.iter().any(|word| *word == "hexproof") {
+            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof));
+        }
+        if ability_words.iter().any(|word| *word == "flying") {
+            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Flying));
+        }
+        if ability_words.iter().any(|word| *word == "haste") {
+            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
+        }
+        if !abilities.is_empty() {
+            return Ok(EffectAst::subject_verb_grant_abilities_to_target(
+                TargetAst::Tagged(
+                    TagKey::from(IT_TAG),
+                    Some(crate::cards::builders::TextSpan::synthetic()),
+                ),
+                abilities,
+                Until::Forever,
+            ));
+        }
+    }
     if clause_words.as_slice() == ["the", "ring", "tempts", "you"] {
-        return Ok(EffectAst::RingTemptsYou {
-            player: crate::cards::builders::PlayerAst::You,
-        });
+        return Ok(EffectAst::subject_verb_ring_tempts_you(
+            crate::cards::builders::PlayerAst::You,
+        ));
     }
     if clause_words.as_slice() == ["you", "take", "the", "initiative"] {
-        return Ok(EffectAst::TakeInitiative {
-            player: crate::cards::builders::PlayerAst::You,
-        });
+        return Ok(EffectAst::subject_verb_take_initiative(
+            crate::cards::builders::PlayerAst::You,
+        ));
     }
     if let Some(effect) = parse_take_extra_turn_sentence(tokens)? {
         return Ok(effect);
@@ -147,18 +387,21 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::ForEachObject {
             filter,
             effects: vec![EffectAst::UnlessAction {
-                effects: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-                    zone: crate::zone::Zone::Library,
-                    to_top: true,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
-                alternative: vec![EffectAst::LoseLife {
-                    amount: Value::Fixed(life_amount as i32),
-                    player: PlayerAst::You,
-                }],
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                    crate::zone::Zone::Library,
+                    true,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+                alternative: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::LoseLife {
+                        amount: Value::Fixed(life_amount as i32),
+                    },
+                )],
                 player: PlayerAst::You,
             }],
         });
@@ -181,16 +424,19 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             let target = parse_target_phrase(&target_tokens)?;
             return Ok(EffectAst::ForEachOpponent {
                 effects: vec![
-                    EffectAst::TargetOnly { target },
+                    EffectAst::subject_verb_target_only(target),
                     EffectAst::UnlessAction {
-                        effects: vec![EffectAst::ReturnToHand {
-                            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                            random: false,
-                        }],
-                        alternative: vec![EffectAst::Draw {
-                            count: Value::Fixed(1),
-                            player: PlayerAst::You,
-                        }],
+                        effects: vec![EffectAst::subject_verb_return_to_hand(
+                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            false,
+                        )],
+                        alternative: vec![EffectAst::subject_verb(
+                            SubjectVerbRoleAst::AffectedPlayer,
+                            PlayerAst::You,
+                            SubjectVerbActionAst::Draw {
+                                count: Value::Fixed(1),
+                            },
+                        )],
                         player: PlayerAst::ItsController,
                     },
                 ],
@@ -230,47 +476,47 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         && consumed == choice_words.len()
         && excluded_color.is_none()
     {
-        return Ok(EffectAst::ChooseColor {
-            player: crate::cards::builders::PlayerAst::Implicit,
-        });
+        return Ok(EffectAst::subject_verb_choose_color(
+            crate::cards::builders::PlayerAst::Implicit,
+        ));
     }
 
     if matches!(choice_words, ["choose", "odd", "or", "even"]) {
-        return Ok(EffectAst::ChooseNamedOption {
-            player: crate::cards::builders::PlayerAst::Implicit,
-            options: vec!["odd".to_string(), "even".to_string()],
-        });
+        return Ok(EffectAst::subject_verb_choose_named_option(
+            crate::cards::builders::PlayerAst::Implicit,
+            vec!["odd".to_string(), "even".to_string()],
+        ));
     }
 
     if let Some((consumed, excluded_subtypes)) =
         parse_choose_creature_type_phrase_words(choice_words)?
         && consumed == choice_words.len()
     {
-        return Ok(EffectAst::ChooseCreatureType {
-            player: crate::cards::builders::PlayerAst::Implicit,
+        return Ok(EffectAst::subject_verb_choose_creature_type(
+            crate::cards::builders::PlayerAst::Implicit,
             excluded_subtypes,
-        });
+        ));
     }
 
     if let Some((consumed, options)) = parse_choose_card_type_phrase_words(choice_words)?
         && consumed == choice_words.len()
     {
-        return Ok(EffectAst::ChooseCardType {
-            player: crate::cards::builders::PlayerAst::Implicit,
+        return Ok(EffectAst::subject_verb_choose_card_type(
+            crate::cards::builders::PlayerAst::Implicit,
             options,
-        });
+        ));
     }
 
     if let Some(consumed) = parse_choose_player_phrase_words(choice_words)
         && consumed == choice_words.len()
     {
-        return Ok(EffectAst::ChoosePlayer {
-            chooser: crate::cards::builders::PlayerAst::Implicit,
-            filter: PlayerFilter::Any,
-            tag: TagKey::from(IT_TAG),
-            random: false,
-            exclude_previous_choices: 0,
-        });
+        return Ok(EffectAst::subject_verb_choose_player(
+            crate::cards::builders::PlayerAst::Implicit,
+            PlayerFilter::Any,
+            TagKey::from(IT_TAG),
+            false,
+            0,
+        ));
     }
 
     if matches!(clause_words.first().copied(), Some("choose" | "chooses"))
@@ -285,7 +531,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             _ => false,
         };
         if is_player_target {
-            return Ok(EffectAst::TargetOnly { target });
+            return Ok(EffectAst::subject_verb_target_only(target));
         }
     }
 
@@ -298,20 +544,20 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && find_verb(&target_tokens).is_none()
         {
             let target = parse_target_phrase(&target_tokens)?;
-            return Ok(EffectAst::TargetOnly { target });
+            return Ok(EffectAst::subject_verb_target_only(target));
         }
     }
 
     if let Some((chooser, choose_filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(tokens)?
     {
-        return Ok(EffectAst::ChoosePlayer {
+        return Ok(EffectAst::subject_verb_choose_player(
             chooser,
-            filter: choose_filter,
-            tag: TagKey::from(IT_TAG),
+            choose_filter,
+            TagKey::from(IT_TAG),
             random,
             exclude_previous_choices,
-        });
+        ));
     }
 
     if let Some((chooser, choose_filter, choose_count)) =
@@ -377,10 +623,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             parse_target_phrase(&subject_tokens)?
         };
 
-        return Ok(EffectAst::PreventAllCombatDamageFromSource {
-            duration: Until::EndOfTurn,
-            source,
-        });
+        return Ok(
+            EffectAst::subject_verb_prevent_all_combat_damage_from_source(source, Until::EndOfTurn),
+        );
     }
 
     if tokens.first().is_some_and(|token| token.is_word("target")) && find_verb(tokens).is_none() {
@@ -398,7 +643,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             )));
         }
         let target = parse_target_phrase(tokens)?;
-        return Ok(EffectAst::TargetOnly { target });
+        return Ok(EffectAst::subject_verb_target_only(target));
     }
 
     if let Some(effect) = parse_next_turn_cant_clause(tokens)? {
@@ -411,11 +656,15 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         && let [parsed] = restrictions.as_slice()
         && parsed.target.is_none()
     {
-        return Ok(EffectAst::Cant {
-            restriction: parsed.restriction.clone(),
+        return Ok(EffectAst::subject_verb_cant(
+            parsed.restriction.clone(),
             duration,
-            condition: None,
-        });
+            None,
+        ));
+    }
+
+    if let Some(effect) = parse_hexproof_targeting_override_clause(tokens)? {
+        return Ok(effect);
     }
 
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
@@ -464,6 +713,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ))
     })?;
     parser_trace_stack("parse_effect_clause:verb-found", tokens);
+    crate::parse_trace::event(format!(
+        "effect-route: subject-verb verb={verb:?} subject={}",
+        if verb_idx > 0 { "explicit" } else { "implicit" }
+    ));
 
     if matches!(verb, Verb::Counter)
         && verb_idx > 0
@@ -531,13 +784,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                             )));
                         }
                     };
-                    return Ok(EffectAst::PumpForEach {
+                    return Ok(EffectAst::subject_verb_pump_for_each(
                         power_per,
                         toughness_per,
                         target,
                         count,
                         duration,
-                    });
+                    ));
                 }
 
                 let (power, toughness, duration, condition) =
@@ -555,16 +808,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     || normalized_subject_words.as_slice() == ["they"]
                     || normalized_subject_words.as_slice() == ["them"]
                 {
-                    return Ok(EffectAst::Pump {
-                        power: power.clone(),
-                        toughness: toughness.clone(),
-                        target: TargetAst::Tagged(
-                            TagKey::from(IT_TAG),
-                            span_from_tokens(subject_tokens),
-                        ),
+                    return Ok(EffectAst::subject_verb_pump(
+                        power.clone(),
+                        toughness.clone(),
+                        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens)),
                         duration,
                         condition,
-                    });
+                    ));
                 }
 
                 let is_demonstrative_subject = normalized_subject_words
@@ -572,13 +822,57 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     .is_some_and(|word| *word == "that" || *word == "those");
                 if is_demonstrative_subject {
                     let target = parse_target_phrase(subject_tokens)?;
-                    return Ok(EffectAst::Pump {
-                        power: power.clone(),
-                        toughness: toughness.clone(),
+                    return Ok(EffectAst::subject_verb_pump(
+                        power.clone(),
+                        toughness.clone(),
                         target,
                         duration,
                         condition,
+                    ));
+                }
+
+                let subject_has_embedded_target_controller =
+                    subject_words.windows(3).any(|window| {
+                        matches!(
+                            window,
+                            ["target", "player", "controls"]
+                                | ["target", "players", "control"]
+                                | ["target", "opponent", "controls"]
+                                | ["target", "opponents", "control"]
+                        )
                     });
+                if subject_has_embedded_target_controller
+                    && let Some(target_word_idx) = subject_words.windows(3).position(|window| {
+                        matches!(
+                            window,
+                            ["target", "player", "controls"]
+                                | ["target", "players", "control"]
+                                | ["target", "opponent", "controls"]
+                                | ["target", "opponents", "control"]
+                        )
+                    })
+                    && let Some(target_token_idx) =
+                        find_token_index(subject_tokens, |token| token.is_word("target"))
+                    && let Ok(mut filter) = parse_object_filter(
+                        &trim_commas(&subject_tokens[..target_token_idx]),
+                        false,
+                    )
+                    && filter != ObjectFilter::default()
+                {
+                    filter.controller = if matches!(
+                        subject_words.get(target_word_idx + 1).copied(),
+                        Some("opponent" | "opponents")
+                    ) {
+                        Some(PlayerFilter::target_opponent())
+                    } else {
+                        Some(PlayerFilter::target_player())
+                    };
+                    return Ok(EffectAst::subject_verb_pump_all(
+                        filter,
+                        power.clone(),
+                        toughness.clone(),
+                        duration,
+                    ));
                 }
 
                 if word_slice_contains(&subject_words, "target") {
@@ -591,13 +885,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                         subject_tokens
                     };
                     let target = parse_target_phrase(target_tokens)?;
-                    return Ok(EffectAst::Pump {
-                        power: power.clone(),
-                        toughness: toughness.clone(),
+                    return Ok(EffectAst::subject_verb_pump(
+                        power.clone(),
+                        toughness.clone(),
                         target,
                         duration,
                         condition,
-                    });
+                    ));
                 }
 
                 let has_counter_state_pronoun = has_counter_state_pronoun(&subject_words);
@@ -610,12 +904,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     && let Ok(filter) = parse_object_filter(subject_tokens, false)
                     && filter != ObjectFilter::default()
                 {
-                    return Ok(EffectAst::PumpAll {
+                    return Ok(EffectAst::subject_verb_pump_all(
                         filter,
-                        power: power.clone(),
-                        toughness: toughness.clone(),
+                        power.clone(),
+                        toughness.clone(),
                         duration,
-                    });
+                    ));
                 }
             }
         }
@@ -645,10 +939,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         let has_colorless = word_slice_contains(&rest_words, "colorless");
         if has_protection && has_choice && (has_color || has_colorless) {
             let target = parse_target_phrase(subject_tokens)?;
-            return Ok(EffectAst::GrantProtectionChoice {
+            return Ok(EffectAst::subject_verb_grant_protection_choice(
                 target,
-                allow_colorless: has_colorless,
-            });
+                has_colorless,
+            ));
         }
     }
     if matches!(verb, Verb::Gain)
@@ -689,12 +983,28 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
-            return Ok(EffectAst::GrantAbilitiesToTarget {
-                target,
-                abilities,
-                duration,
-            });
+            return Ok(EffectAst::subject_verb_grant_abilities_to_target(
+                target, abilities, duration,
+            ));
         }
+    }
+    if matches!(verb, Verb::Lose) && rest_starts_all_abilities_shared_gain(&tokens[verb_idx + 1..])
+    {
+        let target = if subject_words.as_slice() == ["this"] {
+            TargetAst::Source(span_from_tokens(subject_tokens))
+        } else if subject_words.as_slice() == ["it"]
+            || subject_words.as_slice() == ["they"]
+            || subject_words.as_slice() == ["them"]
+        {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
+        } else {
+            parse_target_phrase(subject_tokens)?
+        };
+        return Ok(EffectAst::subject_verb_remove_abilities_from_target(
+            target,
+            Vec::new(),
+            Until::EndOfTurn,
+        ));
     }
     if matches!(verb, Verb::Lose)
         && let Some(effect) = parse_simple_lose_ability_clause(tokens)?
@@ -707,7 +1017,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         parse_become_clause(subject_tokens, rest)?
     } else {
         let subject = parse_subject(subject_tokens);
-        parse_effect_with_verb(verb, Some(subject), rest)?
+        if let Some(clause) = CommonPlayerActionClause::recognize(subject, verb, rest) {
+            clause.lower()?
+        } else {
+            parse_effect_with_verb(verb, Some(subject), rest)?
+        }
     };
     if let Some(filter) = for_each_subject_filter {
         effect = EffectAst::ForEachObject {
@@ -718,8 +1032,161 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     Ok(effect)
 }
 
+fn parse_hexproof_targeting_override_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let (duration, clause_tokens) =
+        parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()));
+    let clause_words = ClauseDispatchCompatWords::new(&clause_tokens).to_word_refs();
+    if !word_slice_contains(&clause_words, "hexproof")
+        || find_word_sequence_index(&clause_words, &["can", "be", "the", "targets"]).is_none()
+        || find_word_sequence_index(
+            &clause_words,
+            &["as", "though", "they", "didnt", "have", "hexproof"],
+        )
+        .is_none()
+    {
+        return Ok(None);
+    }
+
+    let Some(creatures_idx) = find_word_index_by(&clause_words, |word| word == "creatures") else {
+        return Ok(None);
+    };
+    let Some(can_idx) = find_word_index_by(&clause_words[creatures_idx..], |word| word == "can")
+        .map(|idx| creatures_idx + idx)
+    else {
+        return Ok(None);
+    };
+    let Some(creatures_token_idx) = token_index_for_word_index(&clause_tokens, creatures_idx)
+    else {
+        return Ok(None);
+    };
+    let Some(can_token_idx) = token_index_for_word_index(&clause_tokens, can_idx) else {
+        return Ok(None);
+    };
+
+    let filter_tokens = trim_commas(&clause_tokens[creatures_token_idx..can_token_idx]);
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    Ok(Some(EffectAst::subject_verb_remove_abilities_all(
+        filter,
+        vec![GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof)],
+        duration,
+    )))
+}
+
 pub(crate) fn parse_effect_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
     parse_effect_clause(tokens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    fn lex_tail(text: &str) -> Vec<OwnedLexToken> {
+        lex_line(text, 0).expect("lex test tail")
+    }
+
+    #[test]
+    fn common_player_action_clause_classifies_core_shapes() {
+        let subject = SubjectAst::Player(PlayerAst::TargetOpponent);
+        for (verb, tail, expected) in [
+            (
+                Verb::Draw,
+                "X cards where X is their devotion to black",
+                CommonPlayerActionPattern::Amount,
+            ),
+            (
+                Verb::Sacrifice,
+                "a creature they control",
+                CommonPlayerActionPattern::ObjectSelection,
+            ),
+            (
+                Verb::Shuffle,
+                "their graveyard into their library",
+                CommonPlayerActionPattern::ZoneMovement,
+            ),
+            (Verb::Pay, "{2}", CommonPlayerActionPattern::Payment),
+            (Verb::Scry, "X", CommonPlayerActionPattern::Choice),
+        ] {
+            let tail = lex_tail(tail);
+            let clause = CommonPlayerActionClause::recognize(subject.clone(), verb, &tail)
+                .expect("common player clause should be recognized");
+            assert_eq!(clause.pattern(), expected, "{verb:?} {tail:?}");
+        }
+    }
+
+    #[test]
+    fn common_player_action_clause_recognizes_typed_clause_variants() {
+        let subject = SubjectAst::Player(PlayerAst::TargetOpponent);
+        for (verb, tail, assert_variant) in [
+            (
+                Verb::Draw,
+                "X cards where X is their devotion to black",
+                matches_amount as fn(CommonPlayerActionClause<'_>),
+            ),
+            (
+                Verb::Sacrifice,
+                "a creature they control",
+                matches_object as fn(CommonPlayerActionClause<'_>),
+            ),
+            (
+                Verb::Shuffle,
+                "their graveyard into their library",
+                matches_zone as fn(CommonPlayerActionClause<'_>),
+            ),
+            (
+                Verb::Scry,
+                "X",
+                matches_choice as fn(CommonPlayerActionClause<'_>),
+            ),
+            (
+                Verb::Pay,
+                "{2}",
+                matches_payment as fn(CommonPlayerActionClause<'_>),
+            ),
+        ] {
+            let tail = lex_tail(tail);
+            let clause = CommonPlayerActionClause::recognize(subject.clone(), verb, &tail)
+                .expect("common player clause should be recognized");
+            assert_variant(clause);
+        }
+    }
+
+    fn matches_amount(clause: CommonPlayerActionClause<'_>) {
+        assert!(matches!(clause, CommonPlayerActionClause::Amount(_)));
+    }
+
+    fn matches_object(clause: CommonPlayerActionClause<'_>) {
+        assert!(matches!(clause, CommonPlayerActionClause::Object(_)));
+    }
+
+    fn matches_zone(clause: CommonPlayerActionClause<'_>) {
+        assert!(matches!(clause, CommonPlayerActionClause::Zone(_)));
+    }
+
+    fn matches_choice(clause: CommonPlayerActionClause<'_>) {
+        assert!(matches!(clause, CommonPlayerActionClause::Choice(_)));
+    }
+
+    fn matches_payment(clause: CommonPlayerActionClause<'_>) {
+        assert!(matches!(clause, CommonPlayerActionClause::Payment(_)));
+    }
+
+    #[test]
+    fn common_player_action_clause_delegates_to_effect_parser() {
+        for text in [
+            "Target opponent draws a card",
+            "Target opponent sacrifices a creature they control",
+            "Target opponent shuffles their library",
+            "Target opponent pays {2}",
+            "Each opponent scries 1",
+        ] {
+            let tokens = lex_line(text, 0).expect("lex clause");
+            parse_effect_clause(&tokens)
+                .unwrap_or_else(|err| panic!("common player clause should parse: {text}: {err:?}"));
+        }
+    }
 }

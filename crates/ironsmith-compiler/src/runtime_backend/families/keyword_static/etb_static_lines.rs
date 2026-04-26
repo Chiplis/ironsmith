@@ -401,7 +401,7 @@ pub(crate) fn parse_enters_with_counters_line(
                 ))
             })?;
         } else {
-            count = parse_where_x_value_clause(&tail).ok_or_else(|| {
+            count = parse_value_binding_clause(&tail).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported trailing self ETB counter clause (clause: '{}')",
                     full_words.join(" ")
@@ -690,7 +690,7 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
     where_tokens.push(OwnedLexToken::word("is".to_string(), TextSpan::synthetic()));
     where_tokens.extend_from_slice(&trimmed[2..]);
 
-    parse_where_x_value_clause(&where_tokens)
+    parse_value_binding_clause(&where_tokens)
         .or_else(|| parse_equal_to_greatest_cards_drawn_this_turn_value(&trimmed))
         .or_else(|| parse_add_mana_equal_amount_value(&trimmed))
         .or_else(|| parse_equal_to_aggregate_filter_value(&trimmed))
@@ -718,7 +718,7 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
     None
 }
 
-pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
     if !etb_word_slice_starts_with(&words, &["where", "x", "is"]) {
@@ -878,10 +878,10 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
     None
 }
 
-pub(crate) fn parse_where_x_value_clause_lexed(
+pub(crate) fn parse_value_binding_clause_lexed(
     tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) -> Option<Value> {
-    parse_where_x_value_clause(tokens)
+    parse_value_binding_clause(tokens)
 }
 
 pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -1534,6 +1534,15 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
             Value::CreaturesDiedThisTurn,
             multiplier,
         ));
+    }
+    if matches!(
+        filter_words.as_slice(),
+        ["creature", "those", "players", "control"]
+            | ["creatures", "those", "players", "control"]
+    ) {
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::target_player());
+        return Some(scale_where_x_number_value(Value::Count(filter), multiplier));
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))

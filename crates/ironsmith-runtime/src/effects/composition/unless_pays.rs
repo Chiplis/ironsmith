@@ -127,12 +127,18 @@ impl UnlessPaysEffect {
         Self::new_total_cost(
             effects,
             player,
-            legacy_unless_payment_cost(mana, life, additional_generic, mana_multiplier, x_value),
+            build_unless_payment_total_cost(
+                mana,
+                life,
+                additional_generic,
+                mana_multiplier,
+                x_value,
+            ),
         )
     }
 }
 
-fn legacy_unless_payment_cost(
+fn build_unless_payment_total_cost(
     mana: Vec<ManaSymbol>,
     life: Option<Value>,
     additional_generic: Option<Value>,
@@ -161,7 +167,7 @@ fn legacy_unless_payment_cost(
     if let Some(life) = life {
         let effect = Effect::lose_life_player(life, PlayerFilter::You);
         components.push(Cost::try_effect(effect).unwrap_or_else(|detail| {
-            panic!("legacy unless-pays life cost is not cost-executable: {detail}")
+            panic!("unless-pays life cost is not cost-executable: {detail}")
         }));
     }
     crate::cost::TotalCost::from_costs(components)

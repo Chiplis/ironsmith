@@ -28,24 +28,24 @@ pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["stand", "and", "fight"],
     &["it", "doesnt", "untap", "during"],
 ];
-pub(crate) type SentencePrimitiveParser =
+pub(crate) type SubjectVerbPrimitiveParser =
     fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
-pub(super) type SentencePrimitiveNormalizedWords<'a> = TokenWordView<'a>;
+pub(super) type SubjectVerbPrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SentencePrimitiveStage {
+pub(crate) enum SubjectVerbPrimitiveStage {
     PreDiagnostic,
     PostDiagnostic,
 }
 
-pub(crate) struct SentencePrimitive {
+pub(crate) struct SubjectVerbPrimitive {
     pub(crate) id: &'static str,
     pub(crate) priority: u16,
-    pub(crate) stage: SentencePrimitiveStage,
+    pub(crate) stage: SubjectVerbPrimitiveStage,
     pub(crate) head_hints: &'static [LexRuleHeadHint],
     pub(crate) shape_mask: u32,
-    pub(crate) parser: SentencePrimitiveParser,
+    pub(crate) parser: SubjectVerbPrimitiveParser,
 }
 
 pub(super) fn find_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
@@ -91,18 +91,82 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         .join(", ")
 }
 
+fn primitive_subject_verb_route(id: &str) -> String {
+    let verb = if id.contains("choose") {
+        "Choose"
+    } else if id.contains("search") {
+        "Search"
+    } else if id.contains("reveal") {
+        "Reveal"
+    } else if id.contains("exile") {
+        "Exile"
+    } else if id.contains("destroy") {
+        "Destroy"
+    } else if id.contains("return") {
+        "Return"
+    } else if id.contains("sacrifice") {
+        "Sacrifice"
+    } else if id.contains("counter") || id.contains("sticker") {
+        "Put"
+    } else if id.contains("draw") {
+        "Draw"
+    } else if id.contains("damage") {
+        "Deal"
+    } else if id.contains("gain") {
+        "Gain"
+    } else if id.contains("shuffle") {
+        "Shuffle"
+    } else if id.contains("copy") {
+        "Copy"
+    } else if id.contains("transform") {
+        "Transform"
+    } else if id.contains("cant") {
+        "Cant"
+    } else if id.contains("become") || id.contains("type") {
+        "Become"
+    } else if id.contains("distribute") {
+        "Distribute"
+    } else if id.contains("fight") {
+        "Fight"
+    } else if id.contains("unless-pays") {
+        "Pay"
+    } else {
+        "Do"
+    };
+    let subject = if id.starts_with("each-player")
+        || id.starts_with("for-each-player")
+        || id.starts_with("each-opponent")
+    {
+        "iterated"
+    } else if id.starts_with("you") {
+        "explicit"
+    } else if id.starts_with("target") {
+        "explicit"
+    } else {
+        "implicit"
+    };
+    format!("subject-verb verb={verb} subject={subject} recognizer={id}")
+}
+
 fn run_sentence_primitive(
-    primitive: &SentencePrimitive,
+    primitive: &SubjectVerbPrimitive,
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     match (primitive.parser)(tokens) {
         Ok(Some(effects)) => {
-            let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.id);
+            let stage = format!(
+                "parse_effect_sentence:subject-verb-primitive-hit:{}",
+                primitive.id
+            );
             parser_trace(&stage, tokens);
             parse_trace::event(format!(
-                "effect primitive: {} -> {}",
+                "effect subject/verb primitive: {} -> {}",
                 primitive.id,
                 summarize_effects(&effects)
+            ));
+            parse_trace::event(format!(
+                "effect-route: {}",
+                primitive_subject_verb_route(primitive.id)
             ));
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(format!(
@@ -117,13 +181,13 @@ fn run_sentence_primitive(
         Err(err) => {
             if parser_trace_enabled() {
                 eprintln!(
-                    "[parser-flow] stage=parse_effect_sentence:primitive-error primitive={} clause='{}' error={err:?}",
+                    "[parser-flow] stage=parse_effect_sentence:subject-verb-primitive-error primitive={} clause='{}' error={err:?}",
                     primitive.id,
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
                 );
             }
             parse_trace::event(format!(
-                "effect primitive: {} errored: {err:?}",
+                "effect subject/verb primitive: {} errored: {err:?}",
                 primitive.id
             ));
             Err(err)
@@ -148,7 +212,7 @@ fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 fn run_sentence_primitive_lexed(
-    primitive: &SentencePrimitive,
+    primitive: &SubjectVerbPrimitive,
     tokens: &[OwnedLexToken],
     lowered: &OnceCell<Vec<OwnedLexToken>>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -156,9 +220,9 @@ fn run_sentence_primitive_lexed(
     run_sentence_primitive(primitive, lowered_tokens)
 }
 
-pub(crate) fn run_sentence_primitives_lexed(
+pub(crate) fn run_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
-    primitives: &'static [SentencePrimitive],
+    primitives: &'static [SubjectVerbPrimitive],
     index: &LexRuleHintIndex,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (head, second) = lexed_head_words(tokens).unwrap_or(("", None));
@@ -190,59 +254,59 @@ pub(crate) fn run_sentence_primitives_lexed(
     Ok(None)
 }
 
-pub(super) fn parse_preconditional_sentence_primitives_rule_lexed(
+pub(super) fn parse_preconditional_subject_verb_primitives_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     debug_assert!(
-        PRE_CONDITIONAL_SENTENCE_PRIMITIVES
+        PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
             .iter()
-            .all(|primitive| primitive.stage == SentencePrimitiveStage::PreDiagnostic)
+            .all(|primitive| primitive.stage == SubjectVerbPrimitiveStage::PreDiagnostic)
     );
-    run_sentence_primitives_lexed(
+    run_subject_verb_primitives_lexed(
         view.tokens,
-        PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
-        &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+        &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )
 }
 
-pub(super) fn parse_postconditional_sentence_primitives_rule_lexed(
+pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     debug_assert!(
-        POST_CONDITIONAL_SENTENCE_PRIMITIVES
+        POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES
             .iter()
-            .all(|primitive| primitive.stage == SentencePrimitiveStage::PostDiagnostic)
+            .all(|primitive| primitive.stage == SubjectVerbPrimitiveStage::PostDiagnostic)
     );
-    run_sentence_primitives_lexed(
+    run_subject_verb_primitives_lexed(
         view.tokens,
-        POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-        &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+        &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )
 }
 
-pub(crate) const PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
-    [LexRuleDef {
-        id: "preconditional-primitives",
-        priority: 135,
-        heads: &[],
-        shape_mask: 0,
-        run: parse_preconditional_sentence_primitives_rule_lexed,
-    }];
+pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
+    1] = [LexRuleDef {
+    id: "preconditional-subject-verb-primitives",
+    priority: 135,
+    heads: &[],
+    shape_mask: 0,
+    run: parse_preconditional_subject_verb_primitives_rule_lexed,
+}];
 
-pub(crate) const PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
-    [LexRuleDef {
-        id: "postconditional-primitives",
-        priority: 160,
-        heads: &[],
-        shape_mask: 0,
-        run: parse_postconditional_sentence_primitives_rule_lexed,
-    }];
+pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
+    1] = [LexRuleDef {
+    id: "postconditional-subject-verb-primitives",
+    priority: 160,
+    heads: &[],
+    shape_mask: 0,
+    run: parse_postconditional_subject_verb_primitives_rule_lexed,
+}];
 
-pub(crate) const PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
-    LexRuleIndex::new(&PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED);
+pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+    LexRuleIndex::new(&SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED);
 
-pub(crate) const PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
-    LexRuleIndex::new(&PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED);
+pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+    LexRuleIndex::new(&SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED);
 
 pub(crate) fn parse_sentence_return_with_counters_on_it_lexed(
     tokens: &[OwnedLexToken],
@@ -305,14 +369,18 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
             )));
         }
         return Ok(Some(vec![
-            EffectAst::Draw {
-                count: count.clone(),
-                player: PlayerAst::You,
-            },
-            EffectAst::Draw {
-                count,
-                player: target_player,
-            },
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: count.clone(),
+                },
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                target_player,
+                SubjectVerbActionAst::Draw { count },
+            ),
         ]));
     }
     let synthetic_tokens = remainder_words
@@ -345,14 +413,18 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     }
 
     Ok(Some(vec![
-        EffectAst::Draw {
-            count: count.clone(),
-            player: PlayerAst::You,
-        },
-        EffectAst::Draw {
-            count,
-            player: target_player,
-        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: count.clone(),
+            },
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            target_player,
+            SubjectVerbActionAst::Draw { count },
+        ),
     ]))
 }
 
@@ -380,14 +452,24 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                EffectAst::Draw {
-                    count: Value::EventValue(EventValueSpec::Amount),
-                    player: PlayerAst::You,
-                },
-                EffectAst::Draw {
-                    count: Value::EventValue(EventValueSpec::Amount),
-                    player: PlayerAst::That,
-                },
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::You,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw {
+                        count: Value::EventValue(EventValueSpec::Amount),
+                    },
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: SubjectVerbSubjectAst {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::Draw {
+                        count: Value::EventValue(EventValueSpec::Amount),
+                    },
+                }),
             ]
         ));
     }
@@ -431,13 +513,13 @@ pub(crate) fn parse_sentence_choose_player_to_effect(
         bind_implicit_player_context(effect, PlayerAst::That);
     }
 
-    let mut effects = vec![EffectAst::ChoosePlayer {
+    let mut effects = vec![EffectAst::subject_verb_choose_player(
         chooser,
         filter,
-        tag: TagKey::from(IT_TAG),
+        TagKey::from(IT_TAG),
         random,
         exclude_previous_choices,
-    }];
+    )];
     effects.extend(tail_effects);
     Ok(Some(effects))
 }
@@ -513,9 +595,7 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
             player: PlayerAst::That,
             tag: chosen_tag.clone(),
         },
-        EffectAst::ReturnAllToHand {
-            filter: ObjectFilter::tagged(chosen_tag),
-        },
+        EffectAst::subject_verb_return_all_to_hand(ObjectFilter::tagged(chosen_tag)),
     ]))
 }
 
@@ -563,18 +643,18 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
         ))
     })?;
     Ok(Some(vec![
-        EffectAst::ChooseSpellCastHistory {
-            chooser: PlayerAst::You,
-            cast_by: PlayerAst::That,
-            filter: ObjectFilter::default().with_type(card_type),
-            tag: TagKey::from(IT_TAG),
-        },
-        EffectAst::DealDamage {
-            amount: Value::HalfRoundedDown(Box::new(Value::DamageDealtThisTurnByTaggedSpellCast(
+        EffectAst::subject_verb_choose_spell_cast_history(
+            PlayerAst::You,
+            PlayerAst::That,
+            ObjectFilter::default().with_type(card_type),
+            TagKey::from(IT_TAG),
+        ),
+        EffectAst::subject_verb_damage(
+            Value::HalfRoundedDown(Box::new(Value::DamageDealtThisTurnByTaggedSpellCast(
                 TagKey::from(IT_TAG),
             ))),
-            target: TargetAst::Player(PlayerFilter::target_player(), None),
-        },
+            TargetAst::Player(PlayerFilter::target_player(), None),
+        ),
     ]))
 }
 
@@ -610,9 +690,11 @@ pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
             "way",
         ] => (
             PlayerAst::That,
-            vec![EffectAst::ShuffleLibrary {
-                player: PlayerAst::That,
-            }],
+            vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::That,
+                SubjectVerbActionAst::ShuffleLibrary,
+            )],
         ),
         [
             "that",
@@ -690,11 +772,16 @@ pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
         _ => return Ok(None),
     };
 
-    effects.push(EffectAst::DrawForEachTaggedMatching {
+    let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+    if matches!(player, PlayerAst::That) {
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+    }
+
+    effects.push(EffectAst::subject_verb_draw_for_each_tagged_matching(
         player,
-        tag: TagKey::from(IT_TAG),
-        filter: ObjectFilter::default().in_zone(Zone::Hand),
-    });
+        TagKey::from(IT_TAG),
+        filter,
+    ));
     Ok(Some(effects))
 }
 
@@ -797,22 +884,32 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     }
 
     Ok(Some(vec![
-        EffectAst::Draw {
-            count: draw_count.clone(),
-            player: PlayerAst::You,
-        },
-        EffectAst::Draw {
-            count: draw_count,
-            player: PlayerAst::Attacking,
-        },
-        EffectAst::LoseLife {
-            amount: lose_amount.clone(),
-            player: PlayerAst::You,
-        },
-        EffectAst::LoseLife {
-            amount: lose_amount,
-            player: PlayerAst::Attacking,
-        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: draw_count.clone(),
+            },
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::Attacking,
+            SubjectVerbActionAst::Draw { count: draw_count },
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::LoseLife {
+                amount: lose_amount.clone(),
+            },
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::Attacking,
+            SubjectVerbActionAst::LoseLife {
+                amount: lose_amount,
+            },
+        ),
     ]))
 }
 
@@ -863,12 +960,12 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
 
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
         player: PlayerFilter::Any,
-        effects: vec![EffectAst::Sacrifice {
+        effects: vec![EffectAst::subject_verb_sacrifice(
+            PlayerAst::Implicit,
             filter,
-            player: PlayerAst::Implicit,
-            count: 1,
-            target: None,
-        }],
+            1,
+            None,
+        )],
     }]))
 }
 

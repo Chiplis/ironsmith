@@ -1575,6 +1575,7 @@ pub fn resolve_player_filter(
         }
         PlayerFilter::Specific(id) => Ok(*id),
         PlayerFilter::MostLifeTied
+        | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
             let filter_ctx = ctx.filter_context(game);
@@ -1724,7 +1725,7 @@ pub fn find_target_object(targets: &[ResolvedTarget]) -> Result<ObjectId, Execut
 ///
 /// This supports non-target references (e.g. `Source`, `Tagged`, `Iterated`)
 /// in addition to classic `ctx.targets`-backed target specs.
-/// If multiple objects resolve, this returns the first one to preserve legacy
+/// If multiple objects resolve, this returns the first one to preserve established
 /// single-target executor behavior.
 pub fn resolve_single_object_from_spec(
     game: &GameState,
@@ -2683,6 +2684,23 @@ pub(crate) fn resolve_player_filter_to_list(
                 .players
                 .iter()
                 .filter(|player| player.is_in_game() && player.life == max_life)
+                .map(|player| player.id)
+                .collect())
+        }
+        PlayerFilter::LowestLifeTied => {
+            let min_life = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .map(|player| player.life)
+                .min()
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("No players are in the game".to_string())
+                })?;
+            Ok(game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game() && player.life == min_life)
                 .map(|player| player.id)
                 .collect())
         }

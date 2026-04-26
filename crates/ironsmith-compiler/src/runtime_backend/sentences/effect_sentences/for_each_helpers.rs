@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst, TagKey,
-    TargetAst,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -8,7 +8,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::{
-    parse_pt_modifier, parse_pt_modifier_values, parse_where_x_value_clause,
+    parse_pt_modifier, parse_pt_modifier_values, parse_value_binding_clause,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -306,11 +306,11 @@ pub(crate) fn parse_has_base_power_clause(
         subject_tokens.to_vec()
     };
     let target = parse_target_phrase(&target_tokens)?;
-    Ok(Some(EffectAst::SetBasePower {
+    Ok(Some(EffectAst::subject_verb_set_base_power(
         power,
         target,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_has_base_power_toughness_clause(
@@ -371,12 +371,12 @@ pub(crate) fn parse_has_base_power_toughness_clause(
         subject_tokens.to_vec()
     };
     let target = parse_target_phrase(&target_tokens)?;
-    Ok(Some(EffectAst::SetBasePowerToughness {
-        power: Value::Fixed(power),
-        toughness: Value::Fixed(toughness),
+    Ok(Some(EffectAst::subject_verb_set_base_power_toughness(
+        Value::Fixed(power),
+        Value::Fixed(toughness),
         target,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_get_for_each_count_value(
@@ -461,6 +461,36 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     if tail_words == ["and", "cant", "be", "blocked", "this", "turn"] {
         return Ok((out_power, out_toughness, duration, condition));
     }
+    if matches!(tail_words.first().copied(), Some("and"))
+        && matches!(
+            tail_words.get(1).copied(),
+            Some("gain" | "gains" | "has" | "have")
+        )
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike"))
+        && contains_until_end_of_turn(&tail_words)
+    {
+        return Ok((out_power, out_toughness, duration, condition));
+    }
+    if matches!(tail_words.first().copied(), Some("and"))
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have"))
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike"))
+        && contains_until_end_of_turn(&tail_words)
+    {
+        return Ok((out_power, out_toughness, duration, condition));
+    }
+    if matches!(tail_words.first().copied(), Some("and"))
+        && tail_words
+            .iter()
+            .any(|word| matches!(*word, "control" | "controls"))
+    {
+        return Ok((out_power, out_toughness, duration, condition));
+    }
     if tail_words.first().copied() == Some("or")
         && let Some(alt_mod) = tail_words.get(1).copied()
         && parse_pt_modifier_values(alt_mod).is_ok()
@@ -505,7 +535,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         )));
     }
 
-    let x_value = parse_where_x_value_clause(&tail_tokens).ok_or_else(|| {
+    let x_value = parse_value_binding_clause(&tail_tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported where-X gets clause (clause: '{}')",
             clause
@@ -520,10 +550,14 @@ pub(crate) fn parse_get_modifier_values_with_tail(
 pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
-            EffectAst::CreateTokenWithMods { player, .. }
-            | EffectAst::CreateTokenCopy { player, .. }
-            | EffectAst::CreateTokenCopyFromSource { player, .. } => {
-                if matches!(player, PlayerAst::Implicit) {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+                ..
+            }) => {
+                if matches!(*player, PlayerAst::Implicit) {
                     *player = PlayerAst::You;
                 }
             }
@@ -595,16 +629,16 @@ pub(crate) fn parse_for_each_opponent_clause(
         let target = parse_target_phrase(&target_tokens)?;
         let return_target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
         return Ok(Some(wrap_for_each(vec![
-            EffectAst::TargetOnly { target },
+            EffectAst::subject_verb_target_only(target),
             EffectAst::UnlessAction {
-                effects: vec![EffectAst::ReturnToHand {
-                    target: return_target,
-                    random: false,
-                }],
-                alternative: vec![EffectAst::Draw {
-                    count: Value::Fixed(1),
-                    player: PlayerAst::You,
-                }],
+                effects: vec![EffectAst::subject_verb_return_to_hand(return_target, false)],
+                alternative: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
                 player: PlayerAst::ItsController,
             },
         ])));

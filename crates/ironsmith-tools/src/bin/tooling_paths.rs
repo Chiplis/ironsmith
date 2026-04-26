@@ -17,7 +17,7 @@ pub(crate) fn repo_root() -> io::Result<PathBuf> {
 
 fn looks_like_repo_root(candidate: &Path) -> bool {
     candidate.join("Cargo.toml").is_file()
-        && candidate.join("build.rs").is_file()
+        && candidate.join("cards.json").is_file()
         && candidate
             .join("scripts")
             .join("stream_scryfall_blocks.py")

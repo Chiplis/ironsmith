@@ -60,10 +60,19 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
             let matching_cards: Vec<ObjectId> = game
                 .player(player_id)
                 .map(|player| {
-                    player
-                        .library
-                        .iter()
-                        .copied()
+                    let candidates: Vec<ObjectId> = match slot.filter.zone {
+                        Some(Zone::Graveyard) => player.graveyard.clone(),
+                        Some(Zone::Library) => player.library.clone(),
+                        None => player
+                            .library
+                            .iter()
+                            .chain(player.graveyard.iter())
+                            .copied()
+                            .collect(),
+                        _ => player.library.clone(),
+                    };
+                    candidates
+                        .into_iter()
                         .filter(|id| !already_chosen.contains(id))
                         .filter(|id| {
                             game.object(*id)
@@ -106,7 +115,6 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
             };
             let Some(snapshot) = game
                 .object(card_id)
-                .filter(|obj| obj.zone == Zone::Library)
                 .map(|obj| ObjectSnapshot::from_object(obj, game))
             else {
                 continue;
@@ -116,14 +124,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         }
 
         let mut moved_ids = Vec::new();
-        let chosen_ids: Vec<ObjectId> = chosen
-            .iter()
-            .map(|snapshot| snapshot.object_id)
-            .filter(|id| {
-                game.player(player_id)
-                    .is_some_and(|player| player.library.contains(id))
-            })
-            .collect();
+        let chosen_ids: Vec<ObjectId> = chosen.iter().map(|snapshot| snapshot.object_id).collect();
 
         if self.destination == Zone::Library {
             if let Some(player) = game.player_mut(player_id) {

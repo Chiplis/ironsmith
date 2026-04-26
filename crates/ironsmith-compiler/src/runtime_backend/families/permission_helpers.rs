@@ -801,13 +801,15 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
-        }) if player == PlayerAst::You => Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
-            tag,
-            player,
-            allow_land,
-            without_paying_mana_cost,
-            allow_any_color_for_cast: false,
-        })),
+        }) if player == PlayerAst::You => Ok(Some(
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                false,
+            ),
+        )),
         _ => Ok(None),
     }
 }
@@ -823,13 +825,13 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
-        }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
-            Ok(Some(EffectAst::GrantPlayTaggedUntilYourNextTurn {
+        }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => Ok(Some(
+            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                 tag,
-                player: PlayerAst::You,
-                allow_land: true,
-            }))
-        }
+                PlayerAst::You,
+                true,
+            ),
+        )),
         _ => Ok(None),
     }
 }
@@ -870,11 +872,11 @@ pub(crate) fn parse_additional_land_plays_clause_lexed(
         return Ok(None);
     }
 
-    Ok(Some(EffectAst::AdditionalLandPlays {
+    Ok(Some(EffectAst::subject_verb_additional_land_plays(
+        PlayerAst::Implicit,
         count,
-        player: PlayerAst::Implicit,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_cast_spells_as_though_they_had_flash_clause(
@@ -888,11 +890,11 @@ pub(crate) fn parse_cast_spells_as_though_they_had_flash_clause(
         }) if spec == crate::grant::GrantSpec::flash_to_spells()
             || spec == crate::grant::GrantSpec::flash_to_noncreature_spells() =>
         {
-            Ok(Some(EffectAst::GrantBySpec {
+            Ok(Some(EffectAst::subject_verb_grant_by_spec(
                 spec,
                 player,
-                duration: crate::grant::GrantDuration::UntilEndOfTurn,
-            }))
+                crate::grant::GrantDuration::UntilEndOfTurn,
+            )))
         }
         _ => Ok(None),
     }
@@ -939,22 +941,22 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                         parse_tagged_permission_mana_value_condition_tokens(condition_tokens).map(
                             |(operator, right)| {
                                 let inner = if lifetime == PermissionLifetime::Immediate {
-                                    EffectAst::CastTagged {
-                                        tag: target_ref.tag.clone(),
-                                        player: lead.player,
-                                        allow_land: lead.allow_land,
-                                        as_copy: target_ref.as_copy,
+                                    EffectAst::subject_verb_cast_tagged(
+                                        target_ref.tag.clone(),
+                                        lead.player,
+                                        lead.allow_land,
+                                        target_ref.as_copy,
                                         without_paying_mana_cost,
-                                        cost_reduction: None,
-                                    }
+                                        None,
+                                    )
                                 } else {
-                                    EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                                        tag: target_ref.tag.clone(),
-                                        player: PlayerAst::Implicit,
-                                        allow_land: lead.allow_land,
+                                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                                        target_ref.tag.clone(),
+                                        PlayerAst::Implicit,
+                                        lead.allow_land,
                                         without_paying_mana_cost,
                                         allow_any_color_for_cast,
-                                    }
+                                    )
                                 };
                                 EffectAst::Conditional {
                                     predicate: PredicateAst::ValueComparison {
@@ -985,14 +987,14 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
         }) => {
-            let cast = EffectAst::CastTagged {
+            let cast = EffectAst::subject_verb_cast_tagged(
                 tag,
                 player,
                 allow_land,
                 as_copy,
                 without_paying_mana_cost,
-                cost_reduction: None,
-            };
+                None,
+            );
             if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
                 Ok(Some(cast))
             } else {
@@ -1009,15 +1011,15 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
-            Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 tag,
-                player: PlayerAst::Implicit,
+                PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
-            }))
-        }
+            ),
+        )),
         Some(PermissionClauseSpec::Tagged {
             tag,
             player,
@@ -1025,14 +1027,14 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
-            Ok(Some(EffectAst::GrantPlayTaggedForAsLongAsExiled {
+        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
+            EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 tag,
-                player: PlayerAst::Implicit,
+                PlayerAst::Implicit,
                 allow_land,
                 allow_any_color_for_cast,
-            }))
-        }
+            ),
+        )),
         _ => Ok(conditional_tagged_permission),
     }
 }

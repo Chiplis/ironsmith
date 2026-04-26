@@ -40,6 +40,8 @@ pub struct StaticAbilityModelInterpreter {
     cost_increase: Option<super::CostIncrease>,
     cost_reduction_mana_cost: Option<super::CostReductionManaCost>,
     cost_increase_mana_cost: Option<super::CostIncreaseManaCost>,
+    cost_increase_mana_cost_per_additional_target:
+        Option<super::CostIncreaseManaCostPerAdditionalTarget>,
     this_spell_cost_reduction: Option<super::ThisSpellCostReduction>,
     this_spell_cost_reduction_mana_cost: Option<super::ThisSpellCostReductionManaCost>,
 }
@@ -124,6 +126,8 @@ impl StaticAbilityModelInterpreter {
         let cost_increase = Self::cached_cost_increase(&model);
         let cost_reduction_mana_cost = Self::cached_cost_reduction_mana_cost(&model);
         let cost_increase_mana_cost = Self::cached_cost_increase_mana_cost(&model);
+        let cost_increase_mana_cost_per_additional_target =
+            Self::cached_cost_increase_mana_cost_per_additional_target(&model);
         let this_spell_cost_reduction = Self::cached_this_spell_cost_reduction(&model);
         let this_spell_cost_reduction_mana_cost =
             Self::cached_this_spell_cost_reduction_mana_cost(&model);
@@ -140,6 +144,7 @@ impl StaticAbilityModelInterpreter {
             cost_increase,
             cost_reduction_mana_cost,
             cost_increase_mana_cost,
+            cost_increase_mana_cost_per_additional_target,
             this_spell_cost_reduction,
             this_spell_cost_reduction_mana_cost,
         }
@@ -601,6 +606,22 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_increase_mana_cost(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    fn cached_cost_increase_mana_cost_per_additional_target(
+        model: &CompiledStaticAbility,
+    ) -> Option<super::CostIncreaseManaCostPerAdditionalTarget> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(
+                cost,
+            ) => Some(super::CostIncreaseManaCostPerAdditionalTarget::new(
+                cost.clone(),
+            )),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+                Self::cached_cost_increase_mana_cost_per_additional_target(ability)
             }
             _ => None,
         }
@@ -1226,6 +1247,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         if let Some(increase) = &self.cost_increase_mana_cost {
             return increase.display();
         }
+        if let Some(increase) = &self.cost_increase_mana_cost_per_additional_target {
+            return increase.display();
+        }
         if let Some(reduction) = &self.activated_ability_cost_reduction {
             return reduction.display();
         }
@@ -1508,6 +1532,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn cost_increase_mana_cost_per_additional_target(&self) -> Option<&crate::mana::ManaCost> {
+        self.cost_increase_mana_cost_per_additional_target
+            .as_ref()
+            .map(|increase| &increase.cost)
+    }
+
     fn is_anthem(&self) -> bool {
         matches!(
             self.payload(),
@@ -1531,6 +1561,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             || self.cost_increase.is_some()
             || self.cost_reduction_mana_cost.is_some()
             || self.cost_increase_mana_cost.is_some()
+            || self.cost_increase_mana_cost_per_additional_target.is_some()
             || self.this_spell_cost_reduction.is_some()
             || self.this_spell_cost_reduction_mana_cost.is_some()
             || self.cost_increase_per_additional_target().is_some()

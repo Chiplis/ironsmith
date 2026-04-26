@@ -212,9 +212,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
     effects.push(EffectAst::DelayedUntilNextUpkeep {
         player: PlayerAst::You,
         effects: vec![EffectAst::UnlessPays {
-            effects: vec![EffectAst::LoseGame {
-                player: PlayerAst::You,
-            }],
+            effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
             cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
         }],
@@ -263,7 +261,7 @@ pub(crate) fn try_build_unless(
     unless_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_unless = &tokens[unless_idx + 1..];
-    let after_word_storage = SentencePrimitiveNormalizedWords::new(after_unless);
+    let after_word_storage = SubjectVerbPrimitiveNormalizedWords::new(after_unless);
     let after_words = after_word_storage.to_word_refs();
     let pay_word_idx = find_index(&after_words, |word| matches!(*word, "pay" | "pays"));
     let pay_token_idx = find_index(after_unless, |token| {
@@ -422,7 +420,7 @@ pub(crate) fn try_build_unless(
     };
 
     let action_tokens = &after_unless[action_token_idx..];
-    let action_word_storage = SentencePrimitiveNormalizedWords::new(action_tokens);
+    let action_word_storage = SubjectVerbPrimitiveNormalizedWords::new(action_tokens);
     let action_words = action_word_storage.to_word_refs();
 
     if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
@@ -575,10 +573,10 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() == ["venture", "into", "the", "dungeon"] {
-        return Ok(Some(vec![EffectAst::VentureIntoDungeon {
-            player: crate::cards::builders::PlayerAst::You,
-            undercity_if_no_active: false,
-        }]));
+        return Ok(Some(vec![EffectAst::subject_verb_venture_into_dungeon(
+            crate::cards::builders::PlayerAst::You,
+            false,
+        )]));
     }
 
     let is_match = clause_words.as_slice() == ["its", "still", "a", "land"]
@@ -835,11 +833,9 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             }
         }
         if all_card_types && !card_types.is_empty() {
-            return Ok(Some(vec![EffectAst::RemoveCardTypes {
-                target,
-                card_types,
-                duration,
-            }]));
+            return Ok(Some(vec![EffectAst::subject_verb_remove_card_types(
+                target, card_types, duration,
+            )]));
         }
     }
 
@@ -891,17 +887,13 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             return Ok(None);
         }
         return Ok(Some(vec![
-            EffectAst::SetBasePowerToughness {
+            EffectAst::subject_verb_set_base_power_toughness(
                 power,
                 toughness,
-                target: target.clone(),
-                duration: duration.clone(),
-            },
-            EffectAst::AddSubtypes {
-                target,
-                subtypes,
-                duration,
-            },
+                target.clone(),
+                duration.clone(),
+            ),
+            EffectAst::subject_verb_add_subtypes(target, subtypes, duration),
         ]));
     }
 
@@ -927,11 +919,9 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         }
     }
     if all_card_types && !card_types.is_empty() {
-        return Ok(Some(vec![EffectAst::AddCardTypes {
-            target,
-            card_types,
-            duration,
-        }]));
+        return Ok(Some(vec![EffectAst::subject_verb_add_card_types(
+            target, card_types, duration,
+        )]));
     }
 
     let mut subtypes = Vec::new();
@@ -947,9 +937,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::AddSubtypes {
-        target,
-        subtypes,
-        duration,
-    }]))
+    Ok(Some(vec![EffectAst::subject_verb_add_subtypes(
+        target, subtypes, duration,
+    )]))
 }

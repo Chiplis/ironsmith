@@ -16,7 +16,8 @@ use crate::cards::builders::{
     ExchangeValueKindAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, IdGenContext,
     IfResultPredicate, LineAst, LoweringFrame, NormalizedLine, ObjectRefAst, ParseAnnotations,
     PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
+    RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -87,6 +88,8 @@ use super::util::{
     contains_until_end_of_turn, map_span_to_original, parse_card_type, parse_number_word_i32,
 };
 
+#[path = "compile_support/choose_effect_helpers.rs"]
+mod choose_effect_helpers;
 #[path = "compile_support/control_flow_handlers.rs"]
 mod control_flow_handlers;
 #[path = "compile_support/effect_combat_resource_handlers.rs"]
@@ -103,6 +106,8 @@ mod effect_handlers;
 mod effect_visibility_object_handlers;
 #[path = "compile_support/iterated_player_validation.rs"]
 mod iterated_player_validation;
+#[path = "compile_support/player_effect_helpers.rs"]
+mod player_effect_helpers;
 #[path = "compile_support/prepared_effects.rs"]
 mod prepared_effects;
 #[path = "compile_support/tag_support.rs"]
@@ -110,6 +115,10 @@ mod tag_support;
 #[path = "compile_support/trigger_support.rs"]
 mod trigger_support;
 
+pub(crate) use choose_effect_helpers::{
+    compile_choose_objects_across_zones_with_subject, compile_choose_objects_with_subject,
+    compile_choose_player_with_subject,
+};
 pub(crate) use control_flow_handlers::{
     choose_spec_for_targeted_player_filter, collect_targeted_player_specs_from_filter,
     compile_effects_in_iterated_player_context, compile_effects_preserving_last_effect,
@@ -121,6 +130,11 @@ pub(crate) use control_flow_handlers::{
 };
 pub(crate) use effect_dispatch::compile_effect;
 pub(crate) use iterated_player_validation::validate_iterated_player_bindings_in_lowered_effects;
+pub(crate) use player_effect_helpers::{
+    LoweredSubject, SubjectBindingMode, SubjectRole, compile_player_dual_effect,
+    compile_player_effect_from_resolved_filter, compile_player_filter_effect,
+    compile_player_role_effect, compile_player_value_effect,
+};
 pub(crate) use prepared_effects::{
     compile_condition_from_predicate_ast_with_env, compile_effect_prelude_tags,
     compile_prepared_predicate_for_lowering, compile_statement_effects,
@@ -935,8 +949,34 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                 *filter = player_filter.clone();
             }
         }
+        Value::Devotion { player, .. } | Value::DevotionToChosenColor(player) => {
+            if matches!(player, PlayerFilter::IteratedPlayer)
+                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
+            {
+                *player = player_filter.clone();
+            }
+        }
         _ => {}
     }
+}
+
+pub(crate) fn resolve_player_scoped_value(
+    value: &Value,
+    player: PlayerAst,
+    ctx: &mut EffectLoweringContext,
+    allow_target: bool,
+    allow_target_opponent: bool,
+    track_last_player_filter: bool,
+) -> Result<(Value, PlayerFilter, Vec<ChooseSpec>), CardTextError> {
+    let subject = LoweredSubject::resolve_affected_player(
+        player,
+        ctx,
+        allow_target,
+        allow_target_opponent,
+        track_last_player_filter,
+    )?;
+    let value = subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx)?;
+    Ok((value, subject.into_player_filter(), subject.into_choices()))
 }
 
 fn choose_followup_player_filter(
@@ -1203,7 +1243,10 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
         return Ok(None);
     }
 
-    let EffectAst::Exile { target, face_down } = &effects[0] else {
+    let EffectAst::SubjectVerb(subject_verb) = &effects[0] else {
+        return Ok(None);
+    };
+    let SubjectVerbActionAst::Exile { target, face_down } = &subject_verb.action else {
         return Ok(None);
     };
     if *face_down {
@@ -1225,7 +1268,7 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
     )))
 }
 
-pub(crate) fn resolve_effect_player_filter(
+fn resolve_effect_player_filter(
     player: PlayerAst,
     ctx: &mut EffectLoweringContext,
     allow_target: bool,
@@ -1271,25 +1314,7 @@ where
     YouBuilder: FnOnce() -> Effect,
     OtherBuilder: FnOnce(PlayerFilter) -> Effect,
 {
-    let (filter, choices) =
-        resolve_effect_player_filter(player, ctx, allow_target, allow_target, true)?;
-    let effect = if matches!(&filter, PlayerFilter::You) {
-        build_you()
-    } else {
-        build_other(filter)
-    };
-    let mut effects = Vec::new();
-    // Only inject explicit target-context effects when the payload effect itself
-    // does not expose target metadata via get_target_spec().
-    if effect.target_spec().is_none() {
-        for choice in &choices {
-            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
-                choice.clone(),
-            )));
-        }
-    }
-    effects.push(effect);
-    Ok((effects, choices))
+    compile_player_dual_effect(player, ctx, allow_target, build_you, build_other)
 }
 
 fn try_compile_simultaneous_each_player_scry(
@@ -1333,27 +1358,14 @@ where
     YouBuilder: FnOnce() -> Effect,
     OtherBuilder: FnOnce(PlayerFilter) -> Effect,
 {
-    let (filter, choices) =
-        resolve_effect_player_filter(player, ctx, allow_target, allow_target, true)?;
-    let effect = if matches!(&filter, PlayerFilter::You) {
-        build_you()
-    } else {
-        build_other(filter)
-    };
-    let mut effects = Vec::new();
-    if effect.target_spec().is_none() {
-        for choice in &choices {
-            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
-                choice.clone(),
-            )));
-        }
-    }
+    let (mut effects, choices) =
+        compile_player_dual_effect(player, ctx, allow_target, build_you, build_other)?;
     if ctx.auto_tag_object_targets {
         let tag = ctx.next_tag(tag_prefix);
-        effects.push(effect.tag(tag.clone()));
+        if let Some(effect) = effects.pop() {
+            effects.push(effect.tag(tag.clone()));
+        }
         ctx.last_object_tag = Some(tag);
-    } else {
-        effects.push(effect);
     }
     Ok((effects, choices))
 }
@@ -1367,21 +1379,7 @@ pub(crate) fn compile_player_effect_from_filter<Builder>(
 where
     Builder: FnOnce(PlayerFilter) -> Effect,
 {
-    let (filter, choices) =
-        resolve_effect_player_filter(player, ctx, allow_target, allow_target, true)?;
-    let mut effects = Vec::new();
-    let effect = build(filter);
-    // Only inject explicit target-context effects when the payload effect itself
-    // does not expose target metadata via get_target_spec().
-    if effect.target_spec().is_none() {
-        for choice in &choices {
-            effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
-                choice.clone(),
-            )));
-        }
-    }
-    effects.push(effect);
-    Ok((effects, choices))
+    compile_player_filter_effect(player, ctx, allow_target, build)
 }
 
 fn compile_exchange_life_totals_effect(
@@ -1389,23 +1387,32 @@ fn compile_exchange_life_totals_effect(
     player2: PlayerAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let (filter1, choices1) = resolve_effect_player_filter(player1, ctx, true, true, true)?;
-    let (filter2, choices2) = resolve_effect_player_filter(player2, ctx, true, true, true)?;
+    let subject1 = LoweredSubject::resolve_affected_player(player1, ctx, true, true, true)?;
+    let subject2 = LoweredSubject::resolve_affected_player(player2, ctx, true, true, true)?;
 
-    let effect = Effect::exchange_life_totals(filter1, filter2);
+    let effect = Effect::exchange_life_totals(
+        subject1.clone_player_filter(),
+        subject2.clone_player_filter(),
+    );
     let mut choices = Vec::new();
 
-    if choices1.len() == 1
-        && choices2.len() == 1
-        && choices1[0].base() == choices2[0].base()
-        && choices1[0].is_target()
+    if subject1.choices().len() == 1
+        && subject2.choices().len() == 1
+        && subject1.choices()[0].base() == subject2.choices()[0].base()
+        && subject1.choices()[0].is_target()
     {
         push_choice(
             &mut choices,
-            choices1[0].clone().with_count(ChoiceCount::exactly(2)),
+            subject1.choices()[0]
+                .clone()
+                .with_count(ChoiceCount::exactly(2)),
         );
     } else {
-        for choice in choices1.into_iter().chain(choices2) {
+        for choice in subject1
+            .into_choices()
+            .into_iter()
+            .chain(subject2.into_choices())
+        {
             push_choice(&mut choices, choice);
         }
     }
@@ -1467,18 +1474,18 @@ fn compile_exchange_zones_effect(
     zone2: Zone,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let (player_filter, choices) = resolve_effect_player_filter(player, ctx, true, true, true)?;
-    let effect = Effect::exchange_zones(player_filter, zone1, zone2);
+    let subject = LoweredSubject::resolve_zone_owner(player, ctx, true, true, true)?;
+    let effect = Effect::exchange_zones(subject.clone_player_filter(), zone1, zone2);
     let mut effects = Vec::new();
     if effect.target_spec().is_none() {
-        for choice in &choices {
+        for choice in subject.choices() {
             effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                 choice.clone(),
             )));
         }
     }
     effects.push(effect);
-    Ok((effects, choices))
+    Ok((effects, subject.into_choices()))
 }
 
 fn compile_exchange_text_boxes_effect(
@@ -1498,9 +1505,10 @@ fn compile_exchange_value_operand(
 ) -> Result<(crate::effects::ExchangeValueOperand, Vec<ChooseSpec>), CardTextError> {
     match operand {
         ExchangeValueAst::LifeTotal(player) => {
-            let (filter, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
+            let (player_filter, choices) = subject.into_parts();
             Ok((
-                crate::effects::ExchangeValueOperand::LifeTotal(filter),
+                crate::effects::ExchangeValueOperand::LifeTotal(player_filter),
                 choices,
             ))
         }
@@ -3722,15 +3730,135 @@ mod parse_compile_tests {
     use crate::runtime_backend::RefState;
     use crate::target::ChooseSpec;
     use crate::types::{CardType, Subtype};
+    use std::path::Path;
+
+    fn walk_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(root).expect("read source directory") {
+            let entry = entry.expect("read source entry");
+            let path = entry.path();
+            if path.is_dir() {
+                walk_rs_files(&path, files);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                files.push(path);
+            }
+        }
+    }
+
+    #[test]
+    fn player_filter_resolution_stays_behind_subject_context() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let src = manifest_dir.join("src");
+        let compile_support = manifest_dir
+            .join("src/runtime_backend/lowering/compile_support.rs")
+            .canonicalize()
+            .expect("canonical compile_support.rs");
+        let helper = manifest_dir
+            .join("src/runtime_backend/lowering/compile_support/player_effect_helpers.rs")
+            .canonicalize()
+            .expect("canonical player_effect_helpers.rs");
+        let needle = concat!("resolve_effect_player", "_filter(");
+
+        let mut rs_files = Vec::new();
+        walk_rs_files(&src, &mut rs_files);
+
+        let mut unexpected = Vec::new();
+        for path in rs_files {
+            let canonical = path.canonicalize().expect("canonical source path");
+            let source = std::fs::read_to_string(&path).expect("read source file");
+            for (line_index, line) in source.lines().enumerate() {
+                if !line.contains(needle) {
+                    continue;
+                }
+                let allowed = canonical == helper
+                    || canonical == compile_support
+                        && (line.contains(concat!("fn resolve_effect_player", "_filter("))
+                            || line.contains(needle) && line.contains("let needle = concat!("));
+                if !allowed {
+                    unexpected.push(format!("{}:{}", path.display(), line_index + 1));
+                }
+            }
+        }
+
+        assert!(
+            unexpected.is_empty(),
+            "player filter resolution must go through LoweredSubject, found {unexpected:?}"
+        );
+    }
+
+    #[test]
+    fn lowering_handlers_do_not_reach_into_lowered_subject_fields() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let compile_support_dir = manifest_dir.join("src/runtime_backend/lowering/compile_support");
+        let compile_support_rs =
+            manifest_dir.join("src/runtime_backend/lowering/compile_support.rs");
+        let hidden_filter_field = concat!(".", "player_filter");
+        let hidden_choices_field = concat!(".", "choices");
+
+        let mut files = vec![compile_support_rs];
+        for entry in std::fs::read_dir(&compile_support_dir).expect("read compile_support dir") {
+            let path = entry.expect("read compile_support entry").path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if !path.extension().is_some_and(|ext| ext == "rs") {
+                continue;
+            }
+            if name == "player_effect_helpers.rs" || name == "choose_effect_helpers.rs" {
+                continue;
+            }
+            files.push(path);
+        }
+
+        let mut unexpected = Vec::new();
+        for path in files {
+            let source = std::fs::read_to_string(&path).expect("read lowering source file");
+            for (line_index, line) in source.lines().enumerate() {
+                let reaches_filter_field =
+                    line.contains(hidden_filter_field) && !line.contains(".player_filter(");
+                let reaches_choices_field =
+                    line.contains(hidden_choices_field) && !line.contains(".choices()");
+                if line.contains("subject.") && (reaches_filter_field || reaches_choices_field) {
+                    unexpected.push(format!("{}:{}", path.display(), line_index + 1));
+                }
+            }
+        }
+
+        assert!(
+            unexpected.is_empty(),
+            "lowering handlers must use LoweredSubject methods, found {unexpected:?}"
+        );
+    }
+
+    #[test]
+    fn subject_roles_capture_binding_modes() {
+        assert_eq!(
+            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
+                .as_role(SubjectRole::Chooser)
+                .binding_mode(),
+            SubjectBindingMode::Chooser
+        );
+        assert_eq!(
+            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
+                .as_role(SubjectRole::LibraryOwner)
+                .binding_mode(),
+            SubjectBindingMode::OwnedZone
+        );
+        assert_eq!(
+            LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
+                .as_role(SubjectRole::AffectedPlayer)
+                .binding_mode(),
+            SubjectBindingMode::AffectedPlayer
+        );
+    }
 
     #[test]
     fn compile_investigate_uses_ast_count() {
         let mut ctx = EffectLoweringContext::new();
         let (effects, choices) = compile_effect(
-            &EffectAst::Investigate {
-                count: Value::Fixed(2),
-                player: crate::cards::builders::PlayerAst::Implicit,
-            },
+            &EffectAst::subject_verb_investigate(
+                crate::cards::builders::PlayerAst::Implicit,
+                Value::Fixed(2),
+            ),
             &mut ctx,
         )
         .expect("compile investigate");
@@ -3776,10 +3904,7 @@ mod parse_compile_tests {
         ctx.auto_tag_object_targets = true;
 
         let (effects, choices) = compile_effect(
-            &EffectAst::Amass {
-                subtype: Some(Subtype::Orc),
-                amount: 2,
-            },
+            &EffectAst::subject_verb_amass(Some(Subtype::Orc), 2),
             &mut ctx,
         )
         .expect("compile amass");
@@ -3802,14 +3927,14 @@ mod parse_compile_tests {
     #[test]
     fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
         let (effects, choices) = compile_effect(
-            &EffectAst::DealDamageEqualToPower {
-                source: TargetAst::Tagged(TagKey::from("amassed_0"), None),
-                target: TargetAst::Object(
+            &EffectAst::subject_verb_damage_equal_to_power(
+                TargetAst::Tagged(TagKey::from("amassed_0"), None),
+                TargetAst::Object(
                     ObjectFilter::creature().without_subtype(Subtype::Army),
                     None,
                     None,
                 ),
-            },
+            ),
             &mut EffectLoweringContext::new(),
         )
         .expect("compile power-based fanout damage");
@@ -4102,8 +4227,8 @@ mod parse_compile_tests {
         let beta = TagKey::from("beta");
 
         collect_tag_spans_from_effect(
-            &EffectAst::Connive {
-                target: TargetAst::Tagged(
+            &EffectAst::subject_verb_connive(
+                TargetAst::Tagged(
                     alpha.clone(),
                     Some(TextSpan {
                         line: 0,
@@ -4111,22 +4236,20 @@ mod parse_compile_tests {
                         end: 5,
                     }),
                 ),
-                count: Value::Fixed(1),
-            },
+                Value::Fixed(1),
+            ),
             &mut annotations,
             &ctx,
         );
         collect_tag_spans_from_effect(
-            &EffectAst::DestroyNoRegeneration {
-                target: TargetAst::Tagged(
-                    beta.clone(),
-                    Some(TextSpan {
-                        line: 0,
-                        start: 6,
-                        end: 10,
-                    }),
-                ),
-            },
+            &EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
+                beta.clone(),
+                Some(TextSpan {
+                    line: 0,
+                    start: 6,
+                    end: 10,
+                }),
+            )),
             &mut annotations,
             &ctx,
         );
@@ -4152,8 +4275,8 @@ mod parse_compile_tests {
         let mut annotations = ParseAnnotations::default();
         let ctx = test_ctx("gamma");
         let gamma = TagKey::from("gamma");
-        let effect = EffectAst::CounterUnlessPays {
-            target: TargetAst::Tagged(
+        let effect = EffectAst::subject_verb_counter_unless_pays(
+            TargetAst::Tagged(
                 gamma.clone(),
                 Some(TextSpan {
                     line: 0,
@@ -4161,8 +4284,8 @@ mod parse_compile_tests {
                     end: 5,
                 }),
             ),
-            cost: TotalCost::free(),
-        };
+            TotalCost::free(),
+        );
 
         collect_tag_spans_from_effect(&effect, &mut annotations, &ctx);
         assert!(
@@ -4188,11 +4311,11 @@ mod parse_compile_tests {
 
     #[test]
     fn compile_statement_effects_drops_empty_global_ability_grants() {
-        let effects = vec![EffectAst::GrantAbilitiesAll {
-            filter: ObjectFilter::default(),
-            abilities: Vec::new(),
-            duration: Until::EndOfTurn,
-        }];
+        let effects = vec![EffectAst::subject_verb_grant_abilities_all(
+            ObjectFilter::default(),
+            Vec::new(),
+            Until::EndOfTurn,
+        )];
 
         let compiled =
             compile_statement_effects(&effects).expect("normalization should remove empty grants");
@@ -4201,9 +4324,11 @@ mod parse_compile_tests {
 
     #[test]
     fn compile_statement_effects_with_imports_returns_reference_exports() {
-        let effects = vec![EffectAst::Destroy {
-            target: TargetAst::Object(ObjectFilter::creature(), Some(TextSpan::synthetic()), None),
-        }];
+        let effects = vec![EffectAst::subject_verb_destroy(TargetAst::Object(
+            ObjectFilter::creature(),
+            Some(TextSpan::synthetic()),
+            None,
+        ))];
 
         let lowered =
             compile_statement_effects_with_imports(&effects, &ReferenceImports::default())
@@ -4222,20 +4347,18 @@ mod parse_compile_tests {
     #[test]
     fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
         let effects = vec![
-            EffectAst::Destroy {
-                target: TargetAst::Object(
-                    ObjectFilter::creature(),
-                    Some(TextSpan::synthetic()),
-                    None,
-                ),
-            },
-            EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                tag: TagKey::from(IT_TAG),
-                player: PlayerAst::You,
-                allow_land: false,
-                without_paying_mana_cost: false,
-                allow_any_color_for_cast: false,
-            },
+            EffectAst::subject_verb_destroy(TargetAst::Object(
+                ObjectFilter::creature(),
+                Some(TextSpan::synthetic()),
+                None,
+            )),
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                TagKey::from(IT_TAG),
+                PlayerAst::You,
+                false,
+                false,
+                false,
+            ),
         ];
 
         let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
@@ -4261,24 +4384,22 @@ mod parse_compile_tests {
     fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
         let effects = vec![
             EffectAst::May {
-                effects: vec![EffectAst::Destroy {
-                    target: TargetAst::WithCount(
-                        Box::new(TargetAst::Object(
-                            ObjectFilter::creature(),
-                            Some(TextSpan::synthetic()),
-                            None,
-                        )),
-                        ChoiceCount::up_to(3),
-                    ),
-                }],
+                effects: vec![EffectAst::subject_verb_destroy(TargetAst::WithCount(
+                    Box::new(TargetAst::Object(
+                        ObjectFilter::creature(),
+                        Some(TextSpan::synthetic()),
+                        None,
+                    )),
+                    ChoiceCount::up_to(3),
+                ))],
             },
-            EffectAst::GrantPlayTaggedUntilEndOfTurn {
-                tag: TagKey::from(IT_TAG),
-                player: PlayerAst::You,
-                allow_land: false,
-                without_paying_mana_cost: false,
-                allow_any_color_for_cast: false,
-            },
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                TagKey::from(IT_TAG),
+                PlayerAst::You,
+                false,
+                false,
+                false,
+            ),
         ];
 
         let (compiled, _, frame_out) = compile_effects_with_explicit_frame(
@@ -4315,22 +4436,22 @@ mod parse_compile_tests {
             tag: TagKey::from("revealed_0"),
             effects: vec![EffectAst::Conditional {
                 predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
-                if_true: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Battlefield,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Owner,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                if_true: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Owner,
+                    false,
+                    None,
+                )],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             }],
         }];
 
@@ -4363,17 +4484,12 @@ mod parse_compile_tests {
     #[test]
     fn compile_next_spell_grant_after_targeted_player_effect_binds_that_player() {
         let effects = vec![
-            EffectAst::AddManaAnyOneColor {
-                amount: Value::Fixed(2),
-                player: PlayerAst::Target,
-            },
-            EffectAst::GrantNextSpellAbilityThisTurn {
-                player: PlayerAst::That,
-                filter: ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-                ability: GrantedAbilityAst::KeywordAction(
-                    crate::cards::builders::KeywordAction::Cascade,
-                ),
-            },
+            EffectAst::subject_verb_add_mana_any_one_color(PlayerAst::Target, Value::Fixed(2)),
+            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
+                PlayerAst::That,
+                ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
+                GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
+            ),
         ];
 
         let (compiled, _, _) = compile_effects_with_explicit_frame(
@@ -4400,13 +4516,11 @@ mod parse_compile_tests {
 
     #[test]
     fn compile_next_spell_grant_with_imported_target_player_binds_that_player() {
-        let effects = vec![EffectAst::GrantNextSpellAbilityThisTurn {
-            player: PlayerAst::That,
-            filter: ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-            ability: GrantedAbilityAst::KeywordAction(
-                crate::cards::builders::KeywordAction::Cascade,
-            ),
-        }];
+        let effects = vec![EffectAst::subject_verb_grant_next_spell_ability_this_turn(
+            PlayerAst::That,
+            ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
+            GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
+        )];
 
         let frame = LoweringFrame {
             last_player_filter: Some(PlayerFilter::target_player()),
@@ -4434,14 +4548,20 @@ mod parse_compile_tests {
     #[test]
     fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
         let effects = vec![
-            EffectAst::Draw {
-                count: Value::Fixed(1),
-                player: PlayerAst::You,
-            },
-            EffectAst::Draw {
-                count: Value::Fixed(1),
-                player: PlayerAst::That,
-            },
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::That,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
         ];
 
         let frame = LoweringFrame {

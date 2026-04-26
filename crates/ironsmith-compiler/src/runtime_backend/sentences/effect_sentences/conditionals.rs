@@ -399,223 +399,6 @@ fn parse_negated_who_this_way_predicate(
     }))
 }
 
-pub(crate) fn parse_vote_start_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let vote_idx = find_index(&clause_words, |word| *word == "vote" || *word == "votes");
-    let Some(vote_idx) = vote_idx else {
-        return Ok(None);
-    };
-
-    let has_each = slice_contains(&clause_words[..vote_idx], &"each");
-    let has_player = clause_words[..vote_idx]
-        .iter()
-        .any(|word| *word == "player" || *word == "players");
-    if !has_each || !has_player {
-        return Ok(None);
-    }
-    let secret = clause_words[..vote_idx]
-        .iter()
-        .any(|word| *word == "secretly" || *word == "secret");
-
-    let for_idx = find_index(&clause_words, |word| *word == "for")
-        .ok_or_else(|| CardTextError::ParseError("missing 'for' in vote clause".to_string()))?;
-    if for_idx < vote_idx {
-        return Ok(None);
-    }
-
-    let mut option_words = clause_words[for_idx + 1..].to_vec();
-    if let Some(reveal_idx) =
-        find_word_sequence_start(&option_words, &["then", "those", "votes", "are"])
-    {
-        option_words.truncate(reveal_idx);
-    }
-    let option_tokens = option_words
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    if let Ok(target) = parse_target_phrase(&option_tokens) {
-        match target {
-            TargetAst::Object(filter, _, _) => {
-                return Ok(Some(EffectAst::VoteStartObjects {
-                    filter,
-                    count: ChoiceCount::exactly(1),
-                    secret,
-                }));
-            }
-            TargetAst::WithCount(inner, count) => {
-                if let TargetAst::Object(filter, _, _) = *inner {
-                    return Ok(Some(EffectAst::VoteStartObjects {
-                        filter,
-                        count,
-                        secret,
-                    }));
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Ok(filter) = parse_object_filter_lexed(&option_tokens, false)
-        && filter != ObjectFilter::default()
-    {
-        return Ok(Some(EffectAst::VoteStartObjects {
-            filter,
-            count: ChoiceCount::exactly(1),
-            secret,
-        }));
-    }
-
-    let option_words = option_words;
-    let mut options = Vec::new();
-    let mut current: Vec<&str> = Vec::new();
-    for word in &option_words {
-        if *word == "or" {
-            if !current.is_empty() {
-                options.push(current.join(" "));
-                current.clear();
-            }
-            continue;
-        }
-        if is_article(word) {
-            continue;
-        }
-        current.push(word);
-    }
-    if !current.is_empty() {
-        options.push(current.join(" "));
-    }
-
-    if options.len() < 2 {
-        return Err(CardTextError::ParseError(
-            "vote clause requires at least two options".to_string(),
-        ));
-    }
-
-    Ok(Some(EffectAst::VoteStart { options, secret }))
-}
-
-pub(crate) fn parse_for_each_vote_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 4 {
-        return Ok(None);
-    }
-
-    if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
-        return Ok(None);
-    }
-
-    let vote_idx = find_index(&words, |word| *word == "vote" || *word == "votes");
-    let Some(vote_idx) = vote_idx else {
-        return Ok(None);
-    };
-    if vote_idx <= 2 {
-        return Err(CardTextError::ParseError(
-            "missing vote option name".to_string(),
-        ));
-    }
-
-    let option_words: Vec<&str> = words[2..vote_idx]
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect();
-    if option_words.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing vote option name".to_string(),
-        ));
-    }
-    let option = option_words.join(" ");
-
-    let (_before, effect_tokens) =
-        super::super::grammar::primitives::split_lexed_once_on_delimiter(
-            tokens,
-            super::super::lexer::TokenKind::Comma,
-        )
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing comma in for each vote clause".to_string())
-        })?;
-
-    let effects = parse_effect_chain(effect_tokens)?;
-    Ok(Some(EffectAst::VoteOption { option, effects }))
-}
-
-pub(crate) fn parse_vote_extra_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 3 || words.first().copied() != Some("you") {
-        return None;
-    }
-
-    let has_vote = words.iter().any(|word| *word == "vote" || *word == "votes");
-    let has_additional = grammar::contains_word(tokens, "additional");
-    let has_time = words.iter().any(|word| *word == "time" || *word == "times");
-    if !has_vote || !has_additional || !has_time {
-        return None;
-    }
-
-    let optional = grammar::contains_word(tokens, "may");
-    Some(EffectAst::VoteExtra { count: 1, optional })
-}
-
-pub(crate) fn parse_after_turn_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if line_words.len() < 3
-        || line_words[0] != "after"
-        || line_words[1] != "that"
-        || line_words[2] != "turn"
-    {
-        return Ok(None);
-    }
-
-    let remainder = if let Some((_before, after)) =
-        super::super::grammar::primitives::split_lexed_once_on_delimiter(
-            tokens,
-            super::super::lexer::TokenKind::Comma,
-        ) {
-        after
-    } else {
-        &tokens[3..]
-    };
-
-    let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remainder)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-
-    if remaining_words.len() < 4 {
-        return Err(CardTextError::ParseError(
-            "unsupported after turn clause".to_string(),
-        ));
-    }
-
-    let player = if slice_starts_with(&remaining_words, &["that", "player"]) {
-        PlayerAst::That
-    } else if slice_starts_with(&remaining_words, &["target", "player"]) {
-        PlayerAst::Target
-    } else if slice_starts_with(&remaining_words, &["you"]) {
-        PlayerAst::You
-    } else {
-        return Err(CardTextError::ParseError(
-            "unsupported after turn player".to_string(),
-        ));
-    };
-
-    if slice_contains(&remaining_words, &"extra") && slice_contains(&remaining_words, &"turn") {
-        return Ok(Some(EffectAst::ExtraTurnAfterTurn {
-            player,
-            anchor: ExtraTurnAnchorAst::ReferencedTurn,
-        }));
-    }
-
-    Err(CardTextError::ParseError(
-        "unsupported after turn clause".to_string(),
-    ))
-}
-
 pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -625,7 +408,7 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     }
 
     let target = TargetAst::Spell(span_from_tokens(&tokens[1..3]));
-    let counter = EffectAst::Counter { target };
+    let counter = EffectAst::subject_verb_counter(target);
     let effect = EffectAst::Conditional {
         predicate: PredicateAst::TargetWasKicked,
         if_true: vec![counter],
@@ -652,7 +435,7 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     }
 
     let target = TargetAst::Spell(span_from_tokens(&tokens[1..3]));
-    let counter = EffectAst::Counter { target };
+    let counter = EffectAst::subject_verb_counter(target);
     let effect = EffectAst::Conditional {
         predicate: PredicateAst::TargetSpellCastOrderThisTurn(2),
         if_true: vec![counter],
@@ -676,10 +459,7 @@ pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
 
     let target_tokens = trim_commas(&tokens[1..3]);
     let target = parse_target_phrase(&target_tokens)?;
-    let exile = EffectAst::Exile {
-        target: target.clone(),
-        face_down: false,
-    };
+    let exile = EffectAst::subject_verb_exile(target.clone(), false);
     let effect = EffectAst::Conditional {
         predicate: PredicateAst::TargetHasGreatestPowerAmongCreatures,
         if_true: vec![exile],

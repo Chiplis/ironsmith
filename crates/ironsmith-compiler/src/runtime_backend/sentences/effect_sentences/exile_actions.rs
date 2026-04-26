@@ -38,22 +38,22 @@ pub(crate) fn parse_exile(
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
         return Ok(if until_source_leaves {
-            EffectAst::ExileUntilSourceLeaves {
-                target: TargetAst::Object(filter, None, None),
+            EffectAst::subject_verb_exile_until_source_leaves(
+                TargetAst::Object(filter, None, None),
                 face_down,
-            }
+            )
         } else {
-            EffectAst::ExileAll { filter, face_down }
+            EffectAst::subject_verb_exile_all(filter, face_down)
         });
     }
     if let Some(filter) = parse_target_player_graveyard_filter(tokens) {
         return Ok(if until_source_leaves {
-            EffectAst::ExileUntilSourceLeaves {
-                target: TargetAst::Object(filter, None, None),
+            EffectAst::subject_verb_exile_until_source_leaves(
+                TargetAst::Object(filter, None, None),
                 face_down,
-            }
+            )
         } else {
-            EffectAst::ExileAll { filter, face_down }
+            EffectAst::subject_verb_exile_all(filter, face_down)
         });
     }
     if !face_down
@@ -131,9 +131,9 @@ pub(crate) fn parse_exile(
         return Ok(EffectAst::Conditional {
             predicate: spec.predicate,
             if_true: vec![if until_source_leaves {
-                EffectAst::ExileUntilSourceLeaves { target, face_down }
+                EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
             } else {
-                EffectAst::Exile { target, face_down }
+                EffectAst::subject_verb_exile(target, face_down)
             }],
             if_false: Vec::new(),
         });
@@ -147,9 +147,9 @@ pub(crate) fn parse_exile(
     let mut target = parse_target_phrase(tokens)?;
     apply_exile_subject_hand_owner_context(&mut target, subject);
     Ok(if until_source_leaves {
-        EffectAst::ExileUntilSourceLeaves { target, face_down }
+        EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
     } else {
-        EffectAst::Exile { target, face_down }
+        EffectAst::subject_verb_exile(target, face_down)
     })
 }
 
@@ -225,12 +225,12 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
         .collect();
 
     Ok(Some(if until_source_leaves {
-        EffectAst::ExileUntilSourceLeaves {
-            target: TargetAst::Object(filter, None, None),
+        EffectAst::subject_verb_exile_until_source_leaves(
+            TargetAst::Object(filter, None, None),
             face_down,
-        }
+        )
     } else {
-        EffectAst::ExileAll { filter, face_down }
+        EffectAst::subject_verb_exile_all(filter, face_down)
     }))
 }
 
@@ -420,12 +420,12 @@ pub(crate) fn parse_exile_top_library_clause(
         return None;
     }
 
-    Some(EffectAst::ExileTopOfLibrary {
-        count,
+    Some(EffectAst::subject_verb_exile_top_of_library(
         player,
-        tags: vec![helper_tag_for_tokens(&tokens, "exiled")],
-        accumulated_tags: Vec::new(),
-    })
+        count,
+        vec![helper_tag_for_tokens(&tokens, "exiled")],
+        Vec::new(),
+    ))
 }
 
 pub(crate) fn parse_target_player_graveyard_filter(

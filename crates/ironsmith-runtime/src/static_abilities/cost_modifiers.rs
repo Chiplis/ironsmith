@@ -1718,6 +1718,40 @@ impl StaticAbilityKind for CostIncreasePerAdditionalTarget {
     }
 }
 
+/// Mana-symbol cost increase per additional target:
+/// "This spell costs {W} more to cast for each target beyond the first."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CostIncreaseManaCostPerAdditionalTarget {
+    pub cost: ManaCost,
+}
+
+impl CostIncreaseManaCostPerAdditionalTarget {
+    pub fn new(cost: ManaCost) -> Self {
+        Self { cost }
+    }
+}
+
+impl StaticAbilityKind for CostIncreaseManaCostPerAdditionalTarget {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "This spell costs {} more to cast for each target beyond the first",
+            describe_cost_modifier_mana_cost(&self.cost)
+        )
+    }
+
+    fn modifies_costs(&self) -> bool {
+        true
+    }
+
+    fn cost_increase_mana_cost_per_additional_target(&self) -> Option<&ManaCost> {
+        Some(&self.cost)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1135,6 +1135,16 @@ pub fn player_matches_filter_with_combat(
                 game.player(player_id)
                     .is_some_and(|player| player.is_in_game() && player.life == max_life)
             }),
+        PlayerFilter::LowestLifeTied => game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.life)
+            .min()
+            .is_some_and(|min_life| {
+                game.player(player_id)
+                    .is_some_and(|player| player.is_in_game() && player.life == min_life)
+            }),
         PlayerFilter::MostCardsInHand => game
             .players
             .iter()

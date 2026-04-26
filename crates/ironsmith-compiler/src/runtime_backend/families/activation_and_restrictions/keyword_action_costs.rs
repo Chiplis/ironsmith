@@ -363,7 +363,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
                 words(&tokens).join(" ")
             )));
         }
-        x_value = parse_where_x_value_clause(&trailing).or_else(|| {
+        x_value = parse_value_binding_clause(&trailing).or_else(|| {
             if trailing_words
                 .iter()
                 .any(|word| matches!(*word, "graveyard" | "graveyards"))

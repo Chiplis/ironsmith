@@ -3,10 +3,11 @@ use super::super::rule_engine::LexClauseView;
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
     chain_carry::FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
-    sentence_primitives::{
-        PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED, PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
+    subject_verb_primitives::{
+        SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
+        SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
     },
-    special_sentence_family::SPECIAL_PRE_DIAGNOSTIC_INDEX_LEXED,
+    subject_verb_special_recognizers::SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -22,8 +23,8 @@ pub(super) fn run_sentence_parse_rules_lexed(
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
     let view = LexClauseView::from_tokens(tokens);
     for family in [
-        &SPECIAL_PRE_DIAGNOSTIC_INDEX_LEXED,
-        &PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
+        &SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
+        &SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED,
     ] {
         match run_sentence_rule_family(family, &view) {
             Ok(Some((rule_id, effects))) => return Ok((rule_id, effects)),
@@ -42,7 +43,7 @@ pub(super) fn run_sentence_parse_rules_lexed(
     }
 
     for family in [
-        &PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
+        &SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
         &FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
     ] {
         if let Some((rule_id, effects)) = run_sentence_rule_family(family, &view)? {

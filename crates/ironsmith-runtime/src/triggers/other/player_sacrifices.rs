@@ -7,6 +7,26 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
+fn with_indefinite_article(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.starts_with("a ")
+        || trimmed.starts_with("an ")
+        || trimmed.starts_with("the ")
+        || trimmed.starts_with("another ")
+    {
+        return trimmed.to_string();
+    }
+    let article = if matches!(
+        trimmed.chars().next().map(|ch| ch.to_ascii_lowercase()),
+        Some('a' | 'e' | 'i' | 'o' | 'u')
+    ) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {trimmed}")
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerSacrificesTrigger {
     pub player: PlayerFilter,
@@ -69,7 +89,11 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
             PlayerFilter::Any => "a player sacrifices",
             _ => "someone sacrifices",
         };
-        format!("Whenever {} {}", player_text, self.filter.description())
+        format!(
+            "Whenever {} {}",
+            player_text,
+            with_indefinite_article(&self.filter.description())
+        )
     }
 }
 

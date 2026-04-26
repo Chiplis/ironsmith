@@ -857,7 +857,7 @@ pub struct ExternalEvaluationContext<'a> {
     pub attacking_player: Option<PlayerId>,
     /// The `FilterContext.source` used when matching ObjectFilters.
     ///
-    /// This is intentionally configurable to preserve legacy semantics:
+    /// This is intentionally configurable to preserve established semantics:
     /// - Intervening-if checks historically passed `None` so `other` filters do not exclude the source.
     /// - Most other checks should pass `Some(source)`.
     pub filter_source: Option<ObjectId>,
@@ -2284,6 +2284,17 @@ fn resolve_condition_player_simple(
                 .max()?;
             game.players.iter().find_map(|player| {
                 (player.is_in_game() && player.life == max_life).then_some(player.id)
+            })
+        }
+        PlayerFilter::LowestLifeTied => {
+            let min_life = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .map(|player| player.life)
+                .min()?;
+            game.players.iter().find_map(|player| {
+                (player.is_in_game() && player.life == min_life).then_some(player.id)
             })
         }
         PlayerFilter::MostCardsInHand => {

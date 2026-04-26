@@ -39,6 +39,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::MostLifeTied => {
             "a player with the most life or tied for most life".to_string()
         }
+        PlayerFilter::LowestLifeTied => {
+            "a player with the lowest life or tied for lowest life".to_string()
+        }
         PlayerFilter::MostCardsInHand => "the player who has the most cards in hand".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "a player who cast one or more {} spells this turn",
@@ -4958,6 +4961,10 @@ fn describe_commander_zone_union_subject(filter: &ObjectFilter) -> Option<String
 }
 
 pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
+    if let Some(subject) = describe_tagged_hand_origin_count_filter(filter) {
+        return subject;
+    }
+
     let mut bare = filter.clone();
     let controller = bare.controller.clone();
     let owner = bare.owner.clone();
@@ -5070,6 +5077,45 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     }
 
     subject
+}
+
+fn describe_tagged_hand_origin_count_filter(filter: &ObjectFilter) -> Option<String> {
+    if filter.zone != Some(Zone::Hand)
+        || filter.controller.is_some()
+        || !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+        || filter.tagged_constraints.len() != 1
+    {
+        return None;
+    }
+
+    let constraint = &filter.tagged_constraints[0];
+    if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
+        return None;
+    }
+    let tag = constraint.tag.as_str();
+    if !(tag.starts_with("searched")
+        || tag.starts_with("exiled")
+        || crate::cards::is_sentence_helper_tag(tag, "exiled"))
+    {
+        return None;
+    }
+
+    Some(match &filter.owner {
+        Some(PlayerFilter::You) => "card exiled from your hand this way".to_string(),
+        Some(PlayerFilter::NotYou) => "card exiled from your opponent's hand this way".to_string(),
+        Some(PlayerFilter::Specific(_))
+        | Some(PlayerFilter::Target(_))
+        | Some(PlayerFilter::IteratedPlayer)
+        | Some(PlayerFilter::ControllerOf(_)) => "card exiled from their hand this way".to_string(),
+        Some(owner) => format!(
+            "card exiled from {} hand this way",
+            describe_possessive_player_filter(owner)
+        ),
+        None => "card exiled from hand this way".to_string(),
+    })
 }
 
 fn should_drop_card_noun_for_tagged_exiled_objects(filter: &ObjectFilter) -> bool {
@@ -6990,11 +7036,20 @@ pub(super) fn describe_apply_continuous_clauses(
                 crate::ability::AbilityKind::Triggered(_)
                     | crate::ability::AbilityKind::Activated(_)
             ) {
-                let ability_text = capitalize_first(&describe_inline_ability_with_self_subject(
-                    ability,
-                    self_subject,
-                ))
+                let self_subject = if self_subject == "this spell" {
+                    "this creature"
+                } else {
+                    self_subject
+                };
+                let mut ability_text = capitalize_first(
+                    &describe_inline_ability_with_self_subject(ability, self_subject),
+                )
                 .replace(". otherwise,", ". Otherwise,");
+                if self_subject != "this spell" {
+                    ability_text = ability_text
+                        .replace("This spell", &capitalize_first(self_subject))
+                        .replace("this spell", self_subject);
+                }
                 let grant_verb = if plural_target && effect.until == crate::effect::Until::Forever {
                     has
                 } else {
@@ -7365,9 +7420,18 @@ pub(super) fn describe_apply_continuous_effect(
     {
         let controller_text = match player {
             PlayerFilter::MostLifeTied => "the player with the most life".to_string(),
+            PlayerFilter::LowestLifeTied => "the player with the lowest life total".to_string(),
             _ => describe_player_filter(player),
         };
         let mut text = format!("{controller_text} gains control of {target}");
+        if matches!(player, PlayerFilter::LowestLifeTied)
+            && matches!(effect.until, Until::Forever)
+            && matches!(effect.target, crate::continuous::EffectTarget::Source)
+        {
+            text.push_str(". If two or more players are tied for lowest life total, you choose one of them, and that player gains control of ");
+            text.push_str(&target);
+            return Some(text);
+        }
         if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));

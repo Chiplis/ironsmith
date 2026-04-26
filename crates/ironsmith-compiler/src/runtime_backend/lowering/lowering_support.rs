@@ -2,7 +2,8 @@ use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, LineInfo,
-    ParsedAbility, PredicateAst, StaticAbilityAst, TargetAst, TriggerSpec,
+    ParsedAbility, PredicateAst, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec};
 use crate::filter::ObjectFilter;
@@ -139,12 +140,20 @@ fn bind_condition_target_antecedent(target: &mut TargetAst, antecedent: &ObjectF
 
 fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
     match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::Untap { target }
+            | SubjectVerbActionAst::Destroy { target, .. }
+            | SubjectVerbActionAst::Exile { target, .. }
+            | SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
+                bind_condition_target_antecedent(target, antecedent);
+            }
+            _ => {}
+        },
         EffectAst::ChooseObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
             bind_condition_filter_antecedent(filter, antecedent);
-        }
-        EffectAst::Destroy { target } | EffectAst::DestroyNoRegeneration { target } => {
-            bind_condition_target_antecedent(target, antecedent);
         }
         EffectAst::Conditional {
             if_true, if_false, ..
@@ -167,22 +176,26 @@ fn bind_condition_antecedent_in_effects(effects: &mut [EffectAst], antecedent: &
 
 fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
     match effect {
-        EffectAst::BecomeBasePtCreature {
-            power,
-            toughness,
-            target,
-            card_types,
-            subtypes,
-            colors,
-            abilities,
-            granted_abilities,
-            duration,
-        } => {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::BecomeBasePtCreature {
+                    power,
+                    toughness,
+                    target,
+                    card_types,
+                    subtypes,
+                    colors,
+                    abilities,
+                    granted_abilities,
+                    duration,
+                },
+            ..
+        }) => {
             let target = match target {
                 TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => TargetAst::Source(span),
                 other => other,
             };
-            EffectAst::BecomeBasePtCreature {
+            EffectAst::subject_verb_become_base_pt_creature(
                 power,
                 toughness,
                 target,
@@ -192,7 +205,7 @@ fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
                 abilities,
                 granted_abilities,
                 duration,
-            }
+            )
         }
         EffectAst::Conditional {
             predicate,
@@ -263,21 +276,25 @@ fn retarget_it_target_to_source(target: &mut TargetAst) {
 
 fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     match effect {
-        EffectAst::PutCounters { target, .. }
-        | EffectAst::PutOrRemoveCounters { target, .. }
-        | EffectAst::RemoveUpToAnyCounters { target, .. } => {
-            retarget_it_target_to_source(target);
-        }
-        EffectAst::MoveToZone {
-            target,
-            attached_to,
-            ..
-        } => {
-            retarget_it_target_to_source(target);
-            if let Some(attached_to) = attached_to {
-                retarget_it_target_to_source(attached_to);
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
+            | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
+                retarget_it_target_to_source(target);
             }
-        }
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                attached_to,
+                ..
+            } => {
+                retarget_it_target_to_source(target);
+                if let Some(attached_to) = attached_to {
+                    retarget_it_target_to_source(attached_to);
+                }
+            }
+            _ => {}
+        },
         _ => {}
     }
     if matches!(effect, EffectAst::ForEachTagged { .. }) {
@@ -301,7 +318,8 @@ fn has_local_target_prelude_before_it_reference(effects: &[EffectAst]) -> bool {
         if effect_references_it_tag(effect) {
             return false;
         }
-        if let EffectAst::TargetOnly { target } = effect
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::TargetOnly { target } = &subject_verb.action
             && target_can_establish_local_object_reference(target)
         {
             return true;
@@ -755,13 +773,17 @@ fn rewrite_lower_parsed_ability_internal(
 pub(crate) fn rewrite_lower_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
-    rewrite_lower_parsed_ability_internal(parsed, None)
+    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
+        rewrite_lower_parsed_ability_internal(parsed, None)
+    })
 }
 
 pub(crate) fn rewrite_lower_prepared_ability(
     normalized: NormalizedParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
-    rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
+    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
+        rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
+    })
 }
 
 pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(

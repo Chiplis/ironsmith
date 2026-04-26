@@ -1,8 +1,6 @@
 //! Prevent all damage to a specific target effect implementation.
 
-use super::prevention_helpers::{
-    PreventionTargetResolveMode, register_prevention_shield, resolve_prevention_target_from_spec,
-};
+use super::prevention_helpers::{register_prevention_shield, resolve_prevention_target_from_spec};
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -57,12 +55,7 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        let protected = resolve_prevention_target_from_spec(
-            game,
-            &self.target,
-            ctx,
-            PreventionTargetResolveMode::StrictSelection,
-        )?;
+        let protected = resolve_prevention_target_from_spec(game, &self.target, ctx)?;
         register_prevention_shield(
             game,
             ctx,

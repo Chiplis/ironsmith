@@ -88,11 +88,11 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
-    Some(EffectAst::ReduceNextSpellCostThisTurn {
-        player: PlayerAst::You,
+    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
+        PlayerAst::You,
         filter,
         reduction,
-    })
+    ))
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {

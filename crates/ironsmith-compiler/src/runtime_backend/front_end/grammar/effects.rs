@@ -4,8 +4,8 @@ use winnow::prelude::*;
 
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::target::PlayerFilter;
@@ -636,9 +636,9 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     core_tokens.extend_from_slice(&tokens[this_turn_idx + 2..]);
 
     if core_words == ["that", "would", "be", "dealt"] {
-        return Ok(Some(EffectAst::PreventAllCombatDamage {
-            duration: crate::effect::Until::EndOfTurn,
-        }));
+        return Ok(Some(EffectAst::subject_verb_prevent_all_combat_damage(
+            crate::effect::Until::EndOfTurn,
+        )));
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES).is_some() {
@@ -733,10 +733,10 @@ fn prevent_damage_effect_with_optional_condition(
         TargetAst::Object(filter, _, _) => Some(filter.clone()),
         _ => None,
     };
-    let prevent = EffectAst::PreventAllCombatDamageFromSource {
-        duration: crate::effect::Until::EndOfTurn,
+    let prevent = EffectAst::subject_verb_prevent_all_combat_damage_from_source(
         source,
-    };
+        crate::effect::Until::EndOfTurn,
+    );
     if has_color_condition {
         let predicate = condition_filter.map_or_else(
             || {
@@ -800,14 +800,18 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
         .filter(|word| !is_article(word))
         .collect();
     if target_words.as_slice() == ["player"] || target_words.as_slice() == ["players"] {
-        return Ok(Some(EffectAst::PreventAllCombatDamageToPlayers {
-            duration: crate::effect::Until::EndOfTurn,
-        }));
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_to_players(
+                crate::effect::Until::EndOfTurn,
+            ),
+        ));
     }
     if target_words.as_slice() == ["you"] {
-        return Ok(Some(EffectAst::PreventAllCombatDamageToYou {
-            duration: crate::effect::Until::EndOfTurn,
-        }));
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_to_you(
+                crate::effect::Until::EndOfTurn,
+            ),
+        ));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -890,21 +894,21 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                         PlayerFilter::Opponent => Some(vec![EffectAst::ForEachOpponent {
                             effects: vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    crate::effect::Until::EndOfTurn,
+                                    None,
+                                )],
                             }],
                         }]),
                         PlayerFilter::IteratedPlayer => {
                             Some(vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    crate::effect::Until::EndOfTurn,
+                                    None,
+                                )],
                             }])
                         }
                         _ => None,
@@ -919,21 +923,21 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                         PlayerFilter::Opponent => Some(vec![EffectAst::ForEachOpponent {
                             effects: vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    crate::effect::Until::EndOfTurn,
+                                    None,
+                                )],
                             }],
                         }]),
                         PlayerFilter::IteratedPlayer => {
                             Some(vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: crate::effect::Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    crate::effect::Until::EndOfTurn,
+                                    None,
+                                )],
                             }])
                         }
                         _ => None,
@@ -977,14 +981,14 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                 target = Some(parsed_target);
             }
         }
-        effects.push(EffectAst::Cant {
-            restriction: parsed.restriction,
-            duration: duration.clone(),
-            condition: source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
-        });
+        effects.push(EffectAst::subject_verb_cant(
+            parsed.restriction,
+            duration.clone(),
+            source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
+        ));
     }
     if let Some(target) = target {
-        effects.insert(0, EffectAst::TargetOnly { target });
+        effects.insert(0, EffectAst::subject_verb_target_only(target));
     }
 
     Ok(Some(effects))
@@ -1034,6 +1038,14 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
     };
+    crate::parse_trace::event(format!(
+        "effect-route: subject-verb verb=Search subject={}",
+        if subject_tokens.is_empty() {
+            "implicit"
+        } else {
+            "explicit"
+        }
+    ));
 
     let search_tokens = head_split.search_tokens;
     if !search_library_starts_with_search_verb_lexed(search_tokens) {
@@ -1214,35 +1226,37 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             effects: per_object_effects,
         }];
         if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: searched_tag.clone(),
-            });
+            sequence.push(EffectAst::subject_verb_reveal_tagged(searched_tag.clone()));
         }
         if shuffle
             && destination == Zone::Library
             && zone_slice_contains(&search_zones, Zone::Library)
         {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence.push(EffectAst::ForEachTagged {
             tag: searched_tag.clone(),
-            effects: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
-                zone: destination,
-                to_top: matches!(destination, Zone::Library),
-                battlefield_controller: ReturnControllerAst::Preserve,
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+                destination,
+                matches!(destination, Zone::Library),
+                ReturnControllerAst::Preserve,
                 battlefield_tapped,
-                attached_to: None,
-            }],
+                None,
+            )],
         });
         if shuffle
             && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))
         {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence
     } else if let Some(named_filters) = named_filters {
@@ -1267,21 +1281,22 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             });
         }
         if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: searched_tag.clone(),
-            });
+            sequence.push(EffectAst::subject_verb_reveal_tagged(searched_tag.clone()));
         }
-        sequence.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
-            zone: destination,
-            to_top: matches!(destination, Zone::Library),
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: destination == Zone::Battlefield
-                && effect_routing.has_tapped_modifier,
-            attached_to: None,
-        });
+        sequence.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+            destination,
+            matches!(destination, Zone::Library),
+            ReturnControllerAst::Preserve,
+            destination == Zone::Battlefield && effect_routing.has_tapped_modifier,
+            None,
+        ));
         if shuffle && zones.contains(&Zone::Library) {
-            sequence.push(EffectAst::ShuffleLibrary { player });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence
     } else if !has_explicit_destination {
@@ -1296,12 +1311,14 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             search_mode: Some(search_mode),
         }];
         if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: chosen_tag.clone(),
-            });
+            sequence.push(EffectAst::subject_verb_reveal_tagged(chosen_tag.clone()));
         }
         if shuffle {
-            sequence.push(EffectAst::ShuffleLibrary { player });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence
     } else if let Some(search_zones) = search_zones_override.clone() {
@@ -1322,64 +1339,66 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             search_mode: Some(search_mode),
         }];
         if reveal {
-            sequence.push(EffectAst::RevealTagged {
-                tag: chosen_tag.clone(),
-            });
+            sequence.push(EffectAst::subject_verb_reveal_tagged(chosen_tag.clone()));
         }
         if shuffle
             && destination == Zone::Library
             && zone_slice_contains(&search_zones, Zone::Library)
         {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence.push(EffectAst::ForEachTagged {
             tag: chosen_tag.clone(),
-            effects: vec![EffectAst::MoveToZone {
-                target: TargetAst::Tagged(chosen_tag, span_from_tokens(tokens)),
-                zone: destination,
-                to_top: matches!(destination, Zone::Library),
-                battlefield_controller: ReturnControllerAst::Preserve,
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(chosen_tag, span_from_tokens(tokens)),
+                destination,
+                matches!(destination, Zone::Library),
+                ReturnControllerAst::Preserve,
                 battlefield_tapped,
-                attached_to: None,
-            }],
+                None,
+            )],
         });
         if shuffle
             && !(destination == Zone::Library && zone_slice_contains(&search_zones, Zone::Library))
         {
-            sequence.push(EffectAst::ShuffleLibrary {
-                player: shuffle_player,
-            });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence
     } else if split_battlefield_and_hand {
         let battlefield_tapped = effect_routing.has_tapped_modifier;
         vec![
-            EffectAst::SearchLibrary {
-                filter: filter.clone(),
-                destination: Zone::Battlefield,
+            EffectAst::subject_verb_search_library(
+                filter.clone(),
+                Zone::Battlefield,
                 chooser,
                 player,
                 search_mode,
                 reveal,
-                shuffle: false,
-                count: ChoiceCount::up_to(1),
-                count_value: None,
-                tapped: battlefield_tapped,
-            },
-            EffectAst::SearchLibrary {
+                false,
+                ChoiceCount::up_to(1),
+                None,
+                battlefield_tapped,
+            ),
+            EffectAst::subject_verb_search_library(
                 filter,
-                destination: Zone::Hand,
+                Zone::Hand,
                 chooser,
                 player,
                 search_mode,
                 reveal,
                 shuffle,
-                count: ChoiceCount::up_to(1),
-                count_value: None,
-                tapped: false,
-            },
+                ChoiceCount::up_to(1),
+                None,
+                false,
+            ),
         ]
     } else if destination == Zone::Exile && face_down_exile {
         let searched_tag: TagKey = "searched_face_down".into();
@@ -1393,19 +1412,23 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 zones: vec![Zone::Library],
                 search_mode: Some(search_mode),
             },
-            EffectAst::Exile {
-                target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
-                face_down: true,
-            },
+            EffectAst::subject_verb_exile(
+                TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+                true,
+            ),
         ];
         if shuffle {
-            sequence.push(EffectAst::ShuffleLibrary { player });
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
         sequence
     } else {
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
-        vec![EffectAst::SearchLibrary {
+        vec![EffectAst::subject_verb_search_library(
             filter,
             destination,
             chooser,
@@ -1414,9 +1437,9 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             reveal,
             shuffle,
             count,
-            count_value: None,
-            tapped: battlefield_tapped,
-        }]
+            None,
+            battlefield_tapped,
+        )]
     };
 
     if let Some(discard_followup) = discard_before_shuffle_followup {
@@ -1425,28 +1448,38 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         if !discard_tokens.is_empty() {
             effects.push(parse_effect_clause_lexed(&discard_tokens)?);
         }
-        effects.push(EffectAst::ShuffleLibrary { player });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
     }
 
     if has_trailing_that_player_shuffle(tokens) {
         let mut rewrote_existing_shuffle = false;
         for effect in &mut effects {
-            if let EffectAst::ShuffleLibrary { player } = effect
-                && matches!(*player, PlayerAst::You | PlayerAst::Implicit)
+            if let EffectAst::SubjectVerb(subject_verb) = effect
+                && matches!(subject_verb.action, SubjectVerbActionAst::ShuffleLibrary)
+                && matches!(
+                    subject_verb.subject.player,
+                    PlayerAst::You | PlayerAst::Implicit
+                )
             {
-                *player = PlayerAst::That;
+                subject_verb.subject.player = PlayerAst::That;
                 rewrote_existing_shuffle = true;
             }
         }
         if !rewrote_existing_shuffle {
-            effects.push(EffectAst::ShuffleLibrary {
-                player: PlayerAst::That,
-            });
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::That,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
     }
 
     if let Some(target) = search_player_target {
-        effects.insert(0, EffectAst::TargetOnly { target });
+        effects.insert(0, EffectAst::subject_verb_target_only(target));
     }
 
     if let Some(trailing_tokens) = find_search_library_trailing_life_followup_lexed(
@@ -1461,7 +1494,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         match reference {
             SearchLibrarySameNameReference::Tagged(_) => {}
             SearchLibrarySameNameReference::Target(target) => {
-                effects.insert(0, EffectAst::TargetOnly { target });
+                effects.insert(0, EffectAst::subject_verb_target_only(target));
             }
             SearchLibrarySameNameReference::Choose { filter, tag } => {
                 effects.insert(

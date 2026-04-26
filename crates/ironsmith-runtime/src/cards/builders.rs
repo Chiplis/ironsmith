@@ -873,6 +873,7 @@ pub(crate) enum PlayerAst {
     Attacking,
     MostCardsInHand,
     MostLifeTied,
+    LowestLifeTied,
     Target,
     TargetOpponent,
     Opponent,
@@ -7965,12 +7966,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("fireball cost line should parse");
 
         let has_target_cost_increase = def.abilities.iter().any(|ability| {
-            matches!(
-                &ability.kind,
-                AbilityKind::Static(static_ability)
-                    if static_ability.id()
-                        == crate::static_abilities::StaticAbilityId::CostIncreasePerAdditionalTarget
-            )
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return false;
+            };
+            static_ability.id()
+                == crate::static_abilities::StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget
+                && static_ability
+                    .cost_increase_mana_cost_per_additional_target()
+                    .is_some_and(|cost| cost.to_oracle() == "{1}")
         });
         assert!(
             has_target_cost_increase,

@@ -10,10 +10,13 @@ pub(crate) fn parse_lose_life(
         && clause_words[1] == "life"
         && let Some((amount, _)) = parse_number(tokens)
     {
-        return Ok(EffectAst::LoseLife {
-            amount: Value::Fixed(amount as i32),
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
             player,
-        });
+            SubjectVerbActionAst::LoseLife {
+                amount: Value::Fixed(amount as i32),
+            },
+        ));
     }
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
         if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
@@ -23,14 +26,22 @@ pub(crate) fn parse_lose_life(
         {
             amount = remap_source_stat_value_to_it(amount);
         }
-        return Ok(EffectAst::LoseLife { amount, player });
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife { amount },
+        ));
     }
     if clause_words.as_slice() == ["the", "game"] {
-        return Ok(EffectAst::LoseGame { player });
+        return Ok(EffectAst::subject_verb_lose_game(player));
     }
 
     if let Some(amount) = parse_half_life_value(tokens, player) {
-        return Ok(EffectAst::LoseLife { amount, player });
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife { amount },
+        ));
     }
 
     let (mut amount, used) = parse_life_amount(tokens, "life loss")?;
@@ -41,7 +52,11 @@ pub(crate) fn parse_lose_life(
     if !trailing.is_empty() {
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
             amount = resolved;
-            return Ok(EffectAst::LoseLife { amount, player });
+            return Ok(subject_verb_player_resource_effect(
+                SubjectVerbRoleAst::AffectedPlayer,
+                player,
+                SubjectVerbActionAst::LoseLife { amount },
+            ));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing life-loss clause (clause: '{}')",
@@ -49,7 +64,11 @@ pub(crate) fn parse_lose_life(
         )));
     }
 
-    Ok(EffectAst::LoseLife { amount, player })
+    Ok(subject_verb_player_resource_effect(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::LoseLife { amount },
+    ))
 }
 
 pub(crate) fn parse_gain_life(
@@ -58,8 +77,19 @@ pub(crate) fn parse_gain_life(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    if let Some(amount) = parse_life_equal_to_value(tokens)? {
-        return Ok(EffectAst::GainLife { amount, player });
+    if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
+        if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+            && (grammar::words_find_phrase(tokens, &["its", "power"]).is_some()
+                || grammar::words_find_phrase(tokens, &["its", "toughness"]).is_some()
+                || grammar::words_find_phrase(tokens, &["its", "mana", "value"]).is_some())
+        {
+            amount = remap_source_stat_value_to_it(amount);
+        }
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::GainLife { amount },
+        ));
     }
 
     let (mut amount, used) = parse_life_amount(tokens, "life gain")?;
@@ -82,7 +112,11 @@ pub(crate) fn parse_gain_life(
         }
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
             amount = resolved;
-            return Ok(EffectAst::GainLife { amount, player });
+            return Ok(subject_verb_player_resource_effect(
+                SubjectVerbRoleAst::AffectedPlayer,
+                player,
+                SubjectVerbActionAst::GainLife { amount },
+            ));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing life-gain clause (clause: '{}')",
@@ -90,7 +124,11 @@ pub(crate) fn parse_gain_life(
         )));
     }
 
-    Ok(EffectAst::GainLife { amount, player })
+    Ok(subject_verb_player_resource_effect(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::GainLife { amount },
+    ))
 }
 
 pub(crate) fn parse_gain_control(
@@ -175,10 +213,11 @@ pub(crate) fn parse_gain_control(
     let duration = parse_control_duration(duration_tokens)?;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let base_effect = match target_ast {
-        TargetAst::Player(filter, _) => EffectAst::ControlPlayer {
-            player: PlayerFilter::Target(Box::new(filter)),
+        TargetAst::Player(filter, _) => EffectAst::subject_verb_control_player(
+            player,
+            PlayerFilter::Target(Box::new(filter)),
             duration,
-        },
+        ),
         _ => {
             let until = match duration {
                 ControlDurationAst::UntilEndOfTurn => Until::EndOfTurn,
@@ -190,11 +229,7 @@ pub(crate) fn parse_gain_control(
                     ));
                 }
             };
-            EffectAst::GainControl {
-                target: target_ast,
-                player,
-                duration: until,
-            }
+            EffectAst::subject_verb_gain_control(player, target_ast, until)
         }
     };
 
@@ -387,16 +422,16 @@ pub(crate) fn parse_put_into_hand(
         && grammar::contains_word(tokens, "order")
         && matches!(clause_words.first().copied(), Some("it" | "them"))
     {
-        return Ok(EffectAst::ReorderTopOfLibrary {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reorder_top_of_library(TagKey::from(IT_TAG)));
     }
 
     if grammar::contains_word(tokens, "from")
         && grammar::contains_word(tokens, "among")
         && grammar::contains_word(tokens, "hand")
     {
-        return Ok(EffectAst::PutSomeIntoHandRestIntoGraveyard { player, count: 1 });
+        return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
+            player, 1,
+        ));
     }
     let has_it = grammar::contains_word(tokens, "it");
     let has_them = grammar::contains_word(tokens, "them");
@@ -438,10 +473,12 @@ pub(crate) fn parse_put_into_hand(
                 player
             };
 
-            return Ok(EffectAst::PutSomeIntoHandRestOnBottomOfLibrary {
-                player: dest_player,
-                count: count as u32,
-            });
+            return Ok(
+                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
+                    dest_player,
+                    count as u32,
+                ),
+            );
         }
 
         // "Put N of them into your hand and the rest into your graveyard."
@@ -479,16 +516,13 @@ pub(crate) fn parse_put_into_hand(
                 player
             };
 
-            return Ok(EffectAst::PutSomeIntoHandRestIntoGraveyard {
-                player: dest_player,
-                count: count as u32,
-            });
+            return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
+                dest_player,
+                count as u32,
+            ));
         }
 
-        let effect = EffectAst::PutIntoHand {
-            player,
-            object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
-        };
+        let effect = EffectAst::subject_verb_put_into_hand(player, ObjectRefAst::Tagged(TagKey::from(IT_TAG)));
         return Ok(wrap_return_with_delayed_timing(
             effect,
             parse_put_into_hand_delayed_timing(tokens),
@@ -623,14 +657,14 @@ pub(crate) fn parse_put_into_hand(
             object_target = expand_graveyard_or_hand_disjunction(object_target, &object_tokens);
             object_target = force_object_targeting(object_target, tokens[0].span());
 
-            return Ok(EffectAst::MoveToZone {
-                target: object_target,
-                zone: Zone::Battlefield,
-                to_top: false,
+            return Ok(EffectAst::subject_verb_move_to_zone(
+                object_target,
+                Zone::Battlefield,
+                false,
                 battlefield_controller,
                 battlefield_tapped,
-                attached_to: Some(attachment_target),
-            });
+                Some(attachment_target),
+            ));
         }
 
         if !target_tokens
@@ -673,14 +707,14 @@ pub(crate) fn parse_put_into_hand(
         } else {
             parse_target_phrase(&target_tokens)?
         };
-        return Ok(EffectAst::MoveToZone {
+        return Ok(EffectAst::subject_verb_move_to_zone(
             target,
-            zone: Zone::Library,
-            to_top: true,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
+            Zone::Library,
+            true,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
     }
 
     if let Some(on_idx) = find_index(tokens, |token| token.is_word("on")) {
@@ -716,7 +750,7 @@ pub(crate) fn parse_put_into_hand(
             let is_rest_target =
                 target_words.as_slice() == ["the", "rest"] || target_words.as_slice() == ["rest"];
             if is_rest_target {
-                return Ok(EffectAst::PutRestOnBottomOfLibrary);
+                return Ok(EffectAst::subject_verb_put_rest_on_bottom_of_library());
             }
 
             let target = if let Some((count, used)) = parse_number(&target_tokens)
@@ -730,14 +764,14 @@ pub(crate) fn parse_put_into_hand(
                 parse_target_phrase(&target_tokens)?
             };
 
-            return Ok(EffectAst::MoveToZone {
+            return Ok(EffectAst::subject_verb_move_to_zone(
                 target,
-                zone: Zone::Library,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            });
+                Zone::Library,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            ));
         }
     }
 
@@ -764,7 +798,9 @@ pub(crate) fn parse_put_into_hand(
             Some(Zone::Graveyard)
         } else if let Some(position) = parse_library_nth_from_top_destination(destination_tokens) {
             let target = parse_target_phrase(&target_tokens)?;
-            return Ok(EffectAst::MoveToLibraryNthFromTop { target, position });
+            return Ok(EffectAst::subject_verb_move_to_library_nth_from_top(
+                target, position,
+            ));
         } else {
             None
         };
@@ -779,18 +815,18 @@ pub(crate) fn parse_put_into_hand(
             if zone == Zone::Graveyard
                 && matches!(target_words.as_slice(), ["the", "rest"] | ["rest"])
             {
-                return Ok(EffectAst::MoveToZone {
-                    target: TargetAst::Object(
+                return Ok(EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Object(
                         ObjectFilter::tagged(TagKey::from(IT_TAG)),
                         None,
                         None,
                     ),
                     zone,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                });
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ));
             }
 
             if zone == Zone::Hand {
@@ -809,32 +845,29 @@ pub(crate) fn parse_put_into_hand(
                         player
                     };
 
-                    return Ok(EffectAst::PutSomeIntoHandRestIntoGraveyard {
-                        player: dest_player,
+                    return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
+                        dest_player,
                         count,
-                    });
+                    ));
                 }
 
                 if matches!(
                     target_words.as_slice(),
                     ["it"] | ["them"] | ["that", "card"] | ["those", "card"] | ["those", "cards"]
                 ) {
-                    let effect = EffectAst::PutIntoHand {
-                        player,
-                        object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
-                    };
+                    let effect = EffectAst::subject_verb_put_into_hand(player, ObjectRefAst::Tagged(TagKey::from(IT_TAG)));
                     return Ok(wrap_return_with_delayed_timing(effect, delayed_hand_timing));
                 }
             }
 
-            let effect = EffectAst::MoveToZone {
-                target: parse_target_phrase(&target_tokens)?,
+            let effect = EffectAst::subject_verb_move_to_zone(
+                parse_target_phrase(&target_tokens)?,
                 zone,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::Preserve,
-                battlefield_tapped: false,
-                attached_to: None,
-            };
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            );
             return Ok(if zone == Zone::Hand {
                 wrap_return_with_delayed_timing(effect, delayed_hand_timing)
             } else {
@@ -942,10 +975,10 @@ pub(crate) fn parse_put_into_hand(
                     ];
                 }
             }
-            return Ok(EffectAst::ReturnAllToBattlefield {
+            return Ok(EffectAst::subject_verb_return_all_to_battlefield(
                 filter,
-                tapped: battlefield_tapped,
-            });
+                battlefield_tapped,
+            ));
         }
 
         let mut target = parse_target_phrase(&target_tokens)?;
@@ -959,14 +992,14 @@ pub(crate) fn parse_put_into_hand(
             apply_source_zone_constraint(&mut target, Zone::Command);
         }
 
-        return Ok(EffectAst::MoveToZone {
+        return Ok(EffectAst::subject_verb_move_to_zone(
             target,
-            zone: Zone::Battlefield,
-            to_top: false,
+            Zone::Battlefield,
+            false,
             battlefield_controller,
             battlefield_tapped,
-            attached_to: None,
-        });
+            None,
+        ));
     }
 
     if grammar::contains_word(tokens, "sticker") {

@@ -94,14 +94,17 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
 
 fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::AddMana { .. }
-        | EffectAst::AddManaScaled { .. }
-        | EffectAst::AddManaAnyColor { .. }
-        | EffectAst::AddManaAnyOneColor { .. }
-        | EffectAst::AddManaChosenColor { .. }
-        | EffectAst::AddManaFromLandCouldProduce { .. }
-        | EffectAst::AddManaCommanderIdentity { .. }
-        | EffectAst::AddManaImprintedColors => true,
+        EffectAst::SubjectVerb(subject_verb) => matches!(
+            &subject_verb.action,
+            SubjectVerbActionAst::AddMana { .. }
+                | SubjectVerbActionAst::AddManaScaled { .. }
+                | SubjectVerbActionAst::AddManaAnyColor { .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
+                | SubjectVerbActionAst::AddManaChosenColor { .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::AddManaImprintedColors
+        ),
         EffectAst::Conditional {
             if_true, if_false, ..
         }

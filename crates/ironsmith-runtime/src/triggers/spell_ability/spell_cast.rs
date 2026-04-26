@@ -270,6 +270,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::MostLifeTied => {
                     "a player with the most life or tied for most life".to_string()
                 }
+                PlayerFilter::LowestLifeTied => {
+                    "a player with the lowest life or tied for lowest life".to_string()
+                }
                 PlayerFilter::MostCardsInHand => {
                     "the player who has the most cards in hand".to_string()
                 }

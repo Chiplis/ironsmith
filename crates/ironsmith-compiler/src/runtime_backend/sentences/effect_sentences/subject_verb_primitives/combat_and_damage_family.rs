@@ -13,13 +13,8 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
     }
 
     Ok(Some(vec![
-        EffectAst::ChooseCreatureType {
-            player: PlayerAst::You,
-            excluded_subtypes: vec![],
-        },
-        EffectAst::DestroyAll {
-            filter: ObjectFilter::creature().of_chosen_creature_type(),
-        },
+        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_destroy_all(ObjectFilter::creature().of_chosen_creature_type()),
     ]))
 }
 
@@ -62,9 +57,13 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
         let mut patched = false;
         for effect in &mut gain_effects {
             match effect {
-                EffectAst::PumpAll { filter, .. }
-                | EffectAst::GrantAbilitiesAll { filter, .. }
-                | EffectAst::GrantAbilitiesChoiceAll { filter, .. } => {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::PumpAll { filter, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. },
+                    ..
+                }) => {
                     filter.chosen_creature_type = true;
                     patched = true;
                 }
@@ -72,10 +71,10 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
             }
         }
         if patched {
-            let mut effects = vec![EffectAst::ChooseCreatureType {
-                player: PlayerAst::You,
-                excluded_subtypes: vec![],
-            }];
+            let mut effects = vec![EffectAst::subject_verb_choose_creature_type(
+                PlayerAst::You,
+                vec![],
+            )];
             effects.extend(gain_effects);
             return Ok(Some(effects));
         }
@@ -130,16 +129,8 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     filter.chosen_creature_type = true;
 
     Ok(Some(vec![
-        EffectAst::ChooseCreatureType {
-            player: PlayerAst::You,
-            excluded_subtypes: vec![],
-        },
-        EffectAst::PumpAll {
-            filter,
-            power,
-            toughness,
-            duration,
-        },
+        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
     ]))
 }
 
@@ -195,15 +186,12 @@ pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
     filter.chosen_creature_type = true;
 
     Ok(Some(vec![
-        EffectAst::ChooseCreatureType {
-            player: PlayerAst::You,
-            excluded_subtypes: vec![],
-        },
-        EffectAst::GrantAbilitiesAll {
+        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_grant_abilities_all(
             filter,
-            abilities: vec![crate::runtime_backend::GrantedAbilityAst::MustAttack],
-            duration: Until::EndOfTurn,
-        },
+            vec![crate::runtime_backend::GrantedAbilityAst::MustAttack],
+            Until::EndOfTurn,
+        ),
     ]))
 }
 
@@ -255,17 +243,19 @@ pub(crate) fn parse_sentence_put_sticker_on(
         .is_some_and(|word| matches!(*word, "target" | "it" | "them" | "that" | "those" | "this"))
     {
         let target = parse_target_phrase(&target_tokens)?;
-        return Ok(Some(vec![EffectAst::PutSticker { target, action }]));
+        return Ok(Some(vec![EffectAst::subject_verb_put_sticker(
+            target, action,
+        )]));
     }
 
     let mut filter = parse_object_filter(&target_tokens, false)?;
     if filter.zone.is_none() {
         filter.zone = Some(crate::zone::Zone::Battlefield);
     }
-    Ok(Some(vec![EffectAst::PutSticker {
-        target: TargetAst::Object(filter, None, None),
+    Ok(Some(vec![EffectAst::subject_verb_put_sticker(
+        TargetAst::Object(filter, None, None),
         action,
-    }]))
+    )]))
 }
 
 pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
@@ -369,10 +359,10 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
 
     let mut effects = Vec::new();
     if needs_inline_choice_effect {
-        effects.push(EffectAst::ChooseCreatureType {
-            player: PlayerAst::You,
-            excluded_subtypes: vec![],
-        });
+        effects.push(EffectAst::subject_verb_choose_creature_type(
+            PlayerAst::You,
+            vec![],
+        ));
     }
 
     if has_target {
@@ -423,12 +413,9 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
             filter.chosen_creature_type,
             filter.excluded_chosen_creature_type,
         );
-        effects.push(EffectAst::ReturnToHand {
-            target,
-            random: false,
-        });
+        effects.push(EffectAst::subject_verb_return_to_hand(target, false));
     } else {
-        effects.push(EffectAst::ReturnAllToHand { filter });
+        effects.push(EffectAst::subject_verb_return_all_to_hand(filter));
     }
 
     Ok(Some(effects))
@@ -540,12 +527,8 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     graveyard_filter.zone = Some(zone_pair[1]);
 
     Ok(Some(vec![
-        EffectAst::ReturnAllToHand {
-            filter: battlefield_filter,
-        },
-        EffectAst::ReturnAllToHand {
-            filter: graveyard_filter,
-        },
+        EffectAst::subject_verb_return_all_to_hand(battlefield_filter),
+        EffectAst::subject_verb_return_all_to_hand(graveyard_filter),
     ]))
 }
 
@@ -680,25 +663,24 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             }
             let filter = parse_object_filter(&segment[1..], false)?;
             if is_battlefield {
-                effects.push(EffectAst::ReturnAllToBattlefield { filter, tapped });
+                effects.push(EffectAst::subject_verb_return_all_to_battlefield(
+                    filter, tapped,
+                ));
             } else {
-                effects.push(EffectAst::ReturnAllToHand { filter });
+                effects.push(EffectAst::subject_verb_return_all_to_hand(filter));
             }
         } else {
             let target = parse_target_phrase(&segment)?;
             if is_battlefield {
-                effects.push(EffectAst::ReturnToBattlefield {
+                effects.push(EffectAst::subject_verb_return_to_battlefield(
                     target,
                     tapped,
-                    transformed: false,
-                    converted: false,
-                    controller: ReturnControllerAst::Preserve,
-                });
+                    false,
+                    false,
+                    ReturnControllerAst::Preserve,
+                ));
             } else {
-                effects.push(EffectAst::ReturnToHand {
-                    target,
-                    random: false,
-                });
+                effects.push(EffectAst::subject_verb_return_to_hand(target, false));
             }
         }
     }
@@ -821,13 +803,13 @@ pub(crate) fn parse_distribute_counters_sentence(
     }
     let target = parse_target_phrase(target_phrase)?;
 
-    Ok(Some(EffectAst::PutCounters {
+    Ok(Some(EffectAst::subject_verb_put_counters(
         counter_type,
-        count: Value::Fixed(count as i32),
+        Value::Fixed(count as i32),
         target,
-        target_count: Some(target_count),
-        distributed: true,
-    }))
+        Some(target_count),
+        true,
+    )))
 }
 
 pub(crate) fn parse_sentence_distribute_counters(
@@ -853,36 +835,6 @@ pub(crate) fn parse_sentence_distribute_counters(
         effects.extend(parse_effect_chain(&tail_tokens)?);
     }
 
-    Ok(Some(effects))
-}
-
-pub(crate) fn parse_sentence_take_extra_turn(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_take_extra_turn_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_earthbend(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(earthbend) = parse_earthbend_sentence(tokens)? else {
-        return Ok(None);
-    };
-
-    // Support chained text like "earthbend 8, then untap that land."
-    let Some((_, used)) = parse_number(&tokens[1..]) else {
-        return Ok(Some(vec![earthbend]));
-    };
-    let mut tail = trim_commas(&tokens[1 + used..]).to_vec();
-    while tail.first().is_some_and(|token| token.is_word("then")) {
-        tail.remove(0);
-    }
-    if tail.is_empty() {
-        return Ok(Some(vec![earthbend]));
-    }
-
-    let mut effects = vec![earthbend];
-    effects.extend(parse_effect_chain(&tail)?);
     Ok(Some(effects))
 }
 
@@ -924,46 +876,10 @@ pub(crate) fn parse_sentence_transform_with_followup(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_enchant(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_enchant_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
 pub(crate) fn parse_sentence_cant_effect(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_cant_effect_sentence(tokens)
-}
-
-pub(crate) fn parse_sentence_prevent_damage(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_prevent_damage_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_gain_ability_to_source(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_gain_ability_to_source_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
-pub(crate) fn parse_sentence_gain_ability(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_ability_sentence(tokens)
-}
-
-pub(crate) fn parse_sentence_you_and_each_opponent_voted_with_you(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_you_and_each_opponent_voted_with_you_sentence(tokens)
-}
-
-pub(crate) fn parse_sentence_gain_life_equal_to_power(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_life_equal_to_power_sentence(tokens)
 }
 
 pub(crate) fn parse_sentence_gain_x_plus_life(
@@ -996,12 +912,6 @@ pub(crate) fn parse_sentence_for_each_destroyed_this_way(
     parse_for_each_destroyed_this_way_sentence(tokens)
 }
 
-pub(crate) fn parse_sentence_exile_then_return_same_object(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_exile_then_return_same_object_sentence(tokens)
-}
-
 pub(crate) fn parse_sentence_search_library(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1032,12 +942,6 @@ pub(crate) fn parse_sentence_target_player_exiles_creature_and_graveyard(
     parse_target_player_exiles_creature_and_graveyard_sentence(tokens)
 }
 
-pub(crate) fn parse_sentence_play_from_graveyard(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_play_from_graveyard_sentence(tokens)?.map(|effect| vec![effect]))
-}
-
 pub(crate) fn parse_sentence_look_at_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1056,12 +960,6 @@ pub(crate) fn parse_sentence_gain_life_equal_to_age(
     parse_gain_life_equal_to_age_sentence(tokens)
 }
 
-pub(crate) fn parse_sentence_for_each_opponent_doesnt(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_for_each_opponent_doesnt(tokens)?.map(|effect| vec![effect]))
-}
-
 pub(crate) fn parse_sentence_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1077,7 +975,7 @@ pub(super) enum DelayedNextStepKind {
 pub(super) fn delayed_next_step_marker(
     tokens: &[OwnedLexToken],
 ) -> Option<(usize, usize, DelayedNextStepKind, PlayerAst)> {
-    let word_storage = SentencePrimitiveNormalizedWords::new(tokens);
+    let word_storage = SubjectVerbPrimitiveNormalizedWords::new(tokens);
     let words = word_storage.to_word_refs();
     let patterns: &[(&[&str], DelayedNextStepKind, PlayerAst)] = &[
         (

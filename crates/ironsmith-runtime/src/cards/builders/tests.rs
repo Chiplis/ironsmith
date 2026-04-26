@@ -10850,6 +10850,123 @@ fn parse_defending_player_discard_then_draws_carries_defending_player() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn bottom_score_parse_laquatus_creativity_draws_then_discards_that_many() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Laquatus's Creativity")
+        .parse_text(
+            "Target player draws cards equal to the number of cards in their hand, then discards that many cards.",
+        )
+        .expect("Laquatus's Creativity should parse both draw and discard effects");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+    assert!(debug.contains("DiscardEffect"), "{debug}");
+    assert!(
+        rendered.contains(
+            "target player draws cards equal to the number of cards in their hand, then discards that many cards"
+        ),
+        "expected discard follow-up to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bottom_score_parse_officious_interrogation_counts_targeted_players_creatures() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Officious Interrogation")
+        .parse_text(
+            "This spell costs {W}{U} more to cast for each target beyond the first.\nChoose any number of target players. Investigate X times, where X is the total number of creatures those players control.",
+        )
+        .expect("Officious Interrogation should parse target-player investigate scaling");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(debug.contains("InvestigateEffect"), "{debug}");
+    assert!(debug.contains("controller: Some"), "{debug}");
+    assert!(debug.contains("Target"), "{debug}");
+    assert!(
+        rendered.contains(
+            "investigate x times, where x is the total number of creatures those players control"
+        ),
+        "expected targeted-player creature count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bottom_score_parse_journey_for_the_elixir_searches_library_and_graveyard_slots() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Journey for the Elixir")
+        .parse_text(
+            "Search your library and graveyard for a basic land card and a card named Jiang Yanggu, reveal them, put them into your hand, then shuffle.",
+        )
+        .expect("Journey for the Elixir should parse multi-zone search slots");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(debug.contains("SearchLibrarySlotsEffect"), "{debug}");
+    assert!(debug.contains("zone: None"), "{debug}");
+    assert!(
+        rendered.contains("search your library and graveyard for a basic land card and a card named jiang yanggu"),
+        "expected multi-zone slot search, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bottom_score_parse_loxodon_peacekeeper_lowest_life_control_change() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Loxodon Peacekeeper")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, the player with the lowest life total gains control of this creature. If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature.",
+        )
+        .expect("Loxodon Peacekeeper should parse lowest-life controller change");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(debug.contains("ChangeControllerToPlayer"), "{debug}");
+    assert!(debug.contains("LowestLifeTied"), "{debug}");
+    assert!(
+        rendered.contains("the player with the lowest life total gains control of this creature")
+            && rendered.contains("if two or more players are tied for lowest life total"),
+        "expected full lowest-life control surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bottom_score_parse_it_that_betrays_annihilator_and_sacrifice_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "It That Betrays")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Annihilator 2\nWhenever an opponent sacrifices a nontoken permanent, put that card onto the battlefield under your control.",
+        )
+        .expect("It That Betrays should parse annihilator and sacrifice trigger");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(debug.contains("SacrificePlayerEffect"), "{debug}");
+    assert!(debug.contains("PlayerSacrificesTrigger"), "{debug}");
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(rendered.contains("annihilator 2"), "got {rendered}");
+    assert!(
+        rendered.contains(
+            "whenever an opponent sacrifices a nontoken permanent, put that card onto the battlefield under your control"
+        ),
+        "expected sacrifice trigger render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_target_opponent_sacrifice_discard_lose_chain_keeps_all_predicates() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Archon Chain Variant")
         .parse_text(
@@ -15897,6 +16014,290 @@ fn render_draw_and_life_loss_with_shared_dynamic_x() {
         unprocessed_compiled_lines(&devotion_def).join("\n"),
         "You draw X cards and you lose X life, where X is your devotion to black."
     );
+
+    let target_devotion_def = CardDefinitionBuilder::new(CardId::new(), "Target Devotion Draw")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target opponent draws X cards where X is their devotion to black.")
+        .expect("target opponent devotion draw spell should parse");
+    let target_debug = format!("{:?}", target_devotion_def.spell_effect);
+    assert!(
+        target_debug.contains("DrawCardsEffect")
+            && target_debug.contains("target: Target(Player(Opponent))")
+            && target_debug.contains("count: Devotion { player: Target(Opponent), color: Black }")
+            && target_debug.contains("color: Black"),
+        "expected their devotion to bind to target opponent, got {target_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn player_scoped_their_devotion_binds_across_common_effect_amounts() {
+    fn assert_target_opponent_devotion(name: &str, text: &str, effect_name: &str) {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains(effect_name)
+                && debug.contains("target: Target(Player(Opponent))")
+                && debug.contains("Devotion { player: Target(Opponent), color: Black }"),
+            "expected their devotion to bind to target opponent for {name}, got {debug}"
+        );
+    }
+
+    assert_target_opponent_devotion(
+        "Their Devotion Draw",
+        "Target opponent draws X cards where X is their devotion to black.",
+        "DrawCardsEffect",
+    );
+    assert_target_opponent_devotion(
+        "Their Devotion Lose Life",
+        "Target opponent loses X life, where X is their devotion to black.",
+        "LoseLifeEffect",
+    );
+    assert_target_opponent_devotion(
+        "Their Devotion Gain Life",
+        "Target opponent gains X life, where X is their devotion to black.",
+        "GainLifeEffect",
+    );
+    assert_target_opponent_devotion(
+        "Their Devotion Mill",
+        "Target opponent mills X cards, where X is their devotion to black.",
+        "MillEffect",
+    );
+    assert_target_opponent_devotion(
+        "Their Devotion Poison Counters",
+        "Target opponent gets X poison counters, where X is their devotion to black.",
+        "PoisonCountersEffect",
+    );
+
+    for (name, text, effect_name) in [
+        (
+            "Each Opponent Their Devotion Scry",
+            "Each opponent scries X, where X is their devotion to black.",
+            "ScryEffect",
+        ),
+        (
+            "Each Opponent Their Devotion Surveil",
+            "Each opponent surveils X, where X is their devotion to black.",
+            "SurveilEffect",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("ForPlayersEffect")
+                && debug.contains(effect_name)
+                && debug.contains("Devotion { player: IteratedPlayer, color: Black }"),
+            "expected their devotion to bind to the iterated opponent for {name}, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn player_scoped_their_filters_bind_across_common_object_effects() {
+    let discard_one = CardDefinitionBuilder::new(CardId::new(), "Their Hand Discard One")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target opponent discards a card from their hand.")
+        .expect("target opponent discard from their hand should parse");
+    let discard_one_debug = format!("{:?}", discard_one.spell_effect);
+    assert!(
+        discard_one_debug.contains("DiscardEffect")
+            && !discard_one_debug.contains("DiscardHandEffect")
+            && discard_one_debug.contains("player: Target(Opponent)")
+            && discard_one_debug.contains("owner: Some(Target(Opponent))"),
+        "expected their hand to bind to target opponent for single discard, got {discard_one_debug}"
+    );
+
+    let discard_all = CardDefinitionBuilder::new(CardId::new(), "Their Hand Discard All")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target opponent discards all cards from their hand.")
+        .expect("target opponent discard all from their hand should parse");
+    let discard_all_debug = format!("{:?}", discard_all.spell_effect);
+    assert!(
+        discard_all_debug.contains("DiscardEffect")
+            && discard_all_debug.contains("count: Count")
+            && discard_all_debug.contains("player: Target(Opponent)")
+            && discard_all_debug.contains("owner: Some(Target(Opponent))"),
+        "expected all cards from their hand to bind to target opponent, got {discard_all_debug}"
+    );
+
+    let sacrifice = CardDefinitionBuilder::new(CardId::new(), "Their Creature Sacrifice")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target opponent sacrifices a creature they control.")
+        .expect("target opponent sacrifice creature they control should parse");
+    let sacrifice_debug = format!("{:?}", sacrifice.spell_effect);
+    assert!(
+        sacrifice_debug.contains("ChooseObjectsEffect")
+            && sacrifice_debug.contains("controller: Some(Target(Opponent))")
+            && sacrifice_debug.contains("SacrificePlayerEffect")
+            && sacrifice_debug.contains("player: Target(Opponent)"),
+        "expected they control to bind to target opponent for sacrifice, got {sacrifice_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn player_subject_context_binds_remaining_simple_player_effects() {
+    for (name, text, effect_name) in [
+        (
+            "Target Opponent Monarch",
+            "Target opponent becomes the monarch.",
+            "BecomeMonarchEffect",
+        ),
+        (
+            "Target Opponent Skip Turn",
+            "Target opponent skips their next turn.",
+            "SkipTurnEffect",
+        ),
+        (
+            "Target Opponent Shuffle Graveyard",
+            "Target opponent shuffles their graveyard into their library.",
+            "ShuffleGraveyardIntoLibraryEffect",
+        ),
+        (
+            "Target Opponent Adds Mana",
+            "Target opponent adds {B}.",
+            "AddManaEffect",
+        ),
+        (
+            "Target Opponent Loses Game",
+            "Target opponent loses the game.",
+            "LoseTheGameEffect",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains(effect_name)
+                && debug.contains("TargetOnlyEffect")
+                && debug.contains("target: Target(Player(Opponent))")
+                && debug.contains("player: Target(Opponent)"),
+            "expected simple player effect to bind target opponent for {name}, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn player_subject_roles_keep_chooser_owner_and_affected_player_distinct() {
+    let search_def = CardDefinitionBuilder::new(CardId::new(), "Thada Role Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature deals combat damage to a player, search that player's library for an artifact card and exile it. Then that player shuffles. Until end of turn, you may play that card.",
+        )
+        .expect("combat-damage library-owner search should parse");
+    let search_debug = format!("{:#?}", search_def.abilities);
+    let compact_search_debug = search_debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_search_debug.contains("ChooseObjectsEffect")
+            && compact_search_debug.contains("owner:Some(IteratedPlayer")
+            && compact_search_debug.contains("chooser:You")
+            && compact_search_debug.contains("ShuffleLibraryEffect")
+            && compact_search_debug.contains("player:DamagedPlayer")
+            && compact_search_debug.contains("GrantPlayTaggedEffect")
+            && compact_search_debug.contains("player:You"),
+        "expected chooser, library owner, shuffle player, and play-grant player to stay distinct, got {search_debug}"
+    );
+
+    let coercion_def = CardDefinitionBuilder::new(CardId::new(), "Coercion Role Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target opponent reveals their hand. You choose a card from it. That player discards that card.",
+        )
+        .expect("reveal/choose/discard role chain should parse");
+    let coercion_debug = format!("{:#?}", coercion_def.spell_effect);
+    let compact_coercion_debug = coercion_debug.split_whitespace().collect::<String>();
+    assert!(
+        compact_coercion_debug.contains("LookAtHandEffect")
+            && compact_coercion_debug.contains("Target(Player(Opponent")
+            && compact_coercion_debug.contains("ChooseObjectsEffect")
+            && compact_coercion_debug.contains("chooser:You")
+            && compact_coercion_debug.contains("DiscardEffect")
+            && compact_coercion_debug.contains("player:Target(Opponent"),
+        "expected target opponent as affected player and you as chooser, got {coercion_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn player_subject_role_boundary_regressions_for_search_choose_and_cast() {
+    for (name, text, expected) in [
+        (
+            "You Search Opponent Library",
+            "You search target opponent's library for a card and exile it. Then that player shuffles.",
+            &[
+                "ChooseObjectsEffect",
+                "owner:Some(Target(Opponent",
+                "chooser:You",
+                "ShuffleLibraryEffect",
+                "player:Target(Target(Opponent",
+            ][..],
+        ),
+        (
+            "Choose Opponent Graveyard Card",
+            "Choose a card from target opponent's graveyard. Exile that card.",
+            &[
+                "ChooseObjectsEffect",
+                "owner:Some(Target(Opponent",
+                "chooser:You",
+                "MoveToZoneEffect",
+                "zone:Exile",
+            ][..],
+        ),
+        (
+            "Opponent Chooses Your Creature",
+            "Target opponent chooses a creature you control.",
+            &[
+                "ChooseObjectsEffect",
+                "controller:Some(You",
+                "chooser:Target(Opponent",
+            ][..],
+        ),
+        (
+            "That Player Casts Exiled Card",
+            "Exile the top card of target opponent's library. That player may cast it this turn.",
+            &[
+                "ChooseObjectsEffect",
+                "owner:Some(Target(Opponent",
+                "ExileEffect",
+                "GrantPlayTaggedEffect",
+                "player:OwnerOf(Tagged",
+            ][..],
+        ),
+        (
+            "You Cast Exiled Card",
+            "Exile the top card of target opponent's library. You may cast it this turn.",
+            &[
+                "ChooseObjectsEffect",
+                "owner:Some(Target(Opponent",
+                "ExileEffect",
+                "GrantPlayTaggedEffect",
+                "player:You",
+            ][..],
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+        let debug = format!("{:#?}", def.spell_effect);
+        let compact = debug.split_whitespace().collect::<String>();
+        for expected_fragment in expected {
+            assert!(
+                compact.contains(expected_fragment),
+                "expected {name} to contain {expected_fragment}, got {debug}"
+            );
+        }
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -30214,7 +30615,7 @@ fn parse_geistblast_graveyard_copy_activation_renders_cleanly() {
             && !rendered.contains("instant and sorcery")
             && !rendered.contains("time(s)")
             && !rendered.contains(". you may"),
-        "expected Geistblast rendering to avoid legacy copy-spell artifacts, got {rendered}"
+        "expected Geistblast rendering to avoid copy-spell compatibility artifacts, got {rendered}"
     );
 }
 
@@ -30417,6 +30818,141 @@ fn necromentia_counts_only_cards_exiled_from_hand_this_way() {
     assert_eq!(
         exiled_duress_count, 3,
         "Necromentia should exile matching cards from hand, graveyard, and library"
+    );
+}
+
+#[test]
+fn parse_oracle_necromentia_uses_shared_subject_role_lowering() {
+    let def = parse_oracle_card_definition("Necromentia");
+    let program = def.spell_effect.as_ref().expect("Necromentia spell effect");
+    let effects = &program.segments[0].default_effects;
+
+    let choose_name = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseCardNameEffect>())
+        .expect("Necromentia should start by choosing a card name");
+    assert_eq!(choose_name.chooser, PlayerFilter::You);
+    let choose_name_filter = choose_name
+        .filter
+        .as_ref()
+        .expect("Necromentia should carry the non-basic-land name restriction");
+    assert!(
+        choose_name_filter.any_of.iter().any(|filter| {
+            filter.excluded_card_types.contains(&CardType::Land)
+                || filter
+                    .excluded_supertypes
+                    .contains(&crate::types::Supertype::Basic)
+        }),
+        "chosen-name restriction should exclude basic land names, got {choose_name_filter:#?}"
+    );
+
+    let search = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("Necromentia should lower the multi-zone search through ChooseObjectsEffect");
+    assert!(
+        search.is_search,
+        "search choice should be marked as search: {search:#?}"
+    );
+    assert_eq!(search.chooser, PlayerFilter::You);
+    assert_eq!(search.filter.owner, Some(PlayerFilter::target_opponent()));
+    assert_eq!(search.zone, Some(Zone::Graveyard));
+    assert_eq!(search.additional_zones, vec![Zone::Hand, Zone::Library]);
+    assert_eq!(search.count.min, 0);
+    assert_eq!(search.count.max, None);
+    assert!(
+        search.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__chosen_name__"
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                )
+        }),
+        "search filter should use the chosen-name tag, got {search:#?}"
+    );
+
+    let move_to_exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachTaggedEffect>())
+        .and_then(|for_each| for_each.effects.first())
+        .and_then(|effect| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .map(|tagged| tagged.effect.as_ref())
+                .or(Some(effect))
+        })
+        .and_then(|effect| effect.downcast_ref::<MoveToZoneEffect>())
+        .expect("Necromentia should move searched cards to exile through tagged iteration");
+    assert_eq!(move_to_exile.zone, Zone::Exile);
+    assert!(
+        matches!(move_to_exile.target, ChooseSpec::Tagged(_)),
+        "exile move should consume the searched-card tag, got {move_to_exile:#?}"
+    );
+
+    let shuffle = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>())
+        .expect("Necromentia should shuffle that opponent's library");
+    assert_eq!(shuffle.player, PlayerFilter::target_opponent());
+
+    let create = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| tagged.effect.downcast_ref::<CreateTokenEffect>())
+        })
+        .expect("Necromentia should create Zombie tokens for that player");
+    assert_eq!(create.controller, PlayerFilter::target_opponent());
+    assert_eq!(create.token.card.name, "Zombie");
+    assert_eq!(create.token.card.card_types, vec![CardType::Creature]);
+    assert!(create.token.card.subtypes.contains(&Subtype::Zombie));
+    match &create.count {
+        Value::Count(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Hand));
+            assert_eq!(filter.owner, Some(PlayerFilter::target_opponent()));
+            assert!(
+                filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == search.tag
+                        && matches!(
+                            constraint.relation,
+                            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        )
+                }),
+                "token count should count cards searched/exiled from that player's hand, got {filter:#?}"
+            );
+        }
+        other => panic!("Zombie count should be a tagged hand-count value, got {other:#?}"),
+    }
+
+    let compiler_src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root")
+        .join("crates/ironsmith-compiler/src/runtime_backend");
+    let mut stack = vec![compiler_src];
+    let mut card_specific_hits = Vec::new();
+    while let Some(path) = stack.pop() {
+        for entry in std::fs::read_dir(&path).expect("read compiler source") {
+            let path = entry.expect("read compiler entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !path.extension().is_some_and(|ext| ext == "rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("read compiler file");
+            for (line_index, line) in source.lines().enumerate() {
+                if line.to_ascii_lowercase().contains("necromentia") {
+                    card_specific_hits.push(format!("{}:{}", path.display(), line_index + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        card_specific_hits.is_empty(),
+        "Necromentia must compile through generic subject/choice/search/token systems, found card-specific compiler hooks: {card_specific_hits:?}"
     );
 }
 

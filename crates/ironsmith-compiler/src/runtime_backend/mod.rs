@@ -197,11 +197,13 @@ pub(crate) fn compile_card_text(
     text: impl Into<String>,
     allow_unsupported: bool,
 ) -> Result<CompiledCardText, CardTextError> {
-    let text = text.into();
-    let mut compiled =
-        CardTextCompiler::compile(builder, text.clone(), CompilePolicy { allow_unsupported })?;
-    normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
-    Ok(compiled)
+    stacker::grow(16 * 1024 * 1024, || {
+        let text = text.into();
+        let mut compiled =
+            CardTextCompiler::compile(builder, text.clone(), CompilePolicy { allow_unsupported })?;
+        normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
+        Ok(compiled)
+    })
 }
 
 pub(crate) fn parse_card_text(

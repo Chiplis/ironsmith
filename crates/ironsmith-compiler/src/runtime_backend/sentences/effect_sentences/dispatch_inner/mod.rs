@@ -14,8 +14,8 @@ use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed,
 };
 use super::super::keyword_static::{
-    parse_ability_line, parse_pt_modifier, parse_where_x_value_clause,
-    parse_where_x_value_clause_lexed,
+    parse_ability_line, parse_pt_modifier, parse_value_binding_clause,
+    parse_value_binding_clause_lexed,
 };
 use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{
@@ -38,8 +38,9 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, TriggerSpec, Verb,
+    CardTextError, EffectAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, KeywordAction,
+    LineAst, PlayerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    TagKey, TargetAst, TextSpan, TriggerSpec, Verb,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
@@ -51,6 +52,7 @@ use crate::zone::Zone;
 
 const EXILE_ALL_CARDS_FROM_PREFIXES: &[&[&str]] = &[&["exile", "all", "cards", "from"]];
 include!("sentence_shape_predicates.rs");
+include!("generic_subject_verb_programs.rs");
 include!("labeled_prefixes.rs");
 include!("copy_and_next_spell_shapes.rs");
 include!("replacement_and_prevention_shapes.rs");

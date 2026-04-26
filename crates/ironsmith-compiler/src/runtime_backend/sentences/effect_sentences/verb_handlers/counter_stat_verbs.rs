@@ -491,46 +491,34 @@ pub(crate) fn parse_reveal(
             | ["this", "card"]
             | ["this"]
     ) {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_from_among = grammar::contains_word(tokens, "from")
         && grammar::contains_word(tokens, "among")
         && (grammar::contains_word(tokens, "them") || grammar::contains_word(tokens, "those"));
     if reveals_from_among {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_outside_game =
         grammar::contains_word(tokens, "outside") && grammar::contains_word(tokens, "game");
     if reveals_outside_game {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_first_draw =
         grammar::words_match_any_prefix(tokens, FIRST_CARD_YOU_DRAW_PREFIXES).is_some();
     if reveals_first_draw {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_card_this_way = (grammar::contains_word(tokens, "card")
         || grammar::contains_word(tokens, "cards"))
         && grammar::words_match_suffix(tokens, &["this", "way"]).is_some();
     if reveals_card_this_way {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_conditional_it =
         words.first() == Some(&"it") && grammar::contains_word(tokens, "if");
     if reveals_conditional_it {
-        return Ok(EffectAst::RevealTagged {
-            tag: TagKey::from(IT_TAG),
-        });
+        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     if grammar::contains_word(tokens, "hand") {
         let is_full_hand_reveal = matches!(words.as_slice(), ["your", "hand"] | ["their", "hand"])
@@ -560,12 +548,12 @@ pub(crate) fn parse_reveal(
                         && (grammar::contains_word(tokens, "their")
                             || grammar::contains_word(tokens, "your"))
                     {
-                        return Ok(EffectAst::RevealCardsFromHand {
+                        return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                             player,
-                            count: ChoiceCount::dynamic_x(),
-                            count_value: Some(count_value),
-                            tag: TagKey::from(IT_TAG),
-                        });
+                            ChoiceCount::dynamic_x(),
+                            Some(count_value),
+                            TagKey::from(IT_TAG),
+                        ));
                     }
                 }
                 if let Some((count, _used)) = parse_number(tokens)
@@ -573,23 +561,21 @@ pub(crate) fn parse_reveal(
                     && (grammar::contains_word(tokens, "their")
                         || grammar::contains_word(tokens, "your"))
                 {
-                    return Ok(EffectAst::RevealCardsFromHand {
+                    return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                         player,
-                        count: ChoiceCount::exactly(count as usize),
-                        count_value: None,
-                        tag: TagKey::from(IT_TAG),
-                    });
+                        ChoiceCount::exactly(count as usize),
+                        None,
+                        TagKey::from(IT_TAG),
+                    ));
                 }
-                return Ok(EffectAst::RevealTagged {
-                    tag: TagKey::from(IT_TAG),
-                });
+                return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported reveal-hand clause (clause: '{}')",
                 words.join(" ")
             )));
         }
-        return Ok(EffectAst::RevealHand { player });
+        return Ok(EffectAst::subject_verb_reveal_hand(player));
     }
 
     let has_card =
@@ -606,7 +592,7 @@ pub(crate) fn parse_reveal(
         )));
     }
 
-    Ok(EffectAst::RevealTop { player })
+    Ok(EffectAst::subject_verb_reveal_top(player))
 }
 
 pub(crate) fn parse_life_amount(
@@ -689,7 +675,7 @@ pub(crate) fn parse_life_amount_from_trailing(
         }
     }
 
-    if let Some(where_value) = parse_where_x_value_clause(trailing) {
+    if let Some(where_value) = parse_value_binding_clause(trailing) {
         if value_contains_unbound_x(base_amount) {
             let clause = crate::runtime_backend::token_word_refs(trailing).join(" ");
             return Ok(Some(replace_unbound_x_with_value(
@@ -751,6 +737,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
+        PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController => None,
         PlayerAst::ItsController | PlayerAst::ItsOwner => None,
     }

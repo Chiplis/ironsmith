@@ -125,7 +125,7 @@ impl EffectExecutor for MayEffect {
         };
 
         // Use explicit decider when present ("that player may ..."), otherwise
-        // preserve legacy behavior: iterated player if set, then controller.
+        // preserve established behavior: iterated player if set, then controller.
         let deciding_player = if let Some(decider) = &self.decider {
             resolve_player_filter(game, decider, ctx)?
         } else {

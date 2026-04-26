@@ -13,7 +13,7 @@ use super::super::activation_and_restrictions::activation_restriction_clauses::s
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
-use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::keyword_static::parse_value_binding_clause;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     contains_window as word_slice_contains_sequence, find_index as find_token_index,
@@ -28,7 +28,7 @@ use super::super::util::{
 };
 use super::chain_carry::find_verb;
 use super::parse_subtype_word;
-use super::sentence_primitives::parse_distribute_counters_sentence;
+use super::subject_verb_primitives::parse_distribute_counters_sentence;
 use super::verb_dispatch::parse_effect_with_verb;
 
 type ClausePatternCompatWords<'a> = TokenWordView<'a>;
@@ -159,11 +159,11 @@ pub(crate) fn parse_prevent_next_damage_clause(
         .collect::<Vec<_>>();
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(EffectAst::PreventDamage {
+    Ok(Some(EffectAst::subject_verb_prevent_damage(
         amount,
         target,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_double_counters_clause(
@@ -233,10 +233,10 @@ pub(crate) fn parse_double_counters_clause(
     }
 
     let filter = parse_object_filter(filter_tokens, false)?;
-    Ok(Some(EffectAst::DoubleCountersOnEach {
+    Ok(Some(EffectAst::subject_verb_double_counters_on_each(
         counter_type,
         filter,
-    }))
+    )))
 }
 
 pub(crate) fn parse_distribute_counters_clause(
@@ -474,13 +474,13 @@ pub(crate) fn parse_copy_spell_clause(
             }
             _ => TargetAst::Source(None),
         };
-        let base = EffectAst::CopySpell {
+        let base = EffectAst::subject_verb_copy_spell(
             target,
             count,
-            player: PlayerAst::Implicit,
-            may_choose_new_targets: copy_clause_split_idx.is_some(),
-            removed_supertypes: parse_copy_spell_removed_supertypes(copy_clause_tail),
-        };
+            PlayerAst::Implicit,
+            copy_clause_split_idx.is_some(),
+            parse_copy_spell_removed_supertypes(copy_clause_tail),
+        );
         if let Some(trailing_if) = trailing_if {
             return Ok(Some(EffectAst::Conditional {
                 predicate: trailing_if.predicate,
@@ -585,13 +585,13 @@ pub(crate) fn parse_copy_spell_clause(
         }
     }
 
-    Ok(Some(EffectAst::CopySpell {
+    Ok(Some(EffectAst::subject_verb_copy_spell(
         target,
         count,
         player,
         may_choose_new_targets,
-        removed_supertypes: parse_copy_spell_removed_supertypes(tail),
-    }))
+        parse_copy_spell_removed_supertypes(tail),
+    )))
 }
 
 fn parse_copy_spell_removed_supertypes(tokens: &[OwnedLexToken]) -> Vec<crate::types::Supertype> {
@@ -986,10 +986,10 @@ pub(crate) fn parse_prevent_all_damage_clause(
         .collect::<Vec<_>>();
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(EffectAst::PreventAllDamageToTarget {
+    Ok(Some(EffectAst::subject_verb_prevent_all_damage_to_target(
         target,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_can_attack_as_though_no_defender_clause(
@@ -1002,12 +1002,16 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
     };
     let subject_words = &clause_words[..can_idx];
     let tail = &clause_words[can_idx..];
-    let has_core = word_slice_starts_with(tail, &["can", "attack"])
+    let has_full_core = word_slice_starts_with(tail, &["can", "attack"])
         && word_slice_contains_sequence(tail, &["as", "though"])
         && word_slice_contains(tail, "turn")
         && word_slice_contains(tail, "have")
         && tail.last().copied() == Some("defender");
-    if !has_core {
+    let has_split_core = word_slice_starts_with(tail, &["can", "attack"])
+        && word_slice_contains_sequence(tail, &["as", "though"])
+        && word_slice_contains(tail, "turn")
+        && matches!(tail.last().copied(), Some("didnt" | "didn't"));
+    if !has_full_core && !has_split_core {
         return Ok(None);
     }
 
@@ -1021,11 +1025,11 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
         parse_target_phrase(&subject_tokens)?
     };
 
-    Ok(Some(EffectAst::GrantAbilitiesToTarget {
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
         target,
-        abilities: vec![GrantedAbilityAst::CanAttackAsThoughNoDefender],
-        duration: Until::EndOfTurn,
-    }))
+        vec![GrantedAbilityAst::CanAttackAsThoughNoDefender],
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_prevent_next_time_damage_sentence(
@@ -1077,10 +1081,12 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
             words.pop();
         }
         if words.is_empty() {
-            return Ok(Some(vec![EffectAst::PreventNextTimeDamage {
-                source: PreventNextTimeDamageSourceAst::Filter(ObjectFilter::default()),
-                target: PreventNextTimeDamageTargetAst::AnyTarget,
-            }]));
+            return Ok(Some(vec![
+                EffectAst::subject_verb_prevent_next_time_damage(
+                    PreventNextTimeDamageSourceAst::Filter(ObjectFilter::default()),
+                    PreventNextTimeDamageTargetAst::AnyTarget,
+                ),
+            ]));
         }
 
         let mut filter = ObjectFilter::default();
@@ -1125,10 +1131,9 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
         )));
     };
 
-    Ok(Some(vec![EffectAst::PreventNextTimeDamage {
-        source,
-        target,
-    }]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_prevent_next_time_damage(source, target),
+    ]))
 }
 
 pub(crate) fn parse_redirect_next_damage_sentence(
@@ -1238,10 +1243,9 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             )));
         }
 
-        return Ok(Some(vec![EffectAst::RedirectNextTimeDamageToSource {
-            source,
-            target,
-        }]));
+        return Ok(Some(vec![
+            EffectAst::subject_verb_redirect_next_time_damage_to_source(source, target),
+        ]));
     }
 
     if grammar::words_match_prefix(tokens, &["the", "next"]).is_none() {
@@ -1312,7 +1316,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
     let target = parse_target_phrase(&target_tokens)?;
 
     Ok(Some(vec![
-        EffectAst::RedirectNextDamageFromSourceToTarget { amount, target },
+        EffectAst::subject_verb_redirect_next_damage_from_source_to_target(amount, target),
     ]))
 }
 
@@ -1364,11 +1368,11 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
         parse_target_phrase(&subject_tokens)?
     };
 
-    Ok(Some(EffectAst::GrantAbilitiesToTarget {
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
         target,
-        abilities: vec![GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat { additional }],
-        duration: Until::EndOfTurn,
-    }))
+        vec![GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat { additional }],
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_win_the_game_clause(
@@ -1383,9 +1387,7 @@ pub(crate) fn parse_win_the_game_clause(
     }
 
     if clause_words.len() == 4 {
-        return Ok(Some(EffectAst::WinGame {
-            player: PlayerAst::You,
-        }));
+        return Ok(Some(EffectAst::subject_verb_win_game(PlayerAst::You)));
     }
 
     if clause_words.get(4).copied() != Some("if") {
@@ -1437,9 +1439,7 @@ pub(crate) fn parse_win_the_game_clause(
             name,
             zones: vec![Zone::Exile, Zone::Hand, Zone::Graveyard, Zone::Battlefield],
         },
-        if_true: vec![EffectAst::WinGame {
-            player: PlayerAst::You,
-        }],
+        if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
         if_false: Vec::new(),
     }))
 }
@@ -1462,7 +1462,7 @@ pub(crate) fn parse_choose_target_prelude_sentence(
     }
 
     let target = parse_target_phrase(&target_tokens)?;
-    Ok(Some(EffectAst::TargetOnly { target }))
+    Ok(Some(EffectAst::subject_verb_target_only(target)))
 }
 
 pub(crate) fn parse_keyword_mechanic_clause(
@@ -1516,7 +1516,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
 
-        return Ok(Some(EffectAst::Amass { subtype, amount }));
+        return Ok(Some(EffectAst::subject_verb_amass(subtype, amount)));
     }
 
     if clause_words.first() == Some(&"roll") && word_slice_contains(&clause_words, "dice") {
@@ -1572,10 +1572,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }
             let mut filter = parse_object_filter(&filter_tokens, false)?;
             filter.zone.get_or_insert(Zone::Battlefield);
-            return Ok(Some(EffectAst::PhaseOutAll { filter }));
+            return Ok(Some(EffectAst::subject_verb_phase_out_all(filter)));
         }
         let target = parse_target_phrase(&target_tokens)?;
-        return Ok(Some(EffectAst::PhaseOut { target }));
+        return Ok(Some(EffectAst::subject_verb_phase_out(target)));
     }
 
     if (word_slice_ends_with(&clause_words, &["phase", "in"])
@@ -1611,7 +1611,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }
             let mut filter = parse_object_filter(&filter_tokens, false)?;
             filter.zone.get_or_insert(Zone::Battlefield);
-            return Ok(Some(EffectAst::PhaseInAll { filter }));
+            return Ok(Some(EffectAst::subject_verb_phase_in_all(filter)));
         }
         if target_tokens
             .first()
@@ -1626,14 +1626,16 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }
             let mut filter = parse_object_filter(&filter_tokens, false)?;
             filter.zone.get_or_insert(Zone::Battlefield);
-            return Ok(Some(EffectAst::PhaseInAll { filter }));
+            return Ok(Some(EffectAst::subject_verb_phase_in_all(filter)));
         }
         let target = parse_target_phrase(&target_tokens)?;
-        return Ok(Some(EffectAst::PhaseIn { target }));
+        return Ok(Some(EffectAst::subject_verb_phase_in(target)));
     }
 
     if grammar::words_match_any_prefix(clause_tokens, OPEN_ATTRACTION_PREFIXES).is_some() {
-        return Ok(Some(EffectAst::OpenAttraction));
+        return Ok(Some(EffectAst::subject_verb_open_attraction(
+            PlayerAst::Implicit,
+        )));
     }
 
     if clause_words.first() == Some(&"behold") {
@@ -1671,17 +1673,19 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
 
-        return Ok(Some(EffectAst::Behold { subtype, count }));
+        return Ok(Some(EffectAst::subject_verb_behold(subtype, count)));
     }
 
     if clause_words == ["manifest", "dread"] {
-        return Ok(Some(EffectAst::ManifestDread));
+        return Ok(Some(EffectAst::subject_verb_manifest_dread(
+            PlayerAst::Implicit,
+        )));
     }
 
     if clause_words == ["manifest", "the", "top", "card", "of", "your", "library"] {
-        return Ok(Some(EffectAst::ManifestTopCardOfLibrary {
-            player: PlayerAst::You,
-        }));
+        return Ok(Some(EffectAst::subject_verb_manifest_top_card(
+            PlayerAst::You,
+        )));
     }
 
     if clause_words
@@ -1693,36 +1697,18 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 "manifest", "the", "top", "card", "of", "that", "players", "library",
             ]
     {
-        return Ok(Some(EffectAst::ManifestTopCardOfLibrary {
-            player: PlayerAst::ThatPlayerOrTargetController,
-        }));
+        return Ok(Some(EffectAst::subject_verb_manifest_top_card(
+            PlayerAst::ThatPlayerOrTargetController,
+        )));
     }
 
     if clause_words.first() == Some(&"populate") {
         if clause_words.len() == 1 {
-            return Ok(Some(EffectAst::Populate {
-                count: Value::Fixed(1),
-                enters_tapped: false,
-                enters_attacking: false,
-                has_haste: false,
-                sacrifice_at_next_end_step: false,
-                exile_at_next_end_step: false,
-                exile_at_end_of_combat: false,
-                sacrifice_at_end_of_combat: false,
-            }));
+            return Ok(Some(EffectAst::subject_verb_populate(Value::Fixed(1))));
         }
 
         if clause_words.get(1) == Some(&"twice") && clause_words.len() == 2 {
-            return Ok(Some(EffectAst::Populate {
-                count: Value::Fixed(2),
-                enters_tapped: false,
-                enters_attacking: false,
-                has_haste: false,
-                sacrifice_at_next_end_step: false,
-                exile_at_next_end_step: false,
-                exile_at_end_of_combat: false,
-                sacrifice_at_end_of_combat: false,
-            }));
+            return Ok(Some(EffectAst::subject_verb_populate(Value::Fixed(2))));
         }
 
         let (count, used) = parse_value(&clause_tokens[1..]).ok_or_else(|| {
@@ -1739,16 +1725,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
 
-        return Ok(Some(EffectAst::Populate {
-            count,
-            enters_tapped: false,
-            enters_attacking: false,
-            has_haste: false,
-            sacrifice_at_next_end_step: false,
-            exile_at_next_end_step: false,
-            exile_at_end_of_combat: false,
-            sacrifice_at_end_of_combat: false,
-        }));
+        return Ok(Some(EffectAst::subject_verb_populate(count)));
     }
 
     if clause_words.first() == Some(&"meld")
@@ -1768,11 +1745,11 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
         let result_name = clause_words[into_idx + 1..].join(" ");
-        return Ok(Some(EffectAst::Meld {
+        return Ok(Some(EffectAst::subject_verb_meld(
             result_name,
-            enters_tapped: false,
-            enters_attacking: false,
-        }));
+            false,
+            false,
+        )));
     }
 
     if matches!(
@@ -1793,9 +1770,9 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
         let effect = match keyword {
-            "bolster" => EffectAst::Bolster { amount },
-            "support" => EffectAst::Support { amount },
-            "adapt" => EffectAst::Adapt { amount },
+            "bolster" => EffectAst::subject_verb_bolster(amount),
+            "support" => EffectAst::subject_verb_support(amount),
+            "adapt" => EffectAst::subject_verb_adapt(amount),
             _ => unreachable!(),
         };
         return Ok(Some(effect));
@@ -1814,10 +1791,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 clause_words.join(" ")
             )));
         }
-        return Ok(Some(EffectAst::Fateseal {
+        return Ok(Some(EffectAst::subject_verb_fateseal(
+            PlayerAst::You,
             count,
-            player: PlayerAst::You,
-        }));
+        )));
     }
 
     if matches!(
@@ -1828,10 +1805,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
             .get(1..)
             .is_some_and(|tail| tail == ["again", "for", "the", "same", "value"])
         {
-            return Ok(Some(EffectAst::Discover {
-                count: Value::EventValue(EventValueSpec::Amount),
-                player: PlayerAst::You,
-            }));
+            return Ok(Some(EffectAst::subject_verb_discover(
+                PlayerAst::You,
+                Value::EventValue(EventValueSpec::Amount),
+            )));
         }
         let (count, used) = parse_value(&clause_tokens[1..]).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -1845,10 +1822,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 clause_words.join(" ")
             )));
         }
-        return Ok(Some(EffectAst::Discover {
+        return Ok(Some(EffectAst::subject_verb_discover(
+            PlayerAst::You,
             count,
-            player: PlayerAst::You,
-        }));
+        )));
     }
 
     if matches!(clause_words.last().copied(), Some("explore" | "explores")) {
@@ -1865,7 +1842,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         } else {
             parse_target_phrase(subject_tokens)?
         };
-        return Ok(Some(EffectAst::Explore { target }));
+        return Ok(Some(EffectAst::subject_verb_explore(target)));
     }
 
     Ok(None)
@@ -1889,7 +1866,7 @@ pub(crate) fn parse_connive_clause(
         count = parsed_count;
         trailing_tokens = trim_commas(&trailing_tokens[used..]);
         if !trailing_tokens.is_empty() {
-            let Some(where_value) = parse_where_x_value_clause(&trailing_tokens) else {
+            let Some(where_value) = parse_value_binding_clause(&trailing_tokens) else {
                 return Ok(None);
             };
             count = super::super::util::replace_unbound_x_with_value(
@@ -1917,10 +1894,10 @@ pub(crate) fn parse_connive_clause(
     if subject_words == ["each", "creature", "that", "convoked", "this", "spell"] {
         return Ok(Some(EffectAst::ForEachTagged {
             tag: TagKey::from("convoked_this_spell"),
-            effects: vec![EffectAst::ConniveIterated],
+            effects: vec![EffectAst::subject_verb_connive_iterated()],
         }));
     }
 
     let target = parse_target_phrase(subject_tokens)?;
-    Ok(Some(EffectAst::Connive { target, count }))
+    Ok(Some(EffectAst::subject_verb_connive(target, count)))
 }

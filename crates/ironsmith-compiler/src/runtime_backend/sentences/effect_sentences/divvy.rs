@@ -3,8 +3,8 @@ use super::super::lexer::OwnedLexToken;
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst, TagKey,
-    TargetAst,
+    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -111,26 +111,24 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let second_creatures_tag = TagKey::from("exchange_creatures_two");
 
         return Ok(Some(vec![
-            EffectAst::TargetOnly {
-                target: TargetAst::WithCount(
-                    Box::new(TargetAst::Player(PlayerFilter::Any, None)),
-                    ChoiceCount::exactly(2),
-                ),
-            },
-            EffectAst::ChoosePlayer {
-                chooser: PlayerAst::You,
-                filter: PlayerFilter::target_player(),
-                tag: first_player_tag.clone(),
-                random: false,
-                exclude_previous_choices: 0,
-            },
-            EffectAst::ChoosePlayer {
-                chooser: PlayerAst::You,
-                filter: PlayerFilter::target_player(),
-                tag: second_player_tag.clone(),
-                random: false,
-                exclude_previous_choices: 1,
-            },
+            EffectAst::subject_verb_target_only(TargetAst::WithCount(
+                Box::new(TargetAst::Player(PlayerFilter::Any, None)),
+                ChoiceCount::exactly(2),
+            )),
+            EffectAst::subject_verb_choose_player(
+                PlayerAst::You,
+                PlayerFilter::target_player(),
+                first_player_tag.clone(),
+                false,
+                0,
+            ),
+            EffectAst::subject_verb_choose_player(
+                PlayerAst::You,
+                PlayerFilter::target_player(),
+                second_player_tag.clone(),
+                false,
+                1,
+            ),
             EffectAst::ChooseObjects {
                 filter: ObjectFilter::creature()
                     .controlled_by(PlayerFilter::TaggedPlayer(first_player_tag.clone())),
@@ -154,19 +152,19 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             },
             EffectAst::ForEachTaggedPlayer {
                 tag: second_player_tag,
-                effects: vec![EffectAst::GainControl {
-                    target: TargetAst::Tagged(first_creatures_tag, None),
-                    player: PlayerAst::That,
-                    duration: Until::Forever,
-                }],
+                effects: vec![EffectAst::subject_verb_gain_control(
+                    PlayerAst::That,
+                    TargetAst::Tagged(first_creatures_tag, None),
+                    Until::Forever,
+                )],
             },
             EffectAst::ForEachTaggedPlayer {
                 tag: first_player_tag,
-                effects: vec![EffectAst::GainControl {
-                    target: TargetAst::Tagged(second_creatures_tag, None),
-                    player: PlayerAst::That,
-                    duration: Until::Forever,
-                }],
+                effects: vec![EffectAst::subject_verb_gain_control(
+                    PlayerAst::That,
+                    TargetAst::Tagged(second_creatures_tag, None),
+                    Until::Forever,
+                )],
             },
         ]));
     }
@@ -208,9 +206,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Target,
                 tag: TagKey::from("divvy_chosen"),
             },
-            EffectAst::DestroyNoRegeneration {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            },
+            EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
+                TagKey::from("divvy_chosen"),
+                None,
+            )),
         ]));
     }
 
@@ -261,14 +260,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Opponent,
                 tag: TagKey::from("divvy_chosen"),
             },
-            EffectAst::Exile {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                face_down: false,
-            },
-            EffectAst::ReturnAllToBattlefield {
-                filter: rest_filter,
-                tapped: false,
-            },
+            EffectAst::subject_verb_exile(
+                TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                false,
+            ),
+            EffectAst::subject_verb_return_all_to_battlefield(rest_filter, false),
         ]));
     }
 
@@ -327,14 +323,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 filter: PlayerFilter::Opponent,
                 effects: vec![EffectAst::UnlessAction {
                     player: PlayerAst::You,
-                    effects: vec![EffectAst::SacrificeAll {
-                        filter: chosen_pile_filter,
-                        player: PlayerAst::Implicit,
-                    }],
-                    alternative: vec![EffectAst::SacrificeAll {
-                        filter: other_pile_filter,
-                        player: PlayerAst::Implicit,
-                    }],
+                    effects: vec![EffectAst::subject_verb_sacrifice_all(
+                        PlayerAst::Implicit,
+                        chosen_pile_filter,
+                    )],
+                    alternative: vec![EffectAst::subject_verb_sacrifice_all(
+                        PlayerAst::Implicit,
+                        other_pile_filter,
+                    )],
                 }],
             },
         ]));
@@ -377,10 +373,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Target,
                 tag: TagKey::from("divvy_chosen"),
             },
-            EffectAst::SacrificeAll {
-                filter: ObjectFilter::tagged(TagKey::from("divvy_chosen")),
-                player: PlayerAst::Target,
-            },
+            EffectAst::subject_verb_sacrifice_all(
+                PlayerAst::Target,
+                ObjectFilter::tagged(TagKey::from("divvy_chosen")),
+            ),
         ]));
     }
 
@@ -431,15 +427,15 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     player: PlayerAst::That,
                     tag: TagKey::from("divvy_chosen"),
                 },
-                EffectAst::Cant {
-                    restriction: crate::effect::Restriction::block(
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::block(
                         ObjectFilter::creature()
                             .controlled_by(PlayerFilter::IteratedPlayer)
                             .not_tagged(TagKey::from("divvy_chosen")),
                     ),
-                    duration: Until::EndOfTurn,
-                    condition: None,
-                },
+                    Until::EndOfTurn,
+                    None,
+                ),
             ],
         }]));
     }
@@ -482,15 +478,15 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::That,
                 tag: TagKey::from("divvy_chosen"),
             },
-            EffectAst::Cant {
-                restriction: crate::effect::Restriction::attack(
+            EffectAst::subject_verb_cant(
+                crate::effect::Restriction::attack(
                     ObjectFilter::creature()
                         .controlled_by(PlayerFilter::IteratedPlayer)
                         .not_tagged(TagKey::from("divvy_chosen")),
                 ),
-                duration: Until::EndOfTurn,
-                condition: None,
-            },
+                Until::EndOfTurn,
+                None,
+            ),
         ]));
     }
 
@@ -535,13 +531,13 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     ) {
         return Ok(Some(vec![EffectAst::ForEachPlayer {
             effects: vec![
-                EffectAst::ChoosePlayer {
-                    chooser: PlayerAst::Implicit,
-                    filter: PlayerFilter::Opponent,
-                    tag: TagKey::from("divvy_opponent"),
-                    random: false,
-                    exclude_previous_choices: 0,
-                },
+                EffectAst::subject_verb_choose_player(
+                    PlayerAst::Implicit,
+                    PlayerFilter::Opponent,
+                    TagKey::from("divvy_opponent"),
+                    false,
+                    0,
+                ),
                 EffectAst::ChooseObjects {
                     filter: ObjectFilter::land()
                         .nontoken()
@@ -551,15 +547,16 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     player: PlayerAst::That,
                     tag: TagKey::from("divvy_chosen"),
                 },
-                EffectAst::Destroy {
-                    target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                },
-                EffectAst::TapAll {
-                    filter: ObjectFilter::land()
+                EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                    TagKey::from("divvy_chosen"),
+                    None,
+                )),
+                EffectAst::subject_verb_tap_all(
+                    ObjectFilter::land()
                         .nontoken()
                         .controlled_by(PlayerFilter::IteratedPlayer)
                         .not_tagged(TagKey::from("divvy_chosen")),
-                },
+                ),
             ],
         }]));
     }
@@ -596,11 +593,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     ) {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Exile],
-                tag: TagKey::from("divvy_source"),
-            },
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                vec![Zone::Exile],
+                TagKey::from("divvy_source"),
+            ),
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::any_number(),
@@ -613,48 +610,48 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::UnlessAction {
                 player: PlayerAst::Opponent,
                 effects: vec![
-                    EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from("divvy_pile"), None),
-                        zone: Zone::Graveyard,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    },
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from("divvy_pile"), None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
                     EffectAst::ForEachTagged {
                         tag: TagKey::from("divvy_source"),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object("divvy_pile"),
                             if_true: Vec::new(),
-                            if_false: vec![EffectAst::MoveToZone {
-                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                                zone: Zone::Hand,
-                                to_top: false,
-                                battlefield_controller: ReturnControllerAst::Preserve,
-                                battlefield_tapped: false,
-                                attached_to: None,
-                            }],
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Hand,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
                         }],
                     },
                 ],
                 alternative: vec![
-                    EffectAst::ReturnToHand {
-                        target: TargetAst::Tagged(TagKey::from("divvy_pile"), None),
-                        random: false,
-                    },
+                    EffectAst::subject_verb_return_to_hand(
+                        TargetAst::Tagged(TagKey::from("divvy_pile"), None),
+                        false,
+                    ),
                     EffectAst::ForEachTagged {
                         tag: TagKey::from("divvy_source"),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object("divvy_pile"),
                             if_true: Vec::new(),
-                            if_false: vec![EffectAst::MoveToZone {
-                                target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                                zone: Zone::Graveyard,
-                                to_top: false,
-                                battlefield_controller: ReturnControllerAst::Preserve,
-                                battlefield_tapped: false,
-                                attached_to: None,
-                            }],
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Graveyard,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
                         }],
                     },
                 ],
@@ -715,11 +712,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     ) {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Exile],
-                tag: TagKey::from("divvy_source"),
-            },
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                vec![Zone::Exile],
+                TagKey::from("divvy_source"),
+            ),
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::any_number(),
@@ -729,27 +726,27 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 zones: vec![Zone::Exile],
                 search_mode: None,
             },
-            EffectAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-                zone: Zone::Battlefield,
-                to_top: false,
-                battlefield_controller: ReturnControllerAst::You,
-                battlefield_tapped: false,
-                attached_to: None,
-            },
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+                Zone::Battlefield,
+                false,
+                ReturnControllerAst::You,
+                false,
+                None,
+            ),
             EffectAst::ForEachTagged {
                 tag: TagKey::from("divvy_source"),
                 effects: vec![EffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                     if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        zone: Zone::Graveyard,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
                 }],
             },
         ]);
@@ -799,11 +796,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     ) {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![
-            EffectAst::TagMatchingObjects {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                zones: vec![Zone::Library, Zone::Graveyard],
-                tag: TagKey::from("divvy_source"),
-            },
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                vec![Zone::Library, Zone::Graveyard],
+                TagKey::from("divvy_source"),
+            ),
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
                 count: ChoiceCount::exactly(2),
@@ -818,34 +815,33 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 effects: vec![EffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                     if_true: Vec::new(),
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
                 }],
             },
             EffectAst::ForEachTagged {
                 tag: TagKey::from("divvy_chosen"),
-                effects: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Library,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Library,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             },
-            EffectAst::ShuffleLibrary {
-                player: PlayerAst::You,
-            },
-            EffectAst::Exile {
-                target: TargetAst::Source(None),
-                face_down: false,
-            },
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::You,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+            EffectAst::subject_verb_exile(TargetAst::Source(None), false),
         ]);
         return Ok(Some(effects));
     }
@@ -868,11 +864,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         prefix.extend(parse_effect_sentence_lexed(sentences[0].lowered())?);
         prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
         let mut effects = prefix;
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Library],
+            TagKey::from("divvy_source"),
+        ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
@@ -882,32 +878,34 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             zones: vec![Zone::Library],
             search_mode: None,
         });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
+        effects.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
         effects.push(EffectAst::ForEachTagged {
             tag: TagKey::from("divvy_source"),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                 if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             }],
         });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
         return Ok(Some(effects));
     }
 
@@ -940,11 +938,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     ) && sentence_has_phrase(&sentence_words, &["the", "rest", "into", "your", "hand"])
     {
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Library],
+            TagKey::from("divvy_source"),
+        ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(2),
@@ -954,32 +952,34 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             zones: vec![Zone::Library],
             search_mode: None,
         });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Graveyard,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
+        effects.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            Zone::Graveyard,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
         effects.push(EffectAst::ForEachTagged {
             tag: TagKey::from("divvy_source"),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                 if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Hand,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             }],
         });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
         return Ok(Some(effects));
     }
 
@@ -994,11 +994,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         )
     {
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
-        effects.push(EffectAst::TagMatchingObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            zones: vec![Zone::Library],
-            tag: TagKey::from("divvy_source"),
-        });
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Library],
+            TagKey::from("divvy_source"),
+        ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(1),
@@ -1008,32 +1008,34 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             zones: vec![Zone::Library],
             search_mode: None,
         });
-        effects.push(EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
-            zone: Zone::Hand,
-            to_top: false,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        });
+        effects.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
         effects.push(EffectAst::ForEachTagged {
             tag: TagKey::from("divvy_source"),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object("divvy_chosen"),
                 if_true: Vec::new(),
-                if_false: vec![EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    zone: Zone::Graveyard,
-                    to_top: false,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                }],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
             }],
         });
-        effects.push(EffectAst::ShuffleLibrary {
-            player: PlayerAst::You,
-        });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
         return Ok(Some(effects));
     }
 

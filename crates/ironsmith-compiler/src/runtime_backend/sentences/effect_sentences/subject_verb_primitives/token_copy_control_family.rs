@@ -33,7 +33,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
         OwnedLexToken::word("is".to_string(), TextSpan::synthetic()),
     ];
     synthetic_where_tokens.extend(reveal_tokens[count_token_idx..].iter().cloned());
-    let Some(count) = parse_where_x_value_clause(&synthetic_where_tokens) else {
+    let Some(count) = parse_value_binding_clause(&synthetic_where_tokens) else {
         return Ok(None);
     };
 
@@ -61,34 +61,32 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
-            EffectAst::LookAtTopCards {
-                player: PlayerAst::That,
+            EffectAst::subject_verb_look_at_top_cards(
+                PlayerAst::That,
                 count,
-                tag: revealed_tag_key.clone(),
-            },
-            EffectAst::RevealTagged {
-                tag: revealed_tag_key.clone(),
-            },
+                revealed_tag_key.clone(),
+            ),
+            EffectAst::subject_verb_reveal_tagged(revealed_tag_key.clone()),
             EffectAst::ForEachTagged {
                 tag: revealed_tag_key,
                 effects: vec![EffectAst::Conditional {
                     predicate: PredicateAst::ItMatches(ObjectFilter::permanent_card()),
-                    if_true: vec![EffectAst::MoveToZone {
-                        target: iterated_target.clone(),
-                        zone: Zone::Battlefield,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Owner,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
-                    if_false: vec![EffectAst::MoveToZone {
-                        target: iterated_target,
-                        zone: Zone::Graveyard,
-                        to_top: false,
-                        battlefield_controller: ReturnControllerAst::Preserve,
-                        battlefield_tapped: false,
-                        attached_to: None,
-                    }],
+                    if_true: vec![EffectAst::subject_verb_move_to_zone(
+                        iterated_target.clone(),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Owner,
+                        false,
+                        None,
+                    )],
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        iterated_target,
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
                 }],
             },
         ],
@@ -410,10 +408,7 @@ pub(crate) fn parse_sacrifice_any_number_sentence(
             player: PlayerAst::Implicit,
             tag: tag.clone(),
         },
-        EffectAst::SacrificeAll {
-            filter: ObjectFilter::tagged(tag),
-            player: PlayerAst::Implicit,
-        },
+        EffectAst::subject_verb_sacrifice_all(PlayerAst::Implicit, ObjectFilter::tagged(tag)),
     ];
     if let Some(tail_tokens) = tail_tokens
         && !tail_tokens.is_empty()
@@ -481,10 +476,7 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence(
             player: PlayerAst::Implicit,
             tag: tag.clone(),
         },
-        EffectAst::SacrificeAll {
-            filter: ObjectFilter::tagged(tag),
-            player: PlayerAst::Implicit,
-        },
+        EffectAst::subject_verb_sacrifice_all(PlayerAst::Implicit, ObjectFilter::tagged(tag)),
     ]))
 }
 
@@ -681,19 +673,31 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     if !head_effects.iter().any(|effect| {
         matches!(
             effect,
-            EffectAst::Exile { .. }
-                | EffectAst::ExileAll { .. }
-                | EffectAst::ExileUntilSourceLeaves { .. }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. },
+                ..
+            }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileAll { .. },
+                ..
+            }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileUntilSourceLeaves { .. },
+                ..
+            })
         )
     }) {
         return Ok(None);
     }
 
     let mut tail_effects = parse_effect_chain(&tail_tokens)?;
-    if !tail_effects
-        .iter()
-        .any(|effect| matches!(effect, EffectAst::ShuffleGraveyardIntoLibrary { .. }))
-    {
+    if !tail_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary,
+                ..
+            })
+        )
+    }) {
         return Ok(None);
     }
 
@@ -747,17 +751,14 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
 
     let source_target = TargetAst::Source(span_from_tokens(tokens));
     Ok(Some(vec![
-        EffectAst::Exile {
-            target: source_target.clone(),
-            face_down: false,
-        },
-        EffectAst::PutCounters {
+        EffectAst::subject_verb_exile(source_target.clone(), false),
+        EffectAst::subject_verb_put_counters(
             counter_type,
-            count: Value::Fixed(count as i32),
-            target: source_target,
-            target_count: None,
-            distributed: false,
-        },
+            Value::Fixed(count as i32),
+            source_target,
+            None,
+            false,
+        ),
     ]))
 }
 
@@ -884,10 +885,15 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
     }
 
     let mut head_effects = parse_effect_chain(&head_tokens)?;
-    if !head_effects
-        .iter()
-        .any(|effect| matches!(effect, EffectAst::Destroy { .. }))
-    {
+    if !head_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Destroy { .. },
+                ..
+            })
+        )
+    }) {
         return Ok(None);
     }
 
@@ -896,13 +902,13 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
     let tagged_ref = crate::target::ObjectRef::tagged(IT_TAG);
     count_filter.owner = Some(PlayerFilter::ControllerOf(tagged_ref.clone()));
     count_filter.card_types.push(CardType::Land);
-    head_effects.push(EffectAst::DealDamage {
-        amount: Value::Count(count_filter),
-        target: TargetAst::Player(
+    head_effects.push(EffectAst::subject_verb_damage(
+        Value::Count(count_filter),
+        TargetAst::Player(
             PlayerFilter::ControllerOf(tagged_ref),
             span_from_tokens(&tail_tokens),
         ),
-    });
+    ));
     Ok(Some(head_effects))
 }
 
@@ -961,10 +967,9 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
 
     let filter = parse_object_filter(&filter_tokens, false)?;
     let target = parse_target_phrase(&target_tokens)?;
-    Ok(Some(vec![EffectAst::DestroyAllAttachedTo {
-        filter,
-        target,
-    }]))
+    Ok(Some(vec![EffectAst::subject_verb_destroy_all_attached_to(
+        filter, target,
+    )]))
 }
 
 pub(crate) fn parse_sentence_destroy_then_land_controller_graveyard_count_damage(

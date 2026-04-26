@@ -772,6 +772,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Get mana-symbol additional cost per target beyond the first, if any.
+    fn cost_increase_mana_cost_per_additional_target(&self) -> Option<&crate::mana::ManaCost> {
+        None
+    }
+
     /// Returns true if this affects the untap step.
     fn affects_untap(&self) -> bool {
         false
@@ -1322,6 +1327,10 @@ impl StaticAbility {
 
     pub fn cost_increase_per_additional_target(&self) -> Option<u32> {
         self.0.cost_increase_per_additional_target()
+    }
+
+    pub fn cost_increase_mana_cost_per_additional_target(&self) -> Option<&crate::mana::ManaCost> {
+        self.0.cost_increase_mana_cost_per_additional_target()
     }
 
     pub fn is_anthem(&self) -> bool {
@@ -2151,6 +2160,10 @@ impl StaticAbility {
 
     pub fn cost_increase_per_target_beyond_first(amount: u32) -> Self {
         Self::new(CostIncreasePerAdditionalTarget::new(amount))
+    }
+
+    pub fn cost_increase_mana_cost_per_target_beyond_first(cost: crate::mana::ManaCost) -> Self {
+        Self::new(CostIncreaseManaCostPerAdditionalTarget::new(cost))
     }
 
     pub fn reduce_activated_ability_costs(

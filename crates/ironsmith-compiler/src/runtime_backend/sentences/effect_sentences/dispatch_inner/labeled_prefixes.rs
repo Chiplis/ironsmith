@@ -35,16 +35,30 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return parse_effect_sentence_lexed(stripped);
     }
     if tokens.first().is_some_and(|token| token.is_word("if"))
-        && let Some(mut effects) = run_sentence_primitives_lexed(
+        && let Some(mut effects) = parse_exile_replacement_subject_verb_sentence(tokens)?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
-            PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if sentence_words
+        .first()
+        .is_some_and(|word| matches!(*word, "prevent" | "take" | "monstrosity"))
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
     if let Some(effects) =
@@ -54,14 +68,19 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     }
     if tokens.first().is_some_and(|token| token.is_word("exile"))
         && grammar::contains_word(tokens, "then")
-        && let Some(mut effects) = run_sentence_primitives_lexed(
-            tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
-        )?
     {
-        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
-        return Ok(effects);
+        if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
+        if let Some(mut effects) = run_subject_verb_primitives_lexed(
+            tokens,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )? {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
     }
     if tokens.first().is_some_and(|token| token.is_word("then")) && tokens.len() > 1 {
         return parse_effect_sentence_lexed(&tokens[1..]);
@@ -89,21 +108,23 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         &["exile", "all", "cards", "from"],
     ) && slice_contains_any(sentence_words.as_slice(), &["hand", "hands"])
         && slice_contains_any(sentence_words.as_slice(), &["graveyard", "graveyards"])
-        && let Some(mut effects) = run_sentence_primitives_lexed(
+        && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
     if sentence_words.first() == Some(&"enchant")
-        && let Some(mut effects) = run_sentence_primitives_lexed(
-            tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
-        )?
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
+    if sentence_words.first() == Some(&"earthbend")
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -115,10 +136,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return Ok(effects);
     }
     if slice_contains(sentence_words.as_slice(), &"unless")
-        && let Some(mut effects) = run_sentence_primitives_lexed(
+        && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -127,23 +148,32 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if sentence_words
         .iter()
         .any(|word| matches!(*word, "gain" | "gains" | "lose" | "loses"))
-        && let Some(mut effects) = run_sentence_primitives_lexed(
-            tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
-        )?
     {
-        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
-        return Ok(effects);
+        if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
+        if let Ok(mut effects) = parse_effect_chain_lexed(tokens) {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
+        if let Ok(mut effect) = super::parse_effect_clause_with_trailing_if(tokens) {
+            apply_where_x_to_damage_amounts(tokens, std::slice::from_mut(&mut effect))?;
+            return Ok(vec![effect]);
+        }
+        if let Some(mut effects) = run_subject_verb_primitives_lexed(
+            tokens,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )? {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
     }
     if sentence_words
         .iter()
         .any(|word| *word == "vote" || *word == "votes")
-        && let Some(mut effects) = run_sentence_primitives_lexed(
-            tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
-        )?
+        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -151,10 +181,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if sentence_words.first() == Some(&"return")
         && slice_contains(sentence_words.as_slice(), &"rounded")
         && slice_contains(sentence_words.as_slice(), &"up")
-        && let Some(mut effects) = run_sentence_primitives_lexed(
+        && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -162,10 +192,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     }
     if sentence_words.first() == Some(&"choose")
         && contains_word_window(sentence_words.as_slice(), &["do", "the", "same", "for"])
-        && let Some(mut effects) = run_sentence_primitives_lexed(
+        && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
-            POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+            POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -178,11 +208,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             &["each", "player", "chooses"],
         ],
     ) {
-        if let Some(mut effects) = run_sentence_primitives_lexed(
-            tokens,
-            PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
-            &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
-        )? {
+        if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);
         }
@@ -199,9 +225,235 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         }
         return super::parse_effect_chain_inner_lexed(tokens);
     }
+    if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
 
     let (_, effects) = super::sentence_registry::run_sentence_parse_rules_lexed(tokens)?;
     Ok(effects)
+}
+
+fn parse_exile_replacement_subject_verb_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(effect) = parse_zone_replacement_subject_verb(tokens)? else {
+        return Ok(None);
+    };
+    crate::parse_trace::event(
+        "effect-route: subject-verb verb=Exile subject=implicit recognizer=instead-replacement",
+    );
+    Ok(Some(vec![effect]))
+}
+
+pub(crate) fn parse_subject_verb_extension_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    macro_rules! one {
+        ($route:literal, $parser:expr) => {{
+            if let Some(effect) = $parser? {
+                crate::parse_trace::event(concat!("effect-route: subject-verb ", $route));
+                return Ok(Some(vec![effect]));
+            }
+        }};
+    }
+    macro_rules! many {
+        ($route:literal, $parser:expr) => {{
+            if let Some(effects) = $parser? {
+                crate::parse_trace::event(concat!("effect-route: subject-verb ", $route));
+                return Ok(Some(effects));
+            }
+        }};
+    }
+
+    one!(
+        "verb=Take subject=implicit recognizer=extra-turn-after-anchor",
+        parse_take_extra_turn_sentence(tokens)
+    );
+    one!(
+        "verb=Prevent subject=implicit recognizer=damage-prevention",
+        parse_prevent_damage_sentence(tokens)
+    );
+    one!(
+        "verb=Monstrosity subject=implicit recognizer=keyword-action",
+        parse_monstrosity_sentence(tokens)
+    );
+    many!(
+        "verb=Earthbend subject=implicit recognizer=keyword-action",
+        parse_earthbend_subject_verb_sentence(tokens)
+    );
+    one!(
+        "verb=Enchant subject=implicit recognizer=aura-attachment",
+        super::search_library::parse_enchant_sentence(tokens)
+    );
+    one!(
+        "verb=Play subject=explicit recognizer=zone-permission",
+        parse_play_permission_subject_verb(tokens)
+    );
+    one!(
+        "verb=Exile subject=implicit recognizer=instead-replacement",
+        parse_zone_replacement_subject_verb(tokens)
+    );
+    many!(
+        "verb=When subject=implicit recognizer=delayed-trigger-this-turn",
+        parse_sentence_delayed_trigger_this_turn(tokens)
+    );
+    one!(
+        "verb=Choose subject=explicit recognizer=choice-complement-sacrifice",
+        parse_choice_complement_subject_verb(tokens)
+    );
+    many!(
+        "verb=Gain subject=explicit recognizer=life-equal-stat",
+        parse_gain_life_equal_to_power_sentence(tokens)
+    );
+    one!(
+        "verb=Get subject=explicit recognizer=last-effect-counter-loop",
+        parse_for_each_counter_removed_sentence(tokens)
+    );
+    many!(
+        "verb=Exile subject=explicit recognizer=exile-return-same-object",
+        parse_exile_then_return_same_object_sentence(tokens)
+    );
+    if is_simple_source_gain_ability_candidate(tokens) {
+        many!(
+            "verb=Gain subject=implicit recognizer=source-ability-grant",
+            parse_gain_ability_to_source_subject_verb_sentence(tokens)
+        );
+    }
+    if is_simple_gain_ability_candidate(tokens) {
+        many!(
+            "verb=Gain subject=explicit recognizer=ability-grant",
+            parse_gain_ability_subject_verb_sentence(tokens)
+        );
+    }
+    many!(
+        "verb=Choose subject=explicit recognizer=opponent-decline-loop",
+        parse_for_each_opponent_doesnt_subject_verb_sentence(tokens)
+    );
+    many!(
+        "verb=Vote subject=explicit recognizer=vote-affinity",
+        parse_vote_affinity_subject_verb(tokens)
+    );
+    one!(
+        "verb=Vote subject=explicit recognizer=vote-procedure",
+        parse_vote_subject_verb(tokens)
+    );
+
+    Ok(None)
+}
+
+fn parse_earthbend_subject_verb_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(earthbend) = super::search_library::parse_earthbend_sentence(tokens)? else {
+        return Ok(None);
+    };
+
+    let Some((_, used)) = parse_number(&tokens[1..]) else {
+        return Ok(Some(vec![earthbend]));
+    };
+    let mut tail = trim_commas(&tokens[1 + used..]).to_vec();
+    while tail.first().is_some_and(|token| token.is_word("then")) {
+        tail.remove(0);
+    }
+    if tail.is_empty() {
+        return Ok(Some(vec![earthbend]));
+    }
+
+    let mut effects = vec![earthbend];
+    if tail.first().is_some_and(|token| token.is_word("earthbend")) {
+        if let Some(mut tail_effects) = parse_earthbend_subject_verb_sentence(&tail)? {
+            effects.append(&mut tail_effects);
+            return Ok(Some(effects));
+        }
+    }
+    effects.extend(parse_effect_chain_lexed(&tail)?);
+    Ok(Some(effects))
+}
+
+fn parse_gain_ability_to_source_subject_verb_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(super::gain_ability::parse_gain_ability_to_source_sentence(tokens)?
+        .map(|effect| vec![effect]))
+}
+
+fn parse_gain_ability_subject_verb_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    super::gain_ability::parse_gain_ability_sentence(tokens)
+}
+
+fn is_simple_source_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
+    else {
+        return false;
+    };
+    gain_idx > 0
+        && is_source_reference_words(&words[..gain_idx])
+        && !words[gain_idx + 1..]
+            .iter()
+            .any(|word| matches!(*word, "and" | "then" | "if"))
+}
+
+fn is_simple_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(gain_idx) = find_index(words.as_slice(), |word| {
+        matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses")
+    }) else {
+        return false;
+    };
+
+    let ability_words = &words[gain_idx + 1..];
+    if matches!(words[gain_idx], "has" | "have")
+        && !ability_words
+            .iter()
+            .any(|word| matches!(*word, "when" | "whenever"))
+    {
+        return false;
+    }
+    if words[..gain_idx]
+        .iter()
+        .any(|word| matches!(*word, "shares" | "choice"))
+        || (words[..gain_idx].iter().any(|word| *word == "another")
+            && ability_words.iter().any(|word| *word == "haste"))
+    {
+        return false;
+    }
+    !ability_words.is_empty()
+        && !ability_words.iter().any(|word| *word == "life")
+        && (ability_words.iter().any(|word| {
+            matches!(
+                *word,
+                "indestructible"
+                    | "haste"
+                    | "flying"
+                    | "vigilance"
+                    | "lifelink"
+                    | "trample"
+                    | "reach"
+                    | "menace"
+                    | "fear"
+                    | "deathtouch"
+                    | "horsemanship"
+                    | "hexproof"
+                    | "shroud"
+                    | "shadow"
+                    | "strike"
+                    | "protection"
+                    | "blocked"
+                    | "abilities"
+                    | "when"
+                    | "whenever"
+            )
+        }) || tokens.iter().any(|token| token.is_quote() || token.is_colon()))
+}
+
+fn parse_for_each_opponent_doesnt_subject_verb_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(super::conditionals::parse_for_each_opponent_doesnt(tokens)?.map(|effect| vec![effect]))
 }
 
 pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {

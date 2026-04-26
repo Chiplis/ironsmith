@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 pub type EffectMode = CoreEffectMode<Effect>;
 
-fn legacy_unless_payment_cost(
+fn build_unless_payment_total_cost(
     mana: Vec<crate::mana::ManaSymbol>,
     life: Option<Value>,
     additional_generic: Option<Value>,
@@ -912,7 +912,7 @@ impl Effect {
             ),
             _ => crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
         };
-        let cost = legacy_unless_payment_cost(mana, life, additional, None, x);
+        let cost = build_unless_payment_total_cost(mana, life, additional, None, x);
         Self::new(crate::effects::UnlessPaysEffect {
             player,
             effects: vec![Self::counter(target)],
@@ -1624,7 +1624,7 @@ impl Effect {
         additional_generic: Option<Value>,
         multiplier: Option<Value>,
     ) -> Self {
-        let cost = legacy_unless_payment_cost(
+        let cost = build_unless_payment_total_cost(
             mana_symbols_per_counter,
             life,
             additional_generic,

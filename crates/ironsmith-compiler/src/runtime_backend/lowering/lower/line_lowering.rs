@@ -466,10 +466,12 @@ fn lower_statement_chunk(
         )));
     }
     if let Some(enchant_filter) = effects_ast.iter().find_map(|effect| {
-        if let EffectAst::Enchant { filter } = effect {
-            Some(filter.clone())
-        } else {
-            None
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return None;
+        };
+        match &subject_verb.action {
+            SubjectVerbActionAst::Enchant { filter } => Some(filter.clone()),
+            _ => None,
         }
     }) {
         builder.aura_attach_filter = Some(enchant_filter);

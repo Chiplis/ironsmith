@@ -553,11 +553,11 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
-        EffectAst::Cant {
-            restriction: crate::effect::Restriction::block(restriction_filter),
-            duration: Until::EndOfTurn,
-            condition: None,
-        },
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::block(restriction_filter),
+            Until::EndOfTurn,
+            None,
+        ),
     ]))
 }
 
@@ -779,10 +779,10 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     }
 
     Ok(Some(vec![
-        EffectAst::RevealTopChooseCardTypePutToHandRestBottom {
-            player: PlayerAst::You,
+        EffectAst::subject_verb_reveal_top_choose_card_type_put_to_hand_rest_bottom(
+            PlayerAst::You,
             count,
-        },
+        ),
     ]))
 }
 
@@ -1012,11 +1012,9 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
         parse_target_phrase(&subject_tokens)?
     };
 
-    Ok(Some(vec![EffectAst::BecomeCreatureTypeChoice {
-        target,
-        duration,
-        excluded_subtypes,
-    }]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_become_creature_type_choice(target, duration, excluded_subtypes),
+    ]))
 }
 
 pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
@@ -1080,14 +1078,14 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
-        EffectAst::MoveToZone {
+        EffectAst::subject_verb_move_to_zone(
             target,
-            zone: Zone::Library,
-            to_top: true,
-            battlefield_controller: ReturnControllerAst::Preserve,
-            battlefield_tapped: false,
-            attached_to: None,
-        },
+            Zone::Library,
+            true,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
     ]))
 }
 
@@ -1175,13 +1173,13 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
-        EffectAst::MoveToZone {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&second_clause)),
-            zone: Zone::Battlefield,
-            to_top: false,
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&second_clause)),
+            Zone::Battlefield,
+            false,
             battlefield_controller,
             battlefield_tapped,
-            attached_to: None,
-        },
+            None,
+        ),
     ]))
 }

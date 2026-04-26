@@ -4,7 +4,7 @@ use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::{any, take_till};
 
-use self::sentence_followups::{
+use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_still_lands_followup_sentence,
     previous_sentence_is_temporary_land_animation, run_post_parse_followup_registry,
     run_pre_parse_followup_registry,
@@ -18,7 +18,7 @@ use super::super::effect_ast_traversal::{
 };
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
-use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -46,7 +46,7 @@ use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
 use super::sentence_helpers::*;
-use super::sequence_rules::try_parse_registered_sequence_rule;
+use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
     find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
@@ -56,8 +56,9 @@ use super::{
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    TokenCopyFollowup, Verb, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
@@ -69,7 +70,7 @@ use crate::target::{
 use crate::zone::Zone;
 use std::cell::OnceCell;
 
-mod sentence_followups;
+mod subject_verb_followups;
 
 fn summarize_effects(effects: &[EffectAst]) -> String {
     effects
@@ -84,6 +85,63 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn repair_that_object_power_damage_subject(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+    previous_damage_target: Option<TargetAst>,
+) {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let looks_like_that_object_power_damage = words.windows(8).any(|window| {
+        matches!(
+            window,
+            [
+                "that",
+                "creature" | "permanent",
+                "deals",
+                "damage",
+                "equal",
+                "to",
+                "its",
+                "power"
+            ]
+        )
+    }) && words
+        .windows(3)
+        .any(|window| matches!(window, ["to", "this", "creature" | "permanent"]));
+    if !looks_like_that_object_power_damage {
+        return;
+    }
+    let source_target = previous_damage_target
+        .unwrap_or_else(|| TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)));
+    for effect in effects {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            continue;
+        };
+        match &subject_verb.action {
+            SubjectVerbActionAst::DealDamage { amount, target }
+                if matches!(amount, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))
+                    && matches!(target, TargetAst::Source(_)) =>
+            {
+                subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: source_target.clone(),
+                    target: target.clone(),
+                };
+            }
+            SubjectVerbActionAst::DealDamageEqualToPower { source, target }
+                if (matches!(source, TargetAst::Source(_))
+                    || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
+                    && matches!(target, TargetAst::Source(_)) =>
+            {
+                subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: source_target.clone(),
+                    target: target.clone(),
+                };
+            }
+            _ => {}
+        }
+    }
 }
 
 fn apply_trailing_counter_constraint_to_destroy_all(
@@ -139,9 +197,12 @@ fn apply_trailing_counter_constraint_to_destroy_all(
 
     for effect in effects {
         match effect {
-            EffectAst::DestroyAll { filter }
-            | EffectAst::DestroyAllNoRegeneration { filter }
-            | EffectAst::ExileAll { filter, .. } => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::DestroyAll { filter, .. }
+                    | SubjectVerbActionAst::ExileAll { filter, .. },
+                ..
+            }) => {
                 if filter.with_counter.is_none() {
                     filter.with_counter = Some(counter_constraint);
                 }
@@ -167,11 +228,15 @@ fn attach_copy_cost_reduction_to_effect(
     reduction: &crate::mana::ManaCost,
 ) -> bool {
     match effect {
-        EffectAst::CastTagged {
-            as_copy,
-            cost_reduction,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CastTagged {
+                    as_copy,
+                    cost_reduction,
+                    ..
+                },
             ..
-        } if *as_copy => {
+        }) if *as_copy => {
             *cost_reduction = Some(reduction.clone());
             true
         }
@@ -416,23 +481,23 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         && str_contains(&normalized, "instead of putting it into")
         && str_contains(&normalized, "graveyard")
     {
-        return Some(EffectAst::RegisterZoneReplacement {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
             target,
-            from_zone: Some(Zone::Stack),
-            to_zone: Some(Zone::Graveyard),
-            replacement_zone: Zone::Exile,
-            duration: ZoneReplacementDurationAst::OneShot,
-        });
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
     }
 
     if str_contains(&normalized, "would die this turn") && str_contains(&normalized, "exile") {
-        return Some(EffectAst::RegisterZoneReplacement {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
             target,
-            from_zone: Some(Zone::Battlefield),
-            to_zone: Some(Zone::Graveyard),
-            replacement_zone: Zone::Exile,
-            duration: ZoneReplacementDurationAst::OneShot,
-        });
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
     }
 
     if str_contains(&normalized, "would be put into")
@@ -440,13 +505,13 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         && str_contains(&normalized, "this turn")
         && str_contains(&normalized, "exile")
     {
-        return Some(EffectAst::RegisterZoneReplacement {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
             target,
-            from_zone: None,
-            to_zone: Some(Zone::Graveyard),
-            replacement_zone: Zone::Exile,
-            duration: ZoneReplacementDurationAst::OneShot,
-        });
+            None,
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
     }
 
     None
@@ -470,9 +535,12 @@ fn maybe_rewrite_future_zone_replacement_sentence(
     if sentence_effects.iter().any(|effect| {
         matches!(
             effect,
-            EffectAst::ExileInsteadOfGraveyardThisTurn { .. }
-                | EffectAst::PreventNextTimeDamage { .. }
-                | EffectAst::RedirectNextTimeDamageToSource { .. }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
+                    | SubjectVerbActionAst::PreventNextTimeDamage { .. }
+                    | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. },
+                ..
+            })
         )
     }) {
         return;
@@ -518,25 +586,32 @@ fn maybe_append_trailing_that_much_life_loss(
         return;
     }
 
-    let life_loss = EffectAst::LoseLife {
-        amount: Value::EventValue(EventValueSpec::Amount),
-        player: PlayerAst::You,
-    };
+    let life_loss = EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::You,
+        SubjectVerbActionAst::LoseLife {
+            amount: Value::EventValue(EventValueSpec::Amount),
+        },
+    );
     if let [EffectAst::IfResult { effects, .. }] = sentence_effects.as_mut_slice() {
-        if !effects
-            .iter()
-            .any(|effect| matches!(effect, EffectAst::LoseLife { .. }))
-        {
+        if !effects.iter().any(effect_is_life_loss) {
             effects.push(life_loss);
         }
         return;
     }
-    if !sentence_effects
-        .iter()
-        .any(|effect| matches!(effect, EffectAst::LoseLife { .. }))
-    {
+    if !sentence_effects.iter().any(effect_is_life_loss) {
         sentence_effects.push(life_loss);
     }
+}
+
+fn effect_is_life_loss(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LoseLife { .. },
+            ..
+        })
+    )
 }
 
 fn maybe_repair_that_player_gain_control_if_do_rewards(
@@ -546,19 +621,25 @@ fn maybe_repair_that_player_gain_control_if_do_rewards(
     if !grammar::contains_phrase(tokens, &["that", "player", "gains", "control", "of"])
         || !grammar::contains_phrase(tokens, &["if", "they", "do"])
         || effects.is_empty()
-        || effects
-            .iter()
-            .any(|effect| matches!(effect, EffectAst::GainControl { .. }))
+        || effects.iter().any(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::GainControl { .. },
+                    ..
+                })
+            )
+        })
     {
         return;
     }
 
     let rewards = std::mem::take(effects);
-    effects.push(EffectAst::GainControl {
-        target: TargetAst::Source(None),
-        player: PlayerAst::That,
-        duration: Until::Forever,
-    });
+    effects.push(EffectAst::subject_verb_gain_control(
+        PlayerAst::That,
+        TargetAst::Source(None),
+        Until::Forever,
+    ));
     effects.push(EffectAst::IfResult {
         predicate: IfResultPredicate::Did,
         effects: rewards,
@@ -575,7 +656,7 @@ pub(super) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    super::sequence_rules::pairs::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
+    super::sequence_rules::generic_subject_verb_sequences::pairs::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
         &[
             SentenceInput::from_lexed(first),
             SentenceInput::from_lexed(second),
@@ -590,7 +671,7 @@ pub(super) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    super::sequence_rules::triples::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(
+    super::sequence_rules::generic_subject_verb_sequences::triples::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(
         &[
             SentenceInput::from_lexed(first),
             SentenceInput::from_lexed(second),
@@ -606,7 +687,7 @@ pub(super) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    super::sequence_rules::triples::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
+    super::sequence_rules::generic_subject_verb_sequences::triples::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
         &[
             SentenceInput::from_lexed(first),
             SentenceInput::from_lexed(second),
@@ -692,20 +773,27 @@ fn parse_effect_sentences_from_sentence_inputs(
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
-        if let Some(mut matched) = try_parse_registered_sequence_rule(&sentences, sentence_idx)? {
+        if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
             let stage = if let Some(feature_tag) = matched.feature_tag {
                 format!(
-                    "parse_effect_sentences:registry-hit:{}:{feature_tag}",
+                    "parse_effect_sentences:subject-verb-sequence:{}:{feature_tag}",
                     matched.name
                 )
             } else {
-                format!("parse_effect_sentences:registry-hit:{}", matched.name)
+                format!(
+                    "parse_effect_sentences:subject-verb-sequence:{}",
+                    matched.name
+                )
             };
             parser_trace(stage.as_str(), sentence);
             parse_trace::event(format!(
-                "sequence rule: {} -> {}",
+                "sequence subject/verb rule: {} -> {}",
                 matched.name,
                 summarize_effects(&matched.effects)
+            ));
+            parse_trace::event(format!(
+                "effect-route: {}",
+                subject_verb_sequence_route(matched.name)
             ));
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
@@ -740,9 +828,18 @@ fn parse_effect_sentences_from_sentence_inputs(
                 sentence_idx,
                 &sentence_tokens,
             )? {
-                Some(PreParseFollowupResult::Handled { consumed_sentences }) => {
+                Some(PreParseFollowupResult::Handled {
+                    consumed_sentences,
+                    route,
+                }) => {
                     parse_trace::event(format!(
                         "pre-parse followup handled sentence(s): {consumed_sentences}"
+                    ));
+                    parse_trace::event(format!(
+                        "effect-route: {}",
+                        route.unwrap_or(
+                            "subject-verb verb=Do subject=implicit recognizer=pre-parse-followup",
+                        )
                     ));
                     sentence_idx += consumed_sentences;
                     continue;
@@ -772,6 +869,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             carried_context = None;
         }
         maybe_append_trailing_that_much_life_loss(&mut sentence_effects, &parse_plan.tokens);
+        let previous_damage_target = effects.last().and_then(primary_damage_target_from_effect);
+        repair_that_object_power_damage_subject(
+            &mut sentence_effects,
+            &sentence_tokens,
+            previous_damage_target,
+        );
         if crate::runtime_backend::token_word_refs(&parse_plan.tokens)
             .first()
             .copied()
@@ -857,6 +960,14 @@ fn parse_effect_sentences_from_sentence_inputs(
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+        parse_effect_sentences_lexed_inner(tokens)
+    })
+}
+
+fn parse_effect_sentences_lexed_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(mut effects) = parse_exact_card_effect_bundle_lexed(tokens) {
         apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
         maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
@@ -928,31 +1039,31 @@ pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(
         });
     }
 
-    effects.push(EffectAst::Cant {
-        restriction: crate::effect::Restriction::be_regenerated(filter),
-        duration: Until::EndOfTurn,
-        condition: None,
-    });
+    effects.push(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::be_regenerated(filter),
+        Until::EndOfTurn,
+        None,
+    ));
     true
 }
 
 fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
     match effect {
-        EffectAst::Destroy { target } => {
-            let target = target.clone();
-            *effect = EffectAst::DestroyNoRegeneration { target };
-            true
-        }
-        EffectAst::DestroyAll { filter } => {
-            let filter = filter.clone();
-            *effect = EffectAst::DestroyAllNoRegeneration { filter };
-            true
-        }
-        EffectAst::DestroyAllOfChosenColor { filter } => {
-            let filter = filter.clone();
-            *effect = EffectAst::DestroyAllOfChosenColorNoRegeneration { filter };
-            true
-        }
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Destroy {
+                no_regeneration, ..
+            }
+            | SubjectVerbActionAst::DestroyAll {
+                no_regeneration, ..
+            }
+            | SubjectVerbActionAst::DestroyAllOfChosenColor {
+                no_regeneration, ..
+            } => {
+                *no_regeneration = true;
+                true
+            }
+            _ => false,
+        },
         _ => {
             let mut applied = false;
             for_each_nested_effects_mut(effect, true, |nested| {
@@ -1088,11 +1199,19 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
-                    player: crate::cards::builders::PlayerAst::You,
-                    count: 3,
-                    ..
-                }
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        subject: crate::cards::builders::SubjectVerbSubjectAst {
+                            player: crate::cards::builders::PlayerAst::You,
+                            ..
+                        },
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
+                                count: 3,
+                                ..
+                            },
+                    },
+                )
             ]
         ));
     }
@@ -1115,12 +1234,20 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                crate::cards::builders::EffectAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                    player: crate::cards::builders::PlayerAst::You,
-                    count: 5,
-                    order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
-                    ..
-                }
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        subject: crate::cards::builders::SubjectVerbSubjectAst {
+                            player: crate::cards::builders::PlayerAst::You,
+                            ..
+                        },
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
+                                count: 5,
+                                order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+                                ..
+                            },
+                    },
+                )
             ]
         ));
     }
@@ -1136,14 +1263,16 @@ mod tests {
         let parsed =
             parse_effect_sentence_lexed(&tokens).expect("turnabout mass-tap clause should parse");
 
-        let [
-            crate::cards::builders::EffectAst::TapOrUntapAll {
-                tap_filter,
-                untap_filter,
-            },
-        ] = parsed.as_slice()
+        let [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] = parsed.as_slice()
         else {
             panic!("expected shared tap-or-untap-all ast, got {parsed:?}");
+        };
+        let crate::cards::builders::SubjectVerbActionAst::TapOrUntapAll {
+            tap_filter,
+            untap_filter,
+        } = &subject_verb.action
+        else {
+            panic!("expected shared tap-or-untap-all action, got {parsed:?}");
         };
 
         assert_eq!(tap_filter.controller, Some(PlayerFilter::target_player()));
@@ -1261,9 +1390,24 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                crate::cards::builders::EffectAst::LookAtTopCards { .. },
-                crate::cards::builders::EffectAst::RevealTagged { .. },
-                crate::cards::builders::EffectAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. },
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                        ..
+                    }
+                ),
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
+                        ..
+                    }
+                ),
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. },
+                        ..
+                    }
+                ),
             ]
         ));
     }
@@ -1290,9 +1434,24 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                crate::cards::builders::EffectAst::LookAtTopCards { .. },
-                crate::cards::builders::EffectAst::RevealTagged { .. },
-                crate::cards::builders::EffectAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. },
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                        ..
+                    }
+                ),
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
+                        ..
+                    }
+                ),
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. },
+                        ..
+                    }
+                ),
             ]
         ));
     }
@@ -1354,9 +1513,12 @@ fn apply_cant_be_regenerated_to_effects_tail(effects: &mut [EffectAst]) -> bool 
 
 pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
-        EffectAst::DealDamage { target, .. } | EffectAst::DealDamageEqualToPower { target, .. } => {
-            Some(target.clone())
-        }
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => Some(target.clone()),
+            _ => None,
+        },
         _ => {
             let mut found = None;
             for_each_nested_effects(effect, false, |nested| {
@@ -1371,50 +1533,64 @@ pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<Ta
 
 pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
-        EffectAst::DealDamage { target, .. }
-        | EffectAst::DealDamageEqualToPower { target, .. }
-        | EffectAst::Counter { target }
-        | EffectAst::CounterUnlessPays { target, .. }
-        | EffectAst::Explore { target }
-        | EffectAst::Connive { target, .. }
-        | EffectAst::Detain { target }
-        | EffectAst::Goad { target }
-        | EffectAst::Tap { target }
-        | EffectAst::Untap { target }
-        | EffectAst::RemoveFromCombat { target }
-        | EffectAst::TapOrUntap { target }
-        | EffectAst::Destroy { target }
-        | EffectAst::DestroyNoRegeneration { target }
-        | EffectAst::Exile { target, .. }
-        | EffectAst::ExileWhenSourceLeaves { target }
-        | EffectAst::SacrificeSourceWhenLeaves { target }
-        | EffectAst::ExileUntilSourceLeaves { target, .. }
-        | EffectAst::LookAtHand { target }
-        | EffectAst::Transform { target }
-        | EffectAst::Convert { target }
-        | EffectAst::Flip { target }
-        | EffectAst::Regenerate { target }
-        | EffectAst::PhaseOut { target }
-        | EffectAst::PhaseIn { target }
-        | EffectAst::TargetOnly { target }
-        | EffectAst::ReturnToHand { target, .. }
-        | EffectAst::ReturnToBattlefield { target, .. }
-        | EffectAst::MoveToZone { target, .. }
-        | EffectAst::PutCounters { target, .. }
-        | EffectAst::PutOrRemoveCounters { target, .. }
-        | EffectAst::RemoveUpToAnyCounters { target, .. }
-        | EffectAst::Pump { target, .. }
-        | EffectAst::GrantAbilitiesToTarget { target, .. }
-        | EffectAst::GrantToTarget { target, .. }
-        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
-        | EffectAst::GrantProtectionChoice { target, .. }
-        | EffectAst::PreventDamage { target, .. }
-        | EffectAst::PreventAllDamageToTarget { target, .. }
-        | EffectAst::PreventDamageToTargetPutCounters { target, .. }
-        | EffectAst::PreventAllCombatDamageFromSource { source: target, .. }
-        | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
-        | EffectAst::RedirectNextTimeDamageToSource { target, .. }
-        | EffectAst::GainControl { target, .. } => Some(target.clone()),
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
+            | SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::Untap { target }
+            | SubjectVerbActionAst::Destroy { target, .. }
+            | SubjectVerbActionAst::Exile { target, .. }
+            | SubjectVerbActionAst::LookAtHand { target }
+            | SubjectVerbActionAst::Counter { target }
+            | SubjectVerbActionAst::CounterUnlessPays { target, .. }
+            | SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::ReturnToHand { target, .. }
+            | SubjectVerbActionAst::Detain { target }
+            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::RemoveFromCombat { target }
+            | SubjectVerbActionAst::Flip { target }
+            | SubjectVerbActionAst::Regenerate { target }
+            | SubjectVerbActionAst::TapOrUntap { target }
+            | SubjectVerbActionAst::PhaseOut { target }
+            | SubjectVerbActionAst::PhaseIn { target }
+            | SubjectVerbActionAst::Transform { target }
+            | SubjectVerbActionAst::Convert { target }
+            | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Connive { target, .. }
+            | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
+            | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
+            | SubjectVerbActionAst::PutSticker { target, .. }
+            | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
+            | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
+            | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
+            | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
+            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
+            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::PreventDamage { target, .. }
+            | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
+            | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
+            | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
+            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
+            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+            | SubjectVerbActionAst::MoveToZone { target, .. }
+            | SubjectVerbActionAst::TargetOnly { target }
+            | SubjectVerbActionAst::Pump { target, .. }
+            | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
+            | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
+            | SubjectVerbActionAst::SetBasePower { target, .. }
+            | SubjectVerbActionAst::PumpForEach { target, .. }
+            | SubjectVerbActionAst::PumpByLastEffect { target, .. }
+            | SubjectVerbActionAst::GainControl { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+            | SubjectVerbActionAst::GrantToTarget { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => {
+                Some(target.clone())
+            }
+            _ => None,
+        },
         _ => {
             let mut found = None;
             for_each_nested_effects(effect, false, |nested| {
@@ -1457,18 +1633,21 @@ pub(crate) fn replace_placeholder_damage_target_in_effects(
 
 pub(crate) fn replace_placeholder_damage_target(effect: &mut EffectAst, target: &TargetAst) {
     match effect {
-        EffectAst::DealDamage {
-            target: damage_target,
-            ..
-        }
-        | EffectAst::DealDamageEqualToPower {
-            target: damage_target,
-            ..
-        } => {
-            if is_placeholder_damage_target(damage_target) {
-                *damage_target = target.clone();
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage {
+                target: damage_target,
+                ..
             }
-        }
+            | SubjectVerbActionAst::DealDamageEqualToPower {
+                target: damage_target,
+                ..
+            } => {
+                if is_placeholder_damage_target(damage_target) {
+                    *damage_target = target.clone();
+                }
+            }
+            _ => {}
+        },
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             replace_placeholder_damage_target_in_effects(nested, target);
         }),
@@ -1492,14 +1671,18 @@ pub(crate) fn replace_unbound_x_in_damage_effect(
     clause: &str,
 ) -> Result<(), CardTextError> {
     match effect {
-        EffectAst::DealDamage { amount, .. }
-        | EffectAst::DealDamageEach { amount, .. }
-        | EffectAst::GainLife { amount, .. }
-        | EffectAst::LoseLife { amount, .. } => {
-            if value_contains_unbound_x(amount) {
-                *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::GainLife { amount }
+            | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. } => {
+                if value_contains_unbound_x(amount) {
+                    *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
+                }
             }
-        }
+            _ => {}
+        },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
                 replace_unbound_x_in_damage_effects(nested, replacement, clause)
@@ -1637,102 +1820,283 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     }
 
     match effect {
-        EffectAst::DealDamage { amount, .. }
-        | EffectAst::DealDamageEach { amount, .. }
-        | EffectAst::Draw { count: amount, .. }
-        | EffectAst::LoseLife { amount, .. }
-        | EffectAst::GainLife { amount, .. }
-        | EffectAst::PreventDamage { amount, .. }
-        | EffectAst::PreventDamageEach { amount, .. }
-        | EffectAst::PutCounters { count: amount, .. }
-        | EffectAst::PutCountersAll { count: amount, .. }
-        | EffectAst::Mill { count: amount, .. }
-        | EffectAst::Discard { count: amount, .. }
-        | EffectAst::Scry { count: amount, .. }
-        | EffectAst::Surveil { count: amount, .. }
-        | EffectAst::Discover { count: amount, .. }
-        | EffectAst::Connive { count: amount, .. }
-        | EffectAst::LookAtTopCards { count: amount, .. }
-        | EffectAst::PayEnergy { amount, .. }
-        | EffectAst::CopySpell { count: amount, .. }
-        | EffectAst::SetLifeTotal { amount, .. }
-        | EffectAst::Monstrosity { amount } => {
-            replace_value(amount, replacement, clause)?;
-        }
-        EffectAst::PreventDamageToTargetPutCounters {
-            amount: Some(amount),
-            ..
-        } => {
-            replace_value(amount, replacement, clause)?;
-        }
-        EffectAst::Pump {
-            power, toughness, ..
-        }
-        | EffectAst::SetBasePowerToughness {
-            power, toughness, ..
-        }
-        | EffectAst::BecomeBasePtCreature {
-            power, toughness, ..
-        }
-        | EffectAst::PumpAll {
-            power, toughness, ..
-        } => {
-            replace_value(power, replacement, clause)?;
-            replace_value(toughness, replacement, clause)?;
-        }
-        EffectAst::SetBasePower { power, .. } => {
-            replace_value(power, replacement, clause)?;
-        }
-        EffectAst::PutOrRemoveCounters {
-            put_count,
-            remove_count,
-            ..
-        } => {
-            replace_value(put_count, replacement, clause)?;
-            replace_value(remove_count, replacement, clause)?;
-        }
-        EffectAst::RemoveUpToAnyCounters { amount, .. } => {
-            replace_value(amount, replacement, clause)?;
-        }
-        EffectAst::AddManaScaled { amount, .. }
-        | EffectAst::AddManaAnyColor { amount, .. }
-        | EffectAst::AddManaAnyOneColor { amount, .. }
-        | EffectAst::AddManaChosenColor { amount, .. }
-        | EffectAst::AddManaFromLandCouldProduce { amount, .. }
-        | EffectAst::AddManaCommanderIdentity { amount, .. } => {
-            replace_value(amount, replacement, clause)?;
-        }
-        EffectAst::CreateTokenCopy { count, .. }
-        | EffectAst::CreateTokenCopyFromSource { count, .. } => {
-            replace_value(count, replacement, clause)?;
-        }
-        EffectAst::SearchLibrary {
-            filter,
-            count_value,
-            ..
-        } => {
-            replace_in_filter(filter, replacement, clause)?;
-            if let Some(count_value) = count_value.as_mut() {
-                replace_value(count_value, replacement, clause)?;
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Draw { count: amount }
+            | SubjectVerbActionAst::ExileTopOfLibrary { count: amount, .. }
+            | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::GainLife { amount }
+            | SubjectVerbActionAst::Mill { count: amount }
+            | SubjectVerbActionAst::Scry { count: amount }
+            | SubjectVerbActionAst::Surveil { count: amount }
+            | SubjectVerbActionAst::Proliferate { count: amount }
+            | SubjectVerbActionAst::Investigate { count: amount }
+            | SubjectVerbActionAst::Monstrosity { amount }
+            | SubjectVerbActionAst::Discover { count: amount }
+            | SubjectVerbActionAst::Fateseal { count: amount }
+            | SubjectVerbActionAst::Populate { count: amount, .. }
+            | SubjectVerbActionAst::Connive { count: amount, .. }
+            | SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. }
+            | SubjectVerbActionAst::PreventDamage { amount, .. }
+            | SubjectVerbActionAst::PreventDamageEach { amount, .. }
+            | SubjectVerbActionAst::CopySpell { count: amount, .. }
+            | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
+            | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
+            | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
+            | SubjectVerbActionAst::Discard { count: amount, .. }
+            | SubjectVerbActionAst::PoisonCounters { count: amount }
+            | SubjectVerbActionAst::EnergyCounters { count: amount }
+            | SubjectVerbActionAst::TicketCounters { count: amount }
+            | SubjectVerbActionAst::PayEnergy { amount }
+            | SubjectVerbActionAst::SetLifeTotal { amount }
+            | SubjectVerbActionAst::AddManaScaled { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+            | SubjectVerbActionAst::AddManaCommanderIdentity { amount }
+            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount, .. }
+            | SubjectVerbActionAst::LookAtTopCards { count: amount, .. }
+            | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+                position: amount, ..
             }
-        }
-        EffectAst::CreateTokenWithMods {
-            count,
-            dynamic_power_toughness,
-            ..
-        } => {
-            replace_value(count, replacement, clause)?;
-            if let Some((power, toughness)) = dynamic_power_toughness {
+            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
+                replace_value(amount, replacement, clause)?;
+            }
+            SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
+                replace_values_in_total_cost(cost, replacement, clause)?;
+            }
+            SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+                amount: Some(amount),
+                ..
+            } => {
+                replace_value(amount, replacement, clause)?;
+            }
+            SubjectVerbActionAst::PutOrRemoveCounters {
+                put_count,
+                remove_count,
+                ..
+            } => {
+                replace_value(put_count, replacement, clause)?;
+                replace_value(remove_count, replacement, clause)?;
+            }
+            SubjectVerbActionAst::Pump {
+                power, toughness, ..
+            }
+            | SubjectVerbActionAst::SetBasePowerToughness {
+                power, toughness, ..
+            }
+            | SubjectVerbActionAst::PumpAll {
+                power, toughness, ..
+            } => {
                 replace_value(power, replacement, clause)?;
                 replace_value(toughness, replacement, clause)?;
             }
-        }
-        EffectAst::CounterUnlessPays { cost, .. } => {
-            replace_values_in_total_cost(cost, replacement, clause)?;
-        }
-        EffectAst::PumpForEach { count, .. } => {
-            replace_value(count, replacement, clause)?;
-        }
+            SubjectVerbActionAst::SetBasePower { power, .. } => {
+                replace_value(power, replacement, clause)?;
+            }
+            SubjectVerbActionAst::PumpForEach { count, .. } => {
+                replace_value(count, replacement, clause)?;
+            }
+            SubjectVerbActionAst::DealDamageEqualToPower { .. }
+            | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
+            | SubjectVerbActionAst::RevealHand
+            | SubjectVerbActionAst::RevealTagged { .. }
+            | SubjectVerbActionAst::RevealCardsFromHand { .. }
+            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
+            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::Amass { .. }
+            | SubjectVerbActionAst::Bolster { .. }
+            | SubjectVerbActionAst::Support { .. }
+            | SubjectVerbActionAst::Adapt { .. }
+            | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::ConniveIterated
+            | SubjectVerbActionAst::OpenAttraction
+            | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::ManifestDread
+            | SubjectVerbActionAst::Earthbend { .. }
+            | SubjectVerbActionAst::Behold { .. }
+            | SubjectVerbActionAst::Fight { .. }
+            | SubjectVerbActionAst::FightIterated { .. }
+            | SubjectVerbActionAst::Clash { .. }
+            | SubjectVerbActionAst::FlipCoin
+            | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+            | SubjectVerbActionAst::ReorderGraveyard
+            | SubjectVerbActionAst::ChooseColor
+            | SubjectVerbActionAst::ChooseCardType { .. }
+            | SubjectVerbActionAst::ChooseNamedOption { .. }
+            | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::ChooseCardName { .. }
+            | SubjectVerbActionAst::ChoosePlayer { .. }
+            | SubjectVerbActionAst::AddMana { .. }
+            | SubjectVerbActionAst::ExchangeLifeTotals { .. }
+            | SubjectVerbActionAst::ExchangeTextBoxes { .. }
+            | SubjectVerbActionAst::ExchangeZones { .. }
+            | SubjectVerbActionAst::PutRestOnBottomOfLibrary
+            | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+            | SubjectVerbActionAst::ExchangeValues { .. }
+            | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
+            | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }
+            | SubjectVerbActionAst::GainControl { .. }
+            | SubjectVerbActionAst::AddManaImprintedColors
+            | SubjectVerbActionAst::DoubleManaPool
+            | SubjectVerbActionAst::SkipTurn
+            | SubjectVerbActionAst::SkipCombatPhases
+            | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipDrawStep
+            | SubjectVerbActionAst::PlayFromGraveyardUntilEot
+            | SubjectVerbActionAst::ControlPlayer { .. }
+            | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+            | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
+            | SubjectVerbActionAst::RingTemptsYou
+            | SubjectVerbActionAst::VentureIntoDungeon { .. }
+            | SubjectVerbActionAst::BecomeMonarch
+            | SubjectVerbActionAst::TakeInitiative
+            | SubjectVerbActionAst::CreateEmblem { .. }
+            | SubjectVerbActionAst::LoseGame
+            | SubjectVerbActionAst::WinGame
+            | SubjectVerbActionAst::PayMana { .. }
+            | SubjectVerbActionAst::DiscardHand
+            | SubjectVerbActionAst::Detain { .. }
+            | SubjectVerbActionAst::Goad { .. }
+            | SubjectVerbActionAst::RemoveFromCombat { .. }
+            | SubjectVerbActionAst::Flip { .. }
+            | SubjectVerbActionAst::Regenerate { .. }
+            | SubjectVerbActionAst::RegenerateAll { .. }
+            | SubjectVerbActionAst::TapAll { .. }
+            | SubjectVerbActionAst::UntapAll { .. }
+            | SubjectVerbActionAst::TapOrUntap { .. }
+            | SubjectVerbActionAst::TapOrUntapAll { .. }
+            | SubjectVerbActionAst::PhaseOut { .. }
+            | SubjectVerbActionAst::PhaseOutAll { .. }
+            | SubjectVerbActionAst::PhaseIn { .. }
+            | SubjectVerbActionAst::PhaseInAll { .. }
+            | SubjectVerbActionAst::Transform { .. }
+            | SubjectVerbActionAst::Convert { .. }
+            | SubjectVerbActionAst::Tap { .. }
+            | SubjectVerbActionAst::Untap { .. }
+            | SubjectVerbActionAst::Destroy { .. }
+            | SubjectVerbActionAst::DestroyAll { .. }
+            | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
+            | SubjectVerbActionAst::Exile { .. }
+            | SubjectVerbActionAst::ExileAll { .. }
+            | SubjectVerbActionAst::LookAtHand { .. }
+            | SubjectVerbActionAst::Counter { .. }
+            | SubjectVerbActionAst::ReturnToHand { .. }
+            | SubjectVerbActionAst::ReturnAllToHand { .. }
+            | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
+            | SubjectVerbActionAst::DoubleCountersOnEach { .. }
+            | SubjectVerbActionAst::MoveAllCounters { .. }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+            | SubjectVerbActionAst::Sacrifice { .. }
+            | SubjectVerbActionAst::SacrificeAll { .. }
+            | SubjectVerbActionAst::RevealTop
+            | SubjectVerbActionAst::PutIntoHand { .. }
+            | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
+            | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
+            | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
+            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+            | SubjectVerbActionAst::PutSticker { .. }
+            | SubjectVerbActionAst::SwitchPowerToughness { .. }
+            | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+            | SubjectVerbActionAst::GrantProtectionChoice { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
+            | SubjectVerbActionAst::PreventNextTimeDamage { .. }
+            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
+            | SubjectVerbActionAst::Meld { .. }
+            | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
+            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
+            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
+            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::RetargetStackObject { .. }
+            | SubjectVerbActionAst::GrantAbilityToSource { .. }
+            | SubjectVerbActionAst::ExchangeControl { .. }
+            | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
+            | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+            | SubjectVerbActionAst::Attach { .. }
+            | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
+            | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
+            | SubjectVerbActionAst::MayMoveToZone { .. }
+            | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::Enchant { .. }
+            | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
+            | SubjectVerbActionAst::CopySpellForEachTarget { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::CastTagged { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
+            | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
+            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+            | SubjectVerbActionAst::ReturnToBattlefield { .. }
+            | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+            | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
+            | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::TargetOnly { .. }
+            | SubjectVerbActionAst::TagMatchingObjects { .. }
+            | SubjectVerbActionAst::BecomeBasePtCreature { .. }
+            | SubjectVerbActionAst::PumpByLastEffect { .. }
+            | SubjectVerbActionAst::AddCardTypes { .. }
+            | SubjectVerbActionAst::RemoveCardTypes { .. }
+            | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeBasicLandType { .. }
+            | SubjectVerbActionAst::SetColors { .. }
+            | SubjectVerbActionAst::MakeColorless { .. }
+            | SubjectVerbActionAst::BecomeBasicLandTypeChoice { .. }
+            | SubjectVerbActionAst::BecomeCreatureTypeChoice { .. }
+            | SubjectVerbActionAst::BecomeColorChoice { .. }
+            | SubjectVerbActionAst::BecomeCopy { .. }
+            | SubjectVerbActionAst::GrantAbilitiesAll { .. }
+            | SubjectVerbActionAst::RemoveAbilitiesAll { .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { .. }
+            | SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
+            | SubjectVerbActionAst::GrantToTarget { .. }
+            | SubjectVerbActionAst::GrantBySpec { .. }
+            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
+            | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
+            | SubjectVerbActionAst::ShuffleLibrary => {}
+            SubjectVerbActionAst::Cant { .. } => {}
+            SubjectVerbActionAst::SearchLibrary {
+                filter,
+                count_value,
+                ..
+            } => {
+                replace_in_filter(filter, replacement, clause)?;
+                if let Some(count_value) = count_value.as_mut() {
+                    replace_value(count_value, replacement, clause)?;
+                }
+            }
+            SubjectVerbActionAst::CreateTokenCopy { count, .. }
+            | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. } => {
+                replace_value(count, replacement, clause)?;
+            }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                count,
+                dynamic_power_toughness,
+                ..
+            } => {
+                replace_value(count, replacement, clause)?;
+                if let Some((power, toughness)) = dynamic_power_toughness {
+                    replace_value(power, replacement, clause)?;
+                    replace_value(toughness, replacement, clause)?;
+                }
+            }
+        },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
                 replace_unbound_x_in_effects_anywhere(nested, replacement, clause)
@@ -1767,7 +2131,7 @@ pub(crate) fn apply_where_x_to_damage_amounts(
         return Ok(());
     };
     let where_tokens = &tokens[where_token_idx..];
-    let Some(where_value) = parse_where_x_value_clause(where_tokens) else {
+    let Some(where_value) = parse_value_binding_clause(where_tokens) else {
         return Ok(());
     };
     replace_unbound_x_in_damage_effects(effects, &where_value, &clause_words.join(" "))
@@ -1775,14 +2139,17 @@ pub(crate) fn apply_where_x_to_damage_amounts(
 
 pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
     match effect {
-        EffectAst::DealDamage {
-            target: damage_target,
-            ..
-        } => {
-            if target_references_it(damage_target) {
-                *damage_target = target.clone();
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage {
+                target: damage_target,
+                ..
+            } => {
+                if target_references_it(damage_target) {
+                    *damage_target = target.clone();
+                }
             }
-        }
+            _ => {}
+        },
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             replace_it_damage_target_in_effects(nested, target);
         }),
@@ -1790,167 +2157,164 @@ pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAs
 }
 
 pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
+    fn should_replace_self_replacement_target(effect_target: &TargetAst) -> bool {
+        target_references_it(effect_target) || matches!(effect_target, TargetAst::Tagged(_, _))
+    }
+
     match effect {
-        EffectAst::DealDamage {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::DealDamageEqualToPower {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::Counter {
-            target: effect_target,
-        }
-        | EffectAst::CounterUnlessPays {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::Explore {
-            target: effect_target,
-        }
-        | EffectAst::Connive {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::Detain {
-            target: effect_target,
-        }
-        | EffectAst::Goad {
-            target: effect_target,
-        }
-        | EffectAst::Tap {
-            target: effect_target,
-        }
-        | EffectAst::Untap {
-            target: effect_target,
-        }
-        | EffectAst::PhaseOut {
-            target: effect_target,
-        }
-        | EffectAst::PhaseIn {
-            target: effect_target,
-        }
-        | EffectAst::RemoveFromCombat {
-            target: effect_target,
-        }
-        | EffectAst::TapOrUntap {
-            target: effect_target,
-        }
-        | EffectAst::Destroy {
-            target: effect_target,
-        }
-        | EffectAst::DestroyNoRegeneration {
-            target: effect_target,
-        }
-        | EffectAst::Exile {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::ExileWhenSourceLeaves {
-            target: effect_target,
-        }
-        | EffectAst::SacrificeSourceWhenLeaves {
-            target: effect_target,
-        }
-        | EffectAst::ExileUntilSourceLeaves {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::LookAtHand {
-            target: effect_target,
-        }
-        | EffectAst::Transform {
-            target: effect_target,
-        }
-        | EffectAst::Convert {
-            target: effect_target,
-        }
-        | EffectAst::Flip {
-            target: effect_target,
-        }
-        | EffectAst::Regenerate {
-            target: effect_target,
-        }
-        | EffectAst::TargetOnly {
-            target: effect_target,
-        }
-        | EffectAst::ReturnToHand {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::ReturnToBattlefield {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::MoveToZone {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PutCounters {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PutOrRemoveCounters {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::RemoveUpToAnyCounters {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::Pump {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::GrantAbilitiesToTarget {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::GrantToTarget {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::GrantAbilitiesChoiceToTarget {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::GrantProtectionChoice {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PreventDamage {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PreventAllDamageToTarget {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PreventDamageToTargetPutCounters {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::PreventAllCombatDamageFromSource {
-            source: effect_target,
-            ..
-        }
-        | EffectAst::RedirectNextDamageFromSourceToTarget {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::RedirectNextTimeDamageToSource {
-            target: effect_target,
-            ..
-        }
-        | EffectAst::GainControl {
-            target: effect_target,
-            ..
-        } => {
-            if target_references_it(effect_target) {
-                *effect_target = target.clone();
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage {
+                target: effect_target,
+                ..
             }
-        }
+            | SubjectVerbActionAst::DealDamageEqualToPower {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::Tap {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Untap {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Destroy {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::Exile {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::LookAtHand {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Counter {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::CounterUnlessPays {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PutCounters {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::ReturnToHand {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::Detain {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Goad {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::RemoveFromCombat {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Flip {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Regenerate {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::TapOrUntap {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::PhaseOut {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::PhaseIn {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Transform {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Convert {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Explore {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::GainControl {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventDamage {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventAllDamageToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PutOrRemoveCounters {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::TargetOnly {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Connive {
+                target: effect_target,
+                ..
+            } => {
+                if should_replace_self_replacement_target(effect_target) {
+                    *effect_target = target.clone();
+                }
+            }
+            SubjectVerbActionAst::MoveToZone {
+                target: effect_target,
+                attached_to,
+                ..
+            } => {
+                if should_replace_self_replacement_target(effect_target) {
+                    *effect_target = target.clone();
+                }
+                if let Some(effect_target) = attached_to
+                    && should_replace_self_replacement_target(effect_target)
+                {
+                    *effect_target = target.clone();
+                }
+            }
+            SubjectVerbActionAst::ReturnToBattlefield {
+                target: effect_target,
+                ..
+            } => {
+                if should_replace_self_replacement_target(effect_target) {
+                    *effect_target = target.clone();
+                }
+            }
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::GrantToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+                target: effect_target,
+                ..
+            } => {
+                if target_references_it(effect_target) {
+                    *effect_target = target.clone();
+                }
+            }
+            _ => {}
+        },
         _ => for_each_nested_effects_mut(effect, true, |nested| {
             replace_it_target_in_effects(nested, target);
         }),
@@ -2002,11 +2366,14 @@ pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
 
 pub(crate) fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<PlayerAst> {
     effects.iter().rev().find_map(|effect| {
-        if let EffectAst::ExtraTurnAfterTurn { player, .. } = effect {
-            Some(*player)
-        } else {
-            None
-        }
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
+            action: SubjectVerbActionAst::ExtraTurnAfterTurn { .. },
+        }) = effect
+        else {
+            return None;
+        };
+        Some(*player)
     })
 }
 
@@ -2230,16 +2597,18 @@ fn apply_unapplied_token_copy_followup(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let span = span_from_tokens(sentence);
     let effects = match followup {
-        TokenCopyFollowup::HasHaste => vec![EffectAst::GrantAbilitiesToTarget {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-            abilities: vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
-            duration: Until::Forever,
-        }],
-        TokenCopyFollowup::GainHasteUntilEndOfTurn => vec![EffectAst::GrantAbilitiesToTarget {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-            abilities: vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
-            duration: Until::EndOfTurn,
-        }],
+        TokenCopyFollowup::HasHaste => vec![EffectAst::subject_verb_grant_abilities_to_target(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
+            Until::Forever,
+        )],
+        TokenCopyFollowup::GainHasteUntilEndOfTurn => {
+            vec![EffectAst::subject_verb_grant_abilities_to_target(
+                TargetAst::Tagged(TagKey::from(IT_TAG), span),
+                vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
+                Until::EndOfTurn,
+            )]
+        }
         TokenCopyFollowup::EnterTappedAndAttacking => {
             return Err(CardTextError::ParseError(
                 "standalone 'enters tapped and attacking' follow-up requires a preceding token-copy, populate, or meld effect".to_string(),
@@ -2247,33 +2616,33 @@ fn apply_unapplied_token_copy_followup(
         }
         TokenCopyFollowup::SacrificeAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
-            effects: vec![EffectAst::Sacrifice {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                player: PlayerAst::Implicit,
-                count: 1,
-                target: None,
-            }],
+            effects: vec![EffectAst::subject_verb_sacrifice(
+                PlayerAst::Implicit,
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                1,
+                None,
+            )],
         }],
         TokenCopyFollowup::ExileAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
-            effects: vec![EffectAst::Exile {
-                target: TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
-                face_down: false,
-            }],
+            effects: vec![EffectAst::subject_verb_exile(
+                TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
+                false,
+            )],
         }],
         TokenCopyFollowup::ExileAtEndOfCombat => vec![EffectAst::DelayedUntilEndOfCombat {
-            effects: vec![EffectAst::Exile {
-                target: TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
-                face_down: false,
-            }],
+            effects: vec![EffectAst::subject_verb_exile(
+                TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
+                false,
+            )],
         }],
         TokenCopyFollowup::SacrificeAtEndOfCombat => vec![EffectAst::DelayedUntilEndOfCombat {
-            effects: vec![EffectAst::Sacrifice {
-                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                player: PlayerAst::Implicit,
-                count: 1,
-                target: None,
-            }],
+            effects: vec![EffectAst::subject_verb_sacrifice(
+                PlayerAst::Implicit,
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                1,
+                None,
+            )],
         }],
     };
     Ok(effects)
@@ -2288,55 +2657,88 @@ pub(crate) fn try_apply_token_copy_followup(
     };
 
     match last {
-        EffectAst::CreateTokenCopy {
-            has_haste,
-            enters_tapped,
-            enters_attacking,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        }
-        | EffectAst::CreateTokenCopyFromSource {
-            has_haste,
-            enters_tapped,
-            enters_attacking,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        }
-        | EffectAst::Populate {
-            has_haste,
-            enters_tapped,
-            enters_attacking,
-            exile_at_end_of_combat,
-            sacrifice_at_next_end_step,
-            exile_at_next_end_step,
-            ..
-        } => {
-            match followup {
-                TokenCopyFollowup::HasHaste => *has_haste = true,
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Populate {
+                has_haste,
+                enters_tapped,
+                enters_attacking,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
+            } => {
+                match followup {
+                    TokenCopyFollowup::HasHaste => *has_haste = true,
+                    TokenCopyFollowup::EnterTappedAndAttacking => {
+                        *enters_tapped = true;
+                        *enters_attacking = true;
+                    }
+                    TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
+                    TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
+                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
+                    TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
+                }
+                Ok(true)
+            }
+            SubjectVerbActionAst::Meld {
+                enters_tapped,
+                enters_attacking,
+                ..
+            } => match followup {
                 TokenCopyFollowup::EnterTappedAndAttacking => {
                     *enters_tapped = true;
                     *enters_attacking = true;
+                    Ok(true)
                 }
-                TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
-                TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
-                TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
-                TokenCopyFollowup::GainHasteUntilEndOfTurn
-                | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
+                _ => Ok(false),
+            },
+            SubjectVerbActionAst::CreateTokenCopy {
+                has_haste,
+                enters_tapped,
+                enters_attacking,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
             }
-            Ok(true)
-        }
-        EffectAst::Meld {
-            enters_tapped,
-            enters_attacking,
-            ..
-        } => match followup {
-            TokenCopyFollowup::EnterTappedAndAttacking => {
-                *enters_tapped = true;
-                *enters_attacking = true;
+            | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                has_haste,
+                enters_tapped,
+                enters_attacking,
+                exile_at_end_of_combat,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
+                ..
+            } => {
+                match followup {
+                    TokenCopyFollowup::HasHaste => *has_haste = true,
+                    TokenCopyFollowup::EnterTappedAndAttacking => {
+                        *enters_tapped = true;
+                        *enters_attacking = true;
+                    }
+                    TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
+                    TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
+                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
+                    TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
+                }
+                Ok(true)
+            }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                exile_at_end_of_combat,
+                sacrifice_at_end_of_combat,
+                ..
+            } => {
+                match followup {
+                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
+                    TokenCopyFollowup::SacrificeAtEndOfCombat => *sacrifice_at_end_of_combat = true,
+                    TokenCopyFollowup::HasHaste
+                    | TokenCopyFollowup::EnterTappedAndAttacking
+                    | TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    | TokenCopyFollowup::SacrificeAtNextEndStep
+                    | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),
+                }
                 Ok(true)
             }
             _ => Ok(false),
@@ -2354,22 +2756,6 @@ pub(crate) fn try_apply_token_copy_followup(
                 return Ok(true);
             }
             Ok(false)
-        }
-        EffectAst::CreateTokenWithMods {
-            exile_at_end_of_combat,
-            sacrifice_at_end_of_combat,
-            ..
-        } => {
-            match followup {
-                TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
-                TokenCopyFollowup::SacrificeAtEndOfCombat => *sacrifice_at_end_of_combat = true,
-                TokenCopyFollowup::HasHaste
-                | TokenCopyFollowup::EnterTappedAndAttacking
-                | TokenCopyFollowup::GainHasteUntilEndOfTurn
-                | TokenCopyFollowup::SacrificeAtNextEndStep
-                | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),
-            }
-            Ok(true)
         }
         _ => {
             let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {

@@ -132,7 +132,7 @@ pub(crate) fn parse_become_clause(
 
     if let Some(player) = extract_subject_player(Some(subject)) {
         if become_words == ["monarch"] {
-            return Ok(EffectAst::BecomeMonarch { player });
+            return Ok(EffectAst::subject_verb_become_monarch(player));
         }
         if word_slice_contains(&subject_words, "life")
             && word_slice_contains(&subject_words, "total")
@@ -146,7 +146,7 @@ pub(crate) fn parse_become_clause(
                         render_lower_words(&rest_tokens)
                     ))
                 })?;
-            return Ok(EffectAst::SetLifeTotal { amount, player });
+            return Ok(EffectAst::subject_verb_set_life_total(player, amount));
         }
     }
 
@@ -167,7 +167,9 @@ pub(crate) fn parse_become_clause(
     };
 
     if become_words == ["basic", "land", "type", "of", "your", "choice"] {
-        return Ok(EffectAst::BecomeBasicLandTypeChoice { target, duration });
+        return Ok(EffectAst::subject_verb_become_basic_land_type_choice(
+            target, duration,
+        ));
     }
 
     if let [word] = become_words
@@ -181,26 +183,26 @@ pub(crate) fn parse_become_clause(
                 | Subtype::Forest
         )
     {
-        return Ok(EffectAst::BecomeBasicLandType {
-            target,
-            subtype,
-            duration,
-        });
+        return Ok(EffectAst::subject_verb_become_basic_land_type(
+            target, subtype, duration,
+        ));
     }
 
     if become_words == ["color", "of", "your", "choice"]
         || become_words == ["color", "or", "colors", "of", "your", "choice"]
         || become_words == ["colors", "of", "your", "choice"]
     {
-        return Ok(EffectAst::BecomeColorChoice { target, duration });
+        return Ok(EffectAst::subject_verb_become_color_choice(
+            target, duration,
+        ));
     }
 
     if become_words == ["creature", "type", "of", "your", "choice"] {
-        return Ok(EffectAst::BecomeCreatureTypeChoice {
+        return Ok(EffectAst::subject_verb_become_creature_type_choice(
             target,
             duration,
-            excluded_subtypes: Vec::new(),
-        });
+            Vec::new(),
+        ));
     }
 
     if word_slice_starts_with(become_words, &["copy", "of"]) {
@@ -218,16 +220,16 @@ pub(crate) fn parse_become_clause(
             )));
         }
         let source = parse_target_phrase(&source_tokens)?;
-        return Ok(EffectAst::BecomeCopy {
+        return Ok(EffectAst::subject_verb_become_copy(
             target,
             source,
             duration,
             preserve_source_abilities,
-        });
+        ));
     }
 
     if become_words == ["colorless"] {
-        return Ok(EffectAst::MakeColorless { target, duration });
+        return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
 
     if word_slice_starts_with(become_words, &["equal", "to"]) {
@@ -236,12 +238,12 @@ pub(crate) fn parse_become_clause(
             || rhs == ["thiss", "power", "and", "toughness"]
             || rhs == ["source", "power", "and", "toughness"]
         {
-            return Ok(EffectAst::SetBasePowerToughness {
-                power: Value::PowerOf(Box::new(ChooseSpec::Source)),
-                toughness: Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+            return Ok(EffectAst::subject_verb_set_base_power_toughness(
+                Value::PowerOf(Box::new(ChooseSpec::Source)),
+                Value::ToughnessOf(Box::new(ChooseSpec::Source)),
                 target,
                 duration,
-            });
+            ));
         }
     }
 
@@ -249,12 +251,12 @@ pub(crate) fn parse_become_clause(
         && let Ok((power, toughness)) = parse_pt_modifier(pt_word)
     {
         if subject_targets_base_pt || become_words.len() == 1 {
-            return Ok(EffectAst::SetBasePowerToughness {
-                power: Value::Fixed(power),
-                toughness: Value::Fixed(toughness),
+            return Ok(EffectAst::subject_verb_set_base_power_toughness(
+                Value::Fixed(power),
+                Value::Fixed(toughness),
                 target,
                 duration,
-            });
+            ));
         }
         if let Some(creature_idx) = find_word_index_by(become_words, |word| {
             matches!(word, "creature" | "creatures")
@@ -334,21 +336,21 @@ pub(crate) fn parse_become_clause(
                 Some(colors)
             };
             if !all_prefix_words_supported || !suffix_supported {
-                return Ok(EffectAst::BecomeBasePtCreature {
-                    power: Value::Fixed(power),
-                    toughness: Value::Fixed(toughness),
+                return Ok(EffectAst::subject_verb_become_base_pt_creature(
+                    Value::Fixed(power),
+                    Value::Fixed(toughness),
                     target,
-                    card_types: vec![CardType::Creature],
-                    subtypes: Vec::new(),
-                    colors: None,
-                    abilities: Vec::new(),
-                    granted_abilities: Vec::new(),
+                    vec![CardType::Creature],
+                    Vec::new(),
+                    None,
+                    Vec::new(),
+                    Vec::new(),
                     duration,
-                });
+                ));
             }
-            return Ok(EffectAst::BecomeBasePtCreature {
-                power: Value::Fixed(power),
-                toughness: Value::Fixed(toughness),
+            return Ok(EffectAst::subject_verb_become_base_pt_creature(
+                Value::Fixed(power),
+                Value::Fixed(toughness),
                 target,
                 card_types,
                 subtypes,
@@ -356,7 +358,7 @@ pub(crate) fn parse_become_clause(
                 abilities,
                 granted_abilities,
                 duration,
-            });
+            ));
         }
     }
 
@@ -364,17 +366,17 @@ pub(crate) fn parse_become_clause(
         && let Some((card_types, subtypes, colors)) =
             parse_become_creature_descriptor_words(descriptor_words)
     {
-        return Ok(EffectAst::BecomeBasePtCreature {
-            power: Value::Fixed(power),
-            toughness: Value::Fixed(toughness),
+        return Ok(EffectAst::subject_verb_become_base_pt_creature(
+            Value::Fixed(power),
+            Value::Fixed(toughness),
             target,
             card_types,
             subtypes,
             colors,
-            abilities: Vec::new(),
-            granted_abilities: Vec::new(),
+            Vec::new(),
+            Vec::new(),
             duration,
-        });
+        ));
     }
 
     let addition_tail_len = if word_slice_ends_with(
@@ -417,11 +419,9 @@ pub(crate) fn parse_become_clause(
             }
         }
         if all_card_types && !card_types.is_empty() {
-            return Ok(EffectAst::AddCardTypes {
-                target,
-                card_types,
-                duration,
-            });
+            return Ok(EffectAst::subject_verb_add_card_types(
+                target, card_types, duration,
+            ));
         }
     }
 
@@ -437,11 +437,9 @@ pub(crate) fn parse_become_clause(
             }
         }
         if all_subtypes && !subtypes.is_empty() {
-            return Ok(EffectAst::AddSubtypes {
-                target,
-                subtypes,
-                duration,
-            });
+            return Ok(EffectAst::subject_verb_add_subtypes(
+                target, subtypes, duration,
+            ));
         }
     }
 
@@ -462,11 +460,7 @@ pub(crate) fn parse_become_clause(
             }
         }
         if all_colors && !colors.is_empty() {
-            return Ok(EffectAst::SetColors {
-                target,
-                colors,
-                duration,
-            });
+            return Ok(EffectAst::subject_verb_set_colors(target, colors, duration));
         }
     }
 

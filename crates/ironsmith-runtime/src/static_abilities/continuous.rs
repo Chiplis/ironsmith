@@ -5,7 +5,7 @@
 
 use super::{
     StaticAbility, StaticAbilityId, StaticAbilityKind,
-    text_utils::{capitalize_first, join_with_and},
+    text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind};
 use crate::continuous::{
@@ -764,6 +764,39 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
                 describe_anthem_count_expression(count)
             )
         }
+        crate::ConditionExpr::ValueComparison {
+            left: Value::CardsInGraveyard(player),
+            operator,
+            right: Value::Fixed(count),
+        } if *count >= 0 => {
+            let count_text = number_word_u32(*count as u32)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            let comparison = match operator {
+                crate::effect::ValueComparisonOperator::GreaterThan => {
+                    format!("more than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    format!("{count_text} or more")
+                }
+                crate::effect::ValueComparisonOperator::Equal => {
+                    format!("exactly {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThan => {
+                    format!("fewer than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                    format!("{count_text} or fewer")
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => {
+                    format!("not exactly {count_text}")
+                }
+            };
+            format!(
+                "as long as there are {comparison} cards in {} graveyard",
+                describe_static_possessive_player(player)
+            )
+        }
         crate::ConditionExpr::PlayerIsMonarch { player } => match player {
             crate::target::PlayerFilter::You => "as long as you're the monarch".to_string(),
             crate::target::PlayerFilter::Opponent => {
@@ -796,6 +829,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
             }
             crate::target::PlayerFilter::MostLifeTied => {
                 "as long as the player with the most life is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::LowestLifeTied => {
+                "as long as the player with the lowest life is the monarch".to_string()
             }
             crate::target::PlayerFilter::MostCardsInHand => {
                 "as long as the player who has the most cards in hand is the monarch".to_string()
@@ -862,6 +898,21 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         },
         crate::ConditionExpr::Unmodeled(text) if !text.is_empty() => format!("as long as {text}"),
         _ => format!("as long as {condition:?}"),
+    }
+}
+
+fn describe_static_possessive_player(player: &crate::target::PlayerFilter) -> &'static str {
+    match player {
+        crate::target::PlayerFilter::You => "your",
+        crate::target::PlayerFilter::Opponent => "an opponent's",
+        crate::target::PlayerFilter::Any => "a player's",
+        crate::target::PlayerFilter::NotYou => "another player's",
+        crate::target::PlayerFilter::Teammate => "a teammate's",
+        crate::target::PlayerFilter::Active => "the active player's",
+        crate::target::PlayerFilter::Defending => "the defending player's",
+        crate::target::PlayerFilter::Attacking => "the attacking player's",
+        crate::target::PlayerFilter::DamagedPlayer => "the damaged player's",
+        _ => "that player's",
     }
 }
 
@@ -3259,7 +3310,12 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         } else {
             grant_subject_text(&self.filter)
         };
-        let mut text = format!("{subject} have {rendered_ability}");
+        let verb = if grant_subject_is_plural(&subject) {
+            "have"
+        } else {
+            "has"
+        };
+        let mut text = format!("{subject} {verb} {rendered_ability}");
         if let Some(condition) = &self.condition {
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
@@ -3292,6 +3348,39 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             &self.condition,
         )]
     }
+}
+
+fn grant_subject_is_plural(subject: &str) -> bool {
+    let lower = subject.trim().to_ascii_lowercase();
+    if lower.starts_with("enchanted ")
+        || lower.starts_with("equipped ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+    {
+        return false;
+    }
+    if lower.starts_with("all ")
+        || lower.starts_with("other ")
+        || lower.starts_with("each ")
+        || lower.starts_with("those ")
+        || lower.ends_with('s')
+    {
+        return true;
+    }
+    [
+        "permanents",
+        "creatures",
+        "artifacts",
+        "enchantments",
+        "lands",
+        "planeswalkers",
+        "battles",
+        "spells",
+        "cards",
+        "tokens",
+    ]
+    .iter()
+    .any(|noun| lower.contains(noun))
 }
 
 /// Blood Moon: "Nonbasic lands are Mountains"

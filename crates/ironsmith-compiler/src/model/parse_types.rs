@@ -17,6 +17,7 @@ pub enum PlayerAst {
     Attacking,
     MostCardsInHand,
     MostLifeTied,
+    LowestLifeTied,
     Target,
     TargetOpponent,
     Opponent,

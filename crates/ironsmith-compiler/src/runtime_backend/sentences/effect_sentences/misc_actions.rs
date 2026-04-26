@@ -1,4 +1,18 @@
 use super::*;
+use crate::cards::builders::{
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
+};
+
+fn subject_verb_player_effect(
+    role: SubjectVerbRoleAst,
+    player: PlayerAst,
+    action: SubjectVerbActionAst,
+) -> EffectAst {
+    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: SubjectVerbSubjectAst { role, player },
+        action,
+    })
+}
 
 pub(crate) fn parse_become(
     tokens: &[OwnedLexToken],
@@ -13,7 +27,7 @@ pub(crate) fn parse_become(
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() == ["the", "monarch"] || clause_words.as_slice() == ["monarch"] {
-        return Ok(EffectAst::BecomeMonarch { player });
+        return Ok(EffectAst::subject_verb_become_monarch(player));
     }
 
     let amount = parse_value(tokens)
@@ -25,7 +39,7 @@ pub(crate) fn parse_become(
                 clause_words.join(" ")
             ))
         })?;
-    Ok(EffectAst::SetLifeTotal { amount, player })
+    Ok(EffectAst::subject_verb_set_life_total(player, amount))
 }
 
 pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -79,7 +93,9 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
-    Ok(EffectAst::SwitchPowerToughness { target, duration })
+    Ok(EffectAst::subject_verb_switch_power_toughness(
+        target, duration,
+    ))
 }
 
 pub(crate) fn parse_skip(
@@ -128,19 +144,21 @@ pub(crate) fn parse_skip(
         && slice_contains(&words, &"this")
         && slice_contains(&words, &"turn");
     if skips_next_combat_phase_this_turn {
-        return Ok(EffectAst::SkipNextCombatPhaseThisTurn { player });
+        return Ok(EffectAst::subject_verb_skip_next_combat_phase_this_turn(
+            player,
+        ));
     }
     if slice_contains(&words, &"combat")
         && (slice_contains(&words, &"phase") || slice_contains(&words, &"phases"))
         && slice_contains(&words, &"turn")
     {
-        return Ok(EffectAst::SkipCombatPhases { player });
+        return Ok(EffectAst::subject_verb_skip_combat_phases(player));
     }
     if slice_contains(&words, &"draw") && slice_contains(&words, &"step") {
-        return Ok(EffectAst::SkipDrawStep { player });
+        return Ok(EffectAst::subject_verb_skip_draw_step(player));
     }
     if slice_contains(&words, &"turn") {
-        return Ok(EffectAst::SkipTurn { player });
+        return Ok(EffectAst::subject_verb_skip_turn(player));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -158,27 +176,25 @@ pub(crate) fn parse_flip(
         SubjectAst::This => PlayerAst::Implicit,
     };
     if tokens.is_empty() {
-        return Ok(EffectAst::Flip {
-            target: TargetAst::Source(None),
-        });
+        return Ok(EffectAst::subject_verb_flip(TargetAst::Source(None)));
     }
 
     let target_words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(target_words.as_slice(), ["a", "coin"] | ["coin"]) {
-        return Ok(EffectAst::FlipCoin { player });
+        return Ok(EffectAst::subject_verb_flip_coin(player));
     }
     if target_words == ["it"]
         || target_words == ["this"]
         || target_words == ["this", "creature"]
         || target_words == ["this", "permanent"]
     {
-        return Ok(EffectAst::Flip {
-            target: TargetAst::Source(span_from_tokens(tokens)),
-        });
+        return Ok(EffectAst::subject_verb_flip(TargetAst::Source(
+            span_from_tokens(tokens),
+        )));
     }
 
     let target = parse_target_phrase(tokens)?;
-    Ok(EffectAst::Flip { target })
+    Ok(EffectAst::subject_verb_flip(target))
 }
 
 pub(crate) fn parse_roll(
@@ -211,7 +227,7 @@ pub(crate) fn parse_roll(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     };
-    Ok(EffectAst::RollDie { player, sides })
+    Ok(EffectAst::subject_verb_roll_die(player, sides))
 }
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -223,10 +239,10 @@ pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, Ca
             ));
         }
         let filter = parse_object_filter(&tokens[1..], false)?;
-        return Ok(EffectAst::RegenerateAll { filter });
+        return Ok(EffectAst::subject_verb_regenerate_all(filter));
     }
     let target = parse_target_phrase(tokens)?;
-    Ok(EffectAst::Regenerate { target })
+    Ok(EffectAst::subject_verb_regenerate(target))
 }
 
 pub(crate) fn parse_mill(
@@ -297,7 +313,11 @@ pub(crate) fn parse_mill(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    Ok(EffectAst::Mill { count, player })
+    Ok(subject_verb_player_effect(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::Mill { count },
+    ))
 }
 
 pub(crate) fn parse_get(
@@ -331,13 +351,13 @@ pub(crate) fn parse_get(
                 ));
             }
         };
-        Ok(Some(EffectAst::PumpForEach {
+        Ok(Some(EffectAst::subject_verb_pump_for_each(
             power_per,
             toughness_per,
             target,
             count,
-            duration: Until::EndOfTurn,
-        }))
+            Until::EndOfTurn,
+        )))
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -355,7 +375,7 @@ pub(crate) fn parse_get(
                 .map(|(value, _)| value)
                 .unwrap_or(Value::Fixed(1))
         };
-        return Ok(EffectAst::PoisonCounters { count, player });
+        return Ok(EffectAst::subject_verb_poison_counters(player, count));
     }
 
     let energy_count = tokens
@@ -376,7 +396,7 @@ pub(crate) fn parse_get(
             .or(parse_equal_to_number_of_filter_value(tokens))
             .or(parse_dynamic_cost_modifier_value(tokens)?)
             .unwrap_or(Value::Fixed(energy_count as i32));
-        return Ok(EffectAst::EnergyCounters { count, player });
+        return Ok(EffectAst::subject_verb_energy_counters(player, count));
     }
 
     let ticket_count = tokens
@@ -393,10 +413,10 @@ pub(crate) fn parse_get(
         .count();
     if ticket_count > 0 {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        return Ok(EffectAst::TicketCounters {
-            count: Value::Fixed(ticket_count as i32),
+        return Ok(EffectAst::subject_verb_ticket_counters(
             player,
-        });
+            Value::Fixed(ticket_count as i32),
+        ));
     }
 
     if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, EMBLEM_WITH_PREFIXES) {
@@ -442,7 +462,7 @@ pub(crate) fn parse_get(
         } else {
             format!("{text}.")
         };
-        return Ok(EffectAst::CreateEmblem { player, text });
+        return Ok(EffectAst::subject_verb_create_emblem(player, text));
     }
 
     let modifier_start =
@@ -491,13 +511,9 @@ pub(crate) fn parse_get(
                 ));
             }
         };
-        return Ok(EffectAst::Pump {
-            power,
-            toughness,
-            target,
-            duration,
-            condition,
-        });
+        return Ok(EffectAst::subject_verb_pump(
+            power, toughness, target, duration, condition,
+        ));
     }
 
     if let Some(collapsed_tokens) = collapse_leading_signed_pt_modifier_tokens(tokens)
@@ -525,13 +541,9 @@ pub(crate) fn parse_get(
                 ));
             }
         };
-        return Ok(EffectAst::Pump {
-            power,
-            toughness,
-            target,
-            duration,
-            condition,
-        });
+        return Ok(EffectAst::subject_verb_pump(
+            power, toughness, target, duration, condition,
+        ));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -549,7 +561,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     let words = crate::runtime_backend::token_word_refs(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter = parse_object_filter(&tokens[1..], false)?;
-        return Ok(EffectAst::UntapAll { filter });
+        return Ok(EffectAst::subject_verb_untap_all(filter));
     }
     if words.as_slice() == ["them"] {
         let mut filter = ObjectFilter::default();
@@ -557,10 +569,10 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        return Ok(EffectAst::UntapAll { filter });
+        return Ok(EffectAst::subject_verb_untap_all(filter));
     }
     let target = parse_target_phrase(tokens)?;
-    Ok(EffectAst::Untap { target })
+    Ok(EffectAst::subject_verb_untap(target))
 }
 
 pub(crate) fn parse_scry(
@@ -576,7 +588,11 @@ pub(crate) fn parse_scry(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    Ok(EffectAst::Scry { count, player })
+    Ok(subject_verb_player_effect(
+        SubjectVerbRoleAst::Chooser,
+        player,
+        SubjectVerbActionAst::Scry { count },
+    ))
 }
 
 pub(crate) fn parse_surveil(
@@ -592,7 +608,11 @@ pub(crate) fn parse_surveil(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    Ok(EffectAst::Surveil { count, player })
+    Ok(subject_verb_player_effect(
+        SubjectVerbRoleAst::Chooser,
+        player,
+        SubjectVerbActionAst::Surveil { count },
+    ))
 }
 
 pub(crate) fn parse_pay(
@@ -617,10 +637,7 @@ pub(crate) fn parse_pay(
     if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
-        return Ok(EffectAst::PayEnergy {
-            amount: Value::Fixed(0),
-            player,
-        });
+        return Ok(EffectAst::subject_verb_pay_energy(player, Value::Fixed(0)));
     }
     let has_for_each = clause_words
         .windows(2)
@@ -645,10 +662,10 @@ pub(crate) fn parse_pay(
         if !repeated_pips.is_empty() {
             return Ok(EffectAst::ForEachTagged {
                 tag: TagKey::from(IT_TAG),
-                effects: vec![EffectAst::PayMana {
-                    cost: ManaCost::from_pips(repeated_pips),
+                effects: vec![EffectAst::subject_verb_pay_mana(
                     player,
-                }],
+                    ManaCost::from_pips(repeated_pips),
+                )],
             });
         }
     }
@@ -658,23 +675,27 @@ pub(crate) fn parse_pay(
         && grammar::contains_word(tokens, "each")
         && let Ok(symbols) = parse_mana_symbol_group(clause_words[0])
     {
-        return Ok(EffectAst::PayMana {
-            cost: ManaCost::from_pips(vec![symbols]),
+        return Ok(EffectAst::subject_verb_pay_mana(
             player,
-        });
+            ManaCost::from_pips(vec![symbols]),
+        ));
     }
 
     if let Some((amount, used)) = parse_value(tokens)
         && tokens.get(used).is_some_and(|token| token.is_word("life"))
     {
-        return Ok(EffectAst::LoseLife { amount, player });
+        return Ok(subject_verb_player_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife { amount },
+        ));
     }
     if let Some((amount, used)) = parse_value(tokens)
         && tokens
             .get(used)
             .is_some_and(|token| token.is_word("energy"))
     {
-        return Ok(EffectAst::PayEnergy { amount, player });
+        return Ok(EffectAst::subject_verb_pay_energy(player, amount));
     }
     if energy_symbol_count > 0 {
         let mut energy_count = 0u32;
@@ -711,10 +732,10 @@ pub(crate) fn parse_pay(
             )));
         }
         if energy_count > 0 {
-            return Ok(EffectAst::PayEnergy {
-                amount: Value::Fixed(energy_count as i32),
+            return Ok(EffectAst::subject_verb_pay_energy(
                 player,
-            });
+                Value::Fixed(energy_count as i32),
+            ));
         }
     }
 
@@ -731,8 +752,8 @@ pub(crate) fn parse_pay(
             })?
     };
 
-    Ok(EffectAst::PayMana {
-        cost: ManaCost::from_pips(pips),
+    Ok(EffectAst::subject_verb_pay_mana(
         player,
-    })
+        ManaCost::from_pips(pips),
+    ))
 }

@@ -39,7 +39,7 @@ pub(crate) fn parse_add_mana(
         && has_card_word
         && grammar::contains_word(tokens, "colors")
     {
-        return Ok(EffectAst::AddManaImprintedColors);
+        return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
 
     if (grammar::contains_word(tokens, "commander") || grammar::contains_word(tokens, "commanders"))
@@ -49,26 +49,28 @@ pub(crate) fn parse_add_mana(
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
-        return Ok(EffectAst::AddManaCommanderIdentity { amount, player });
+        return Ok(EffectAst::subject_verb_add_mana_commander_identity(
+            player, amount,
+        ));
     }
 
     if let Some(available_colors) = parse_any_combination_mana_colors(tokens)? {
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
-        return Ok(EffectAst::AddManaAnyColor {
-            amount,
+        return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,
-            available_colors: Some(available_colors),
-        });
+            amount,
+            Some(available_colors),
+        ));
     }
 
     if let Some(available_colors) = parse_or_mana_color_choices(tokens)? {
-        return Ok(EffectAst::AddManaAnyColor {
-            amount: Value::Fixed(1),
+        return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,
-            available_colors: Some(available_colors),
-        });
+            Value::Fixed(1),
+            Some(available_colors),
+        ));
     }
 
     // "Add one mana of the chosen color."
@@ -101,11 +103,9 @@ pub(crate) fn parse_add_mana(
                 let amount = parse_value(tokens)
                     .map(|(value, _)| value)
                     .unwrap_or(Value::Fixed(1));
-                return Ok(EffectAst::AddManaChosenColor {
-                    amount,
-                    player,
-                    fixed_option: None,
-                });
+                return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                    player, amount, None,
+                ));
             }
         }
     }
@@ -118,11 +118,9 @@ pub(crate) fn parse_add_mana(
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
             .unwrap_or(Value::Fixed(1));
-        return Ok(EffectAst::AddManaChosenColor {
-            amount,
-            player,
-            fixed_option: None,
-        });
+        return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+            player, amount, None,
+        ));
     }
 
     let any_one = find_window_by(&clause_words, 3, |window| {
@@ -164,24 +162,24 @@ pub(crate) fn parse_add_mana(
                 )));
             }
             if any_one {
-                return Ok(EffectAst::AddManaAnyOneColor { amount, player });
+                return Ok(EffectAst::subject_verb_add_mana_any_one_color(
+                    player, amount,
+                ));
             }
-            return Ok(EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_any_color(
+                player, amount, None,
+            ));
         }
 
         if let Some(filter) = parse_land_could_produce_filter(tail_tokens)? {
             parser_trace_stack("parse_add_mana:land-could-produce", tokens);
-            return Ok(EffectAst::AddManaFromLandCouldProduce {
-                amount,
+            return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
                 player,
-                land_filter: filter,
+                amount,
+                filter,
                 allow_colorless,
-                same_type: any_one,
-            });
+                any_one,
+            ));
         }
 
         if matches!(amount, Value::X)
@@ -195,13 +193,13 @@ pub(crate) fn parse_add_mana(
                 )));
             }
             if any_one {
-                return Ok(EffectAst::AddManaAnyOneColor { amount, player });
+                return Ok(EffectAst::subject_verb_add_mana_any_one_color(
+                    player, amount,
+                ));
             }
-            return Ok(EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_any_color(
+                player, amount, None,
+            ));
         }
 
         let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
@@ -220,13 +218,13 @@ pub(crate) fn parse_add_mana(
                 )));
             }
             if any_one {
-                return Ok(EffectAst::AddManaAnyOneColor { amount, player });
+                return Ok(EffectAst::subject_verb_add_mana_any_one_color(
+                    player, amount,
+                ));
             }
-            return Ok(EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_any_color(
+                player, amount, None,
+            ));
         }
         if grammar::words_match_any_prefix(tail_tokens, FOR_EACH_PREFIXES).is_some()
             && grammar::words_match_suffix(tail_tokens, &["removed", "this", "way"]).is_some()
@@ -240,13 +238,13 @@ pub(crate) fn parse_add_mana(
                 )));
             }
             if any_one {
-                return Ok(EffectAst::AddManaAnyOneColor { amount, player });
+                return Ok(EffectAst::subject_verb_add_mana_any_one_color(
+                    player, amount,
+                ));
             }
-            return Ok(EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_any_color(
+                player, amount, None,
+            ));
         }
 
         if tail_words.first().copied() == Some("among") {
@@ -257,23 +255,19 @@ pub(crate) fn parse_add_mana(
                 )));
             }
             if any_one {
-                return Ok(EffectAst::AddManaAnyOneColor { amount, player });
+                return Ok(EffectAst::subject_verb_add_mana_any_one_color(
+                    player, amount,
+                ));
             }
-            return Ok(EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_any_color(
+                player, amount, None,
+            ));
         }
 
         let base_effect = if any_one {
-            EffectAst::AddManaAnyOneColor { amount, player }
+            EffectAst::subject_verb_add_mana_any_one_color(player, amount)
         } else {
-            EffectAst::AddManaAnyColor {
-                amount,
-                player,
-                available_colors: None,
-            }
+            EffectAst::subject_verb_add_mana_any_color(player, amount, None)
         };
         if let Some(conditional) = wrap_instead_if_tail(base_effect, tail_tokens)? {
             return Ok(conditional);
@@ -312,19 +306,15 @@ pub(crate) fn parse_add_mana(
     if !mana.is_empty() {
         if let Some(amount) = parse_add_mana_that_much_value(tokens) {
             parser_trace_stack("parse_add_mana:scaled-that-much", tokens);
-            return Ok(EffectAst::AddManaScaled {
-                mana,
-                amount,
-                player,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player, mana, amount,
+            ));
         }
         if let Some(amount) = parse_devotion_value_from_add_clause(tokens)? {
             parser_trace_stack("parse_add_mana:scaled-devotion", tokens);
-            return Ok(EffectAst::AddManaScaled {
-                mana,
-                amount,
-                player,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player, mana, amount,
+            ));
         }
         if let Some(for_each_idx) = for_each_idx {
             let amount_tokens = &tokens[for_each_idx..];
@@ -335,19 +325,15 @@ pub(crate) fn parse_add_mana(
                 ))
             })?;
             parser_trace_stack("parse_add_mana:scaled", tokens);
-            return Ok(EffectAst::AddManaScaled {
-                mana,
-                amount,
-                player,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player, mana, amount,
+            ));
         }
         if let Some(amount) = parse_add_mana_equal_amount_value(tokens) {
             parser_trace_stack("parse_add_mana:scaled-equal", tokens);
-            return Ok(EffectAst::AddManaScaled {
-                mana,
-                amount,
-                player,
-            });
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player, mana, amount,
+            ));
         }
         let trailing_words = if let Some(last_idx) = last_mana_idx {
             crate::runtime_backend::token_word_refs(&tokens[last_idx + 1..])
@@ -385,11 +371,11 @@ pub(crate) fn parse_add_mana(
                     )));
                 };
                 parser_trace_stack("parse_add_mana:chosen-color-option", tokens);
-                return Ok(EffectAst::AddManaChosenColor {
-                    amount: Value::Fixed(1),
+                return Ok(EffectAst::subject_verb_add_mana_chosen_color(
                     player,
-                    fixed_option: Some(color),
-                });
+                    Value::Fixed(1),
+                    Some(color),
+                ));
             }
         }
         let has_only_pool_tail = !trailing_words.is_empty()
@@ -400,10 +386,7 @@ pub(crate) fn parse_add_mana(
         if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(
-                    EffectAst::AddMana {
-                        mana: mana.clone(),
-                        player,
-                    },
+                    EffectAst::subject_verb_add_mana(player, mana.clone()),
                     trim_leading_commas(&tokens[last_idx + 1..]),
                 )?
             {
@@ -415,7 +398,7 @@ pub(crate) fn parse_add_mana(
             )));
         }
         parser_trace_stack("parse_add_mana:flat", tokens);
-        return Ok(EffectAst::AddMana { mana, player });
+        return Ok(EffectAst::subject_verb_add_mana(player, mana));
     }
 
     Err(CardTextError::ParseError(format!(

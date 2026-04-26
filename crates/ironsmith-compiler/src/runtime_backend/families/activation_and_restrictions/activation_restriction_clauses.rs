@@ -680,6 +680,9 @@ pub(crate) fn parse_player_restriction_subject(
         crate::cards::builders::SubjectAst::Player(PlayerAst::MostLifeTied) => {
             PlayerFilter::MostLifeTied
         }
+        crate::cards::builders::SubjectAst::Player(PlayerAst::LowestLifeTied) => {
+            PlayerFilter::LowestLifeTied
+        }
         _ => return Ok(None),
     };
     Ok(Some((player, None)))

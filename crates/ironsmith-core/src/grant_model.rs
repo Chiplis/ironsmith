@@ -319,6 +319,9 @@ where
                 PlayerFilter::MostLifeTied => {
                     "The player with the most life or tied for most life may".to_string()
                 }
+                PlayerFilter::LowestLifeTied => {
+                    "The player with the lowest life or tied for lowest life may".to_string()
+                }
                 PlayerFilter::MostCardsInHand => {
                     "The player who has the most cards in hand may".to_string()
                 }

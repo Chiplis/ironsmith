@@ -85,7 +85,7 @@ pub(crate) fn parse_sacrifice(
         if other {
             filter.other = true;
         }
-        return Ok(EffectAst::SacrificeAll { filter, player });
+        return Ok(EffectAst::subject_verb_sacrifice_all(player, filter));
     }
 
     let mut idx = 0;
@@ -187,12 +187,7 @@ pub(crate) fn parse_sacrifice(
         filter.controller = Some(controller);
     }
 
-    let sacrifice = EffectAst::Sacrifice {
-        filter,
-        player,
-        count,
-        target,
-    };
+    let sacrifice = EffectAst::subject_verb_sacrifice(player, filter, count, target);
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
     // e.g. "sacrifices a land for each card in your hand".
@@ -213,21 +208,24 @@ pub(crate) fn parse_discard(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::contains_word(tokens, "hand") {
-        return Ok(EffectAst::DiscardHand { player });
+    if matches!(
+        clause_words.as_slice(),
+        ["hand"] | ["your", "hand"] | ["their", "hand"] | ["that", "players", "hand"]
+    ) {
+        return Ok(EffectAst::subject_verb_discard_hand(player));
     }
 
     if matches!(clause_words.as_slice(), ["it"] | ["that", "card"]) {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Hand);
-        return Ok(EffectAst::Discard {
-            count: Value::Fixed(1),
+        return Ok(EffectAst::subject_verb_discard(
             player,
-            random: false,
-            any_number: false,
-            filter: Some(tagged_filter),
-            tag: None,
-        });
+            Value::Fixed(1),
+            false,
+            false,
+            Some(tagged_filter),
+            None,
+        ));
     }
 
     let any_number = clause_words
@@ -271,7 +269,9 @@ pub(crate) fn parse_discard(
     let card_token_idx = token_index_for_word_index(rest, card_word_idx).unwrap_or(rest.len());
     let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
     let mut discard_filter = None;
-    if !qualifier_tokens.is_empty() {
+    if !qualifier_tokens.is_empty()
+        && crate::runtime_backend::token_word_refs(&qualifier_tokens).as_slice() != ["the"]
+    {
         let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
             filter
         } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(&qualifier_tokens)
@@ -305,14 +305,14 @@ pub(crate) fn parse_discard(
     let trailing_tokens = trailing_tokens_storage.as_slice();
     if let Some(dynamic_count) = parse_get_for_each_count_value(trailing_tokens)? {
         count = dynamic_count;
-        return Ok(EffectAst::Discard {
-            count,
+        return Ok(EffectAst::subject_verb_discard(
             player,
-            random: false,
+            count,
+            false,
             any_number,
-            filter: discard_filter,
-            tag: None,
-        });
+            discard_filter,
+            None,
+        ));
     }
     let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
     let random = trailing_words.as_slice() == ["at", "random"];
@@ -357,14 +357,14 @@ pub(crate) fn parse_discard(
         };
     }
 
-    Ok(EffectAst::Discard {
-        count,
+    Ok(EffectAst::subject_verb_discard(
         player,
+        count,
         random,
         any_number,
-        filter: discard_filter,
-        tag: None,
-    })
+        discard_filter,
+        None,
+    ))
 }
 
 pub(crate) fn parse_discard_color_qualifier_filter(

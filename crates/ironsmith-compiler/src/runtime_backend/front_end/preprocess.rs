@@ -915,6 +915,27 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
     joined
 }
 
+fn rewrite_lowest_life_tie_choice_line(text: &str) -> String {
+    let sentences = split_period_sentences(text);
+    if sentences.len() != 2 {
+        return text.to_string();
+    }
+
+    let first = sentences[0].trim();
+    let second = sentences[1].trim();
+    let first_lower = first.to_ascii_lowercase();
+    let second_lower = second.to_ascii_lowercase();
+    if first_lower
+        == "at the beginning of your upkeep, the player with the lowest life total gains control of this creature"
+        && second_lower
+            == "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature"
+    {
+        return format!("{first}.");
+    }
+
+    text.to_string()
+}
+
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
     let target_len = normalized.chars().count();
     if target_len == original_map.len() {
@@ -1089,6 +1110,8 @@ pub(crate) fn preprocess_document(
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
         let rewritten_normalized =
             rewrite_exile_return_when_source_leaves_line(rewritten_normalized.as_str());
+        let rewritten_normalized =
+            rewrite_lowest_life_tie_choice_line(rewritten_normalized.as_str());
         let normalized = if rewritten_normalized != normalized.normalized {
             let char_map =
                 resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);

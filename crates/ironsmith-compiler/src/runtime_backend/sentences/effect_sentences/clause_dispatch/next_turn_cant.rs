@@ -37,11 +37,11 @@ pub(super) fn parse_next_turn_cant_clause(
                         return Ok(Some(EffectAst::ForEachOpponent {
                             effects: vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    Until::EndOfTurn,
+                                    None,
+                                )],
                             }],
                         }));
                     }
@@ -57,11 +57,11 @@ pub(super) fn parse_next_turn_cant_clause(
                         return Ok(Some(EffectAst::ForEachOpponent {
                             effects: vec![EffectAst::DelayedUntilNextUpkeep {
                                 player: PlayerAst::That,
-                                effects: vec![EffectAst::Cant {
-                                    restriction: nested,
-                                    duration: Until::EndOfTurn,
-                                    condition: None,
-                                }],
+                                effects: vec![EffectAst::subject_verb_cant(
+                                    nested,
+                                    Until::EndOfTurn,
+                                    None,
+                                )],
                             }],
                         }));
                     }
@@ -74,11 +74,11 @@ pub(super) fn parse_next_turn_cant_clause(
 
         return Ok(Some(EffectAst::DelayedUntilNextUpkeep {
             player: PlayerAst::That,
-            effects: vec![EffectAst::Cant {
-                restriction: nested_restriction,
-                duration: Until::EndOfTurn,
-                condition: None,
-            }],
+            effects: vec![EffectAst::subject_verb_cant(
+                nested_restriction,
+                Until::EndOfTurn,
+                None,
+            )],
         }));
     }
 

@@ -1820,6 +1820,43 @@ pub(crate) fn parse_static_condition_clause(
         {
             filter_tokens = &filter_tokens[1..];
         }
+        if crate::runtime_backend::token_word_refs(filter_tokens).as_slice()
+            == ["in", "your", "graveyard"]
+        {
+            let (operator, value) = match comparison {
+                crate::effect::Comparison::GreaterThan(value) => {
+                    (crate::effect::ValueComparisonOperator::GreaterThan, value)
+                }
+                crate::effect::Comparison::GreaterThanOrEqual(value) => (
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    value,
+                ),
+                crate::effect::Comparison::Equal(value) => {
+                    (crate::effect::ValueComparisonOperator::Equal, value)
+                }
+                crate::effect::Comparison::LessThan(value) => {
+                    (crate::effect::ValueComparisonOperator::LessThan, value)
+                }
+                crate::effect::Comparison::LessThanOrEqual(value) => (
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                    value,
+                ),
+                crate::effect::Comparison::NotEqual(value) => {
+                    (crate::effect::ValueComparisonOperator::NotEqual, value)
+                }
+                crate::effect::Comparison::BetweenInclusive(_, _) => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported graveyard card-count range condition (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+            };
+            return Ok(crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::CardsInGraveyard(PlayerFilter::You),
+                operator,
+                right: crate::effect::Value::Fixed(value),
+            });
+        }
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing object phrase in static condition (clause: '{}')",
@@ -2298,7 +2335,7 @@ pub(crate) fn parse_anthem_clause(
         if words_start_with(&tail_tokens, &["for", "each"]) {
             scale = Some(parse_anthem_for_each_expression(&tail_tokens)?);
         } else if words_start_with(&tail_tokens, &["where", "x", "is"]) {
-            let x_value = parse_where_x_value_clause(&tail_tokens).ok_or_else(|| {
+            let x_value = parse_value_binding_clause(&tail_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported where-x anthem clause (clause: '{}')",
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -2709,10 +2746,13 @@ pub(crate) fn parse_soulbond_shared_line(
             let display = display_text_for_tokens(&ability_tokens, false);
             let ability = parsed_triggered_ability(
                 TriggerSpec::ThisAttacks,
-                vec![EffectAst::Mill {
-                    count: Value::ToughnessOf(Box::new(ChooseSpec::Source)),
-                    player: crate::cards::builders::PlayerAst::Opponent,
-                }],
+                vec![EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                    crate::cards::builders::PlayerAst::Opponent,
+                    crate::cards::builders::SubjectVerbActionAst::Mill {
+                        count: Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+                    },
+                )],
                 vec![Zone::Battlefield],
                 Some(display.clone()),
                 None,
@@ -2830,6 +2870,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+
     let get_idx = anthem_token_offset(tokens, |token| {
         token.is_word("get") || token.is_word("gets")
     });
@@ -2856,6 +2897,107 @@ pub(crate) fn parse_anthem_and_keyword_line(
     // Ignore timing text that appears only inside a quoted granted ability.
     if contains_until_end_of_turn(&pre_grant_words) {
         return Ok(None);
+    }
+
+    if let Some(is_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(get_idx + 2)
+        .take_while(|(idx, _)| *idx < have_token_idx)
+        .find_map(|(idx, token)| token.is_word("is").then_some(idx))
+        && let Some(color_word) = tokens.get(is_idx + 1).and_then(OwnedLexToken::as_word)
+        && let Some(color) = parse_color(color_word)
+    {
+        let clause = parse_anthem_clause(tokens, get_idx, is_idx)?;
+        let filter = anthem_subject_filter(&clause.subject);
+        let mut result = vec![build_anthem_static_ability(&clause).into()];
+        let color_static = StaticAbility::set_colors(filter, color);
+        let color_ast: StaticAbilityAst = color_static.into();
+        result.push(match &clause.condition {
+            Some(condition) => add_static_ability_ast_condition(color_ast, condition.clone())?,
+            None => color_ast,
+        });
+
+        let ability_tokens_storage = trim_edge_punctuation(&tokens[have_token_idx + 1..]);
+        let ability_tokens = trim_outer_quotes(&ability_tokens_storage);
+        if ability_tokens.iter().any(|token| token.is_colon()) {
+            let Some(parsed) = parse_activated_line(ability_tokens)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported granted activated ability in anthem clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            let display = display_text_for_tokens(ability_tokens, false);
+            result.push(grant_object_ability_for_anthem_subject(
+                &clause, parsed, display,
+            ));
+            return Ok(Some(result));
+        }
+    }
+
+    if let Some(split_idx) = tokens
+        .iter()
+        .enumerate()
+        .skip(get_idx + 2)
+        .take_while(|(idx, _)| *idx < have_token_idx)
+        .find_map(|(idx, token)| {
+            (token.is_word("and") && idx + 1 < have_token_idx).then_some(idx)
+        })
+    {
+        let first_clause = parse_anthem_clause(tokens, get_idx, split_idx)?;
+        let mut result = vec![build_anthem_static_ability(&first_clause).into()];
+
+        let tail_start = split_idx + 1;
+        let grant_clause = if let Some(second_get_idx) = tokens
+            .iter()
+            .enumerate()
+            .skip(tail_start)
+            .take_while(|(idx, _)| *idx < have_token_idx)
+            .find_map(|(idx, token)| {
+                (token.is_word("get") || token.is_word("gets")).then_some(idx)
+            }) {
+            let second_tail_end = if have_token_idx > second_get_idx + 2
+                && tokens
+                    .get(have_token_idx - 1)
+                    .is_some_and(|token| token.is_word("and"))
+            {
+                have_token_idx - 1
+            } else {
+                have_token_idx
+            };
+            let second_tokens = &tokens[tail_start..];
+            let second_clause = parse_anthem_clause(
+                second_tokens,
+                second_get_idx - tail_start,
+                second_tail_end - tail_start,
+            )?;
+            result.push(build_anthem_static_ability(&second_clause).into());
+            second_clause
+        } else {
+            let subject_tokens = trim_edge_punctuation(&tokens[tail_start..have_token_idx]);
+            if subject_tokens.is_empty() {
+                return Ok(None);
+            }
+            ParsedAnthemClause {
+                subject: parse_anthem_subject(&subject_tokens)?,
+                power: AnthemValue::Fixed(0),
+                toughness: AnthemValue::Fixed(0),
+                condition: None,
+            }
+        };
+
+        let ability_tokens = trim_edge_punctuation(&tokens[have_token_idx + 1..]);
+        let Some(actions) = parse_ability_line(&ability_tokens) else {
+            return Ok(None);
+        };
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        for action in actions
+            .into_iter()
+            .filter(|action| action.lowers_to_static_ability())
+        {
+            result.push(grant_keyword_action_for_anthem_subject(&grant_clause, action));
+        }
+        return Ok(Some(result));
     }
 
     let mut ability_tokens = trim_edge_punctuation(&tokens[have_token_idx + 1..]);
@@ -2982,7 +3124,45 @@ pub(crate) fn parse_anthem_and_keyword_line(
         let Some(and_idx) =
             anthem_last_index_where(colon_idx, |idx| ability_tokens[idx].is_word("and"))
         else {
-            return Ok(None);
+            let activated_tail_storage = trim_edge_punctuation(&ability_tokens);
+            let activated_tail = trim_outer_quotes(&activated_tail_storage);
+            let Some(parsed) = parse_activated_line(activated_tail)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported granted activated ability in anthem clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            let display = display_text_for_tokens(activated_tail, false);
+            granted_activated_display = Some(display);
+            granted_activated_ability = Some(parsed);
+            let clause_tail_end = if have_token_idx > get_idx + 2
+                && tokens
+                    .get(have_token_idx - 1)
+                    .is_some_and(|token| token.is_word("and"))
+            {
+                have_token_idx - 1
+            } else {
+                have_token_idx
+            };
+            let mut clause = parse_anthem_clause(tokens, get_idx, clause_tail_end)?;
+            if let Some(condition) = trailing_condition {
+                if clause.condition.is_some() {
+                    return Err(CardTextError::ParseError(format!(
+                        "multiple anthem conditions are not supported (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                clause.condition = Some(condition);
+            }
+            let mut result = vec![build_anthem_static_ability(&clause).into()];
+            if let Some(ability) = granted_activated_ability {
+                result.push(grant_object_ability_for_anthem_subject(
+                    &clause,
+                    ability,
+                    granted_activated_display.unwrap_or_else(|| clause_words.join(" ")),
+                ));
+            }
+            return Ok(Some(result));
         };
         let keyword_head = trim_edge_punctuation(&ability_tokens[..and_idx]);
         let activated_tail = trim_edge_punctuation(&ability_tokens[and_idx + 1..]);
@@ -3062,6 +3242,118 @@ pub(crate) fn parse_anthem_and_keyword_line(
     }
 
     Ok(Some(result))
+}
+
+fn merge_static_ability_ast_conditions(
+    existing: Option<crate::ConditionExpr>,
+    additional: crate::ConditionExpr,
+) -> crate::ConditionExpr {
+    match existing {
+        Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(additional)),
+        None => additional,
+    }
+}
+
+fn add_static_ability_ast_condition(
+    ability: StaticAbilityAst,
+    condition: crate::ConditionExpr,
+) -> Result<StaticAbilityAst, CardTextError> {
+    Ok(match ability {
+        StaticAbilityAst::Static(_) | StaticAbilityAst::KeywordAction(_) => {
+            StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition,
+            }
+        }
+        StaticAbilityAst::ConditionalStaticAbility {
+            ability,
+            condition: existing,
+        } => StaticAbilityAst::ConditionalStaticAbility {
+            ability,
+            condition: crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+        },
+        StaticAbilityAst::ConditionalKeywordAction {
+            action,
+            condition: existing,
+        } => StaticAbilityAst::ConditionalKeywordAction {
+            action,
+            condition: crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+        },
+        StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability,
+            condition: existing,
+        } => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::GrantKeywordAction {
+            filter,
+            action,
+            condition: existing,
+        } => StaticAbilityAst::GrantKeywordAction {
+            filter,
+            action,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::AttachedStaticAbilityGrant {
+            ability,
+            display,
+            condition: existing,
+        } => StaticAbilityAst::AttachedStaticAbilityGrant {
+            ability,
+            display,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::AttachedKeywordActionGrant {
+            action,
+            display,
+            condition: existing,
+        } => StaticAbilityAst::AttachedKeywordActionGrant {
+            action,
+            display,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::AttachedChosenLandwalkGrant {
+            snow,
+            display,
+            condition: existing,
+        } => StaticAbilityAst::AttachedChosenLandwalkGrant {
+            snow,
+            display,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::GrantObjectAbility {
+            filter,
+            ability,
+            display,
+            condition: existing,
+        } => StaticAbilityAst::GrantObjectAbility {
+            filter,
+            ability,
+            display,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability,
+            display,
+            condition: existing,
+        } => StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability,
+            display,
+            condition: Some(merge_static_ability_ast_conditions(existing, condition)),
+        },
+        StaticAbilityAst::RemoveStaticAbility { .. }
+        | StaticAbilityAst::RemoveKeywordAction { .. }
+        | StaticAbilityAst::EquipmentKeywordActionsGrant { .. }
+        | StaticAbilityAst::SoulbondSharedObjectAbility { .. } => {
+            return Err(CardTextError::ParseError(
+                "cannot apply leading static condition to unsupported static ability shape"
+                    .to_string(),
+            ));
+        }
+    })
 }
 
 pub(crate) fn parse_protection_from_colored_spells_line(

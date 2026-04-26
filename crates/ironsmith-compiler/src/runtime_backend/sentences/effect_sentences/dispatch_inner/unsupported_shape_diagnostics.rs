@@ -31,13 +31,20 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
     };
 
     let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
-    Ok(Some(vec![EffectAst::GainLife { amount, player }]))
+    Ok(Some(vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::GainLife { amount },
+    )]))
 }
 
 pub(crate) fn parse_prevent_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    effect_grammar::parse_prevent_damage_sentence_lexed(tokens)
+    if let Some(effect) = effect_grammar::parse_prevent_damage_sentence_lexed(tokens)? {
+        return Ok(Some(effect));
+    }
+    parse_prevent_all_damage_clause(tokens)
 }
 
 pub(crate) fn parse_gain_x_plus_life_sentence(
@@ -91,7 +98,7 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     let trailing_tokens = trim_commas(&tokens[life_idx + 1..]);
     let x_value = if trailing_tokens.is_empty() {
         Value::X
-    } else if let Some(where_x) = parse_where_x_value_clause(&trailing_tokens) {
+    } else if let Some(where_x) = parse_value_binding_clause(&trailing_tokens) {
         where_x
     } else {
         return Err(CardTextError::ParseError(format!(
@@ -100,7 +107,11 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
         )));
     };
     let amount = Value::Add(Box::new(x_value), Box::new(Value::Fixed(bonus as i32)));
-    let effects = vec![EffectAst::GainLife { amount, player }];
+    let effects = vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::GainLife { amount },
+    )];
 
     Ok(Some(effects))
 }

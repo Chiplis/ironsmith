@@ -5,7 +5,8 @@ use crate::cards::builders::{
     IT_TAG, InsteadSemantics, LineAst, LineInfo, NormalizedLine, OptionalCost, ParseAnnotations,
     ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
     ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst, PredicateAst,
-    ReferenceImports, ReturnControllerAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    ReferenceImports, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey,
+    TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;

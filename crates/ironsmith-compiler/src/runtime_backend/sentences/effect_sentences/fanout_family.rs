@@ -11,7 +11,8 @@ use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
-    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, PlayerAst, TagKey, TargetAst, Verb,
+    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, PlayerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TagKey, TargetAst, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -288,11 +289,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         };
         let first_target = parse_target_phrase(&first_target_tokens)?;
         return Ok(Some(vec![
-            EffectAst::DealDamage {
-                amount: amount.clone(),
-                target: first_target,
-            },
-            EffectAst::DealDamageEach { amount, filter },
+            EffectAst::subject_verb_damage(amount.clone(), first_target),
+            EffectAst::subject_verb_damage_each(amount, filter),
         ]));
     }
 
@@ -368,44 +366,30 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         }
     }
     let first_effect = match verb {
-        "destroy" => EffectAst::Destroy {
-            target: first_target,
-        },
+        "destroy" => EffectAst::subject_verb_destroy(first_target),
         "exile" => {
             if until_source_leaves {
-                EffectAst::ExileUntilSourceLeaves {
-                    target: first_target,
-                    face_down: false,
-                }
+                EffectAst::subject_verb_exile_until_source_leaves(first_target, false)
             } else {
-                EffectAst::Exile {
-                    target: first_target,
-                    face_down: false,
-                }
+                EffectAst::subject_verb_exile(first_target, false)
             }
         }
-        "return" => EffectAst::ReturnToHand {
-            target: first_target,
-            random: false,
-        },
+        "return" => EffectAst::subject_verb_return_to_hand(first_target, false),
         _ => unreachable!("verb already filtered"),
     };
     let second_effect = match verb {
-        "destroy" => EffectAst::DestroyAll { filter },
+        "destroy" => EffectAst::subject_verb_destroy_all(filter),
         "exile" => {
             if until_source_leaves {
-                EffectAst::ExileUntilSourceLeaves {
-                    target: TargetAst::Object(filter, None, None),
-                    face_down: false,
-                }
+                EffectAst::subject_verb_exile_until_source_leaves(
+                    TargetAst::Object(filter, None, None),
+                    false,
+                )
             } else {
-                EffectAst::ExileAll {
-                    filter,
-                    face_down: false,
-                }
+                EffectAst::subject_verb_exile_all(filter, false)
             }
         }
-        "return" => EffectAst::ReturnAllToHand { filter },
+        "return" => EffectAst::subject_verb_return_all_to_hand(filter),
         _ => unreachable!("verb already filtered"),
     };
 
@@ -569,19 +553,19 @@ fn parse_explicit_shared_color_gets_or_gains(
         })?;
 
         return Ok(Some(vec![
-            EffectAst::Pump {
-                power: Value::Fixed(power),
-                toughness: Value::Fixed(toughness),
-                target: first_target,
-                duration: Until::EndOfTurn,
-                condition: None,
-            },
-            EffectAst::PumpAll {
+            EffectAst::subject_verb_pump(
+                Value::Fixed(power),
+                Value::Fixed(toughness),
+                first_target,
+                Until::EndOfTurn,
+                None,
+            ),
+            EffectAst::subject_verb_pump_all(
                 filter,
-                power: Value::Fixed(power),
-                toughness: Value::Fixed(toughness),
-                duration: Until::EndOfTurn,
-            },
+                Value::Fixed(power),
+                Value::Fixed(toughness),
+                Until::EndOfTurn,
+            ),
         ]));
     }
 
@@ -591,30 +575,30 @@ fn parse_explicit_shared_color_gets_or_gains(
         return Ok(None);
     };
     let (abilities, duration) = match first_effect {
-        EffectAst::GrantAbilitiesToTarget {
-            abilities,
-            duration,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    abilities,
+                    duration,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesAll {
+                    abilities,
+                    duration,
+                    ..
+                },
             ..
-        }
-        | EffectAst::GrantAbilitiesAll {
-            abilities,
-            duration,
-            ..
-        } => (abilities, duration),
+        }) => (abilities, duration),
         _ => return Ok(None),
     };
 
     Ok(Some(vec![
-        EffectAst::GrantAbilitiesToTarget {
-            target: first_target,
-            abilities: abilities.clone(),
-            duration: duration.clone(),
-        },
-        EffectAst::GrantAbilitiesAll {
-            filter,
-            abilities,
-            duration,
-        },
+        EffectAst::subject_verb_grant_abilities_to_target(
+            first_target,
+            abilities.clone(),
+            duration.clone(),
+        ),
+        EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration),
     ]))
 }
 
@@ -660,26 +644,16 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         let mut effects = Vec::with_capacity(2);
         match verb {
             Verb::Destroy => {
-                effects.push(EffectAst::Destroy {
-                    target: first_target,
-                });
-                effects.push(EffectAst::DestroyAll { filter });
+                effects.push(EffectAst::subject_verb_destroy(first_target));
+                effects.push(EffectAst::subject_verb_destroy_all(filter));
             }
             Verb::Exile => {
-                effects.push(EffectAst::Exile {
-                    target: first_target,
-                    face_down: false,
-                });
-                effects.push(EffectAst::ExileAll {
-                    filter,
-                    face_down: false,
-                });
+                effects.push(EffectAst::subject_verb_exile(first_target, false));
+                effects.push(EffectAst::subject_verb_exile_all(filter, false));
             }
             Verb::Untap => {
-                effects.push(EffectAst::Untap {
-                    target: first_target,
-                });
-                effects.push(EffectAst::UntapAll { filter });
+                effects.push(EffectAst::subject_verb_untap(first_target));
+                effects.push(EffectAst::subject_verb_untap_all(filter));
             }
             _ => return Ok(None),
         }
@@ -735,11 +709,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         };
         let first_target = parse_target_phrase(&first_target_tokens)?;
         return Ok(Some(vec![
-            EffectAst::DealDamage {
-                amount: amount.clone(),
-                target: first_target,
-            },
-            EffectAst::DealDamageEach { amount, filter },
+            EffectAst::subject_verb_damage(amount.clone(), first_target),
+            EffectAst::subject_verb_damage_each(amount, filter),
         ]));
     }
 
@@ -811,16 +782,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         let first_target = parse_target_phrase(&first_target_tokens)?;
 
         return Ok(Some(vec![
-            EffectAst::PreventDamage {
-                amount: amount.clone(),
-                target: first_target,
-                duration: Until::EndOfTurn,
-            },
-            EffectAst::PreventDamageEach {
-                amount,
-                filter,
-                duration: Until::EndOfTurn,
-            },
+            EffectAst::subject_verb_prevent_damage(amount.clone(), first_target, Until::EndOfTurn),
+            EffectAst::subject_verb_prevent_damage_each(amount, filter, Until::EndOfTurn),
         ]));
     }
 
@@ -852,40 +815,40 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
                 })?;
 
                 return Ok(Some(vec![
-                    EffectAst::Pump {
-                        power: Value::Fixed(power),
-                        toughness: Value::Fixed(toughness),
-                        target: first_target,
-                        duration: Until::EndOfTurn,
-                        condition: None,
-                    },
-                    EffectAst::PumpAll {
+                    EffectAst::subject_verb_pump(
+                        Value::Fixed(power),
+                        Value::Fixed(toughness),
+                        first_target,
+                        Until::EndOfTurn,
+                        None,
+                    ),
+                    EffectAst::subject_verb_pump_all(
                         filter,
-                        power: Value::Fixed(power),
-                        toughness: Value::Fixed(toughness),
-                        duration: Until::EndOfTurn,
-                    },
+                        Value::Fixed(power),
+                        Value::Fixed(toughness),
+                        Until::EndOfTurn,
+                    ),
                 ]));
             }
 
             if let Some(first_effect) = parse_simple_gain_ability_clause(tokens)?
-                && let EffectAst::GrantAbilitiesToTarget {
-                    abilities,
-                    duration,
+                && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::GrantAbilitiesToTarget {
+                            abilities,
+                            duration,
+                            ..
+                        },
                     ..
-                } = first_effect
+                }) = first_effect
             {
                 return Ok(Some(vec![
-                    EffectAst::GrantAbilitiesToTarget {
-                        target: first_target,
-                        abilities: abilities.clone(),
-                        duration: duration.clone(),
-                    },
-                    EffectAst::GrantAbilitiesAll {
-                        filter,
-                        abilities,
-                        duration,
-                    },
+                    EffectAst::subject_verb_grant_abilities_to_target(
+                        first_target,
+                        abilities.clone(),
+                        duration.clone(),
+                    ),
+                    EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration),
                 ]));
             }
         }
@@ -933,19 +896,19 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
             })?;
 
             return Ok(Some(vec![
-                EffectAst::Pump {
-                    power: Value::Fixed(power),
-                    toughness: Value::Fixed(toughness),
-                    target: first_target,
-                    duration: Until::EndOfTurn,
-                    condition: None,
-                },
-                EffectAst::PumpAll {
+                EffectAst::subject_verb_pump(
+                    Value::Fixed(power),
+                    Value::Fixed(toughness),
+                    first_target,
+                    Until::EndOfTurn,
+                    None,
+                ),
+                EffectAst::subject_verb_pump_all(
                     filter,
-                    power: Value::Fixed(power),
-                    toughness: Value::Fixed(toughness),
-                    duration: Until::EndOfTurn,
-                },
+                    Value::Fixed(power),
+                    Value::Fixed(toughness),
+                    Until::EndOfTurn,
+                ),
             ]));
         }
 
@@ -954,23 +917,23 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         let Some(first_effect) = parse_simple_gain_ability_clause(&first_clause)? else {
             return Ok(None);
         };
-        if let EffectAst::GrantAbilitiesToTarget {
-            abilities,
-            duration,
-            ..
-        } = first_effect
-        {
-            return Ok(Some(vec![
-                EffectAst::GrantAbilitiesToTarget {
-                    target: first_target,
-                    abilities: abilities.clone(),
-                    duration: duration.clone(),
-                },
-                EffectAst::GrantAbilitiesAll {
-                    filter,
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesToTarget {
                     abilities,
                     duration,
+                    ..
                 },
+            ..
+        }) = first_effect
+        {
+            return Ok(Some(vec![
+                EffectAst::subject_verb_grant_abilities_to_target(
+                    first_target,
+                    abilities.clone(),
+                    duration.clone(),
+                ),
+                EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration),
             ]));
         }
     }
@@ -1033,18 +996,18 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
     let first_target = parse_target_phrase(&first_target_tokens)?;
 
     Ok(Some(vec![
-        EffectAst::Pump {
-            power: Value::Fixed(power),
-            toughness: Value::Fixed(toughness),
-            target: first_target,
-            duration: Until::EndOfTurn,
-            condition: None,
-        },
-        EffectAst::PumpAll {
+        EffectAst::subject_verb_pump(
+            Value::Fixed(power),
+            Value::Fixed(toughness),
+            first_target,
+            Until::EndOfTurn,
+            None,
+        ),
+        EffectAst::subject_verb_pump_all(
             filter,
-            power: Value::Fixed(power),
-            toughness: Value::Fixed(toughness),
-            duration: Until::EndOfTurn,
-        },
+            Value::Fixed(power),
+            Value::Fixed(toughness),
+            Until::EndOfTurn,
+        ),
     ]))
 }

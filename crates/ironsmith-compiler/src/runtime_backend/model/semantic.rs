@@ -59,7 +59,7 @@ pub(crate) struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
     pub(crate) effects: Vec<Effect>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParsedAbilityRuntime {
     runtime: Ability,
 }
@@ -88,7 +88,7 @@ impl From<Ability> for ParsedAbilityRuntime {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ParsedAbility {
     pub(crate) ability: ParsedAbilityRuntime,
     pub(crate) text: Option<String>,

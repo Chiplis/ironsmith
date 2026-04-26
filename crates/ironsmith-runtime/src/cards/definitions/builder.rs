@@ -71,8 +71,4 @@ impl CardDefinitionBuilder {
     ) -> Result<CardDefinition, CardTextError> {
         self.0.parse_text(text)
     }
-
-    pub(crate) fn build(self) -> CardDefinition {
-        self.0.build()
-    }
 }

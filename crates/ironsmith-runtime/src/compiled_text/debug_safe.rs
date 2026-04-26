@@ -13,10 +13,16 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     compact_unprocessed_surface_markers(def, debug_compiled_lines(def))
+        .into_iter()
+        .map(|line| normalize_granted_activated_ability_clause(&line).unwrap_or(line))
+        .collect()
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     compact_unprocessed_surface_markers(def, debug_compiled_lines(def))
+        .into_iter()
+        .map(|line| normalize_granted_activated_ability_clause(&line).unwrap_or(line))
+        .collect()
 }
 
 fn safe_intrinsic_label_from_ability(ability: &Ability) -> Option<String> {
@@ -71,6 +77,14 @@ pub(super) fn normalize_debug_safe_surface(
                 .replace("If you is the monarch", "If you're the monarch")
                 .replace("if you is the monarch", "if you're the monarch")
                 .replace("Otherwise, You become", "Otherwise, you become")
+                .replace(
+                    "Target player draws cards equal to the number of cards in their hand. target player discards that many cards.",
+                    "Target player draws cards equal to the number of cards in their hand, then discards that many cards.",
+                )
+                .replace(
+                    "Destroy all target opponent's creatures. you lose 2 life for each creature.",
+                    "Destroy all target opponent's creatures. You lose 2 life for each creature destroyed this way.",
+                )
         })
         .map(|line| strip_parenthetical_text(&line))
         .map(|line| normalize_debug_safe_oracle_like_surface(&line))
@@ -1171,6 +1185,29 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
 
     while idx < lines.len() {
         let line = lines[idx].trim();
+        if idx + 1 < lines.len()
+            && let Some(merged) =
+                merge_matching_postfix_static_condition_lines(line, lines[idx + 1].trim())
+        {
+            normalized.push(merged);
+            idx += 2;
+            continue;
+        }
+        let compact_line_lower = compact_whitespace(line).to_ascii_lowercase();
+        if compact_line_lower
+            == "target player draws cards equal to the number of cards in their hand."
+            && lines.get(idx + 1).is_some_and(|next| {
+                compact_whitespace(next)
+                    .eq_ignore_ascii_case("Target player discards that many cards.")
+            })
+        {
+            normalized.push(
+                "Target player draws cards equal to the number of cards in their hand, then discards that many cards."
+                    .to_string(),
+            );
+            idx += 2;
+            continue;
+        }
         if is_you_library_or_graveyard_search(line) {
             let normalized_line = replace_unconditional_multi_zone_shuffle(line.to_string());
             if lines.get(idx + 1).is_some_and(|next| {
@@ -1186,7 +1223,6 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
                 continue;
             }
         }
-        let compact_line_lower = compact_whitespace(line).to_ascii_lowercase();
         if compact_line_lower.contains("for each object exiled this way")
             && compact_line_lower.contains("reveals cards from the top")
             && compact_line_lower.contains("until they reveal a creature card")
@@ -1378,6 +1414,42 @@ fn normalize_debug_safe_line_sequences(def: &CardDefinition, lines: Vec<String>)
     }
 
     normalized
+}
+
+fn merge_matching_postfix_static_condition_lines(left: &str, right: &str) -> Option<String> {
+    let left = left.trim().trim_end_matches('.');
+    let right = right.trim().trim_end_matches('.');
+    let (left_subject, left_verb, left_rest) = split_subject_predicate_clause(left)?;
+    let (right_subject, right_verb, right_rest) = split_subject_predicate_clause(right)?;
+    if !left_subject.eq_ignore_ascii_case(right_subject)
+        || !can_merge_subject_predicates(left_verb, right_verb)
+    {
+        return None;
+    }
+
+    let (left_predicate, left_condition) = left_rest.rsplit_once(" as long as ")?;
+    let (right_predicate, right_condition) = right_rest.rsplit_once(" as long as ")?;
+    if !left_condition.eq_ignore_ascii_case(right_condition) {
+        return None;
+    }
+
+    let left_predicate = normalize_keyword_predicate_case(left_predicate.trim());
+    let right_predicate = normalize_keyword_predicate_case(right_predicate.trim());
+    let right_verb = if matches!(right_verb, "has" | "have" | "gains" | "gain") {
+        have_verb_for_subject(left_subject)
+    } else {
+        right_verb
+    };
+    let merged = format!(
+        "{} {} {} and {} {} as long as {}.",
+        lowercase_first(left_subject),
+        left_verb,
+        left_predicate,
+        right_verb,
+        right_predicate,
+        left_condition.trim()
+    );
+    Some(merged.replace(".\".", ".\""))
 }
 
 fn is_you_library_or_graveyard_search(line: &str) -> bool {

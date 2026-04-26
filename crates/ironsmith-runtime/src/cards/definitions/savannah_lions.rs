@@ -16,7 +16,8 @@ pub fn savannah_lions() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Cat])
         .power_toughness(PowerToughness::fixed(2, 1))
-        .build()
+        .parse_text("")
+        .unwrap()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

@@ -99,17 +99,17 @@ pub(crate) fn parse_copy_targets_clause(
         )));
     }
     let fixed_filter = parse_object_filter(&fixed_tokens, false)?;
-    Ok(Some(EffectAst::RetargetStackObject {
-        target: TargetAst::Tagged(
+    Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+        PlayerAst::Implicit,
+        TargetAst::Tagged(
             TagKey::from(COPIED_STACK_OBJECT_TAG),
             span_from_tokens(tokens),
         ),
-        mode: RetargetModeAst::OneToFixed {
+        RetargetModeAst::OneToFixed {
             target: TargetAst::Object(fixed_filter, None, None),
         },
-        chooser: PlayerAst::Implicit,
-        require_change: false,
-    }))
+        false,
+    )))
 }
 
 pub(crate) fn parse_choose_new_targets_clause(
@@ -132,12 +132,12 @@ pub(crate) fn parse_choose_new_targets_clause(
             TagKey::from(reference_tag),
             span_from_tokens(split.target_tokens),
         );
-        return Ok(Some(EffectAst::RetargetStackObject {
+        return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+            PlayerAst::Implicit,
             target,
-            mode: RetargetModeAst::All,
-            chooser: PlayerAst::Implicit,
-            require_change: false,
-        }));
+            RetargetModeAst::All,
+            false,
+        )));
     }
     let tail_tokens = split.target_tokens;
     if tail_tokens.is_empty() {
@@ -164,12 +164,12 @@ pub(crate) fn parse_choose_new_targets_clause(
         target = TargetAst::WithCount(Box::new(target), count);
     }
 
-    Ok(Some(EffectAst::RetargetStackObject {
+    Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+        PlayerAst::Implicit,
         target,
-        mode: RetargetModeAst::All,
-        chooser: PlayerAst::Implicit,
-        require_change: false,
-    }))
+        RetargetModeAst::All,
+        false,
+    )))
 }
 
 pub(crate) fn parse_change_target_clause(
@@ -257,12 +257,12 @@ pub(crate) fn parse_change_target_clause_inner(
         RetargetModeAst::All
     };
 
-    Ok(Some(EffectAst::RetargetStackObject {
+    Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+        PlayerAst::Implicit,
         target,
         mode,
-        chooser: PlayerAst::Implicit,
-        require_change: true,
-    }))
+        true,
+    )))
 }
 
 pub(crate) fn parse_unless_pays_clause(
@@ -509,11 +509,11 @@ pub(crate) fn parse_choose_card_name_clause(
         })?)
     };
 
-    Ok(Some(EffectAst::ChooseCardName {
+    Ok(Some(EffectAst::subject_verb_choose_card_name(
         player,
         filter,
-        tag: TagKey::from(CHOSEN_NAME_TAG),
-    }))
+        TagKey::from(CHOSEN_NAME_TAG),
+    )))
 }
 
 pub(crate) fn parse_repeat_this_process_clause(
@@ -562,7 +562,9 @@ pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
             "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
         ]
     ) {
-        return Ok(Some(EffectAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn));
+        return Ok(Some(
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
+        ));
     }
     Ok(None)
 }
@@ -597,11 +599,11 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     let abilities = vec![GrantedAbilityAst::MustAttack, GrantedAbilityAst::MustBlock];
 
     if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
-        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             abilities,
-            duration: Until::EndOfTurn,
-        }));
+            Until::EndOfTurn,
+        )));
     }
 
     let filter = target_ast_to_object_filter(target).ok_or_else(|| {
@@ -611,11 +613,11 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
         ))
     })?;
 
-    Ok(Some(EffectAst::GrantAbilitiesAll {
+    Ok(Some(EffectAst::subject_verb_grant_abilities_all(
         filter,
         abilities,
-        duration: Until::EndOfTurn,
-    }))
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_attack_this_turn_if_able_clause(
@@ -647,11 +649,11 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     let ability = GrantedAbilityAst::MustAttack;
 
     if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
-        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
-            abilities: vec![ability],
-            duration: Until::EndOfTurn,
-        }));
+            vec![ability],
+            Until::EndOfTurn,
+        )));
     }
 
     let filter = target_ast_to_object_filter(target).ok_or_else(|| {
@@ -661,11 +663,11 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
         ))
     })?;
 
-    Ok(Some(EffectAst::GrantAbilitiesAll {
+    Ok(Some(EffectAst::subject_verb_grant_abilities_all(
         filter,
-        abilities: vec![ability],
-        duration: Until::EndOfTurn,
-    }))
+        vec![ability],
+        Until::EndOfTurn,
+    )))
 }
 
 pub(crate) fn parse_must_be_blocked_if_able_clause(
@@ -706,14 +708,14 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
         ))
     })?;
 
-    Ok(Some(EffectAst::Cant {
-        restriction: crate::effect::Restriction::must_block_specific_attacker(
+    Ok(Some(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_block_specific_attacker(
             ObjectFilter::creature(),
             attacker_filter,
         ),
-        duration: Until::EndOfTurn,
-        condition: None,
-    }))
+        Until::EndOfTurn,
+        None,
+    )))
 }
 
 pub(crate) fn parse_must_block_if_able_clause(
@@ -744,11 +746,11 @@ pub(crate) fn parse_must_block_if_able_clause(
         let ability = GrantedAbilityAst::MustBlock;
 
         if starts_with_target_indicator(&subject_tokens) {
-            return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
                 target,
-                abilities: vec![ability],
-                duration: Until::EndOfTurn,
-            }));
+                vec![ability],
+                Until::EndOfTurn,
+            )));
         }
 
         let filter = target_ast_to_object_filter(target).ok_or_else(|| {
@@ -757,11 +759,11 @@ pub(crate) fn parse_must_block_if_able_clause(
                 clause_words.join(" ")
             ))
         })?;
-        return Ok(Some(EffectAst::GrantAbilitiesAll {
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_all(
             filter,
-            abilities: vec![ability],
-            duration: Until::EndOfTurn,
-        }));
+            vec![ability],
+            Until::EndOfTurn,
+        )));
     }
 
     // "All creatures able to block target creature this turn do so."
@@ -794,14 +796,14 @@ pub(crate) fn parse_must_block_if_able_clause(
             ))
         })?;
 
-        return Ok(Some(EffectAst::Cant {
-            restriction: crate::effect::Restriction::must_block_specific_attacker(
+        return Ok(Some(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::must_block_specific_attacker(
                 ObjectFilter::creature(),
                 attacker_filter,
             ),
             duration,
-            condition: None,
-        }));
+            None,
+        )));
     }
 
     // "<subject> blocks <attacker> this turn if able."
@@ -844,14 +846,11 @@ pub(crate) fn parse_must_block_if_able_clause(
         ))
     })?;
 
-    Ok(Some(EffectAst::Cant {
-        restriction: crate::effect::Restriction::must_block_specific_attacker(
-            blockers_filter,
-            attacker_filter,
-        ),
+    Ok(Some(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_block_specific_attacker(blockers_filter, attacker_filter),
         duration,
-        condition: None,
-    }))
+        None,
+    )))
 }
 
 pub(crate) fn parse_until_duration_triggered_clause(
@@ -915,11 +914,11 @@ pub(crate) fn parse_until_duration_triggered_clause(
         display: trigger_text,
     };
 
-    Ok(Some(EffectAst::GrantAbilitiesToTarget {
-        target: TargetAst::Source(span_from_tokens(tokens)),
-        abilities: vec![granted],
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+        TargetAst::Source(span_from_tokens(tokens)),
+        vec![granted],
         duration,
-    }))
+    )))
 }
 
 pub(crate) fn parse_power_reference_word_count(words: &[&str]) -> Option<usize> {
@@ -974,7 +973,15 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     };
     let equal_idx = _before_equal.len();
 
-    let source = parse_target_phrase(&source_tokens)?;
+    let source_words = token_word_refs(&source_tokens);
+    let source = if matches!(
+        source_words.as_slice(),
+        ["it"] | ["that", "creature"] | ["that", "permanent"] | ["that", "card"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&source_tokens))
+    } else {
+        parse_target_phrase(&source_tokens)?
+    };
     if !is_damage_source_target(&source) {
         return Err(CardTextError::ParseError(format!(
             "unsupported damage source target phrase (clause: '{}')",
@@ -1016,10 +1023,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             || normalized_target_words.as_slice() == ["each", "players"]
         {
             return Ok(Some(EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::DealDamageEqualToPower {
-                    source: source.clone(),
-                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                }],
+                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                    source.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
             }));
         }
         if normalized_target_words.as_slice() == ["each", "opponent"]
@@ -1028,10 +1035,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             || normalized_target_words.as_slice() == ["each", "other", "players"]
         {
             return Ok(Some(EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::DealDamageEqualToPower {
-                    source: source.clone(),
-                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                }],
+                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                    source.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
             }));
         }
         parse_target_phrase(normalized_target_tokens)?
@@ -1042,10 +1049,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             || target_words.as_slice() == ["each", "players"]
         {
             return Ok(Some(EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::DealDamageEqualToPower {
-                    source: source.clone(),
-                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                }],
+                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                    source.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
             }));
         }
         if target_words.as_slice() == ["each", "opponent"]
@@ -1054,10 +1061,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             || target_words.as_slice() == ["each", "other", "players"]
         {
             return Ok(Some(EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::DealDamageEqualToPower {
-                    source: source.clone(),
-                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                }],
+                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                    source.clone(),
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
             }));
         }
         if target_words == ["itself"] || target_words == ["it"] {
@@ -1081,7 +1088,9 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         return Ok(None);
     };
 
-    Ok(Some(EffectAst::DealDamageEqualToPower { source, target }))
+    Ok(Some(EffectAst::subject_verb_damage_equal_to_power(
+        source, target,
+    )))
 }
 
 pub(crate) fn parse_fight_clause(
@@ -1142,7 +1151,7 @@ pub(crate) fn parse_fight_clause(
             }
             return Ok(Some(EffectAst::ForEachObject {
                 filter,
-                effects: vec![EffectAst::FightIterated { creature2 }],
+                effects: vec![EffectAst::subject_verb_fight_iterated(creature2)],
             }));
         }
         parse_target_phrase(&left_tokens)?
@@ -1166,10 +1175,7 @@ pub(crate) fn parse_fight_clause(
         }
     }
 
-    Ok(Some(EffectAst::Fight {
-        creature1,
-        creature2,
-    }))
+    Ok(Some(EffectAst::subject_verb_fight(creature1, creature2)))
 }
 
 pub(crate) fn parse_clash_clause(
@@ -1213,5 +1219,5 @@ pub(crate) fn parse_clash_clause(
         }
     };
 
-    Ok(Some(EffectAst::Clash { opponent }))
+    Ok(Some(EffectAst::subject_verb_clash(opponent)))
 }

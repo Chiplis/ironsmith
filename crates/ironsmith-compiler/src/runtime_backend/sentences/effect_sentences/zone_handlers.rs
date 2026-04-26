@@ -67,7 +67,7 @@ use super::for_each_helpers::{
     self, parse_get_for_each_count_value, parse_get_modifier_values_with_tail,
 };
 use super::search_library::parse_restriction_duration;
-use super::sentence_primitives::find_color_choice_phrase;
+use super::subject_verb_primitives::find_color_choice_phrase;
 
 const SHARE_REL_PREFIXES: &[&[&str]] = &[&["that", "share"], &["that", "shares"]];
 const POWER_OF_PREFIXES: &[&[&str]] = &[&["the", "power", "of"], &["power", "of"]];

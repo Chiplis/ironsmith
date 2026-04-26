@@ -299,6 +299,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     MakeColorless(ObjectFilter),
     CostIncreasePerTargetBeyondFirst(u32),
+    CostIncreaseManaCostPerTargetBeyondFirst(ManaCost),
     MinimumSpellTotalMana(u32),
     ActivatedAbilityCostReduction {
         filter: ObjectFilter,
@@ -915,6 +916,9 @@ where
             StaticAbilityPayload::MakeColorless(filter) => StaticAbilityPayload::MakeColorless(filter),
             StaticAbilityPayload::CostIncreasePerTargetBeyondFirst(amount) => {
                 StaticAbilityPayload::CostIncreasePerTargetBeyondFirst(amount)
+            }
+            StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost) => {
+                StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost)
             }
             StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbilityPayload::MinimumSpellTotalMana(amount)
@@ -2550,6 +2554,13 @@ impl<
             id: Some(StaticAbilityId::CostIncreasePerAdditionalTarget),
             label: "cost increase per target beyond first".to_string(),
             payload: StaticAbilityPayload::CostIncreasePerTargetBeyondFirst(cost),
+        }
+    }
+    pub fn cost_increase_mana_cost_per_target_beyond_first(cost: ManaCost) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget),
+            label: "mana cost increase per target beyond first".to_string(),
+            payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
         }
     }
     pub fn players_skip_upkeep() -> Self {

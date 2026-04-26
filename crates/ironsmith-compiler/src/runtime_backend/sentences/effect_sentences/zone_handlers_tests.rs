@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 use crate::runtime_backend::util::tokenize_line;
 
 #[test]
@@ -30,7 +31,11 @@ fn parse_sacrifice_strips_his_or_her_choice_suffix() {
     let tokens = tokenize_line("creature of his or her choice", 0);
     let effect = parse_sacrifice(&tokens, None, None).expect("sacrifice should parse");
 
-    let EffectAst::Sacrifice { filter, count, .. } = effect else {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Sacrifice { filter, count, .. },
+        ..
+    }) = effect
+    else {
         panic!("expected sacrifice effect");
     };
     assert_eq!(count, 1);

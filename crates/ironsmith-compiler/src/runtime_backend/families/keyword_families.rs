@@ -266,8 +266,11 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
             winnow::combinator::alt((
                 grammar::kw("madness").value(KeywordDispatchHint::Madness),
                 grammar::kw("escape").value(KeywordDispatchHint::Escape),
-                grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
-                grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
+                winnow::combinator::alt((
+                    grammar::kw("morph").value(KeywordDispatchHint::MorphFamily),
+                    grammar::kw("megamorph").value(KeywordDispatchHint::MorphFamily),
+                    grammar::kw("disguise").value(KeywordDispatchHint::MorphFamily),
+                )),
                 grammar::kw("squad").value(KeywordDispatchHint::Squad),
                 grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
                 grammar::phrase(&["cast", "this", "spell", "only"])

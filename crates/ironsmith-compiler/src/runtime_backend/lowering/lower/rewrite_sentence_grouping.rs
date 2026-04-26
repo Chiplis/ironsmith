@@ -303,7 +303,10 @@ mod tests {
         );
         assert!(matches!(
             parse_single_effect_lexed(trimmed)?,
-            EffectAst::Exile { .. }
+            EffectAst::SubjectVerb(crate::runtime_backend::ast::SubjectVerbEffectAst {
+                action: crate::runtime_backend::ast::SubjectVerbActionAst::Exile { .. },
+                ..
+            })
         ));
 
         Ok(())

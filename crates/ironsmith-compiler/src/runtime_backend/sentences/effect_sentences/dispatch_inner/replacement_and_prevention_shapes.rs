@@ -14,7 +14,7 @@ pub(crate) fn parse_monstrosity_sentence(
         ))
     })?;
 
-    Ok(Some(EffectAst::Monstrosity { amount }))
+    Ok(Some(EffectAst::subject_verb_monstrosity(amount)))
 }
 
 pub(crate) fn parse_for_each_counter_removed_sentence(
@@ -79,12 +79,12 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         Until::EndOfTurn
     };
 
-    Ok(Some(EffectAst::PumpByLastEffect {
+    Ok(Some(EffectAst::subject_verb_pump_by_last_effect(
         power,
         toughness,
         target,
         duration,
-    }))
+    )))
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
@@ -186,10 +186,7 @@ pub(crate) fn parse_take_extra_turn_sentence(
         words.as_slice(),
         ["take", "an", "extra", "turn", "after", "this", "one"]
     ) {
-        return Ok(Some(EffectAst::ExtraTurnAfterTurn {
-            player: PlayerAst::You,
-            anchor: ExtraTurnAnchorAst::CurrentTurn,
-        }));
+        return Ok(Some(EffectAst::subject_verb_extra_turn_after_turn(PlayerAst::You, ExtraTurnAnchorAst::CurrentTurn)));
     }
     if matches!(
         words.as_slice(),
@@ -197,10 +194,15 @@ pub(crate) fn parse_take_extra_turn_sentence(
             "the", "chosen", "player", "takes", "an", "extra", "turn", "after", "this", "one"
         ]
     ) {
-        return Ok(Some(EffectAst::ExtraTurnAfterTurn {
-            player: PlayerAst::Chosen,
-            anchor: ExtraTurnAnchorAst::CurrentTurn,
-        }));
+        return Ok(Some(EffectAst::subject_verb_extra_turn_after_turn(PlayerAst::Chosen, ExtraTurnAnchorAst::CurrentTurn)));
+    }
+    if matches!(
+        words.as_slice(),
+        [
+            "after", "that", "turn", "that", "player", "takes", "an", "extra", "turn"
+        ]
+    ) {
+        return Ok(Some(EffectAst::subject_verb_extra_turn_after_turn(PlayerAst::That, ExtraTurnAnchorAst::ReferencedTurn)));
     }
     Ok(None)
 }
@@ -270,11 +272,8 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
             ))
         })?;
         let effect = match verb {
-            Verb::Destroy => EffectAst::DestroyAll { filter },
-            Verb::Exile => EffectAst::ExileAll {
-                filter,
-                face_down: false,
-            },
+            Verb::Destroy => EffectAst::subject_verb_destroy_all(filter),
+            Verb::Exile => EffectAst::subject_verb_exile_all(filter, false),
             _ => {
                 return Err(CardTextError::ParseError(
                     "unsupported split all clause verb".to_string(),
@@ -313,6 +312,17 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
             .is_some_and(|token| token.is_word("exile"))
     {
         clause_tokens = &clause_tokens[1..];
+    } else if clause_tokens
+        .first()
+        .is_some_and(|token| token.is_word("you"))
+        && clause_tokens
+            .get(1)
+            .is_some_and(|token| token.is_word("may"))
+        && clause_tokens
+            .get(2)
+            .is_some_and(|token| token.is_word("exile"))
+    {
+        clause_tokens = &clause_tokens[2..];
     }
 
     let words_all = crate::runtime_backend::token_word_refs(clause_tokens);
@@ -351,7 +361,15 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     let mut first_effects = parse_effect_chain_inner(first_clause)?;
     if !first_effects
         .iter()
-        .any(|effect| matches!(effect, EffectAst::Exile { .. }))
+        .any(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Exile { .. },
+                    ..
+                })
+            )
+        })
     {
         return Ok(None);
     }
@@ -367,20 +385,22 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     let mut rewrote_return = false;
     for effect in &mut second_effects {
         match effect {
-            EffectAst::ReturnToBattlefield {
-                target,
-                tapped: _,
-                transformed: _,
-                converted: _,
-                controller: _,
-            } if target_references_it_tag(target) => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
+                ..
+            }) if target_references_it_tag(target) => {
                 *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
                 rewrote_return = true;
             }
-            EffectAst::ReturnToHand { target, random: _ } if target_references_it_tag(target) => {
-                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
-                rewrote_return = true;
-            }
+            EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                SubjectVerbActionAst::ReturnToHand { target, .. }
+                    if target_references_it_tag(target) =>
+                {
+                    *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+                    rewrote_return = true;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -492,10 +512,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
             tag: tag.clone(),
         })
         .collect();
-    effects.push(EffectAst::Exile {
-        target: TargetAst::Tagged(tag, None),
-        face_down: false,
-    });
+    effects.push(EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false));
 
     Ok(Some(effects))
 }
@@ -519,38 +536,32 @@ pub(crate) fn parse_look_at_hand_sentence(
         ]
     {
         return Ok(Some(vec![
-            EffectAst::LookAtHand {
-                target: TargetAst::Player(PlayerFilter::Opponent, None),
-            },
-            EffectAst::ChooseCardName {
-                player: PlayerAst::You,
-                filter: None,
-                tag: TagKey::from(IT_TAG),
-            },
+            EffectAst::subject_verb_look_at_hand(TargetAst::Player(PlayerFilter::Opponent, None)),
+            EffectAst::subject_verb_choose_card_name(PlayerAst::You, None, TagKey::from(IT_TAG)),
         ]));
     }
     if words.as_slice() == ["look", "at", "target", "players", "hand"]
         || words.as_slice() == ["look", "at", "target", "player", "hand"]
     {
         let target = TargetAst::Player(PlayerFilter::target_player(), Some(TextSpan::synthetic()));
-        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+        return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
     if words.as_slice() == ["look", "at", "target", "opponent", "hand"]
         || words.as_slice() == ["look", "at", "target", "opponents", "hand"]
     {
         let target =
             TargetAst::Player(PlayerFilter::target_opponent(), Some(TextSpan::synthetic()));
-        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+        return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
     if words.as_slice() == ["look", "at", "an", "opponents", "hand"]
         || words.as_slice() == ["look", "at", "opponents", "hand"]
     {
         let target = TargetAst::Player(PlayerFilter::Opponent, None);
-        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+        return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
     if words.as_slice() == ["look", "at", "that", "players", "hand"] {
         let target = TargetAst::Player(PlayerFilter::IteratedPlayer, None);
-        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+        return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
     Ok(None)
 }
@@ -625,11 +636,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     looked_filter.zone = Some(Zone::Library);
 
     Ok(Some(vec![
-        EffectAst::LookAtTopCards {
-            player,
-            count: Value::Fixed(count as i32),
-            tag: looked_tag,
-        },
+        EffectAst::subject_verb_look_at_top_cards(player, Value::Fixed(count as i32), looked_tag),
         EffectAst::ChooseObjects {
             filter: looked_filter,
             count: ChoiceCount::exactly(1),
@@ -637,10 +644,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
             player: PlayerAst::You,
             tag: chosen_tag.clone(),
         },
-        EffectAst::Exile {
-            target: TargetAst::Tagged(chosen_tag, None),
-            face_down: false,
-        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag, None), false),
     ]))
 }
 
@@ -680,22 +684,25 @@ pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
     };
 
     let you_effect = EffectAst::May {
-        effects: vec![EffectAst::Scry {
-            count: count.clone(),
-            player: PlayerAst::You,
-        }],
+        effects: vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            PlayerAst::You,
+            SubjectVerbActionAst::Scry {
+                count: count.clone(),
+            },
+        )],
     };
 
     let opponent_effect = EffectAst::ForEachTaggedPlayer {
         tag: TagKey::from("voted_with_you"),
         effects: vec![EffectAst::May {
-            effects: vec![EffectAst::Scry {
-                count,
-                player: PlayerAst::Implicit,
-            }],
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::Chooser,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::Scry { count },
+            )],
         }],
     };
 
     Ok(Some(vec![you_effect, opponent_effect]))
 }
-

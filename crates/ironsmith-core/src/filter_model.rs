@@ -161,6 +161,7 @@ pub enum PlayerFilter {
     EffectController,
     Specific(PlayerId),
     MostLifeTied,
+    LowestLifeTied,
     MostCardsInHand,
     CastCardTypeThisTurn(CardType),
     CardsInHandAtLeastMoreThanYou {
@@ -218,6 +219,7 @@ impl PlayerFilter {
             | Self::EffectController
             | Self::Specific(_)
             | Self::MostLifeTied
+            | Self::LowestLifeTied
             | Self::MostCardsInHand
             | Self::CastCardTypeThisTurn(_)
             | Self::ChosenPlayer
@@ -244,6 +246,9 @@ impl PlayerFilter {
             Self::EffectController => "the player who cast this spell".to_string(),
             Self::Specific(_) => "that player".to_string(),
             Self::MostLifeTied => "a player with the most life or tied for most life".to_string(),
+            Self::LowestLifeTied => {
+                "a player with the lowest life or tied for lowest life".to_string()
+            }
             Self::MostCardsInHand => "the player who has the most cards in hand".to_string(),
             Self::CastCardTypeThisTurn(card_type) => format!(
                 "a player who cast one or more {} spells this turn",
@@ -1118,6 +1123,9 @@ impl ObjectFilter {
                 PlayerFilter::MostLifeTied => {
                     parts.push("the player with the most life's".to_string())
                 }
+                PlayerFilter::LowestLifeTied => {
+                    parts.push("the player with the lowest life's".to_string())
+                }
                 PlayerFilter::MostCardsInHand => {
                     parts.push("the player with the most cards in hand's".to_string())
                 }
@@ -1185,6 +1193,9 @@ impl ObjectFilter {
                 PlayerFilter::Specific(_) => "that player owns".to_string(),
                 PlayerFilter::MostLifeTied => {
                     "the player with the most life or tied for most life owns".to_string()
+                }
+                PlayerFilter::LowestLifeTied => {
+                    "the player with the lowest life or tied for lowest life owns".to_string()
                 }
                 PlayerFilter::MostCardsInHand => {
                     "the player who has the most cards in hand owns".to_string()
@@ -2090,6 +2101,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::EffectController => "the player who cast this spell's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::MostLifeTied => "the chosen player's".to_string(),
+        PlayerFilter::LowestLifeTied => "the chosen player's".to_string(),
         PlayerFilter::MostCardsInHand => "the player with the most cards in hand's".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "a player who cast one or more {} spells this turn's",
@@ -2144,6 +2156,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::MostLifeTied => "player with the most life or tied for most life".to_string(),
+        PlayerFilter::LowestLifeTied => {
+            "player with the lowest life or tied for lowest life".to_string()
+        }
         PlayerFilter::MostCardsInHand => "the player who has the most cards in hand".to_string(),
         PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
             "player who cast one or more {} spells this turn",

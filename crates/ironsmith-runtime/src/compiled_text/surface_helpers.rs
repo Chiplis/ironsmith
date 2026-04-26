@@ -136,8 +136,16 @@ pub(super) fn is_render_heading_prefix(prefix: &str) -> bool {
         || prefix.starts_with("alternative cast ")
 }
 
-pub(super) fn normalize_granted_activated_ability_clause(_text: &str) -> Option<String> {
-    None
+pub(super) fn normalize_granted_activated_ability_clause(text: &str) -> Option<String> {
+    let (prefix, rest) = text.split_once(" gain \"{T}, choose ")?;
+    let (choice, suffix) = rest.split_once(": this spell fights ")?;
+    let (fought, tail) = suffix.split_once('"')?;
+    if fought != choice {
+        return None;
+    }
+    Some(format!(
+        "{prefix} gain \"{{T}}: This creature fights {choice}\"{tail}"
+    ))
 }
 
 pub(super) fn normalize_granted_beginning_trigger_clause(_text: &str) -> Option<String> {

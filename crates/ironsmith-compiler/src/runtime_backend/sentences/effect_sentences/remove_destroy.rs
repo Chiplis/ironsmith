@@ -13,7 +13,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 )));
             }
             let target = parse_target_phrase(&target_tokens)?;
-            return Ok(EffectAst::RemoveFromCombat { target });
+            return Ok(EffectAst::subject_verb_remove_from_combat(target));
         }
     }
 
@@ -49,12 +49,12 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 Some(counter_type) => Value::CountersOnSource(counter_type),
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
             };
-            return Ok(EffectAst::RemoveUpToAnyCounters {
+            return Ok(EffectAst::subject_verb_remove_up_to_any_counters(
                 amount,
-                target: TargetAst::Source(span_from_tokens(&target_tokens)),
+                TargetAst::Source(span_from_tokens(&target_tokens)),
                 counter_type,
-                up_to: false,
-            });
+                false,
+            ));
         }
     }
 
@@ -99,12 +99,12 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         .is_some_and(|token| token.is_word("each") || token.is_word("all"))
     {
         let filter = parse_object_filter(&target_tokens[1..], false)?;
-        return Ok(EffectAst::RemoveCountersAll {
+        return Ok(EffectAst::subject_verb_remove_counters_all(
             amount,
             filter,
             counter_type,
             up_to,
-        });
+        ));
     }
 
     let for_each_idx = find_window_by(&target_tokens, 2, |window: &[OwnedLexToken]| {
@@ -120,12 +120,12 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             ) {
                 return Ok(EffectAst::ForEachObject {
                     filter: count_filter,
-                    effects: vec![EffectAst::RemoveUpToAnyCounters {
+                    effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
                         amount,
                         target,
                         counter_type,
                         up_to,
-                    }],
+                    )],
                 });
             }
         }
@@ -134,12 +134,12 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let target_tokens = trim_commas(&tokens[idx..]);
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(EffectAst::RemoveUpToAnyCounters {
+    Ok(EffectAst::subject_verb_remove_up_to_any_counters(
         amount,
         target,
         counter_type,
         up_to,
-    })
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,7 +261,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
     if let Some(target) = parse_destroy_combat_history_target(&core_tokens)? {
         return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::Destroy { target },
+            EffectAst::subject_verb_destroy(target),
             delayed_timing,
         ));
     }
@@ -322,7 +322,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 let filter = parse_object_filter(&filter_tokens, false)?;
                 let target = parse_target_phrase(&target_tokens)?;
                 return Ok(wrap_destroy_with_delayed_timing(
-                    EffectAst::DestroyAllAttachedTo { filter, target },
+                    EffectAst::subject_verb_destroy_all_attached_to(filter, target),
                     delayed_timing,
                 ));
             }
@@ -340,7 +340,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 let exception_filter = parse_object_filter(&exception_tokens, false)?;
                 apply_except_filter_exclusions(&mut filter, &exception_filter);
                 return Ok(wrap_destroy_with_delayed_timing(
-                    EffectAst::DestroyAll { filter },
+                    EffectAst::subject_verb_destroy_all(filter),
                     delayed_timing,
                 ));
             }
@@ -363,7 +363,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             }
             let filter = parse_object_filter(&base_filter_tokens, false)?;
             return Ok(wrap_destroy_with_delayed_timing(
-                EffectAst::DestroyAllOfChosenColor { filter },
+                EffectAst::subject_verb_destroy_all_of_chosen_color(filter, false),
                 delayed_timing,
             ));
         }
@@ -402,14 +402,14 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             };
             filter = filter.match_tagged(TagKey::from(IT_TAG), relation);
             return Ok(wrap_destroy_with_delayed_timing(
-                EffectAst::DestroyAll { filter },
+                EffectAst::subject_verb_destroy_all(filter),
                 delayed_timing,
             ));
         }
 
         let filter = parse_destroy_all_filter(filter_tokens)?;
         return Ok(wrap_destroy_with_delayed_timing(
-            EffectAst::DestroyAll { filter },
+            EffectAst::subject_verb_destroy_all(filter),
             delayed_timing,
         ));
     }
@@ -455,9 +455,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                     predicate: outer_predicate,
                     if_true: vec![EffectAst::Conditional {
                         predicate: base_predicate,
-                        if_true: vec![EffectAst::Destroy {
-                            target: target.clone(),
-                        }],
+                        if_true: vec![EffectAst::subject_verb_destroy(target.clone())],
                         if_false: Vec::new(),
                     }],
                     if_false: Vec::new(),
@@ -467,7 +465,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             ConditionalPredicateTailSpec::Plain(predicate) => wrap_destroy_with_delayed_timing(
                 EffectAst::Conditional {
                     predicate,
-                    if_true: vec![EffectAst::Destroy { target }],
+                    if_true: vec![EffectAst::subject_verb_destroy(target)],
                     if_false: Vec::new(),
                 },
                 delayed_timing,
@@ -498,7 +496,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         return Ok(wrap_destroy_with_delayed_timing(
             EffectAst::Conditional {
                 predicate: PredicateAst::TargetIsBlocked,
-                if_true: vec![EffectAst::Destroy { target }],
+                if_true: vec![EffectAst::subject_verb_destroy(target)],
                 if_false: Vec::new(),
             },
             delayed_timing,
@@ -507,7 +505,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 
     let target = parse_target_phrase(&core_tokens)?;
     Ok(wrap_destroy_with_delayed_timing(
-        EffectAst::Destroy { target },
+        EffectAst::subject_verb_destroy(target),
         delayed_timing,
     ))
 }

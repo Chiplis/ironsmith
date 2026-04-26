@@ -27,11 +27,26 @@ const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"]];
 const EACH_OPPONENT_AND_EACH_PREFIXES: &[&[&str]] = &[&["each", "opponent", "and", "each"]];
 const FIRST_CARD_YOU_DRAW_PREFIXES: &[&[&str]] = &[&["the", "first", "card", "you", "draw"]];
 
+fn subject_verb_player_resource_effect(
+    role: SubjectVerbRoleAst,
+    player: PlayerAst,
+    action: SubjectVerbActionAst,
+) -> EffectAst {
+    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: SubjectVerbSubjectAst { role, player },
+        action,
+    })
+}
+
 pub(crate) fn parse_effect_with_verb(
     verb: Verb,
     subject: Option<SubjectAst>,
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    crate::parse_trace::event(format!(
+        "effect-route: subject-verb verb={verb:?} subject={}",
+        if subject.is_some() { "explicit" } else { "implicit" }
+    ));
     match verb {
         Verb::Add => parse_add_mana(tokens, subject),
         Verb::Move => parse_move(tokens),
@@ -114,10 +129,7 @@ fn parse_take(
         words.as_slice(),
         ["an", "extra", "turn", "after", "this", "one"]
     ) {
-        return Ok(EffectAst::ExtraTurnAfterTurn {
-            player: extract_subject_player(subject).unwrap_or(PlayerAst::You),
-            anchor: ExtraTurnAnchorAst::CurrentTurn,
-        });
+        return Ok(EffectAst::subject_verb_extra_turn_after_turn(extract_subject_player(subject).unwrap_or(PlayerAst::You), ExtraTurnAnchorAst::CurrentTurn));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -128,9 +140,7 @@ fn parse_take(
 
 fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
-        return Ok(EffectAst::Proliferate {
-            count: Value::Fixed(1),
-        });
+        return Ok(EffectAst::subject_verb_proliferate(Value::Fixed(1)));
     }
 
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
@@ -163,7 +173,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         )));
     }
 
-    Ok(EffectAst::Proliferate { count })
+    Ok(EffectAst::subject_verb_proliferate(count))
 }
 
 fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -342,9 +352,10 @@ pub(crate) fn parse_look(
             PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             PlayerAst::Any => {
                 return Ok(EffectAst::ForEachPlayer {
-                    effects: vec![EffectAst::LookAtHand {
-                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-                    }],
+                    effects: vec![EffectAst::subject_verb_look_at_hand(TargetAst::Player(
+                        PlayerFilter::IteratedPlayer,
+                        None,
+                    ))],
                 });
             }
             _ => {
@@ -355,7 +366,7 @@ pub(crate) fn parse_look(
             }
         };
 
-        return Ok(EffectAst::LookAtHand { target });
+        return Ok(EffectAst::subject_verb_look_at_hand(target));
     }
 
     let Some(top_idx) = find_index(&clause_tokens, |t| t.is_word("top")) else {
@@ -447,19 +458,15 @@ pub(crate) fn parse_look(
 
     if matches!(player, PlayerAst::Any) {
         return Ok(EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::LookAtTopCards {
-                player: PlayerAst::That,
+            effects: vec![EffectAst::subject_verb_look_at_top_cards(
+                PlayerAst::That,
                 count,
-                tag: TagKey::from(IT_TAG),
-            }],
+                TagKey::from(IT_TAG),
+            )],
         });
     }
 
-    Ok(EffectAst::LookAtTopCards {
-        player,
-        count,
-        tag: TagKey::from(IT_TAG),
-    })
+    Ok(EffectAst::subject_verb_look_at_top_cards(player, count, TagKey::from(IT_TAG)))
 }
 
 pub(crate) fn parse_reorder(
@@ -495,7 +502,7 @@ pub(crate) fn parse_reorder(
         )));
     }
 
-    Ok(EffectAst::ReorderGraveyard { player })
+    Ok(EffectAst::subject_verb_reorder_graveyard(player))
 }
 
 pub(crate) fn parse_shuffle(
@@ -567,7 +574,11 @@ pub(crate) fn parse_shuffle(
         // Support standalone "Shuffle." clauses. If the sentence includes an explicit player
         // subject, use it; otherwise return an implicit player that can be filled in by the
         // carry-context logic (and compiles to "you" by default).
-        return Ok(EffectAst::ShuffleLibrary { player });
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -589,20 +600,22 @@ pub(crate) fn parse_shuffle(
                 return Ok(EffectAst::ForEachTagged {
                     tag: TagKey::from(IT_TAG),
                     effects: vec![
-                        EffectAst::MoveToZone {
-                            target: TargetAst::Tagged(
+                        EffectAst::subject_verb_move_to_zone(
+                            TargetAst::Tagged(
                                 TagKey::from(IT_TAG),
                                 span_from_tokens(tokens),
                             ),
-                            zone: Zone::Library,
-                            to_top: false,
-                            battlefield_controller: ReturnControllerAst::Preserve,
-                            battlefield_tapped: false,
-                            attached_to: None,
-                        },
-                        EffectAst::ShuffleLibrary {
-                            player: destination_player,
-                        },
+                            Zone::Library,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        ),
+                        subject_verb_player_resource_effect(
+                            SubjectVerbRoleAst::LibraryOwner,
+                            destination_player,
+                            SubjectVerbActionAst::ShuffleLibrary,
+                        ),
                     ],
                 });
             }
@@ -618,9 +631,11 @@ pub(crate) fn parse_shuffle(
                 parse_library_destination_player(&destination_words, player)
             && is_supported_shuffle_source_tail(&destination_words[consumed..])
         {
-            return Ok(EffectAst::ShuffleLibrary {
-                player: destination_player,
-            });
+            return Ok(subject_verb_player_resource_effect(
+                SubjectVerbRoleAst::LibraryOwner,
+                destination_player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
         }
     }
 
@@ -636,17 +651,19 @@ pub(crate) fn parse_shuffle(
         return Ok(EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
             effects: vec![
-                EffectAst::MoveToZone {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-                    zone: Zone::Library,
-                    to_top: true,
-                    battlefield_controller: ReturnControllerAst::Preserve,
-                    battlefield_tapped: false,
-                    attached_to: None,
-                },
-                EffectAst::ShuffleLibrary {
-                    player: PlayerAst::ItsOwner,
-                },
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                    Zone::Library,
+                    true,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+                subject_verb_player_resource_effect(
+                    SubjectVerbRoleAst::LibraryOwner,
+                    PlayerAst::ItsOwner,
+                    SubjectVerbActionAst::ShuffleLibrary,
+                ),
             ],
         });
     }
@@ -662,7 +679,11 @@ pub(crate) fn parse_shuffle(
         )));
     }
     if is_simple_library_phrase(&clause_words) {
-        return Ok(EffectAst::ShuffleLibrary { player });
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -679,9 +700,10 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if target_words.as_slice() == ["it"] || target_words.as_slice() == ["them"] {
-        return Ok(EffectAst::Goad {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
-        });
+        return Ok(EffectAst::subject_verb_goad(TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(&target_tokens),
+        )));
     }
 
     let target = parse_target_phrase(&target_tokens)?;
@@ -695,7 +717,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
         )));
     }
 
-    Ok(EffectAst::Goad { target })
+    Ok(EffectAst::subject_verb_goad(target))
 }
 
 pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -708,12 +730,13 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if matches!(target_words.as_slice(), ["it"] | ["them"]) {
-        return Ok(EffectAst::Detain {
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
-        });
+        return Ok(EffectAst::subject_verb_detain(TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(&target_tokens),
+        )));
     }
 
-    Ok(EffectAst::Detain {
-        target: parse_target_phrase(&target_tokens)?,
-    })
+    Ok(EffectAst::subject_verb_detain(parse_target_phrase(
+        &target_tokens,
+    )?))
 }

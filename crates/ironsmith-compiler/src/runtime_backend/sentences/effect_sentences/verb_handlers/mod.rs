@@ -1,7 +1,8 @@
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, ControlDurationAst, EffectAst, EventValueSpec, ExtraTurnAnchorAst, IT_TAG,
-    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey,
+    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey,
     TargetAst, TextSpan, Verb,
 };
 use crate::effect::{ChoiceCount, Until, Value};
@@ -24,7 +25,7 @@ use super::super::grammar::structure::{
 };
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
-    parse_where_x_value_clause,
+    parse_value_binding_clause,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -45,7 +46,7 @@ use super::super::value_helpers::{
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
-use super::sentence_primitives::try_build_unless;
+use super::subject_verb_primitives::try_build_unless;
 use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_transform};
 use super::zone_handlers::{
     DelayedReturnTimingAst, parse_become, parse_delayed_return_timing_words, parse_destroy,
