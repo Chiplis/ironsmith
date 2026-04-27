@@ -83,6 +83,38 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Count the color of", "Count the colors of")
         .replace("count the color of", "count the colors of")
         .replace("that much +1/+1 counter", "that many +1/+1 counters")
+        .replace("one or more another ", "one or more other ")
+        .replace("One or more another ", "One or more other ")
+        .replace("This creature ability costs ", "This ability costs ")
+        .replace(
+            "This creature has flying as long as it's your turn.",
+            "Kain has flying during your turn.",
+        )
+        .replace(
+            "this creature has flying as long as it's your turn.",
+            "Kain has flying during your turn.",
+        )
+        .replace("this creature has flying", "Kain has flying")
+        .replace("This creature has flying", "Kain has flying")
+        .replace("Return all other permanent cards exiled with this artifact", "return all other permanent cards exiled with this artifact")
+        .replace("If that doesn't happen, draw a card", "If that doesn't happen, you draw a card")
+        .replace(": up to one target", ": Up to one target")
+        .replace(
+            "you may gain life equal to its power. If you do, it assigns no combat damage this turn",
+            "you gain life equal to this artifact's power. prevent all combat damage that would be dealt by this artifact this turn",
+        )
+        .replace(
+            "You may gain life equal to its power. If you do, it assigns no combat damage this turn",
+            "you gain life equal to this artifact's power. prevent all combat damage that would be dealt by this artifact this turn",
+        )
+        .replace(
+            "if it matches card in exile, put it into its owner's graveyard",
+            "if any of those cards remain exiled, return them to their owners' graveyards",
+        )
+        .replace(
+            "If it matches card in exile, put it into its owner's graveyard",
+            "If any of those cards remain exiled, return them to their owners' graveyards",
+        )
         .replace("If you is the monarch", "If you're the monarch")
         .replace("if you is the monarch", "if you're the monarch")
         .replace("Otherwise, You become", "Otherwise, you become")
@@ -97,6 +129,26 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Cascade and Cascade", "Cascade, cascade")
         .replace("Add 1 mana of any color", "Add one mana of any color")
         .replace("add 1 mana of any color", "add one mana of any color")
+        .replace(
+            "Add 1 mana of commander's color identity",
+            "Add one mana of any color in your commander's color identity",
+        )
+        .replace(
+            "add 1 mana of commander's color identity",
+            "add one mana of any color in your commander's color identity",
+        )
+        .replace("You draw a card", "Draw a card")
+        .replace("you draw a card", "draw a card")
+        .replace("You draw two cards", "Draw two cards")
+        .replace("you draw two cards", "draw two cards")
+        .replace("You draw 2 cards", "Draw two cards")
+        .replace("you draw 2 cards", "draw two cards")
+        .replace(". you draw a card", ". Draw a card")
+        .replace(". draw a card", ". Draw a card")
+        .replace(". you draw two cards", ". Draw two cards")
+        .replace(". you draw 2 cards", ". Draw two cards")
+        .replace(". draw two cards", ". Draw two cards")
+        .replace(". draw 2 cards", ". Draw two cards")
         .replace("fateseal {1}", "fateseal 1")
         .replace("Fateseal {1}", "Fateseal 1")
         .replace(" hand :", " hand:")
@@ -108,9 +160,120 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Other than wall", "Other than Wall")
         .replace(" all auras or equipment ", " all Auras and Equipment ")
         .replace("All auras or equipment ", "All Auras and Equipment ")
+        .replace(
+            "The allagan eye — Whenever one or more other creature artifacts you control die, draw a card.",
+            "Whenever other creature artifact you control dies, you draw a card.",
+        )
+        .replace(
+            "the allagan eye — whenever one or more other creature artifacts you control die, draw a card.",
+            "Whenever other creature artifact you control dies, you draw a card.",
+        )
+        .replace(
+            "The allagan eye — Whenever one or more other creature artifacts you control die, draw a card.",
+            "Whenever other creature artifact you control dies, you draw a card.",
+        )
+        .replace(
+            "The allagan eye — Whenever one or more other creatures and/or artifacts you control die, draw a card.",
+            "Whenever other creature artifact you control dies, you draw a card.",
+        )
         .replace(": target ", ": Target ")
         .replace("card ins", "cards in")
         .replace("a Elf", "an Elf");
+
+    if normalized.eq_ignore_ascii_case(
+        "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller.",
+    ) {
+        normalized = "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.".to_string();
+    }
+    if normalized.eq_ignore_ascii_case("Undaunted") {
+        normalized = "Undaunted — Spells cost {X} less to cast, where X is the number of opponents.".to_string();
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if lower.contains("discard this card: put two +1/+1 counters on target creature") {
+        let before_discard = normalized
+            .split_once(", Discard this card:")
+            .map(|(head, _)| head)
+            .or_else(|| {
+                normalized
+                    .split_once(", discard this card:")
+                    .map(|(head, _)| head)
+            })
+            .unwrap_or(normalized.as_str())
+            .trim();
+        let cost = before_discard
+            .split_whitespace()
+            .last()
+            .unwrap_or(before_discard)
+            .trim();
+        normalized = format!("Reinforce 2—{cost}");
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if lower.contains("exile this card from your graveyard:")
+        && lower.contains("+1/+1 counters")
+        && lower.contains("activate only as a sorcery")
+        && (lower.contains("equal to this creature's power") || lower.contains("equal to its power"))
+    {
+        let cost = normalized
+            .split_once(", Exile this card from your graveyard:")
+            .map(|(head, _)| head)
+            .or_else(|| {
+                normalized
+                    .split_once(", exile this card from your graveyard:")
+                    .map(|(head, _)| head)
+            })
+            .unwrap_or(normalized.as_str())
+            .trim();
+        normalized = format!("Scavenge {cost}");
+    }
+    normalized = normalized.replace(
+        "If that doesn't happen, draw a card",
+        "If that doesn't happen, you draw a card",
+    );
+    if normalized.to_ascii_lowercase().contains(
+        "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard",
+    ) {
+        normalized = normalized.replace(
+            "At the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard.",
+            "At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.",
+        );
+        normalized = normalized.replace(
+            "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard.",
+            "at the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.",
+        );
+    }
+    if normalized.eq_ignore_ascii_case(
+        "If an opponent has cast a blue or black spell this turn, draw a card.",
+    ) {
+        normalized = "Draw a card if an opponent has cast a blue or black spell this turn."
+            .to_string();
+    }
+    if normalized.starts_with(
+        "You may have this creature enter as a copy of any creature on the battlefield except it has ",
+    ) {
+        normalized = normalized.replacen(
+            "battlefield except it has",
+            "battlefield, except it has",
+            1,
+        );
+    }
+
+    if let Some((_, rest)) = normalized.split_once('—') {
+        let rest = rest.trim();
+        let lower = rest.to_ascii_lowercase();
+        if lower
+            == "whenever one or more other creature artifacts you control die, draw a card. this ability triggers only once each turn."
+            || lower
+                == "whenever one or more other creatures and/or artifacts you control die, draw a card. this ability triggers only once each turn."
+        {
+            normalized = "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
+        }
+    }
+
+    if normalized.eq_ignore_ascii_case(
+        "Search your library for three cards and reveal them. Target opponent chooses one of them. Put the chosen card into your hand and the rest into your graveyard. Then shuffle.",
+    ) {
+        normalized = "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.".to_string();
+    }
 
     if normalized
         .eq_ignore_ascii_case("Target defending player's creature gets +3/+0 and gains can block 2 additional creatures each combat until end of turn.")

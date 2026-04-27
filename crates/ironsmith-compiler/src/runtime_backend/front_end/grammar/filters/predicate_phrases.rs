@@ -958,6 +958,26 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceHasNoCounter(counter_type));
     }
 
+    if let Some(prefix_len) = source_has_counter_prefix_len
+        && raw_words.len() >= prefix_len + 4
+        && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
+            *word == "counter" || *word == "counters"
+        })
+        && counter_idx > 0
+        && let Some(counter_type) =
+            parse_counter_type_from_tokens(&tokens[prefix_len..=prefix_len + counter_idx])
+        && raw_words.get(prefix_len + counter_idx + 1) == Some(&"on")
+        && matches!(
+            raw_words.get(prefix_len + counter_idx + 2).copied(),
+            Some("it" | "him" | "her" | "them" | "this" | "that")
+        )
+    {
+        return Ok(PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count: 1,
+        });
+    }
+
     let triggering_object_had_no_counter_prefix_len =
         if slice_starts_with(&raw_words, &["it", "had", "no"]) {
             Some(3)
@@ -981,6 +1001,41 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         )
     {
         return Ok(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
+    }
+
+    let triggering_object_had_counter_prefix_len = if slice_starts_with(&raw_words, &["it", "had"])
+    {
+        Some(2)
+    } else if slice_starts_with(&raw_words, &["this", "creature", "had"])
+        || slice_starts_with(&raw_words, &["that", "creature", "had"])
+        || slice_starts_with(&raw_words, &["this", "permanent", "had"])
+        || slice_starts_with(&raw_words, &["that", "permanent", "had"])
+    {
+        Some(3)
+    } else {
+        None
+    };
+    if let Some(prefix_len) = triggering_object_had_counter_prefix_len
+        && raw_words.len() >= prefix_len + 4
+        && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
+            *word == "counter" || *word == "counters"
+        })
+        && counter_idx > 0
+        && let Some(counter_type) =
+            parse_counter_type_from_tokens(&tokens[prefix_len..=prefix_len + counter_idx])
+        && raw_words.get(prefix_len + counter_idx + 1) == Some(&"on")
+        && matches!(
+            raw_words
+                .get(prefix_len + counter_idx + 2)
+                .copied()
+                .unwrap_or(""),
+            "it" | "them" | "this" | "that" | "itself"
+        )
+    {
+        return Ok(PredicateAst::TriggeringObjectHadCounterAtLeast {
+            counter_type,
+            count: 1,
+        });
     }
 
     if slice_starts_with(&raw_words, &["there", "are"])

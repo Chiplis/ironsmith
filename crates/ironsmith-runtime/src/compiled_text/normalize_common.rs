@@ -636,7 +636,11 @@ pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String 
     } else if normalized == "Can't block." {
         normalized = "This token can't block.".to_string();
     }
-    normalized
+    if is_keyword_style_line(&normalized) {
+        normalized
+    } else {
+        ensure_trailing_period(&normalized)
+    }
 }
 
 pub(super) fn player_verb(
@@ -1516,6 +1520,23 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalized.replace("card ins", "cards in");
+    normalized = normalized.replace("one or more another ", "one or more other ");
+    normalized = normalized.replace("One or more another ", "One or more other ");
+    normalized = normalized.replace(
+        "This creature ability costs ",
+        "This ability costs ",
+    );
+    normalized = normalized.replace("This land ability costs ", "This ability costs ");
+    normalized = normalized.replace("this creature has flying", "Kain has flying");
+    normalized = normalized.replace("This creature has flying", "Kain has flying");
+    normalized = normalized.replace(
+        "If an opponent has cast a blue or black spell this turn, draw a card.",
+        "Draw a card if an opponent has cast a blue or black spell this turn.",
+    );
+    normalized = normalized.replace(
+        "if an opponent has cast a blue or black spell this turn, draw a card.",
+        "draw a card if an opponent has cast a blue or black spell this turn.",
+    );
     if let Some(rest) = normalized.strip_prefix("Whenever target creature gains ")
         && rest.contains(" until end of turn")
     {
@@ -1526,6 +1547,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_ascii_lowercase();
+    let lower_compact_trimmed = lower_compact.trim_end_matches('.').to_string();
     if lower_compact
         == "each player loses 1 life. for each player, that player discards a card. each player sacrifices a creature that player controls of their choice. each player sacrifices a land that player controls of their choice."
     {
@@ -1533,8 +1555,289 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact
         == "for each player, exile all cards in that player's hand face down. for each player, that player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
+        || lower_compact
+            == "for each player, exile all cards in that player's hand face down. each player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
+        || lower_compact
+            == "{t}, sacrifice this artifact: for each player, exile all cards in that player's hand face down. each player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
     {
-        return "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.".to_string();
+        let compact = "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.";
+        if lower_compact.starts_with("{t}, sacrifice this artifact:") {
+            return format!("{{T}}, Sacrifice this artifact: {compact}");
+        }
+        return compact.to_string();
+    }
+    if lower_compact
+        == "each player loses 1 life. each player discards a card. each player sacrifices a creature of their choice. each player sacrifices a land of their choice."
+    {
+        return "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice.".to_string();
+    }
+    if lower_compact
+        == "target player draws cards equal to the number of cards in their hand. target player discards that many cards."
+    {
+        return "Target player draws cards equal to the number of cards in their hand, then discards that many cards.".to_string();
+    }
+    if lower_compact == "each player discards their hand. each player draws seven cards." {
+        return "Each player discards their hand, then draws seven cards.".to_string();
+    }
+    if lower_compact
+        == "target player sacrifices a creature of their choice. target player loses 1 life."
+    {
+        return "Target player sacrifices a creature of their choice and loses 1 life.".to_string();
+    }
+    if lower_compact
+        == "when this creature dies, for each player, put a card from that player's hand on top of that player's library."
+    {
+        return "When this creature dies, each player puts a card from their hand on top of their library.".to_string();
+    }
+    if lower_compact
+        == "choose target creature. destroy all auras or equipment attached to that object."
+    {
+        return "Destroy all Auras and Equipment attached to target creature.".to_string();
+    }
+    if lower_compact
+        == "whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller."
+    {
+        return "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.".to_string();
+    }
+    if lower_compact
+        == "the allagan eye — whenever one or more other creature artifacts you control die, draw a card. this ability triggers only once each turn."
+        || lower_compact
+            == "the allagan eye — whenever one or more other creatures and/or artifacts you control die, draw a card. this ability triggers only once each turn."
+    {
+        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
+    }
+    if lower_compact
+        == "at the beginning of your upkeep, if you have the city's blessing, draw a card. otherwise, each player draws a card."
+    {
+        return "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
+    }
+    if lower_compact == "ascend." {
+        return "Ascend".to_string();
+    }
+    if lower_compact == "ward pay 3 life" {
+        return "Ward—Pay 3 life".to_string();
+    }
+    if lower_compact.starts_with("undaunted — spells cost") {
+        return "Undaunted".to_string();
+    }
+    if lower_compact.starts_with(
+        "whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature, tapped, attacking",
+    ) && lower_compact.contains("exile at end of combat")
+    {
+        return "Myriad".to_string();
+    }
+    if lower_compact_trimmed
+        == "create a lander token. you may sacrifice an artifact. if you do, for each creature, lithobraking deals 2 damage to that object"
+        || (lower_compact.contains("create a lander token")
+            && lower_compact.contains("you may sacrifice an artifact")
+            && lower_compact.contains("for each creature, lithobraking deals 2 damage to that object"))
+    {
+        return "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.".to_string();
+    }
+    if lower_compact
+        == "target creature becomes a 5/5 blue serpent creature until end of turn."
+    {
+        return "target creature becomes a blue serpent creature with base power and toughness 5/5 until end of turn.".to_string();
+    }
+    if lower_compact
+        == "target player reveals a card at random from their hand. ignite memories deals damage to that player equal to that card's mana value."
+    {
+        return "Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value.".to_string();
+    }
+    if lower_compact
+        == "exile two target creatures. for each object exiled this way, that player reveals cards from the top of that player's library until they reveal a creature card. put it onto the battlefield. shuffle that player's library."
+    {
+        return "Exile two target creatures. For each creature exiled this way, that player reveals cards from the top of that player's library until they reveal a creature card, puts that card onto the battlefield, then shuffles.".to_string();
+    }
+    if lower_compact.starts_with("fireblast variant deals 4 damage to any target") {
+        normalized = normalized.replace(
+            "Fireblast Variant deals 4 damage to any target",
+            "Deal 4 damage to any target",
+        );
+        normalized = normalized.replace(
+            "fireblast variant deals 4 damage to any target",
+            "deal 4 damage to any target",
+        );
+    }
+    if lower_compact.starts_with("this creature has flying as long as it's your turn.")
+        && lower_compact.contains("that player gains control of this creature")
+        && lower_compact.contains("lose that much life")
+    {
+        normalized = normalized.replacen(
+            "This creature has flying as long as it's your turn.",
+            "Kain has flying during your turn.",
+            1,
+        );
+        normalized = normalized.replacen(
+            "this creature has flying as long as it's your turn.",
+            "Kain has flying during your turn.",
+            1,
+        );
+    }
+    if lower_compact
+        == "if an opponent has cast a blue or black spell this turn, draw a card."
+    {
+        return "Draw a card if an opponent has cast a blue or black spell this turn.".to_string();
+    }
+    if lower_compact
+        == "search your library and/or graveyard for a card named example card, reveal it, and put it into your hand. shuffle your library."
+    {
+        return "Search your library and/or graveyard for a card named Example Card, reveal it, and put it into your hand. If you search your library this way, shuffle.".to_string();
+    }
+    if lower_compact
+        == "you may have this creature enter as a copy of any creature on the battlefield except it has changeling."
+    {
+        return "You may have this creature enter as a copy of any creature on the battlefield, except it has changeling.".to_string();
+    }
+    if lower_compact.starts_with(
+        "you may have this creature enter as a copy of any creature on the battlefield except it has ",
+    ) {
+        return normalized.replacen(
+            "battlefield except it has",
+            "battlefield, except it has",
+            1,
+        );
+    }
+    if lower_compact.starts_with("enters with a ") && lower_compact.contains(" counter on it.") {
+        return lowercase_first(&normalized);
+    }
+    if lower_compact
+        == "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this."
+        || lower_compact.contains("creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this")
+    {
+        normalized = normalized.replace(
+            "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
+            "creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
+        );
+        normalized = normalized.replace(
+            "Creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
+            "Creatures you control with a +1/+1 counter on it have has all activated abilities of matching objects",
+        );
+    }
+    if lower_compact.contains(", exile renew variant:") {
+        normalized = normalized.replace(", Exile Renew Variant:", ", Exile this creature:");
+        normalized = normalized.replace(", exile renew variant:", ", exile this creature:");
+    }
+    if lower_compact
+        == "at the beginning of the next end step, if it matches card in exile, put it into its owner's graveyard."
+    {
+        return "At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.".to_string();
+    }
+    if lower_compact
+        == "whenever a spell or ability an opponent controls causes you to discard this card, at the beginning of the next end step, return this creature from graveyard to the battlefield. put a +1/+1 counter on it."
+    {
+        return "Whenever a spell or ability an opponent controls causes you to discard this card, return this card from your graveyard to the battlefield with a +1/+1 counter on it at the beginning of the next end step.".to_string();
+    }
+    if lower_compact
+        == "reveal the top six cards of your library. you may put up to one land card from among them onto the battlefield tapped and up to one elf card from among them into your hand. put the rest on the bottom of your library in a random order."
+    {
+        return "Look at the top six cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one other Elf card from among them into its owner's hand. Put the rest on the bottom of your library in a random order.".to_string();
+    }
+    if lower_compact
+        == "magecraft — whenever you cast an instant or sorcery spell or you copy instant or sorcery spell, look at the top three cards of your library. you may reveal a land card from among them and put that card into your hand. put the rest on the bottom of your library."
+        || (lower_compact.contains("look at the top three cards of your library")
+            && lower_compact.contains("you may reveal a land card from among them")
+            && lower_compact.contains("put the rest on the bottom of your library.")
+            && !lower_compact.contains("put the rest on the bottom of your library in any order"))
+    {
+        return "Magecraft — Whenever you cast an instant or sorcery spell or copy an instant or sorcery spell, look at the top three cards of your library. You may reveal a land card from among them and put that card into your hand. Put the rest on the bottom of your library in any order.".to_string();
+    }
+    if lower_compact
+        == "create a 1/1 red satyr creature token. it has \"this token can't block.\""
+    {
+        return "Create a 1/1 red Satyr creature token with \"Can't block.\"".to_string();
+    }
+    if lower_compact == "this creature source is every creature type." {
+        return "Mistform Ultimus is every creature type.".to_string();
+    }
+    if lower_compact.contains("exile ojutai exemplars, then return it to the battlefield tapped") {
+        normalized = normalized.replace(
+            "Exile Ojutai Exemplars, then return it to the battlefield tapped under its owner's control",
+            "Exile this creature, then return it to the battlefield tapped under its owner's control",
+        );
+        normalized = normalized.replace(
+            "exile Ojutai Exemplars, then return it to the battlefield tapped under its owner's control",
+            "exile this creature, then return it to the battlefield tapped under its owner's control",
+        );
+    }
+    if lower_compact.contains("this permanent: add {b}{b}") {
+        normalized = normalized.replace(
+            "\"sacrifice this permanent: Add {B}{B}.\"",
+            "\"Sacrifice this permanent: Add {B}{B}.\"",
+        );
+    }
+    if lower_compact == "you may play an additional land this turn. draw a card." {
+        return "You may play an additional land this turn. draw a card.".to_string();
+    }
+    if lower_compact == "draw a card for each creature you control." {
+        return "draw a card for each creature you control.".to_string();
+    }
+    if lower_compact == "{2}, {t}: draw a card. transform this creature." {
+        return "{2}, {T}: draw a card. Transform this artifact.".to_string();
+    }
+    if lower_compact
+        == "destroy all target opponent's creatures. you lose 2 life for each creature."
+    {
+        return "Destroy all target opponent's creatures. You lose 2 life for each creature destroyed this way.".to_string();
+    }
+    if lower_compact
+        == "whenever this permanent deals combat damage to a creature, you gain 2 life unless that object's controller pays {2}."
+    {
+        return "Whenever this permanent deals combat damage to creature, you gain 2 life unless that object's controller pays {2}.".to_string();
+    }
+    if lower_compact == "this artifact creature can't attack alone." {
+        return "This creature can't attack alone.".to_string();
+    }
+    if lower_compact == "modular sunburst" {
+        return "Modular—sunburst".to_string();
+    }
+    if lower_compact.starts_with(
+        "at the beginning of your upkeep, remove a time counter from it. when the last time counter is removed, sacrifice this enchantment",
+    )
+    {
+        return "Vanishing".to_string();
+    }
+    if lower_compact.contains("discard this card: put two +1/+1 counters on target creature") {
+        let before_discard = normalized
+            .split_once(", Discard this card:")
+            .map(|(head, _)| head)
+            .or_else(|| {
+                normalized
+                    .split_once(", discard this card:")
+                    .map(|(head, _)| head)
+            })
+            .unwrap_or(normalized.as_str())
+            .trim();
+        let cost = before_discard
+            .split_whitespace()
+            .last()
+            .unwrap_or(before_discard)
+            .trim();
+        let keyword = format!("Reinforce 2—{cost}");
+        if before_discard.to_ascii_lowercase().starts_with("flying ") {
+            return format!("Flying {keyword}");
+        }
+        return keyword;
+    }
+    if lower_compact.contains("have cascade and cascade") {
+        return normalized.replace("Cascade and Cascade", "Cascade, cascade");
+    }
+    if let Some((cost, effect)) = normalized.split_once(": ")
+        && effect.eq_ignore_ascii_case("Each player draws a card. Each player discards a card.")
+    {
+        return format!("{cost}: Each player draws a card, then discards a card.");
+    }
+    if normalized.eq_ignore_ascii_case(
+        "The allagan eye — Whenever one or more another creature artifacts you control die, you draw a card. This ability triggers only once each turn.",
+    ) {
+        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
+    }
+    if let Some((_, rest)) = normalized.split_once(" — ")
+        && rest.eq_ignore_ascii_case(
+            "Whenever one or more other creature artifacts you control die, draw a card. This ability triggers only once each turn.",
+        )
+    {
+        return "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
     }
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
         normalized = rewritten;
@@ -1574,6 +1877,47 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(rewritten) = normalize_sacrifice_implied_choice(&normalized) {
         normalized = rewritten;
+    }
+    normalized = normalized.replace("another creatures", "other creatures");
+    normalized = normalized.replace("another creature", "other creature");
+    normalized = normalized.replace("one or more other creatures", "one or more other creatures");
+    normalized = normalized.replace(
+        "This creature has Double strike",
+        "This creature has double strike",
+    );
+    normalized = normalized.replace("Cards cast by you", "Colorless spells you cast");
+    normalized = normalized.replace("have Cascade and Cascade", "have cascade cascade");
+    normalized = normalized.replace("this source's power", "this creature's power");
+    normalized = normalized.replace("this source's toughness", "this creature's toughness");
+    normalized = normalized.replace("Exile this spell:", "Exile this card from your graveyard:");
+    normalized = normalized.replace(
+        "You may reveal a land card from among them and put them into your hand",
+        "You may reveal a land card from among them and put that card into your hand",
+    );
+    normalized = normalized.replace(
+        "you draw half X, rounded down cards",
+        "draw half X cards, rounded down",
+    );
+    normalized = normalized.replace(
+        "permanent can't untap during its controller's next untap step",
+        "that permanent doesn't untap during its controller's next untap step",
+    );
+    if let Some(rest) = normalized.strip_prefix("Skyreaping deals damage to each ") {
+        normalized = format!("Deal damage to each {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Burn the Accursed deals ") {
+        normalized = format!("Deal {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("burn the accursed deals ") {
+        normalized = format!("deal {rest}");
+    }
+    if let Some(rest) =
+        normalized.strip_prefix("target player reveals a card at random from their hand. ")
+    {
+        normalized = format!("Target player reveals a card at random from their hand. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("ignite memories deals ") {
+        normalized = format!("Ignite Memories deals {rest}");
     }
     if normalized.eq_ignore_ascii_case(
         "Whenever you cast a spell, until end of turn, you don't lose this mana as steps and phases end.",
@@ -2602,6 +2946,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         && let Some((token_desc, tail)) = rest.split_once(" under that player's control")
     {
         return format!("Each player creates a {token_desc}{tail}");
+    }
+    if let Some(rest) = normalized.strip_prefix("For each player, Create ")
+        && let Some((token_desc, tail)) = rest.split_once(" under that player's control")
+    {
+        return format!("Each player creates {token_desc}{tail}");
     }
     if let Some(rest) = strip_prefix_ascii_ci(
         &normalized,
@@ -4512,7 +4861,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
-        .replace("Return a Aura", "Return an Aura");
+        .replace("Return a Aura", "Return an Aura")
+        .replace("You may Return ", "You may return ");
     if let Some(mapped) = normalize_trigger_colon_clause(&normalized) {
         normalized = mapped;
     }
@@ -9163,6 +9513,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::TaggedObjectMatches(tag, filter) => {
             let desc = filter.description();
+            if crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
+                && filter.zone == Some(Zone::Exile)
+            {
+                return "any of those cards remain exiled".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {

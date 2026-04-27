@@ -188,6 +188,13 @@ pub(crate) fn parse_if_result_predicate_lexed(
     if is_unqualified_this_way_result("they") {
         return Some(IfResultPredicate::Did);
     }
+    if matches!(
+        words.as_slice(),
+        ["a", "player", "is", "dealt", "damage", "this", "way"]
+            | ["player", "is", "dealt", "damage", "this", "way"]
+    ) {
+        return Some(IfResultPredicate::Did);
+    }
 
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")

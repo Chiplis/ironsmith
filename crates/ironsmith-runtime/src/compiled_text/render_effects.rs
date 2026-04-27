@@ -20500,7 +20500,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let target = describe_choose_spec(&move_to_zone.target);
         return match move_to_zone.zone {
             Zone::Exile => format!("Exile {target}"),
-            Zone::Graveyard => format!("Put {target} into its owner's graveyard"),
+            Zone::Graveyard => {
+                if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
+                    && crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
+                {
+                    "Return those cards to their owners' graveyards".to_string()
+                } else {
+                    format!("Put {target} into its owner's graveyard")
+                }
+            }
             Zone::Hand => {
                 if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
                     && (tag.as_str().starts_with("revealed_")
@@ -24157,7 +24165,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         trigger_text = cleanup_decompiled_text(&trigger_text);
         let trigger_lower = trigger_text.to_ascii_lowercase();
-        let delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+        let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+        if delayed_text.contains("if it matches card in exile, put it into its owner's graveyard")
+        {
+            delayed_text = delayed_text.replace(
+                "if it matches card in exile, put it into its owner's graveyard",
+                "if any of those cards remain exiled, return them to their owners' graveyards",
+            );
+        }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature is dealt damage")
                 || trigger_lower.contains("whenever this creature is dealt damage"))

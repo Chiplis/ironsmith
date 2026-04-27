@@ -29,6 +29,9 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         .replace("Non-equipment", "Non-Equipment")
         .replace("for each a ", "for each ")
         .replace("for each an ", "for each ");
+    if let Some(keyword_line) = normalize_keyword_only_comma_line(&normalized) {
+        normalized = keyword_line;
+    }
     if !is_keyword_style_line(&normalized)
         && !normalized.ends_with('.')
         && !normalized.ends_with('!')
@@ -39,6 +42,29 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         normalized.push('.');
     }
     normalized
+}
+
+fn normalize_keyword_only_comma_line(line: &str) -> Option<String> {
+    let parts = line
+        .trim()
+        .trim_end_matches('.')
+        .split(',')
+        .map(|part| {
+            let part = part.trim();
+            part.strip_prefix("and ").unwrap_or(part)
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() < 2 || !parts.iter().all(|part| is_keyword_phrase(part)) {
+        return None;
+    }
+    Some(capitalize_first(
+        &parts
+            .iter()
+            .map(|part| part.to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(", "),
+    ))
 }
 
 fn replace_standalone_phrase(input: &str, from: &str, to: &str) -> String {

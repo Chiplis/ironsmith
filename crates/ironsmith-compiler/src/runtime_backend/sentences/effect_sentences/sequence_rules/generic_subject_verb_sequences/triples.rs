@@ -19,8 +19,8 @@ use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
-    parse_count_range_prefix, parse_leading_may_action_lexed, slice_contains, slice_ends_with,
-    slice_starts_with,
+    LeadingMayActor, parse_count_range_prefix, parse_leading_may_action_lexed, slice_contains,
+    slice_ends_with, slice_starts_with,
 };
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
@@ -1406,9 +1406,12 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let Some((choice_count, filter_tokens)) = looked_cards_choice_count(&filter_tokens) else {
+    let Some((mut choice_count, filter_tokens)) = looked_cards_choice_count(&filter_tokens) else {
         return Ok(None);
     };
+    if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
+        choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
+    }
     let mut filter =
         if let Some(filter) = effect_sentences::parse_looked_card_reveal_filter(&filter_tokens) {
             filter

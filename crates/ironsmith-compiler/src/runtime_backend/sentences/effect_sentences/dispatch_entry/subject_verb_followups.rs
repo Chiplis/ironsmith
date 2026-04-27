@@ -251,6 +251,94 @@ fn pre_rule_library_shuffle_followups(
     Ok(None)
 }
 
+fn pre_rule_future_zone_replacement_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let sentence_text = crate::runtime_backend::token_word_refs(sentence_tokens).join(" ");
+    if !str_contains(&sentence_text, "would die this turn") {
+        return Ok(None);
+    }
+    if !matches!(
+        classify_instead_followup_text(&sentence_text),
+        InsteadSemantics::FutureReplacement
+    ) {
+        return Ok(None);
+    }
+    let Some(replacement) = future_zone_replacement_from_sentence_text(&sentence_text) else {
+        return Ok(None);
+    };
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![replacement]),
+        consumed_sentences: 1,
+    })))
+}
+
+fn pre_rule_skip_tapped_source_turn_replacement(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if words.as_slice()
+        != [
+            "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is",
+            "tapped", "you", "may", "skip", "that", "turn", "instead",
+        ]
+    {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::Conditional {
+            predicate: PredicateAst::SourceIsTapped,
+            if_true: vec![EffectAst::subject_verb_skip_turn(PlayerAst::You)],
+            if_false: Vec::new(),
+        }]),
+        consumed_sentences: 1,
+    })))
+}
+
+fn pre_rule_damage_this_way_player_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if !matches!(
+        words.as_slice(),
+        [
+            "if", "a", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain",
+            "life", "for", "the", "rest", "of", "the", "game"
+        ] | [
+            "if", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain", "life",
+            "for", "the", "rest", "of", "the", "game"
+        ]
+    ) {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![EffectAst::subject_verb_cant(
+                crate::effect::Restriction::gain_life(PlayerFilter::DamagedPlayer),
+                crate::effect::Until::Forever,
+                None,
+            )],
+        }]),
+        consumed_sentences: 1,
+    })))
+}
+
 fn pre_rule_still_lands_followup(
     state: &mut SentenceDispatchState<'_>,
     sentences: &[SentenceInput],
@@ -750,8 +838,26 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         run: pre_rule_exile_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
-        id: "destroy-those-creatures",
+        id: "future-zone-replacement",
+        priority: 56,
+        heads: &["if"],
+        run: pre_rule_future_zone_replacement_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "skip-tapped-source-turn-replacement",
+        priority: 57,
+        heads: &["if"],
+        run: pre_rule_skip_tapped_source_turn_replacement,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "damage-this-way-player-followup",
         priority: 58,
+        heads: &["if"],
+        run: pre_rule_damage_this_way_player_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "destroy-those-creatures",
+        priority: 59,
         heads: &["destroy", "then"],
         run: pre_rule_destroy_those_creatures_followup,
     },

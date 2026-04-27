@@ -527,6 +527,13 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if is_unqualified_this_way_result("they") {
         return Some(IfResultPredicate::Did);
     }
+    if matches!(
+        words,
+        ["a", "player", "is", "dealt", "damage", "this", "way"]
+            | ["player", "is", "dealt", "damage", "this", "way"]
+    ) {
+        return Some(IfResultPredicate::Did);
+    }
 
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")

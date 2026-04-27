@@ -443,6 +443,10 @@ pub(crate) enum PredicateAst {
 
     SourceHasNoCounter(CounterType),
     TriggeringObjectHadNoCounter(CounterType),
+    TriggeringObjectHadCounterAtLeast {
+        counter_type: CounterType,
+        count: u32,
+    },
     SourceHasCounterAtLeast {
         counter_type: CounterType,
         count: u32,

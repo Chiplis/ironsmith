@@ -77,7 +77,7 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
                 consumed += 1;
             }
             if consumed > 1 {
-                out.push(render_keyword_list(&keywords, true));
+                out.push(render_bare_keyword_list(&keywords));
                 idx += consumed;
                 continue;
             }
@@ -151,27 +151,27 @@ fn split_static_granted_keyword_line(line: &str) -> Option<(&str, &str, &str)> {
 }
 
 fn is_mergeable_keyword_surface(keyword: &str) -> bool {
-    matches!(
-        keyword.trim_end_matches('.').to_ascii_lowercase().as_str(),
-        "flying"
-            | "first strike"
-            | "double strike"
-            | "vigilance"
-            | "trample"
-            | "haste"
-            | "lifelink"
-            | "deathtouch"
-            | "menace"
-            | "reach"
-            | "hexproof"
-            | "indestructible"
-            | "shroud"
-            | "fear"
-            | "ward pay 3 life"
-    ) || keyword
-        .trim_end_matches('.')
-        .to_ascii_lowercase()
-        .starts_with("protection from ")
+    let keyword = keyword.trim_end_matches('.');
+    let lower = keyword.to_ascii_lowercase();
+    (is_keyword_phrase(keyword) && lower != "changeling")
+        || matches!(
+            lower.as_str(),
+            "flying"
+                | "first strike"
+                | "double strike"
+                | "vigilance"
+                | "trample"
+                | "haste"
+                | "lifelink"
+                | "deathtouch"
+                | "menace"
+                | "reach"
+                | "hexproof"
+                | "indestructible"
+                | "shroud"
+                | "fear"
+                | "ward pay 3 life"
+        )
 }
 
 fn render_keyword_list(keywords: &[String], capitalize: bool) -> String {
@@ -214,6 +214,17 @@ fn render_keyword_list(keywords: &[String], capitalize: bool) -> String {
     } else {
         rendered
     }
+}
+
+fn render_bare_keyword_list(keywords: &[String]) -> String {
+    let mut items = Vec::new();
+    for keyword in keywords {
+        let lower = keyword.trim_end_matches('.').to_ascii_lowercase();
+        if !items.iter().any(|existing| existing == &lower) {
+            items.push(lower);
+        }
+    }
+    capitalize_first(&items.join(", "))
 }
 
 fn join_english_list(items: &[String]) -> String {
@@ -276,6 +287,23 @@ fn is_hidden_gift_resolution_segment(segment: &crate::resolution::ResolutionSegm
 
     let lower = describe_effect_list(&segment.default_effects).to_ascii_lowercase();
     lower.starts_with("if the gift was promised") && is_standard_gift_render_payload(&lower)
+}
+
+fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    if !matches!(
+        triggered.intervening_if.as_ref(),
+        Some(Condition::ThisSpellPaidLabel(label)) if label == "Gift"
+    ) || !triggered.choices.is_empty()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return false;
+    }
+    let rendered = describe_resolution_program(&triggered.effects).to_ascii_lowercase();
+    rendered.starts_with("if the gift was promised")
+        || is_standard_gift_render_payload(&rendered)
 }
 
 fn describe_resolution_program_for_card(
@@ -427,6 +455,13 @@ fn describe_echo_alternative_cost(alternative: &[Effect]) -> Option<String> {
                 return Some("—Discard a card".to_string());
             }
             return Some(format!("—Discard {count} cards"));
+        }
+
+        if let Some(lose_life) = pay.downcast_ref::<crate::effects::LoseLifeEffect>() {
+            if !matches!(lose_life.player, ChooseSpec::Player(PlayerFilter::You)) {
+                return None;
+            }
+            return Some(format!("—Pay {} life", describe_value(&lose_life.amount)));
         }
     }
 
@@ -1075,6 +1110,22 @@ fn is_suspend_cast_when_last_counter_removed_trigger(
 }
 
 fn describe_structural_counter_keyword_bundle(abilities: &[Ability]) -> Option<(String, usize)> {
+    if let (
+        Some(Ability {
+            kind: AbilityKind::Triggered(remove_triggered),
+            ..
+        }),
+        Some(Ability {
+            kind: AbilityKind::Triggered(sacrifice_triggered),
+            ..
+        }),
+    ) = (abilities.first(), abilities.get(1))
+        && is_upkeep_remove_counter(remove_triggered, CounterType::Time)
+        && is_vanishing_sacrifice_trigger(sacrifice_triggered)
+    {
+        return Some(("Vanishing".to_string(), 2));
+    }
+
     let (counter, amount) = static_enter_counter_amount(abilities.first()?)?;
 
     if counter == CounterType::PlusOnePlusOne
@@ -1384,6 +1435,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             out.push(line);
         }
     }
+    let has_visible_gift_line = def
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
     }
@@ -1423,6 +1478,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if is_conspire_helper_ability(ability) {
+                ability_idx += 1;
+                continue;
+            }
+            if has_visible_gift_line && is_hidden_gift_etb_ability(ability) {
                 ability_idx += 1;
                 continue;
             }
