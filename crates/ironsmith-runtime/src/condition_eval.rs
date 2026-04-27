@@ -695,7 +695,6 @@ fn evaluate_condition_shared_core(
             }))
         }
         Condition::Custom(_) => Some(false),
-        Condition::Unmodeled(_) => Some(true),
         _ => None,
     }
 }
@@ -799,7 +798,6 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsSoulbondPaired => {}
         Condition::XValueAtLeast(..) => {}
         Condition::Custom(..) => {}
-        Condition::Unmodeled(..) => {}
         Condition::Not(..) => {}
         Condition::And(..) => {}
         Condition::Or(..) => {}
@@ -1530,7 +1528,6 @@ pub fn evaluate_condition_external(
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_) => false,
         Condition::Custom(_)
-        | Condition::Unmodeled(_)
         | Condition::LifeTotalOrLess(_)
         | Condition::LifeTotalOrGreater(_)
         | Condition::CardsInHandOrMore(_)
@@ -2216,7 +2213,6 @@ fn evaluate_condition_simple(
         | Condition::SourceMatches(_)
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
-        | Condition::Unmodeled(_)
         | Condition::LifeTotalOrLess(_)
         | Condition::LifeTotalOrGreater(_)
         | Condition::CardsInHandOrMore(_)
@@ -3234,7 +3230,6 @@ fn evaluate_condition(
         Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
         Condition::XValueAtLeast(min) => Ok(ctx.x_value.unwrap_or(0) >= *min),
         Condition::Custom(_)
-        | Condition::Unmodeled(_)
         | Condition::LifeTotalOrLess(_)
         | Condition::LifeTotalOrGreater(_)
         | Condition::CardsInHandOrMore(_)

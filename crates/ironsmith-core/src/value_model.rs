@@ -609,7 +609,6 @@ pub enum Condition {
     },
     XValueAtLeast(u32),
     Custom(&'static str),
-    Unmodeled(String),
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),

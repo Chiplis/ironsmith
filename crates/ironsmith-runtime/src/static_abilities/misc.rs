@@ -2425,12 +2425,21 @@ impl StaticAbilityKind for CanBeCommander {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grants {
     pub spec: GrantSpec,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl Grants {
     /// Create a new Grants ability from a grant specification.
     pub fn new(spec: GrantSpec) -> Self {
-        Self { spec }
+        Self {
+            spec,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -2440,7 +2449,31 @@ impl StaticAbilityKind for Grants {
     }
 
     fn display(&self) -> String {
-        self.spec.display()
+        let mut text = self.spec.display();
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&super::describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(
+        &self,
+        condition: crate::ConditionExpr,
+    ) -> Option<super::StaticAbility> {
+        Some(super::StaticAbility::new(
+            self.clone().with_condition(condition),
+        ))
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source_obj) = game.object(source) else {
+            return false;
+        };
+        super::static_condition_is_active(condition, game, source, game.controller_of(source_obj))
     }
 
     fn grant_spec(&self) -> Option<GrantSpec> {

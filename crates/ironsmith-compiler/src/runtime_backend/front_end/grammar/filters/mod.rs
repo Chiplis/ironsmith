@@ -46,7 +46,6 @@ mod player_relations;
 mod predicate_phrases;
 pub(crate) mod reference_tag_stage;
 pub(crate) mod spell_filters;
-mod with_without_clauses;
 
 pub(super) use meld_and_special_subjects::*;
 pub(super) use naming_and_reference::*;
@@ -54,7 +53,6 @@ pub(super) use player_relations::*;
 pub(super) use predicate_phrases::*;
 pub(super) use reference_tag_stage::*;
 pub(super) use spell_filters::*;
-pub(super) use with_without_clauses::*;
 
 pub(crate) use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
 pub(crate) use reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed;

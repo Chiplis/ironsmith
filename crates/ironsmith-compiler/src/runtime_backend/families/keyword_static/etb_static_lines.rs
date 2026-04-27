@@ -644,29 +644,6 @@ fn parse_enters_with_counter_condition_clause(
         ));
     }
 
-    // Cast-time reveal/control checks aren't yet tracked as structured state.
-    if etb_word_slice_starts_with(
-        &condition_words,
-        &[
-            "you",
-            "revealed",
-            "a",
-            "dragon",
-            "card",
-            "or",
-            "controlled",
-            "a",
-            "dragon",
-            "as",
-            "you",
-            "cast",
-            "this",
-            "spell",
-        ],
-    ) {
-        return Some(crate::ConditionExpr::Unmodeled(condition_words.join(" ")));
-    }
-
     parse_static_condition_clause(&condition_tokens).ok()
 }
 

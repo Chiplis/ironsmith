@@ -7,7 +7,7 @@ use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
-use crate::mana::ManaCost;
+use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -379,6 +379,9 @@ fn cost_modifier_condition_is_active(
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    if filter.source {
+        return "this spell".to_string();
+    }
     let mut qualifiers = Vec::<String>::new();
     if let Some(colors) = filter.colors {
         let color_text = describe_colors(colors);
@@ -1605,11 +1608,18 @@ impl StaticAbilityKind for CostReductionManaCost {
     }
 
     fn display(&self) -> String {
-        let line = format!(
+        let mut line = format!(
             "{} cost {} less to cast",
             describe_spell_filter(&self.filter),
             describe_cost_modifier_mana_cost(&self.reduction)
         );
+        if self.condition.is_none()
+            && !self.filter.subtypes.is_empty()
+            && !self.filter.chosen_creature_type
+            && mana_cost_contains_colored_symbol(&self.reduction)
+        {
+            line.push_str(". This effect reduces only the amount of colored mana you pay");
+        }
         describe_cost_modifier_with_condition(line, &self.condition)
     }
 
@@ -1628,6 +1638,19 @@ impl StaticAbilityKind for CostReductionManaCost {
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
+}
+
+fn mana_cost_contains_colored_symbol(cost: &ManaCost) -> bool {
+    cost.pips().iter().flatten().any(|symbol| {
+        matches!(
+            symbol,
+            ManaSymbol::White
+                | ManaSymbol::Blue
+                | ManaSymbol::Black
+                | ManaSymbol::Red
+                | ManaSymbol::Green
+        )
+    })
 }
 
 /// Mana-symbol cost increase: "Spells cost {B} more to cast"

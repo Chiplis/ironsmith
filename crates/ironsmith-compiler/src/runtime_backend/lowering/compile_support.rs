@@ -588,7 +588,6 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 }
             }
         }
-        PredicateAst::Unmodeled(text) => Condition::Unmodeled(text.clone()),
         PredicateAst::Not(inner) => {
             let inner = compile_condition_from_predicate_ast(inner, ctx, saved_last_tag)?;
             Condition::Not(Box::new(inner))

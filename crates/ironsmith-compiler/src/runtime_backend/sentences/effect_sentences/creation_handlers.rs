@@ -802,6 +802,9 @@ pub(crate) fn parse_create(
             let mut enters_tapped = false;
             let mut enters_attacking = false;
             let mut attack_target_player_or_planeswalker_controlled_by = None;
+            if player == PlayerAst::Implicit {
+                player = PlayerAst::You;
+            }
             let (sacrifice_at_next_end_step, exile_at_next_end_step) =
                 parse_next_end_step_token_delay_flags(&tail_words);
             if let Some(of_idx) = find_token_index(&tail_tokens, |token| token.is_word("of")) {

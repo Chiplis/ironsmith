@@ -1204,12 +1204,7 @@ fn rewrite_structure_if_clause_splitter_routes_commaless_conditional_sentence() 
     .expect("structure helper should split comma-less if clause");
 
     match spec.predicate {
-        super::grammar::structure::IfClausePredicateSpec::Conditional(predicate) => {
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
-        }
+        super::grammar::structure::IfClausePredicateSpec::Conditional(_) => {}
         other => panic!("expected conditional predicate split, got {other:?}"),
     }
     assert!(matches!(
@@ -2739,16 +2734,12 @@ fn rewrite_verb_handlers_keep_trailing_if_draw_clause_after_structure_cutover() 
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_false.is_empty());
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
@@ -2775,16 +2766,12 @@ fn rewrite_verb_handlers_keep_draw_for_each_player_condition_after_structure_cut
             match effects.as_slice() {
                 [
                     crate::cards::builders::EffectAst::Conditional {
-                        predicate,
+                        predicate: _,
                         if_true,
                         if_false,
                     },
                 ] => {
                     assert!(if_false.is_empty());
-                    assert!(!matches!(
-                        predicate,
-                        crate::cards::builders::PredicateAst::Unmodeled(_)
-                    ));
                     assert!(matches!(
                         if_true.as_slice(),
                         [crate::cards::builders::EffectAst::SubjectVerb(
@@ -2816,16 +2803,12 @@ fn rewrite_verb_handlers_keep_conditional_gain_control_clause_after_structure_cu
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_false.is_empty());
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
@@ -2854,16 +2837,12 @@ fn rewrite_verb_handlers_keep_unless_gain_control_clause_after_structure_cutover
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_true.is_empty());
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             assert!(matches!(
                 if_false.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
@@ -3008,16 +2987,12 @@ fn rewrite_zone_handlers_keep_nested_instead_if_destroy_clause_after_structure_c
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate: outer_predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_false.is_empty());
-            assert!(!matches!(
-                outer_predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             match if_true.as_slice() {
                 [
                     crate::cards::builders::EffectAst::Conditional {
@@ -3181,7 +3156,7 @@ fn rewrite_activation_helpers_parse_add_mana_wraps_instead_if_tail() {
 
     match effect {
         crate::cards::builders::EffectAst::Conditional {
-            predicate,
+            predicate: _,
             if_true,
             if_false,
         } => {
@@ -3209,10 +3184,6 @@ fn rewrite_activation_helpers_parse_add_mana_wraps_instead_if_tail() {
                 }
                 other => panic!("expected add-mana branch, got {other:?}"),
             }
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
         }
         other => panic!("expected conditional add-mana effect, got {other:?}"),
     }
@@ -3262,7 +3233,7 @@ fn rewrite_effect_sentence_parse_add_mana_wraps_instead_if_tail() {
     match effects.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
@@ -3291,10 +3262,6 @@ fn rewrite_effect_sentence_parse_add_mana_wraps_instead_if_tail() {
                 }
                 other => panic!("expected add-mana branch, got {other:?}"),
             }
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
         }
         other => panic!("expected single conditional add-mana effect, got {other:?}"),
     }
@@ -7498,16 +7465,12 @@ fn rewrite_lexed_conditional_parser_routes_comma_clause_through_structure_splitt
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_false.is_empty());
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
@@ -7533,16 +7496,12 @@ fn rewrite_lexed_conditional_parser_routes_commaless_clause_through_structure_sp
     match parsed.as_slice() {
         [
             crate::cards::builders::EffectAst::Conditional {
-                predicate,
+                predicate: _,
                 if_true,
                 if_false,
             },
         ] => {
             assert!(if_false.is_empty());
-            assert!(!matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::Unmodeled(_)
-            ));
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(

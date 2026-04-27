@@ -1303,6 +1303,10 @@ impl Effect {
         Self::new(crate::effects::DoubleManaPoolEffect::new(player))
     }
 
+    pub fn empty_mana_pool_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::EmptyManaPoolEffect::new(player))
+    }
+
     pub fn set_life_total_player(
         amount: impl Into<Value>,
         player: crate::target::PlayerFilter,

@@ -3544,6 +3544,17 @@ impl DoubleManaPoolEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EmptyManaPoolEffect {
+    pub player: PlayerFilter,
+}
+
+impl EmptyManaPoolEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SkipTurnEffect {
     pub player: PlayerFilter,
 }

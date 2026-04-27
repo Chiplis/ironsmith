@@ -1481,6 +1481,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
+            | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -1843,6 +1844,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ChooseCreatureType { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
+            | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -2958,7 +2960,7 @@ mod tests {
     #[test]
     fn annotate_effect_sequence_joins_conditional_last_object_tag_when_branches_agree() {
         let effects = vec![EffectAst::Conditional {
-            predicate: PredicateAst::Unmodeled("test".to_string()),
+            predicate: PredicateAst::YourTurn,
             if_true: Vec::new(),
             if_false: Vec::new(),
         }];
@@ -2984,7 +2986,7 @@ mod tests {
     fn annotate_effect_sequence_marks_conditional_last_object_tag_ambiguous_when_branches_diverge()
     {
         let effects = vec![EffectAst::Conditional {
-            predicate: PredicateAst::Unmodeled("test".to_string()),
+            predicate: PredicateAst::YourTurn,
             if_true: vec![
                 EffectAst::subject_verb_destroy(TargetAst::Object(
                     ObjectFilter::creature(),

@@ -159,6 +159,7 @@ pub(crate) fn parse_you_choose_objects_clause(
 
     let mut references_it = false;
     let mut references_container_it = false;
+    let mut explicit_container_reference = false;
     loop {
         let len = choose_object_tokens.len();
         let trailing_it = len >= 2
@@ -177,12 +178,14 @@ pub(crate) fn parse_you_choose_objects_clause(
         if trailing_it {
             references_it = true;
             references_container_it = true;
+            explicit_container_reference = true;
             choose_object_tokens.truncate(len - 2);
             continue;
         }
         if trailing_there {
             references_it = true;
             references_container_it = true;
+            explicit_container_reference = true;
             choose_object_tokens.truncate(len - 3);
             continue;
         }
@@ -196,12 +199,14 @@ pub(crate) fn parse_you_choose_objects_clause(
         ) {
             references_it = true;
             references_container_it = true;
+            explicit_container_reference = true;
             choose_words.truncate(choose_words.len().saturating_sub(2));
             continue;
         }
         if matches!(choose_words.as_slice(), [.., "from", "there", "in"]) {
             references_it = true;
             references_container_it = true;
+            explicit_container_reference = true;
             choose_words.truncate(choose_words.len().saturating_sub(3));
             continue;
         }
@@ -274,6 +279,19 @@ pub(crate) fn parse_you_choose_objects_clause(
         }
         choose_words = choose_words[2..].to_vec();
     }
+    let mut idx = 0usize;
+    while idx + 1 < choose_words.len() {
+        if matches!(choose_words[idx], "from" | "in")
+            && matches!(choose_words[idx + 1], "it" | "them")
+        {
+            references_it = true;
+            references_container_it = true;
+            explicit_container_reference = true;
+            choose_words.drain(idx..idx + 2);
+            continue;
+        }
+        idx += 1;
+    }
 
     let choose_filter_tokens = choose_words
         .iter()
@@ -295,7 +313,11 @@ pub(crate) fn parse_you_choose_objects_clause(
             })?
         };
     if references_it {
-        if references_container_it && choose_filter.zone.is_none() {
+        if explicit_container_reference
+            && matches!(choose_filter.zone, None | Some(Zone::Battlefield))
+        {
+            choose_filter.zone = Some(Zone::Hand);
+        } else if references_container_it && choose_filter.zone.is_none() {
             choose_filter.zone = Some(Zone::Hand);
         }
         if !choose_filter
@@ -607,6 +629,56 @@ mod tests {
         assert!(
             filter.owner.is_none(),
             "expected no owner pin, got {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_you_choose_objects_clause_supports_card_from_it_with_filter_tail() {
+        let tokens = tokenize_line("You choose a card from it with mana value 4 or greater.", 0);
+
+        let (chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse choose-a-card-from-it-with-filter-tail clause")
+            .expect("expected choose clause");
+
+        assert_eq!(chooser, PlayerAst::You);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
+        );
+        assert!(
+            filter.controller.is_none(),
+            "expected no controller pin, got {filter:?}"
+        );
+        assert!(
+            filter.owner.is_none(),
+            "expected no owner pin, got {filter:?}"
+        );
+    }
+
+    #[test]
+    fn parse_you_choose_objects_clause_container_reference_overrides_permanent_default() {
+        let tokens = tokenize_line("You choose an artifact or creature card from it.", 0);
+
+        let (_chooser, filter, _count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse choose-artifact-or-creature-card-from-it clause")
+            .expect("expected choose clause");
+
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert!(
+            filter.controller.is_none(),
+            "expected no battlefield controller default, got {filter:?}"
+        );
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
         );
     }
 

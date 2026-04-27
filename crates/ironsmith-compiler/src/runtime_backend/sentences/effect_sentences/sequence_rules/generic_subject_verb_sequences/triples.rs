@@ -19,7 +19,8 @@ use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
-    parse_leading_may_action_lexed, slice_contains, slice_ends_with, slice_starts_with,
+    parse_count_range_prefix, parse_leading_may_action_lexed, slice_contains, slice_ends_with,
+    slice_starts_with,
 };
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{helper_tag_for_tokens, is_article};
@@ -37,6 +38,31 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
         return None;
     };
     Some((*player, count.clone()))
+}
+
+fn looked_cards_choice_count(
+    tokens: &[OwnedLexToken],
+) -> Option<(ChoiceCount, Vec<OwnedLexToken>)> {
+    let trimmed = trim_commas(tokens);
+    let Some(((min, max), rest)) = parse_count_range_prefix(&trimmed) else {
+        return Some((ChoiceCount::up_to(1), trimmed));
+    };
+    let count = match (min, max) {
+        (Some(Value::Fixed(0)), Some(Value::Fixed(max))) if max >= 0 => {
+            ChoiceCount::up_to(max as usize)
+        }
+        (Some(Value::Fixed(min)), Some(Value::Fixed(max))) if min >= 0 && max >= min => {
+            ChoiceCount {
+                min: min as usize,
+                max: Some(max as usize),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            }
+        }
+        _ => return None,
+    };
+    Some((count, trim_commas(rest)))
 }
 
 fn abundant_harvest_choice_sentence(words: &[&str]) -> bool {
@@ -1380,6 +1406,9 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
+    let Some((choice_count, filter_tokens)) = looked_cards_choice_count(&filter_tokens) else {
+        return Ok(None);
+    };
     let mut filter =
         if let Some(filter) = effect_sentences::parse_looked_card_reveal_filter(&filter_tokens) {
             filter
@@ -1392,6 +1421,8 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
     let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
         || slice_starts_with(after_from_words, &["put", "it", "into"])
+        || slice_starts_with(after_from_words, &["and", "put", "them", "into"])
+        || slice_starts_with(after_from_words, &["put", "them", "into"])
         || slice_starts_with(after_from_words, &["and", "put", "that", "card", "into"])
         || slice_starts_with(after_from_words, &["put", "that", "card", "into"]))
         && slice_contains(after_from_words, &"hand");
@@ -1418,18 +1449,52 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
         return Ok(None);
     };
 
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut choose_filter = filter;
+    choose_filter.zone = Some(Zone::Library);
+    choose_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        TagKey::from(crate::cards::builders::IT_TAG),
+        looked_tag.clone(),
     )];
+    effects.push(EffectAst::ChooseObjects {
+        filter: choose_filter,
+        count: choice_count,
+        count_value: None,
+        player: chooser,
+        tag: chosen_tag.clone(),
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_reveal_tagged(TagKey::from(
+            crate::cards::builders::IT_TAG,
+        ))],
+    });
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
     effects.push(
-        EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_on_bottom_of_library(
-            chooser,
-            filter,
-            true,
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
             order,
-            Vec::new(),
+            chooser,
         ),
     );
     Ok(Some(effects))

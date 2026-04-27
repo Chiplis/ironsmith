@@ -342,6 +342,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SwitchPowerToughness { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
+            | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

@@ -533,6 +533,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
         | SubjectVerbActionAst::AddManaImprintedColors
         | SubjectVerbActionAst::DoubleManaPool
+        | SubjectVerbActionAst::EmptyManaPool
         | SubjectVerbActionAst::SkipTurn
         | SubjectVerbActionAst::SkipCombatPhases
         | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

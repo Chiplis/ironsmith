@@ -491,7 +491,6 @@ pub(crate) enum PredicateAst {
         operator: crate::effect::ValueComparisonOperator,
         right: Value,
     },
-    Unmodeled(String),
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
 }
@@ -1400,6 +1399,7 @@ pub(crate) enum SubjectVerbActionAst {
         cost: ManaCost,
     },
     DoubleManaPool,
+    EmptyManaPool,
     SetLifeTotal {
         amount: Value,
     },
@@ -2667,6 +2667,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
             Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
+            Self::EmptyManaPool => f.write_str("EmptyManaPool"),
             Self::SetLifeTotal { amount } => f.debug_tuple("SetLifeTotal").field(amount).finish(),
             Self::SkipTurn => f.write_str("SkipTurn"),
             Self::SkipCombatPhases => f.write_str("SkipCombatPhases"),
@@ -5261,6 +5262,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::DoubleManaPool,
+        )
+    }
+
+    pub(crate) fn subject_verb_empty_mana_pool(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::EmptyManaPool,
         )
     }
 

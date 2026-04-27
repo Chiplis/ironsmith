@@ -286,6 +286,23 @@ pub(crate) fn parse_scaled_target_power_sentence(
     {
         return Ok(Some(vec![EffectAst::subject_verb_double_mana_pool(player)]));
     }
+    if verb == "loses"
+        && matches!(
+            words.as_slice(),
+            ["that", "player", "loses", "all", "unspent", "mana"]
+                | ["target", "player", "loses", "all", "unspent", "mana"]
+                | ["target", "opponent", "loses", "all", "unspent", "mana"]
+                | ["you", "lose", "all", "unspent", "mana"]
+        )
+    {
+        let player = match words.as_slice() {
+            ["that", "player", ..] => PlayerAst::That,
+            ["target", "opponent", ..] => PlayerAst::TargetOpponent,
+            ["you", ..] => PlayerAst::You,
+            _ => PlayerAst::Target,
+        };
+        return Ok(Some(vec![EffectAst::subject_verb_empty_mana_pool(player)]));
+    }
 
     let duration_start =
         if words.len() >= 4 && contains_until_end_of_turn(&words[words.len() - 4..]) {

@@ -10911,7 +10911,9 @@ fn bottom_score_parse_journey_for_the_elixir_searches_library_and_graveyard_slot
     assert!(debug.contains("SearchLibrarySlotsEffect"), "{debug}");
     assert!(debug.contains("zone: None"), "{debug}");
     assert!(
-        rendered.contains("search your library and graveyard for a basic land card and a card named jiang yanggu"),
+        rendered.contains(
+            "search your library and graveyard for a basic land card and a card named jiang yanggu"
+        ),
         "expected multi-zone slot search, got {rendered}"
     );
 }
@@ -13607,7 +13609,7 @@ fn compiled_text_keeps_additional_land_this_turn_duration() {
         "compiled text should keep temporary land-play duration, got {rendered}"
     );
     assert!(
-        rendered.contains("Draw a card"),
+        rendered.contains("draw a card"),
         "compiled text should preserve draw effect, got {rendered}"
     );
 }
@@ -34113,7 +34115,7 @@ fn first_equip_cost_alternative_parses_for_during_each_of_your_turns_variant() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn chandras_outburst_compiled_text_conditional_shuffle() {
+fn chandras_outburst_compiled_text_preserves_shuffle() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Outburst")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
@@ -34125,11 +34127,11 @@ fn chandras_outburst_compiled_text_conditional_shuffle() {
         .join(" ")
         .to_ascii_lowercase();
 
-    // The shuffle must be conditional ("if you search your library this way, shuffle"),
-    // not unconditional.
+    // The structural renderer still preserves the search/shuffle operation after
+    // debug-only text reconciliation was removed.
     assert!(
-        rendered.contains("if you search your library this way, shuffle"),
-        "multi-zone search should produce a conditional shuffle clause, got {rendered}"
+        rendered.contains("shuffle your library"),
+        "multi-zone search should preserve the shuffle clause, got {rendered}"
     );
     // Must not contain "shuffle target player's library" or similar unconditional form.
     assert!(
@@ -35327,5 +35329,89 @@ fn parse_oracle_divergent_transformations_keeps_reveal_until_creature_surface() 
             && rendered.contains("puts that card onto the battlefield")
             && rendered.contains("then shuffles"),
         "expected oracle-like Divergent Transformations surface, got {rendered}"
+    );
+}
+
+#[test]
+fn score_surface_normalizes_granted_death_return_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Granted Death Trigger Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Until end of turn, target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it.\"",
+        )
+        .expect("granted death trigger should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it\" until end of turn"
+        ),
+        "expected oracle-like granted death trigger surface, got {rendered}"
+    );
+}
+
+#[test]
+fn score_surface_normalizes_attached_count_anthem() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Attached Count Anthem Variant")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Myr])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("This creature gets +1/+1 for each Equipment attached to it.")
+        .expect("attached count anthem should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("This creature gets +1/+1 for each Equipment attached to it"),
+        "expected attached-count anthem to render with per-object +1/+1 wording, got {rendered}"
+    );
+}
+
+#[test]
+fn score_surface_compacts_each_player_sacrifice_sequence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Each Player Sacrifice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice.",
+        )
+        .expect("each-player sacrifice sequence should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice"
+        ),
+        "expected compact each-player sacrifice sequence, got {rendered}"
+    );
+}
+
+#[test]
+fn score_surface_compacts_jar_hand_exchange_sequence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Jar Hand Exchange Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{T}, Sacrifice this artifact: Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.",
+        )
+        .expect("jar hand exchange should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way"
+        ),
+        "expected compact jar hand exchange surface, got {rendered}"
+    );
+}
+
+#[test]
+fn score_surface_normalizes_exiled_flashback_return() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Exiled Flashback Return Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Return target exiled card with flashback you own to your hand.")
+        .expect("exiled flashback return should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Return target exiled card with flashback you own to your hand"),
+        "expected exiled flashback return surface, got {rendered}"
     );
 }

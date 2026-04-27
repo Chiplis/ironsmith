@@ -422,12 +422,7 @@ pub(crate) fn classify_static_line_family_lexed(
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let predicate = parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()?;
-    if matches!(predicate, PredicateAst::Unmodeled(_)) {
-        return None;
-    }
-
-    Some(predicate)
+    parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()
 }
 
 fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {

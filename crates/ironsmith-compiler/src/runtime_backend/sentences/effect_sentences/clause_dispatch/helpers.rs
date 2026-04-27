@@ -40,6 +40,33 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
 ) -> Option<(SubjectAst, TargetAst)> {
     let subject_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_view.to_word_refs();
+    let enchanted_filter = || {
+        let mut filter = ObjectFilter::creature();
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: TagKey::from("enchanted"),
+                relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        TargetAst::Object(filter, None, None)
+    };
+    match subject_words.as_slice() {
+        ["enchanted", "creature", "s", "controller"]
+        | ["enchanted", "creatures", "controller"]
+        | ["enchanted", "creature's", "controller"] => {
+            return Some((
+                SubjectAst::Player(PlayerAst::ItsController),
+                enchanted_filter(),
+            ));
+        }
+        ["enchanted", "creature", "s", "owner"]
+        | ["enchanted", "creatures", "owner"]
+        | ["enchanted", "creature's", "owner"] => {
+            return Some((SubjectAst::Player(PlayerAst::ItsOwner), enchanted_filter()));
+        }
+        _ => {}
+    }
+
     let (player, target_start) = match subject_words.as_slice() {
         ["the", "controller", "of", ..] => (PlayerAst::ItsController, 3usize),
         ["controller", "of", ..] => (PlayerAst::ItsController, 2usize),

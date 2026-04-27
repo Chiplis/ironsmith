@@ -1479,7 +1479,7 @@ impl ObjectFilter {
             post_noun_qualifiers.push("blocking or blocked by this creature".to_string());
         }
         if self.nonattacking && self.nonblocking {
-            parts.push("nonattacking/nonblocking".to_string());
+            parts.push("nonattacking, nonblocking".to_string());
         } else {
             if self.nonattacking {
                 parts.push("nonattacking".to_string());

@@ -303,6 +303,28 @@ where
             }
         }
 
+        fn flashback_filter_description(filter: &ObjectFilter) -> String {
+            if filter.any_of.len() == 2 {
+                let first = &filter.any_of[0];
+                let second = &filter.any_of[1];
+                if first.zone == second.zone
+                    && first.owner == second.owner
+                    && first.controller == second.controller
+                    && first.card_types.len() == 1
+                    && second.card_types.len() == 1
+                    && first.subtypes.is_empty()
+                    && second.subtypes.is_empty()
+                    && first.supertypes.is_empty()
+                    && second.supertypes.is_empty()
+                {
+                    let mut merged = first.clone();
+                    merged.card_types = vec![first.card_types[0], second.card_types[0]];
+                    return merged.description();
+                }
+            }
+            filter.description()
+        }
+
         fn beneficiary_may_prefix(beneficiary: &PlayerFilter) -> String {
             match beneficiary {
                 PlayerFilter::Any => "Any player may".to_string(),
@@ -442,6 +464,27 @@ where
             };
             return format!(
                 "Each {filter_desc} has escape. The escape cost is equal to the card's mana cost plus exile {count_text} other cards from {graveyard}"
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::FlashbackFromCardManaCost { additional_costs },
+        ) = &self.grantable
+        {
+            let filter_desc = flashback_filter_description(&filter);
+            let cost_text = if additional_costs.is_empty() {
+                "its mana cost".to_string()
+            } else {
+                format!(
+                    "its mana cost plus {}",
+                    additional_costs
+                        .iter()
+                        .map(CostComponent::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            return format!(
+                "Each {filter_desc} has flashback. Its flashback cost is equal to {cost_text}"
             );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand) =

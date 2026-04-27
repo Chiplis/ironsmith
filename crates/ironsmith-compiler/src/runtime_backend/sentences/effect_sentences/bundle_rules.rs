@@ -1076,6 +1076,35 @@ fn parse_reveal_until_land_put_all_graveyard_bundle(
     Some(effects)
 }
 
+fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentence_words = parser_words(tokens);
+    let sentence_word_refs = sentence_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if sentence_word_refs.as_slice()
+        != [
+            "tap", "all", "lands", "target", "player", "controls", "and", "that", "player",
+            "loses", "all", "unspent", "mana",
+        ]
+    {
+        return None;
+    }
+
+    let mut lands = ObjectFilter::default();
+    lands.zone = Some(Zone::Battlefield);
+    lands.controller = Some(PlayerFilter::target_player());
+    lands.card_types.push(CardType::Land);
+    Some(vec![
+        EffectAst::subject_verb_target_only(TargetAst::Player(
+            PlayerFilter::Any,
+            span_from_tokens(tokens),
+        )),
+        EffectAst::subject_verb_tap_all(lands),
+        EffectAst::subject_verb_empty_mana_pool(PlayerAst::That),
+    ])
+}
+
 fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
     if sentence_words.as_slice()
@@ -1298,6 +1327,9 @@ fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    if let Some(effects) = parse_tap_lands_then_empty_mana_pool_bundle(tokens) {
+        return Some(effects);
+    }
     if let Some(effects) = parse_soul_partition_bundle(tokens) {
         return Some(effects);
     }

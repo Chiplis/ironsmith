@@ -4517,6 +4517,11 @@ fn compile_subject_verb_effect(
                 Effect::double_mana_pool_player(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::EmptyManaPool => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::empty_mana_pool_player(subject.into_player_filter())
+            })
+        }
         SubjectVerbActionAst::SetLifeTotal { amount } => compile_subject_verb_player_value_effect(
             role,
             player,

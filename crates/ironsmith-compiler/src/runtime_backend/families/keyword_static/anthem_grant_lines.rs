@@ -1704,15 +1704,15 @@ pub(crate) fn parse_static_condition_clause(
     if clause_words == ["thiss", "power", "is", "even"]
         || clause_words == ["this", "power", "is", "even"]
     {
-        return Ok(crate::ConditionExpr::Unmodeled(
-            "thiss power is even".to_string(),
+        return Err(CardTextError::ParseError(
+            "unsupported source power parity condition (clause: 'this power is even')".to_string(),
         ));
     }
     if clause_words == ["thiss", "power", "is", "odd"]
         || clause_words == ["this", "power", "is", "odd"]
     {
-        return Ok(crate::ConditionExpr::Unmodeled(
-            "thiss power is odd".to_string(),
+        return Err(CardTextError::ParseError(
+            "unsupported source power parity condition (clause: 'this power is odd')".to_string(),
         ));
     }
     if clause_words == ["it", "is", "not", "your", "turn"]

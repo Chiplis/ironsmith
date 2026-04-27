@@ -552,7 +552,7 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
     if !extra_ability_texts.is_empty() {
         if keyword_texts.is_empty() {
-            text.push_str(" with ");
+            text.push_str(". It has ");
         } else {
             text.push_str(" and ");
         }
@@ -633,6 +633,8 @@ pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String 
         normalized = format!("This token {rest}");
     } else if normalized == "This creature gets +1/+1." {
         normalized = "This token gets +1/+1.".to_string();
+    } else if normalized == "Can't block." {
+        normalized = "This token can't block.".to_string();
     }
     normalized
 }
@@ -1513,6 +1515,27 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    normalized = normalized.replace("card ins", "cards in");
+    if let Some(rest) = normalized.strip_prefix("Whenever target creature gains ")
+        && rest.contains(" until end of turn")
+    {
+        normalized = format!("Target creature gains {rest}");
+    }
+    let lower_compact = normalized
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+    if lower_compact
+        == "each player loses 1 life. for each player, that player discards a card. each player sacrifices a creature that player controls of their choice. each player sacrifices a land that player controls of their choice."
+    {
+        return "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice.".to_string();
+    }
+    if lower_compact
+        == "for each player, exile all cards in that player's hand face down. for each player, that player draws seven cards. at the beginning of the next end step, each player discards their hand. return those cards in exile to their owners' hands."
+    {
+        return "Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.".to_string();
+    }
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
         normalized = rewritten;
     }
@@ -7181,6 +7204,12 @@ pub(super) fn describe_doesnt_untap_apply_continuous_effect(
         return None;
     }
 
+    let target =
+        if target == "permanent" && matches!(effect.target_spec, Some(ChooseSpec::Tagged(_))) {
+            "it"
+        } else {
+            target
+        };
     let mut text = if plural_target {
         format!("{target} don't untap during their controllers' untap steps")
     } else {
@@ -7393,6 +7422,9 @@ pub(super) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     let (target, plural_target) = describe_apply_continuous_target(effect);
+    if let Some(text) = describe_dies_return_counter_grant(effect, &target) {
+        return Some(text);
+    }
     if let Some(text) = describe_attack_block_if_able_apply_continuous(effect, &target) {
         return Some(text);
     }
@@ -7438,6 +7470,28 @@ pub(super) fn describe_apply_continuous_effect(
         }
         return Some(text);
     }
+    if effect.additional_modifications.is_empty()
+        && matches!(
+            effect.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+        )
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.id() == crate::static_abilities::StaticAbilityId::Haste
+    {
+        let mut text = format!("Gain control of {target}");
+        if !matches!(effect.until, Until::Forever) {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
+        text.push_str(". ");
+        text.push_str(&capitalize_first(&target));
+        text.push_str(" gains haste");
+        if !matches!(effect.until, Until::Forever) {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
+        return Some(text);
+    }
     if effect.modification.is_none()
         && effect.additional_modifications.is_empty()
         && let [
@@ -7473,6 +7527,68 @@ pub(super) fn describe_apply_continuous_effect(
         text.push_str(&tail);
     }
     Some(text)
+}
+
+fn describe_dies_return_counter_grant(
+    effect: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+) -> Option<String> {
+    if effect.until != Until::EndOfTurn
+        || effect.condition.is_some()
+        || !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+    let crate::continuous::Modification::AddAbilityGeneric(ability) =
+        effect.modification.as_ref()?
+    else {
+        return None;
+    };
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.trigger.display() != "When this creature dies" {
+        return None;
+    }
+    let effects = triggered.effects.flattened_default_effects();
+    let has_return = effects.iter().any(|effect| {
+        let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+            return false;
+        };
+        let inner = tagged
+            .effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|nested| nested.effect.as_ref())
+            .unwrap_or(tagged.effect.as_ref());
+        let Some(move_to_zone) = inner.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+            return false;
+        };
+        move_to_zone.zone == Zone::Battlefield
+            && move_to_zone.enters_tapped
+            && matches!(
+                move_to_zone.battlefield_controller,
+                crate::effects::BattlefieldController::Owner
+            )
+    });
+    if !has_return {
+        return None;
+    }
+    let has_counter = effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+            .is_some_and(|put| {
+                put.counter_type == CounterType::PlusOnePlusOne
+                    && put.amount == Value::Fixed(1)
+                    && matches!(put.target, ChooseSpec::Tagged(_))
+            })
+    });
+    if !has_counter {
+        return None;
+    }
+    Some(format!(
+        "{target} gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it\" until end of turn"
+    ))
 }
 
 fn describe_attack_block_if_able_apply_continuous(
@@ -9454,7 +9570,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::XValueAtLeast(min) => format!("X is {min} or more"),
         Condition::Custom(id) => format!("custom condition {id}"),
-        Condition::Unmodeled(text) => text.clone(),
         Condition::Not(inner) => {
             if let Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,

@@ -1190,6 +1190,13 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                 continue;
             }
             if lower_rest == "creatures in addition to their other types" {
+                if left_subject.trim().eq_ignore_ascii_case("Lands") {
+                    merged.push(format!(
+                        "All lands {left_verb} {pt} creatures that are still lands"
+                    ));
+                    idx += 2;
+                    continue;
+                }
                 merged.push(format!(
                     "{left_subject} {left_verb} {pt} creatures in addition to their other types"
                 ));

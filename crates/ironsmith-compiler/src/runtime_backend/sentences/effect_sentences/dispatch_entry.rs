@@ -144,6 +144,48 @@ fn repair_that_object_power_damage_subject(
     }
 }
 
+fn repair_target_controlled_source_damage_to_that_player(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words
+        .windows(3)
+        .any(|window| matches!(window, ["to", "that", "player"]))
+    {
+        return;
+    }
+
+    for effect in effects {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            continue;
+        };
+        let SubjectVerbActionAst::DealDamageEqualToPower { source, target } =
+            &mut subject_verb.action
+        else {
+            continue;
+        };
+        let TargetAst::Object(source_filter, _, _) = source else {
+            continue;
+        };
+        if !source_filter.controller.as_ref().is_some_and(|controller| {
+            matches!(controller, PlayerFilter::Opponent | PlayerFilter::NotYou)
+        }) {
+            continue;
+        }
+        if matches!(
+            target,
+            TargetAst::Player(PlayerFilter::Target(inner), _)
+                if matches!(inner.as_ref(), PlayerFilter::Any)
+        ) {
+            *target = TargetAst::Player(
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+                span_from_tokens(tokens),
+            );
+        }
+    }
+}
+
 fn apply_trailing_counter_constraint_to_destroy_all(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
@@ -874,6 +916,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             &mut sentence_effects,
             &sentence_tokens,
             previous_damage_target,
+        );
+        repair_target_controlled_source_damage_to_that_player(
+            &mut sentence_effects,
+            &sentence_tokens,
         );
         if crate::runtime_backend::token_word_refs(&parse_plan.tokens)
             .first()
@@ -1944,6 +1990,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GainControl { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
+            | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

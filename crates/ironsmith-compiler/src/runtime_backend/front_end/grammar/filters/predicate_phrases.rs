@@ -1949,14 +1949,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.as_slice()
-        == [
-            "this", "is", "fourth", "time", "this", "ability", "has", "resolved", "this", "turn",
-        ]
-    {
-        return Ok(PredicateAst::Unmodeled(filtered.join(" ")));
-    }
-
     if matches!(
         filtered.as_slice(),
         ["any", "of", "those", "cards", "remain", "exiled"]
@@ -2629,10 +2621,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 right: Value::Fixed(amount),
             });
         }
-    }
-
-    if is_unmodeled_predicate_words(&filtered) {
-        return Ok(PredicateAst::Unmodeled(filtered.join(" ")));
     }
 
     Err(CardTextError::ParseError(format!(

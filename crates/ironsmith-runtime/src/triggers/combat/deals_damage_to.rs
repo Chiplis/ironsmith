@@ -64,19 +64,29 @@ impl TriggerMatcher for DealsDamageToTrigger {
     }
 
     fn display(&self) -> String {
+        let target = damage_target_description(&self.target_filter);
         if self.combat_only {
             format!(
                 "Whenever {} deals combat damage to {}",
                 self.source_filter.description(),
-                self.target_filter.description()
+                target
             )
         } else {
             format!(
                 "Whenever {} deals damage to {}",
                 self.source_filter.description(),
-                self.target_filter.description()
+                target
             )
         }
+    }
+}
+
+fn damage_target_description(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    match description.as_str() {
+        "artifact" | "enchantment" => format!("an {description}"),
+        "creature" | "land" | "permanent" | "planeswalker" | "battle" => format!("a {description}"),
+        description => description.to_string(),
     }
 }
 

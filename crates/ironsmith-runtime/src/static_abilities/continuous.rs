@@ -589,7 +589,19 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(strip_article(filter.description()))
         }
+        AnthemCountExpression::MatchingFilter(filter)
+            if filter.zone == Some(Zone::Graveyard)
+                && filter.name.is_some()
+                && !filter.single_graveyard =>
+        {
+            let name = filter.name.as_deref().expect("checked above");
+            Some(format!("card named {name} in each graveyard"))
+        }
         AnthemCountExpression::AttachedToAffected(filter) => Some(format!(
+            "{} attached to it",
+            strip_article(filter.description())
+        )),
+        AnthemCountExpression::AttachedToSource(filter) => Some(format!(
             "{} attached to it",
             strip_article(filter.description())
         )),
@@ -642,7 +654,7 @@ fn flatten_static_condition_and(
     }
 }
 
-fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
+pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
     match condition {
         crate::ConditionExpr::And(_, _) => {
             let mut clauses = Vec::new();
@@ -749,6 +761,16 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
                 _ => count.to_string(),
             };
             format!("as long as {subject} {verb} {count_text} or fewer cards in hand")
+        }
+        crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
+            let subject = match player {
+                crate::target::PlayerFilter::You => "your".to_string(),
+                _ => format!("{}'s", describe_static_player(player)),
+            };
+            format!(
+                "as long as {subject} life total is less than or equal to half {} starting life total",
+                describe_static_possessive_player(player)
+            )
         }
         crate::ConditionExpr::CountComparison {
             count,
@@ -896,7 +918,6 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
             (_, None) => "as long as that player completed a dungeon".to_string(),
             (_, Some(name)) => format!("as long as that player completed {name}"),
         },
-        crate::ConditionExpr::Unmodeled(text) if !text.is_empty() => format!("as long as {text}"),
         _ => format!("as long as {condition:?}"),
     }
 }
@@ -913,6 +934,26 @@ fn describe_static_possessive_player(player: &crate::target::PlayerFilter) -> &'
         crate::target::PlayerFilter::Attacking => "the attacking player's",
         crate::target::PlayerFilter::DamagedPlayer => "the damaged player's",
         _ => "that player's",
+    }
+}
+
+fn describe_static_player(player: &crate::target::PlayerFilter) -> &'static str {
+    match player {
+        crate::target::PlayerFilter::You => "you",
+        crate::target::PlayerFilter::Opponent => "an opponent",
+        crate::target::PlayerFilter::Any => "a player",
+        crate::target::PlayerFilter::NotYou => "another player",
+        crate::target::PlayerFilter::Teammate => "a teammate",
+        crate::target::PlayerFilter::Active => "the active player",
+        crate::target::PlayerFilter::Defending => "the defending player",
+        crate::target::PlayerFilter::Attacking => "the attacking player",
+        crate::target::PlayerFilter::DamagedPlayer => "the damaged player",
+        crate::target::PlayerFilter::EffectController => "that effect's controller",
+        crate::target::PlayerFilter::MostLifeTied => "the player with the most life",
+        crate::target::PlayerFilter::LowestLifeTied => "the player with the lowest life",
+        crate::target::PlayerFilter::MostCardsInHand => "the player who has the most cards in hand",
+        crate::target::PlayerFilter::ChosenPlayer => "the chosen player",
+        _ => "that player",
     }
 }
 
@@ -993,7 +1034,7 @@ pub(crate) fn resolve_anthem_count_expression(
     }
 }
 
-fn static_condition_is_active(
+pub(super) fn static_condition_is_active(
     condition: &crate::ConditionExpr,
     game: &GameState,
     source: ObjectId,
@@ -3511,6 +3552,18 @@ mod tests {
         assert_eq!(
             add.display(),
             "permanent spells you control are artifacts in addition to their other types"
+        );
+    }
+
+    #[test]
+    fn describe_static_condition_displays_half_starting_life_total() {
+        assert_eq!(
+            describe_static_condition(
+                &crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal {
+                    player: PlayerFilter::You,
+                }
+            ),
+            "as long as your life total is less than or equal to half your starting life total"
         );
     }
 

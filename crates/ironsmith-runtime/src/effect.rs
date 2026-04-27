@@ -1407,6 +1407,12 @@ impl Effect {
         Self::new(DoubleManaPoolEffect::new(player))
     }
 
+    /// Create an effect that empties all unspent mana from a player's mana pool.
+    pub fn empty_mana_pool_player(player: PlayerFilter) -> Self {
+        use crate::effects::EmptyManaPoolEffect;
+        Self::new(EmptyManaPoolEffect::new(player))
+    }
+
     /// Create a "become the monarch" effect for the controller.
     pub fn become_monarch() -> Self {
         use crate::effects::BecomeMonarchEffect;

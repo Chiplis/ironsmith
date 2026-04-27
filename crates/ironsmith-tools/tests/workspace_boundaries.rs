@@ -31,6 +31,59 @@ fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
+fn debug_safe_is_mechanical_only() {
+    let root = workspace_root();
+    let content = read_repo_file(
+        &root,
+        "crates/ironsmith-runtime/src/compiled_text/debug_safe.rs",
+    );
+
+    for forbidden in [
+        "CardDefinition",
+        "def.card",
+        ".card.name",
+        "ast_compiled_lines",
+        "describe_effect",
+        "describe_ability",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "debug_safe.rs must not depend on renderer/model context: {forbidden}"
+        );
+    }
+
+    for forbidden in ["known", "oracle", "reconciliation", "semantic"] {
+        assert!(
+            !content
+                .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                .any(|word| word.to_ascii_lowercase().contains(forbidden)),
+            "debug_safe.rs must not contain {forbidden}-style helpers"
+        );
+    }
+
+    for forbidden in [
+        "compact_whitespace(",
+        ".to_ascii_lowercase() ==",
+        "return \"When ",
+        "return \"Whenever ",
+        "return \"Create ",
+        "return \"Exile ",
+        "return \"Return ",
+        "return \"Destroy ",
+        "return \"Untap ",
+        "return \"Search ",
+        "return \"Prevent ",
+        "return \"Sacrifice ",
+        "return \"Target ",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "debug_safe.rs must not recover rendered game text through pattern matching: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn aggregate_compiled_card_models_are_core_owned() {
     let root = workspace_root();
     let checks = [

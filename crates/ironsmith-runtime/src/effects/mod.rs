@@ -140,7 +140,8 @@ pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
     AddManaOfLandProducedTypesEffect, AddScaledManaEffect, DoubleManaPoolEffect,
-    GrantManaAbilityUntilEotEffect, PayManaEffect, RetainManaUntilEndOfTurnEffect,
+    EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, PayManaEffect,
+    RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,

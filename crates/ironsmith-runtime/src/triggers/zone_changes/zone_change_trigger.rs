@@ -263,6 +263,16 @@ impl ZoneChangeTrigger {
                 explicit_other.other = false;
                 return format!("{} other than this", explicit_other.description());
             }
+            if filter.other && subject_is_always_creature(filter) {
+                let mut explicit_other = filter.clone();
+                explicit_other.other = false;
+                let subject = explicit_other
+                    .description()
+                    .strip_prefix("a ")
+                    .map(str::to_string)
+                    .unwrap_or_else(|| explicit_other.description());
+                return format!("another {subject}");
+            }
             filter.description()
         }
 
@@ -367,7 +377,8 @@ impl ZoneChangeTrigger {
             || filter_desc.starts_with("an ")
             || filter_desc.starts_with("the ")
             || filter_desc.starts_with("this ")
-            || filter_desc.starts_with("that ");
+            || filter_desc.starts_with("that ")
+            || filter_desc.starts_with("another ");
         if self.count_mode == CountMode::OneOrMore {
             parts.push("one or more".to_string());
         } else if !has_article {

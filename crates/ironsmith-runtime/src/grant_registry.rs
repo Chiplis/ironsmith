@@ -491,6 +491,9 @@ impl GrantRegistry {
 
             for ability in &perm.abilities {
                 if let AbilityKind::Static(s) = &ability.kind {
+                    if !s.is_active(game, perm_id) {
+                        continue;
+                    }
                     if let Some(spec) = s.grant_spec() {
                         let combat = game.combat.as_ref();
                         for player in game.players.iter().filter(|player| {
