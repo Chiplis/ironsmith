@@ -12092,10 +12092,11 @@ fn parse_urzas_tower_conditional_mana_output() {
         .expect("urza tower mana followup should parse");
 
     let mana_line = unprocessed_compiled_lines(&def).join(" ");
+    let mana_lower = mana_line.to_ascii_lowercase();
     assert!(
-        mana_line.contains("If you control")
-            && mana_line.contains("Add {C}{C}{C}")
-            && mana_line.contains("Add {C}"),
+        mana_lower.contains("if you control")
+            && mana_lower.contains("add {c}{c}{c}")
+            && mana_lower.contains("add {c}"),
         "expected conditional tron mana render, got {mana_line}"
     );
 }
@@ -12151,10 +12152,11 @@ fn parse_urza_tron_other_lands_conditional_mana_followups() {
             .parse_text(text)
             .expect("other tron land mana followup should parse");
         let mana_line = unprocessed_compiled_lines(&def).join(" ");
+        let mana_lower = mana_line.to_ascii_lowercase();
         assert!(
-            mana_line.contains("If you control")
-                && mana_line.contains("Add {C}{C}")
-                && mana_line.contains("Add {C}"),
+            mana_lower.contains("if you control")
+                && mana_lower.contains("add {c}{c}")
+                && mana_lower.contains("add {c}"),
             "expected conditional tron mana render, got {mana_line}"
         );
     }

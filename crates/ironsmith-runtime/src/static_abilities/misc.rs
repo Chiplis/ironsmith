@@ -3099,11 +3099,71 @@ impl StaticAbilityKind for PregameAction {
     }
 
     fn display(&self) -> String {
-        self.text.clone()
+        match &self.kind {
+            crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
+                render_begin_on_battlefield_pregame(spec)
+            }
+            crate::static_abilities::PregameActionKind::ChooseColor => self.text.clone(),
+        }
     }
 
     fn pregame_action_kind(&self) -> Option<crate::static_abilities::PregameActionKind> {
         Some(self.kind.clone())
+    }
+}
+
+fn render_begin_on_battlefield_pregame(
+    spec: &crate::static_abilities::PregameBeginOnBattlefieldSpec,
+) -> String {
+    let mut clause = String::from("If this card is in your opening hand");
+    if spec.require_not_starting_player {
+        clause.push_str(" and you're not the starting player");
+    }
+    clause.push_str(", you may begin the game with this on the battlefield");
+    if !spec.counters.is_empty() {
+        clause.push_str(" with ");
+        let counter_phrases: Vec<String> = spec
+            .counters
+            .iter()
+            .map(|(counter_type, count)| describe_counter_phrase(counter_type, *count))
+            .collect();
+        clause.push_str(&join_english(&counter_phrases));
+        clause.push_str(" on it");
+    }
+    clause.push('.');
+    if spec.exile_cards_from_hand > 0 {
+        let count = spec.exile_cards_from_hand;
+        let card_word = if count == 1 { "card" } else { "cards" };
+        let count_word = if count == 1 {
+            "a".to_string()
+        } else {
+            count.to_string()
+        };
+        clause.push_str(&format!(
+            " If you do, exile {count_word} {card_word} from your hand."
+        ));
+    }
+    clause
+}
+
+fn describe_counter_phrase(counter_type: &crate::object::CounterType, count: u32) -> String {
+    let counter_name = counter_type.description();
+    if count == 1 {
+        format!("a {counter_name} counter")
+    } else {
+        format!("{count} {counter_name} counters")
+    }
+}
+
+fn join_english(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        _ => {
+            let (last, rest) = items.split_last().expect("nonempty");
+            format!("{}, and {}", rest.join(", "), last)
+        }
     }
 }
 

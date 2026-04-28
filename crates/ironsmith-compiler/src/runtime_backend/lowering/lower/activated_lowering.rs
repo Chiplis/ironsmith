@@ -355,32 +355,13 @@ fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> EffectAst {
 }
 
 fn normalize_mana_replacement_effects(effects: Vec<EffectAst>) -> Vec<EffectAst> {
-    let mut normalized = Vec::new();
-    for effect in effects {
-        match effect {
-            EffectAst::SelfReplacement {
-                predicate,
-                if_true,
-                if_false,
-            } => {
-                normalized.extend(
-                    if_false
-                        .into_iter()
-                        .map(rewrite_self_replacements_as_conditionals),
-                );
-                normalized.push(EffectAst::Conditional {
-                    predicate,
-                    if_true: if_true
-                        .into_iter()
-                        .map(rewrite_self_replacements_as_conditionals)
-                        .collect(),
-                    if_false: Vec::new(),
-                });
-            }
-            other => normalized.push(rewrite_self_replacements_as_conditionals(other)),
-        }
-    }
-    normalized
+    effects
+        .into_iter()
+        .map(|effect| match effect {
+            EffectAst::SelfReplacement { .. } => effect,
+            other => rewrite_self_replacements_as_conditionals(other),
+        })
+        .collect()
 }
 
 pub(crate) struct LoweredRewriteActivatedLine {

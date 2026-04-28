@@ -9462,10 +9462,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceHasNoCounter(counter_type) => {
             format!("there are no {} counters on it", counter_type.description())
         }
-        Condition::SourceHasCounterAtLeast { counter_type, count } => format!(
-            "there are {count} or more {} counters on this source",
-            counter_type.description()
-        ),
+        Condition::SourceHasCounterAtLeast { counter_type, count } => {
+            if *count == 1 {
+                format!(
+                    "this source has a {} counter on it",
+                    counter_type.description()
+                )
+            } else {
+                format!(
+                    "this source has {count} or more {} counters on it",
+                    counter_type.description()
+                )
+            }
+        }
         Condition::SourcePowerAtLeast(min_power) => {
             format!("this creature's power is {min_power} or more")
         }

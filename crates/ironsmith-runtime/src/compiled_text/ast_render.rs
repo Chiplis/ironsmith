@@ -264,6 +264,26 @@ pub(super) fn describe_resolution_program(
     rendered_segments.join(". ")
 }
 
+pub(super) fn describe_mana_ability_resolution_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() != 1 {
+        return None;
+    }
+    let segment = &program.segments[0];
+    if segment.self_replacements.len() != 1 || segment.default_effects.is_empty() {
+        return None;
+    }
+    let branch = &segment.self_replacements[0];
+    let default_text = describe_effect_list(&segment.default_effects);
+    let replacement_text = describe_effect_list(&branch.replacement_effects);
+    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    Some(format!(
+        "{default_text}. If {condition_text}, instead {}",
+        super::normalize_common::lowercase_first(&replacement_text)
+    ))
+}
+
 fn is_standard_gift_render_payload(lower: &str) -> bool {
     lower.contains("chosen player draws a card")
         || lower.contains("chosen player creates a treasure token")
@@ -355,6 +375,44 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     }
     rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
         .replace("Exile this source", &format!("Exile {}", def.card.name))
+}
+
+fn ability_has_begin_on_battlefield_pregame(ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    matches!(
+        static_ability.pregame_action_kind(),
+        Some(crate::static_abilities::PregameActionKind::BeginOnBattlefield(_))
+    )
+}
+
+fn substitute_pregame_self_reference(line: &str, card_name: &str) -> String {
+    line.replace(
+        "begin the game with this on the battlefield",
+        &format!("begin the game with {card_name} on the battlefield"),
+    )
+}
+
+fn substitute_pregame_card_self_reference(line: &str, subject: &str, card_name: &str) -> String {
+    if subject.is_empty() || subject.eq_ignore_ascii_case("this source") {
+        return line.to_string();
+    }
+    let capitalized = capitalize_first_ascii(subject);
+    line.replace(subject, card_name)
+        .replace(&capitalized, card_name)
+}
+
+fn capitalize_first_ascii(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => {
+            let mut out = c.to_ascii_uppercase().to_string();
+            out.push_str(chars.as_str());
+            out
+        }
+        None => String::new(),
+    }
 }
 
 fn describe_structural_echo_pair(first: &Ability, second: &Ability) -> Option<String> {
@@ -1465,6 +1523,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         ));
     }
 
+    let has_begin_on_battlefield_pregame = def
+        .abilities
+        .iter()
+        .any(ability_has_begin_on_battlefield_pregame);
     let push_abilities = |output: &mut Vec<String>| {
         let has_suspend = def
             .alternative_casts
@@ -1580,12 +1642,23 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            output.extend(describe_ability(
+            let mut ability_lines = describe_ability(
                 ability_idx + 1,
                 ability,
                 subject,
                 rewrite_it_deals,
-            ));
+            );
+            if ability_has_begin_on_battlefield_pregame(ability) {
+                for line in &mut ability_lines {
+                    *line = substitute_pregame_self_reference(line, &def.card.name);
+                }
+            }
+            if has_begin_on_battlefield_pregame {
+                for line in &mut ability_lines {
+                    *line = substitute_pregame_card_self_reference(line, subject, &def.card.name);
+                }
+            }
+            output.extend(ability_lines);
             ability_idx += 1;
         }
     };

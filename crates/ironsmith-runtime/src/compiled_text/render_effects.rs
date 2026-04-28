@@ -10689,9 +10689,13 @@ pub(super) fn describe_inline_ability_with_self_subject(
                         .join(""),
                 );
             } else if !activated.effects.is_empty() {
-                payload.push_str(&super::ast_render::describe_resolution_program(
+                let rendered = super::ast_render::describe_mana_ability_resolution_program(
                     &activated.effects,
-                ));
+                )
+                .unwrap_or_else(|| {
+                    super::ast_render::describe_resolution_program(&activated.effects)
+                });
+                payload.push_str(&rendered);
             }
             if !payload.is_empty() {
                 if !line.is_empty() {
@@ -27351,7 +27355,12 @@ pub(super) fn describe_ability(
             }
             if !activated.effects.is_empty() {
                 line.push_str(": ");
-                let effects = super::ast_render::describe_resolution_program(&activated.effects);
+                let effects = super::ast_render::describe_mana_ability_resolution_program(
+                    &activated.effects,
+                )
+                .unwrap_or_else(|| {
+                    super::ast_render::describe_resolution_program(&activated.effects)
+                });
                 let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
