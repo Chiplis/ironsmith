@@ -1662,7 +1662,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if !additional_costs.is_empty() {
         out.push(format!(
             "As an additional cost to cast this spell, {}",
-            describe_additional_costs(&additional_costs)
+            lowercase_first(&describe_additional_costs(&additional_costs))
         ));
     }
     if !spell_like_card {
@@ -1672,10 +1672,15 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         && !spell_effects.is_empty()
         && !(def.aura_attach_filter.is_some() && has_attach_only_spell_effect)
     {
-        out.push(format!(
-            "Spell effects: {}",
-            describe_resolution_program_for_card(def, spell_effects)
-        ));
+        if is_choose_background_spell_effect(spell_effects) {
+            out.push("Keyword ability 0: Choose a Background".to_string());
+        } else {
+            let spell_text = rewrite_additional_sacrifice_reference_surface(
+                def,
+                &describe_resolution_program_for_card(def, spell_effects),
+            );
+            out.push(format!("Spell effects: {}", spell_text));
+        }
     }
     out.extend(deferred_spell_optional_lines);
     if spell_like_card {
@@ -1686,4 +1691,81 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     }
     out.extend(alternative_cast_lines);
     merge_adjacent_keyword_surface_lines(out)
+}
+
+fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &str) -> String {
+    if !has_additional_creature_sacrifice_cost(def) {
+        return text.to_string();
+    }
+
+    let mut normalized = text
+        .replace(
+            "You draw X cards, where X is that creature's power",
+            "Draw cards equal to the sacrificed creature's power",
+        )
+        .replace(
+            "you draw X cards, where X is that creature's power",
+            "draw cards equal to the sacrificed creature's power",
+        )
+        .replace("that creature's power", "the sacrificed creature's power")
+        .replace(
+            "that creature's toughness",
+            "the sacrificed creature's toughness",
+        )
+        .replace(
+            "that creature's mana value",
+            "the sacrificed creature's mana value",
+        );
+
+    if !normalized.contains("sacrificed creature's") {
+        normalized = normalized
+            .replace("its power", "the sacrificed creature's power")
+            .replace("its toughness", "the sacrificed creature's toughness")
+            .replace("its mana value", "the sacrificed creature's mana value");
+    }
+
+    normalized
+}
+
+fn has_additional_creature_sacrifice_cost(def: &CardDefinition) -> bool {
+    def.additional_non_mana_costs().iter().any(|cost| {
+        let Some(effect) = cost.effect_ref() else {
+            return false;
+        };
+        if effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some_and(|choose| {
+                choose.tag.as_str().starts_with("sacrificed_")
+                    && choose.filter.card_types.contains(&CardType::Creature)
+            })
+        {
+            return true;
+        }
+        effect
+            .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
+            .is_some_and(|sacrifice| sacrifice.filter.card_types.contains(&CardType::Creature))
+    })
+}
+
+fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -> bool {
+    let [effect] = spell_effects.flattened_default_effects() else {
+        return false;
+    };
+    let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return false;
+    };
+
+    choose.filter.zone == Some(Zone::Battlefield)
+        && choose.filter.controller == Some(PlayerFilter::You)
+        && choose.filter.card_types.is_empty()
+        && choose.filter.subtypes == [Subtype::Background]
+        && choose.filter.supertypes.is_empty()
+        && choose.count == ChoiceCount::exactly(1)
+        && choose.chooser == PlayerFilter::You
+        && choose.zone == Some(Zone::Battlefield)
+        && choose.additional_zones.is_empty()
+        && !choose.is_search
+        && !choose.reveal
+        && !choose.top_only
+        && !choose.replace_tagged_objects
 }

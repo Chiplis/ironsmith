@@ -4779,6 +4779,16 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "When this enchantment enters, exile target nonland permanent an opponent controls",
         )
         .replace(
+            "Target opponent's creature",
+            "Target creature an opponent controls",
+        )
+        .replace(
+            "target opponent's creature",
+            "target creature an opponent controls",
+        )
+        .replace("Sacrifice other creature", "Sacrifice another creature")
+        .replace("sacrifice other creature", "sacrifice another creature")
+        .replace(
             "As an additional cost to cast this spell, sacrifice creature you control",
             "As an additional cost to cast this spell, sacrifice a creature",
         )
@@ -9925,6 +9935,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     describe_player_filter(player),
                     count
                 );
+            }
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && filter.zone == Some(Zone::Graveyard)
+            {
+                let count_text = small_number_word(*count as u32)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count.to_string());
+                let subject = describe_count_filter_value_subject(filter);
+                return format!("there are {} or more {}", count_text, subject);
             }
             if let (
                 Value::Count(filter),

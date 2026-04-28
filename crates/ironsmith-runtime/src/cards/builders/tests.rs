@@ -8054,6 +8054,31 @@ fn test_parse_this_token_cant_attack_or_block_alone_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn render_token_controller_clause_precedes_quoted_ability_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Robber Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever this creature deals combat damage to a player, that player creates a 0/1 colorless Goblin Construct artifact creature token with \"This token can't block.\"",
+        )
+        .expect("combat-damage token creation should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains(
+            "that player creates a 0/1 colorless goblin construct artifact creature token. it has \"this token can't block.\""
+        ),
+        "expected controller text to attach to token creation before quoted ability, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("\"This token can't block.\" under"),
+        "quoted token ability should not absorb the controller clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_activated_abilities_of_artifacts_cant_be_activated_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Collector Ouphe Probe")
         .card_types(vec![CardType::Creature])
@@ -20874,7 +20899,7 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("sacrifice")
+        rendered.contains("as an additional cost to cast this spell, sacrifice a creature")
             && rendered.contains("deals damage equal to")
             && rendered.contains("power"),
         "expected additional-cost sacrificed-power linkage, got {rendered}"
@@ -33051,6 +33076,191 @@ fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
             && rendered.contains("put a +1/+1 counter on each tapped creature you control")
             && rendered.contains("Untap them"),
         "expected Lulu oracle-like trigger rendering to keep the gate and untap followup, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_choose_background_renders_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Background Partner Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Choose a Background (You can have a Background as a second commander.)")
+        .expect("choose-a-background line should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Choose a Background"),
+        "expected Background partner line to render as keyword text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("You choose a Background you control"),
+        "Background partner line should not render as a battlefield choice effect, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_power_based_draw_renders_cards_equal_to_power() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shadowheart Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{1}{B}, {T}, Sacrifice another creature: Draw X cards, where X is that creature's power.",
+        )
+        .expect("power-based draw activation should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("draw cards equal to that creature's power")
+            || rendered.contains("draw x cards, where x is that creature's power"),
+        "expected power-based draw count to render as cards equal to power, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("power cards"),
+        "power-based draw should not render the power phrase as a card count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_spellcast_mana_value_boost_renders_that_spell_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Livaan Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you cast a noncreature spell, target creature gets +X/+0 until end of turn, where X is that spell's mana value.",
+        )
+        .expect("spellcast mana-value boost should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("where x is that spell's mana value"),
+        "expected spellcast trigger to render that-spell mana value, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("card in that player's hand's mana value"),
+        "spellcast trigger should not render as a hand-card mana value, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_graveyard_threshold_preserves_there_are_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Viconia Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, if there are four or more creature cards in your graveyard, return a creature card at random from your graveyard to your hand.",
+        )
+        .expect("graveyard-threshold trigger should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("if there are four or more creature cards in your graveyard"),
+        "expected graveyard threshold to keep there-are wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("if you have four or more creature cards in your graveyard"),
+        "there-are graveyard threshold should not collapse to you-have wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_draw_power_then_gain_toughness_keeps_both_effects() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Momentous Fall Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nYou draw cards equal to the sacrificed creature's power, then you gain life equal to its toughness.",
+        )
+        .expect("power/toughness draw-gain chain should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("DrawCardsEffect") && debug.contains("GainLifeEffect"),
+        "expected draw and gain-life effects to survive comma-then chain parsing, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("draw cards equal to the sacrificed creature's power")
+            && rendered.contains("then you gain life equal to its toughness"),
+        "expected power/toughness draw-gain pair to render as one linked sentence, got {rendered}"
+    );
+    assert!(
+        rendered.contains("as an additional cost to cast this spell, sacrifice a creature"),
+        "expected additional-cost sacrifice wording to omit redundant control clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_additional_sacrifice_draw_power_uses_sacrificed_creature_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life's Legacy Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nDraw cards equal to the sacrificed creature's power.",
+        )
+        .expect("additional-cost sacrificed-power draw should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("draw cards equal to the sacrificed creature's power"),
+        "expected additional-cost sacrificed creature reference, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("that creature's power"),
+        "additional-cost sacrificed creature reference should not render as a generic that-creature reference, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_target_creature_opponent_controls_keeps_oracle_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Severed Strands Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature an opponent controls.")
+        .expect("opponent-controlled target creature should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target creature an opponent controls"),
+        "expected opponent-controlled target creature surface, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("target opponent's creature"),
+        "opponent-controlled target creature should not render as a possessive target opponent's creature, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_power_based_counters_render_x_where_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soul's Might Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Put X +1/+1 counters on target creature, where X is that creature's power.")
+        .expect("power-based counter count should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("put x +1/+1 counters on target creature, where x is that creature's power"),
+        "expected dynamic counter count to render with an X where-clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("power +1/+1 counter"),
+        "dynamic counter count should not render the power phrase as a counter count, got {rendered}"
     );
 }
 

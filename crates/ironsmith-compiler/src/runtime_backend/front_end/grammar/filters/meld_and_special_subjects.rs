@@ -3,6 +3,17 @@ use super::*;
 pub(super) fn parse_graveyard_threshold_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    fn player_filter_for_graveyard_threshold(player: &PlayerAst) -> Option<PlayerFilter> {
+        match player {
+            PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+            PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+            PlayerAst::Target => Some(PlayerFilter::target_player()),
+            PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+            _ => None,
+        }
+    }
+
     let (count, tail_start, constrained_player) = if filtered.len() >= 5
         && filtered[0] == "there"
         && filtered[1] == "are"
@@ -86,6 +97,19 @@ pub(super) fn parse_graveyard_threshold_predicate(
         filter
     };
     filter.zone = Some(Zone::Graveyard);
+
+    if constrained_player.is_none() {
+        if let Some(owner) = player_filter_for_graveyard_threshold(&player) {
+            if filter.owner.is_none() {
+                filter.owner = Some(owner);
+            }
+            return Ok(Some(PredicateAst::ValueComparison {
+                left: Value::Count(filter),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(count as i32),
+            }));
+        }
+    }
 
     Ok(Some(PredicateAst::PlayerControlsAtLeast {
         player,

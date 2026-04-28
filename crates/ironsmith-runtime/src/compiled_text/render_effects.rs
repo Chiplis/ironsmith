@@ -11349,7 +11349,26 @@ fn describe_triggered_inline_ability(
         _ => {}
     }
 
+    line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
     apply_triggered_presentation_label(triggered, line)
+}
+
+fn normalize_spellcast_trigger_mana_value_surface(
+    triggered: &crate::ability::TriggeredAbility,
+    line: String,
+) -> String {
+    if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()
+        .is_none()
+    {
+        return line;
+    }
+
+    line.replace(
+        "where X is a card in that player's hand's mana value",
+        "where X is that spell's mana value",
+    )
 }
 
 fn apply_triggered_presentation_label(
@@ -11417,6 +11436,27 @@ fn normalize_duplicate_sacrifice_article(text: &str) -> String {
     text
 }
 
+fn normalize_sacrifice_cost_control_phrase(text: &str) -> String {
+    let text = normalize_duplicate_sacrifice_article(text);
+    for prefix in ["Sacrifice ", "sacrifice "] {
+        let Some(rest) = text.strip_prefix(prefix) else {
+            continue;
+        };
+        if let Some(object) = rest.strip_prefix("other ") {
+            return format!("{prefix}another {object}");
+        }
+        let Some(object) = rest.strip_suffix(" you control") else {
+            continue;
+        };
+        let object = object
+            .strip_prefix("other ")
+            .map(|rest| format!("another {rest}"))
+            .unwrap_or_else(|| object.to_string());
+        return format!("{prefix}{object}");
+    }
+    text
+}
+
 pub(super) fn normalize_cost_phrase(text: &str) -> String {
     if let Some(rest) = text.strip_prefix("you ") {
         let normalized = normalize_you_verb_phrase(rest);
@@ -11429,7 +11469,7 @@ pub(super) fn normalize_cost_phrase(text: &str) -> String {
                 return format!("Pay {} life", amount.trim());
             }
         }
-        return normalize_duplicate_sacrifice_article(&normalized);
+        return normalize_sacrifice_cost_control_phrase(&normalized);
     }
     if let Some(rest) = text.strip_prefix("You ") {
         let normalized = normalize_you_verb_phrase(rest);
@@ -11442,7 +11482,7 @@ pub(super) fn normalize_cost_phrase(text: &str) -> String {
                 return format!("Pay {} life", amount.trim());
             }
         }
-        return normalize_duplicate_sacrifice_article(&normalized);
+        return normalize_sacrifice_cost_control_phrase(&normalized);
     }
     if let Some(life_tail) = text.strip_prefix("Lose ") {
         if let Some(amount) = life_tail.strip_suffix(" life") {
@@ -11452,7 +11492,7 @@ pub(super) fn normalize_cost_phrase(text: &str) -> String {
             return format!("Pay {} life", amount.trim());
         }
     }
-    normalize_duplicate_sacrifice_article(text)
+    normalize_sacrifice_cost_control_phrase(text)
 }
 
 #[cfg(test)]
@@ -14796,6 +14836,17 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
     match &draw.count {
+        Value::SourcePower => Some(format!("{player} {verb} cards equal to its power")),
+        Value::PowerOf(spec) => {
+            if let Some(basis) = describe_tagged_creature_power_count_basis(spec) {
+                Some(format!("{player} {verb} X cards, where X is {basis}"))
+            } else {
+                Some(format!(
+                    "{player} {verb} cards equal to {}",
+                    describe_power_card_count_basis(spec)
+                ))
+            }
+        }
         Value::Count(filter)
             if filter.zone == Some(Zone::Hand)
                 && matches!((&draw.player, &filter.owner), (PlayerFilter::Target(draw_inner), Some(PlayerFilter::Target(owner_inner))) if draw_inner == owner_inner) =>
@@ -14875,6 +14926,73 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     }
 }
 
+fn describe_tagged_creature_power_count_basis(spec: &ChooseSpec) -> Option<&'static str> {
+    match spec.base() {
+        ChooseSpec::Tagged(tag)
+            if tag.as_str() == "__it__" || tag.as_str().starts_with("sacrifice_cost_") =>
+        {
+            Some("that creature's power")
+        }
+        _ => None,
+    }
+}
+
+fn describe_power_card_count_basis(spec: &ChooseSpec) -> String {
+    match spec.base() {
+        ChooseSpec::Tagged(tag)
+            if tag.as_str() == "__it__" || tag.as_str().starts_with("sacrifice_cost_") =>
+        {
+            "that creature's power".to_string()
+        }
+        ChooseSpec::Source => "its power".to_string(),
+        _ => format!("{} power", describe_possessive_choose_spec(spec)),
+    }
+}
+
+fn describe_dynamic_counter_amount_phrase(
+    value: &Value,
+    counter_type: CounterType,
+    target: &str,
+) -> Option<(String, String)> {
+    let counter_name = describe_counter_type(counter_type);
+    let amount_text = format!("X {counter_name} counters");
+    let attribute = match value {
+        Value::SourcePower | Value::PowerOf(_) => "power",
+        Value::SourceToughness | Value::ToughnessOf(_) => "toughness",
+        Value::ManaValueOf(_) => "mana value",
+        _ => return None,
+    };
+    let basis = match value {
+        Value::SourcePower => "its power".to_string(),
+        Value::SourceToughness => "its toughness".to_string(),
+        Value::PowerOf(spec) => describe_dynamic_counter_basis(spec, "power"),
+        Value::ToughnessOf(spec) => describe_dynamic_counter_basis(spec, "toughness"),
+        Value::ManaValueOf(spec) => describe_dynamic_counter_basis(spec, "mana value"),
+        _ => return None,
+    };
+    let basis = if target.contains("target creature")
+        && basis == format!("target permanent's {attribute}")
+    {
+        format!("that creature's {attribute}")
+    } else {
+        basis
+    };
+    Some((amount_text, basis))
+}
+
+fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String {
+    match spec.base() {
+        ChooseSpec::Tagged(tag) if tag_action_from_name(tag.as_str()) == Some("sacrificed") => {
+            format!("the sacrificed creature's {attribute}")
+        }
+        ChooseSpec::Tagged(_) | ChooseSpec::Target(_) => {
+            format!("that creature's {attribute}")
+        }
+        ChooseSpec::Source => format!("its {attribute}"),
+        _ => format!("{} {attribute}", describe_possessive_choose_spec(spec)),
+    }
+}
+
 pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     match value {
         Value::Count(filter) => Some(describe_for_each_filter(filter)),
@@ -14926,6 +15044,42 @@ pub(super) fn pluralize_token_phrase(token_phrase: &str) -> String {
         return format!("{head} tokens");
     }
     format!("{token_phrase}s")
+}
+
+fn split_token_ability_sentence(token_phrase: &str) -> (&str, Option<String>) {
+    if let Some((head, tail)) = token_phrase.split_once(". It has ") {
+        return (head, Some(format!(". It has {tail}")));
+    }
+    if let Some((head, tail)) = token_phrase.split_once(". They have ") {
+        return (head, Some(format!(". They have {tail}")));
+    }
+    (token_phrase, None)
+}
+
+fn append_token_ability_sentence(mut text: String, ability_sentence: Option<String>) -> String {
+    if let Some(sentence) = ability_sentence {
+        text.push_str(&sentence);
+    }
+    text
+}
+
+fn describe_token_creator_subject(controller: &PlayerFilter) -> Option<String> {
+    match controller {
+        PlayerFilter::You => None,
+        PlayerFilter::DamagedPlayer => Some("that player".to_string()),
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
+            Some("its controller".to_string())
+        }
+        other => Some(describe_player_filter(other)),
+    }
+}
+
+fn describe_create_token_action(object_text: &str, controller: &PlayerFilter) -> String {
+    if let Some(subject) = describe_token_creator_subject(controller) {
+        format!("{} creates {object_text}", capitalize_first(&subject))
+    } else {
+        format!("Create {object_text}")
+    }
 }
 
 pub(super) fn should_render_token_count_with_where_x(value: &Value) -> bool {
@@ -15064,28 +15218,16 @@ pub(super) fn describe_compact_create_token(
         let text = format!(
             "{amount} with \"{{T}}, Sacrifice this token, exile the top card of your library: You may play that card this turn. Activate only as a sorcery\""
         );
-        return if matches!(create_token.controller, PlayerFilter::You) {
-            Some(format!("Create {text}"))
-        } else if matches!(create_token.controller, PlayerFilter::ControllerOf(_)) {
-            Some(format!("That permanent's controller creates {text}"))
-        } else {
-            Some(format!(
-                "Create {text} under {} control",
-                describe_possessive_player_filter(&create_token.controller)
-            ))
-        };
+        return Some(describe_create_token_action(
+            &text,
+            &create_token.controller,
+        ));
     }
 
-    if matches!(create_token.controller, PlayerFilter::You) {
-        Some(format!("Create {amount}"))
-    } else if matches!(create_token.controller, PlayerFilter::ControllerOf(_)) {
-        Some(format!("That permanent's controller creates {amount}"))
-    } else {
-        Some(format!(
-            "Create {amount} under {} control",
-            describe_possessive_player_filter(&create_token.controller)
-        ))
-    }
+    Some(describe_create_token_action(
+        &amount,
+        &create_token.controller,
+    ))
 }
 
 pub(super) fn choose_exact_count(choose: &crate::effects::ChooseObjectsEffect) -> Option<usize> {
@@ -17369,6 +17511,15 @@ pub(super) fn describe_draw_then_gain_life(
     if !matches!(gain.player, ChooseSpec::Player(PlayerFilter::You)) {
         return None;
     }
+    if let (Value::PowerOf(power_spec), Value::ToughnessOf(toughness_spec)) =
+        (&draw.count, &gain.amount)
+        && toughness_life_basis_matches_power_draw(power_spec, toughness_spec)
+    {
+        return Some(format!(
+            "You draw cards equal to {}, then you gain life equal to its toughness",
+            describe_power_card_count_basis(power_spec)
+        ));
+    }
     // Only combine when the gain amount is a dynamic count—oracle
     // cards with fixed gain amounts use "and" rather than "then".
     let Value::Count(filter) = &gain.amount else {
@@ -17379,6 +17530,20 @@ pub(super) fn describe_draw_then_gain_life(
     Some(format!(
         "{draw_clause}, then you gain life equal to the number of {filter_text}"
     ))
+}
+
+fn toughness_life_basis_matches_power_draw(
+    power_spec: &ChooseSpec,
+    toughness_spec: &ChooseSpec,
+) -> bool {
+    if power_spec == toughness_spec {
+        return true;
+    }
+    matches!(
+        (power_spec.base(), toughness_spec.base()),
+        (ChooseSpec::Tagged(tag), ChooseSpec::Source)
+            if tag.as_str() == "__it__" || tag.as_str().starts_with("sacrifice_cost_")
+    )
 }
 
 pub(super) fn describe_draw_then_lose_life(
@@ -21592,6 +21757,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_counter_type(counter_type.clone()),
             );
         }
+        if let Some((amount_text, basis_text)) = describe_dynamic_counter_amount_phrase(
+            &put_counters.amount,
+            put_counters.counter_type,
+            &target,
+        ) {
+            return format!("Put {amount_text} on {target}, where X is {basis_text}");
+        }
         if let Value::Add(left, right) = &put_counters.amount
             && left == right
         {
@@ -23364,31 +23536,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         if value_is_iterated_object_count(&create_token.count) {
             let token_blueprint = describe_token_blueprint(&create_token.token);
-            let mut text = if matches!(create_token.controller, PlayerFilter::You) {
-                format!("Create a {token_blueprint}")
-            } else {
-                format!(
-                    "Create a {} under {} control",
-                    token_blueprint,
-                    describe_possessive_player_filter(&create_token.controller)
-                )
-            };
+            let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
+            let mut text =
+                describe_create_token_action(&format!("a {token_main}"), &create_token.controller);
             text = append_token_entry_flags(text, true);
+            text = append_token_ability_sentence(text, token_ability);
             return append_token_cleanup_sentences(text, true);
         }
         if let Some(for_each_count) = describe_create_for_each_count(&create_token.count) {
             let token_blueprint = describe_token_blueprint(&create_token.token);
-            let mut text = if matches!(create_token.controller, PlayerFilter::You) {
-                format!("Create a {} for each {}", token_blueprint, for_each_count)
-            } else {
-                format!(
-                    "Create a {} under {} control for each {}",
-                    token_blueprint,
-                    describe_possessive_player_filter(&create_token.controller),
-                    for_each_count
-                )
-            };
+            let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
+            let mut text = describe_create_token_action(
+                &format!("a {token_main} for each {for_each_count}"),
+                &create_token.controller,
+            );
             text = append_token_entry_flags(text, true);
+            text = append_token_ability_sentence(text, token_ability);
             return append_token_cleanup_sentences(text, true);
         }
         let use_where_x = should_render_token_count_with_where_x(&create_token.count);
@@ -23399,6 +23562,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             pluralize_token_phrase(&token_blueprint)
         };
+        let (token_main, token_ability) = split_token_ability_sentence(&token_phrase);
         let count_text = if use_where_x {
             "X".to_string()
         } else if singular_count {
@@ -23407,20 +23571,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_effect_count_backref(&create_token.count)
                 .unwrap_or_else(|| describe_value(&create_token.count))
         };
-        let mut text = if matches!(create_token.controller, PlayerFilter::You) {
-            if singular_count && token_phrase.contains(", a ") {
-                format!("Create {}", token_phrase)
-            } else {
-                format!("Create {} {}", count_text, token_phrase)
-            }
+        let object_text = if singular_count && token_main.contains(", a ") {
+            token_main.to_string()
         } else {
-            format!(
-                "Create {} {} under {} control",
-                count_text,
-                token_phrase,
-                describe_possessive_player_filter(&create_token.controller)
-            )
+            format!("{} {}", count_text, token_main)
         };
+        let mut text = describe_create_token_action(&object_text, &create_token.controller);
         text = append_token_entry_flags(text, singular_count);
         if use_where_x {
             text.push_str(&format!(
@@ -23428,6 +23584,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_value(&create_token.count)
             ));
         }
+        text = append_token_ability_sentence(text, token_ability);
         return append_token_cleanup_sentences(text, singular_count);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
@@ -27826,6 +27983,7 @@ pub(super) fn describe_ability(
                 }
                 _ => {}
             }
+            line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);

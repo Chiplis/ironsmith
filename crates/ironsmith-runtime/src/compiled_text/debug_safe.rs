@@ -126,6 +126,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("enter the battlefield", "enter")
         .replace("Enters the battlefield", "Enters")
         .replace("Enter the battlefield", "Enter")
+        .replace(" in the battlefield", " on the battlefield")
+        .replace(" In the battlefield", " On the battlefield")
         .replace("Cascade and Cascade", "Cascade, cascade")
         .replace("Add 1 mana of any color", "Add one mana of any color")
         .replace("add 1 mana of any color", "add one mana of any color")
@@ -317,6 +319,16 @@ mod tests {
         assert_eq!(
             normalize_debug_safe_spelling_surface("add 1 mana of any color to your mana pool."),
             "add one mana of any color to your mana pool."
+        );
+    }
+
+    #[test]
+    fn cleanup_uses_battlefield_surface_preposition() {
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "You choose a creature you control in the battlefield."
+            ),
+            "You choose a creature you control on the battlefield."
         );
     }
 }
