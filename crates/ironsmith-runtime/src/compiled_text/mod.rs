@@ -148,7 +148,9 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
         let merged = merge_conditioned_spell_and_activation_tax_lines(
             merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
                 merge_lose_all_transform_lines(merge_blockability_lines(
-                    merge_subject_predicate_surface_lines(previous.clone()),
+                    annotate_color_choice_exclusions(merge_subject_predicate_surface_lines(
+                        previous.clone(),
+                    )),
                 )),
             )),
         );
@@ -157,6 +159,33 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
         }
         lines = merged;
     }
+}
+
+fn annotate_color_choice_exclusions(mut lines: Vec<String>) -> Vec<String> {
+    for idx in 0..lines.len().saturating_sub(1) {
+        let line = lines[idx].trim_end_matches('.');
+        if !line.starts_with("As this ")
+            || !line.ends_with(" enters, choose a color")
+            || line.contains(" other than ")
+        {
+            continue;
+        }
+
+        let next = lines[idx + 1].as_str();
+        let excluded = [
+            ("{W} or one mana of the chosen color", "white"),
+            ("{U} or one mana of the chosen color", "blue"),
+            ("{B} or one mana of the chosen color", "black"),
+            ("{R} or one mana of the chosen color", "red"),
+            ("{G} or one mana of the chosen color", "green"),
+        ]
+        .iter()
+        .find_map(|(needle, color)| next.contains(needle).then_some(*color));
+        if let Some(color) = excluded {
+            lines[idx] = format!("{line} other than {color}");
+        }
+    }
+    lines
 }
 
 fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> {
@@ -169,6 +198,22 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
             return merged;
         }
         lines = merged;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_choice_exclusion_is_inferred_from_fixed_chosen_color_mana() {
+        let lines = annotate_color_choice_exclusions(vec![
+            "This land enters tapped.".to_string(),
+            "As this land enters, choose a color.".to_string(),
+            "{T}: Add {U} or one mana of the chosen color.".to_string(),
+        ]);
+
+        assert_eq!(lines[1], "As this land enters, choose a color other than blue");
     }
 }
 

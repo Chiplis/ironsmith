@@ -10689,12 +10689,11 @@ pub(super) fn describe_inline_ability_with_self_subject(
                         .join(""),
                 );
             } else if !activated.effects.is_empty() {
-                let rendered = super::ast_render::describe_mana_ability_resolution_program(
-                    &activated.effects,
-                )
-                .unwrap_or_else(|| {
-                    super::ast_render::describe_resolution_program(&activated.effects)
-                });
+                let rendered =
+                    super::ast_render::describe_mana_ability_resolution_program(&activated.effects)
+                        .unwrap_or_else(|| {
+                            super::ast_render::describe_resolution_program(&activated.effects)
+                        });
                 payload.push_str(&rendered);
             }
             if !payload.is_empty() {
@@ -10796,10 +10795,32 @@ fn describe_add_mana_destination_suffix(player: &PlayerFilter) -> String {
     }
 }
 
+fn describe_mana_amount_for_add_effect(value: &Value) -> String {
+    if let Value::Fixed(amount) = value
+        && *amount >= 0
+        && let Some(word) = small_number_word(*amount as u32)
+    {
+        return word.to_string();
+    }
+    describe_value(value)
+}
+
 fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if static_ability.id() == crate::static_abilities::StaticAbilityId::ChooseColorAsEnters {
+        let mut line = format!("As {subject} enters, choose a color");
+        if let Some(excluded) = static_ability
+            .color_choice_as_enters()
+            .and_then(|choice| choice.excluded)
+        {
+            line.push_str(" other than ");
+            line.push_str(excluded.name());
+        }
+        return line;
+    }
+
     let rendered = static_ability.display();
     let trimmed = rendered.trim();
     if trimmed.is_empty() {
@@ -11173,6 +11194,111 @@ mod tests {
     use super::*;
     use crate::tag::TagKey;
     use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn mana_rendering_uses_current_oracle_surface_for_your_pool() {
+        assert_eq!(
+            describe_effect(&Effect::add_mana_of_any_one_color(Value::Fixed(3))),
+            "Add three mana of any one color"
+        );
+
+        let scaled = Effect::new(crate::effects::AddScaledManaEffect::new(
+            vec![ManaSymbol::Red],
+            Value::Count(ObjectFilter::creature()),
+            PlayerFilter::You,
+        ));
+        assert_eq!(describe_effect(&scaled), "Add {R} for each creature");
+    }
+
+    #[test]
+    fn dynamic_any_one_color_mana_renders_as_x_with_where_clause() {
+        let effect =
+            Effect::add_mana_of_any_one_color(Value::PowerOf(Box::new(ChooseSpec::Source)));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Add X mana of any one color, where X is this source's power"
+        );
+    }
+
+    #[test]
+    fn chosen_and_land_produced_mana_omit_your_pool_suffix() {
+        let chosen = Effect::new(crate::effects::mana::AddManaOfChosenColorEffect::new(
+            Value::Fixed(1),
+            PlayerFilter::You,
+        ));
+        assert_eq!(describe_effect(&chosen), "Add one mana of the chosen color");
+
+        let fixed_choice = Effect::new(
+            crate::effects::mana::AddManaOfChosenColorEffect::with_fixed_option(
+                Value::Fixed(2),
+                PlayerFilter::You,
+                crate::color::Color::White,
+            ),
+        );
+        assert_eq!(
+            describe_effect(&fixed_choice),
+            "Add {W} or two mana of the chosen color"
+        );
+
+        let land_produced = Effect::new(crate::effects::AddManaOfLandProducedTypesEffect::new(
+            Value::Fixed(1),
+            PlayerFilter::You,
+            ObjectFilter::land().controlled_by(PlayerFilter::You),
+            true,
+            false,
+        ));
+        assert_eq!(
+            describe_effect(&land_produced),
+            "Add one mana of any type that a land you control could produce"
+        );
+    }
+
+    #[test]
+    fn all_color_combination_mana_uses_colors_surface() {
+        let effect = Effect::new(crate::effects::AddManaOfAnyColorEffect::restricted(
+            Value::Fixed(2),
+            PlayerFilter::You,
+            crate::color::Color::ALL.to_vec(),
+        ));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Add two mana in any combination of colors"
+        );
+    }
+
+    #[test]
+    fn commander_identity_mana_uses_oracle_color_identity_surface() {
+        let effect = Effect::new(crate::effects::AddManaFromCommanderColorIdentityEffect::you(
+            Value::Fixed(1),
+        ));
+        assert_eq!(
+            describe_effect(&effect),
+            "Add one mana of any color in your commander's color identity"
+        );
+    }
+
+    #[test]
+    fn choose_color_as_enters_uses_oracle_static_surface() {
+        let choose_any = crate::static_abilities::StaticAbility::choose_color_as_enters(
+            None,
+            "Choose color as enters.".to_string(),
+        );
+        assert_eq!(
+            describe_static_ability_with_subject(&choose_any, "this artifact"),
+            "As this artifact enters, choose a color"
+        );
+
+        let choose_except = crate::static_abilities::StaticAbility::choose_color_as_enters(
+            Some(crate::color::Color::Blue),
+            "Choose color as enters.".to_string(),
+        );
+        assert_eq!(
+            describe_static_ability_with_subject(&choose_except, "this land"),
+            "As this land enters, choose a color other than blue"
+        );
+    }
 
     #[test]
     fn describe_choose_then_sacrifice_compacts_any_number_costs() {
@@ -21641,53 +21767,53 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let mana_text = if mana.is_empty() { "{0}" } else { &mana };
         if let Value::Count(filter) = &add_scaled.amount {
             return format!(
-                "Add {} for each {} to {}",
+                "Add {} for each {}{}",
                 mana_text,
                 describe_for_each_count_filter(filter),
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::CountersOnSource(counter_type) = &add_scaled.amount {
             return format!(
-                "Add {} for each {} counter on this source to {}",
+                "Add {} for each {} counter on this source{}",
                 mana_text,
                 describe_counter_type(*counter_type),
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::CountersOn(spec, Some(counter_type)) = &add_scaled.amount {
             return format!(
-                "Add {} for each {} counter on {} to {}",
+                "Add {} for each {} counter on {}{}",
                 mana_text,
                 describe_counter_type(*counter_type),
                 describe_choose_spec(spec),
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::CountersOn(spec, None) = &add_scaled.amount {
             return format!(
-                "Add {} for each counter on {} to {}",
+                "Add {} for each counter on {}{}",
                 mana_text,
                 describe_choose_spec(spec),
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Some((party_filter, multiplier)) = party_size_multiplier(&add_scaled.amount) {
             let party_owner = describe_possessive_player_filter(&party_filter);
             if multiplier <= 1 {
                 return format!(
-                    "Add {} for each creature in {} party to {}",
+                    "Add {} for each creature in {} party{}",
                     mana_text,
                     party_owner,
-                    describe_mana_pool_owner(&add_scaled.player)
+                    describe_add_mana_destination_suffix(&add_scaled.player)
                 );
             }
             return format!(
-                "Add {} {} times for each creature in {} party to {}",
+                "Add {} {} times for each creature in {} party{}",
                 mana_text,
                 multiplier,
                 party_owner,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::Devotion { player, color } = &add_scaled.amount {
@@ -21711,18 +21837,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 ),
             };
             return format!(
-                "Add {} {} to {}",
+                "Add {} {}{}",
                 mana_text,
                 life_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::PowerOf(spec) = &add_scaled.amount {
             return format!(
-                "Add an amount of {} equal to the power of {} to {}",
+                "Add an amount of {} equal to the power of {}{}",
                 mana_text,
                 describe_choose_spec(spec),
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::ManaValueOf(spec) = &add_scaled.amount {
@@ -21735,26 +21861,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
             };
             return format!(
-                "Add an amount of {} equal to {} to {}",
+                "Add an amount of {} equal to {}{}",
                 mana_text,
                 amount_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::EffectValue(_) = &add_scaled.amount {
             return format!(
-                "Add that much {} to {}",
+                "Add that much {}{}",
                 mana_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) = &add_scaled.amount
         {
             return format!(
-                "Add that much {} to {}",
+                "Add that much {}{}",
                 mana_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::EffectValueOffset(_, offset) = &add_scaled.amount {
@@ -21766,10 +21892,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 format!("that much minus {}", -offset)
             };
             return format!(
-                "Add {} {} to {}",
+                "Add {} {}{}",
                 amount_text,
                 mana_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         if let Value::EventValueOffset(EventValueSpec::Amount, offset)
@@ -21783,17 +21909,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 format!("that much minus {}", -offset)
             };
             return format!(
-                "Add {} {} to {}",
+                "Add {} {}{}",
                 amount_text,
                 mana_text,
-                describe_mana_pool_owner(&add_scaled.player)
+                describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
         return format!(
-            "Add {} {} time(s) to {}",
+            "Add {} {} time(s){}",
             mana_text,
             describe_value(&add_scaled.amount),
-            describe_mana_pool_owner(&add_scaled.player)
+            describe_add_mana_destination_suffix(&add_scaled.player)
         );
     }
     if let Some(mill) = effect.downcast_ref::<crate::effects::MillEffect>() {
@@ -23783,6 +23909,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
         if let Some(colors) = &add_any.available_colors {
+            let has_all_colors = crate::color::Color::ALL
+                .iter()
+                .all(|color| colors.contains(color));
+            if has_all_colors && matches!(add_any.amount, Value::Fixed(1)) {
+                return format!(
+                    "Add one mana of any color{}",
+                    describe_add_mana_destination_suffix(&add_any.player)
+                );
+            }
             if matches!(add_any.amount, Value::Fixed(1)) {
                 let options = colors
                     .iter()
@@ -23795,6 +23930,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_add_mana_destination_suffix(&add_any.player)
                 );
             }
+            if has_all_colors {
+                return format!(
+                    "Add {} mana in any combination of colors{}",
+                    describe_mana_amount_for_add_effect(&add_any.amount),
+                    describe_add_mana_destination_suffix(&add_any.player)
+                );
+            }
             let options = colors
                 .iter()
                 .copied()
@@ -23804,14 +23946,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .join(" and/or ");
             return format!(
                 "Add {} mana in any combination of {}{}",
-                describe_value(&add_any.amount),
+                describe_mana_amount_for_add_effect(&add_any.amount),
                 options,
                 describe_add_mana_destination_suffix(&add_any.player)
             );
         }
         return format!(
             "Add {} mana of any color{}",
-            describe_value(&add_any.amount),
+            describe_mana_amount_for_add_effect(&add_any.amount),
             describe_add_mana_destination_suffix(&add_any.player)
         );
     }
@@ -23823,39 +23965,53 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 count_subject.push_str(" on the battlefield");
             }
             return format!(
-                "Add X mana of any one color to {}, where X is the number of {}",
-                describe_mana_pool_owner(&add_one.player),
+                "Add X mana of any one color{}, where X is the number of {}",
+                describe_add_mana_destination_suffix(&add_one.player),
                 count_subject
             );
         }
+        if !matches!(&add_one.amount, Value::Fixed(_) | Value::X) {
+            return format!(
+                "Add X mana of any one color{}, where X is {}",
+                describe_add_mana_destination_suffix(&add_one.player),
+                describe_value(&add_one.amount)
+            );
+        }
         return format!(
-            "Add {} mana of any one color to {}",
-            describe_value(&add_one.amount),
-            describe_mana_pool_owner(&add_one.player)
+            "Add {} mana of any one color{}",
+            describe_mana_amount_for_add_effect(&add_one.amount),
+            describe_add_mana_destination_suffix(&add_one.player)
         );
     }
     if let Some(add_chosen) =
         effect.downcast_ref::<crate::effects::mana::AddManaOfChosenColorEffect>()
     {
-        let pool = describe_mana_pool_owner(&add_chosen.player);
-        let amount = describe_value(&add_chosen.amount);
+        let destination = describe_add_mana_destination_suffix(&add_chosen.player);
+        let amount = describe_mana_amount_for_add_effect(&add_chosen.amount);
         if let Some(fixed) = add_chosen.fixed_option {
             let fixed_symbol = describe_mana_symbol(crate::mana::ManaSymbol::from_color(fixed));
             if matches!(add_chosen.amount, Value::Fixed(1)) {
                 return format!(
-                    "Add {} or one mana of the chosen color to {}",
-                    fixed_symbol, pool
+                    "Add {} or one mana of the chosen color{}",
+                    fixed_symbol, destination
                 );
             }
             return format!(
-                "Add {} or {} mana of the chosen color to {}",
-                fixed_symbol, amount, pool
+                "Add {} or {} mana of the chosen color{}",
+                fixed_symbol, amount, destination
             );
         }
         if matches!(add_chosen.amount, Value::Fixed(1)) {
-            return format!("Add one mana of the chosen color to {}", pool);
+            return format!("Add one mana of the chosen color{}", destination);
         }
-        return format!("Add {} mana of the chosen color to {}", amount, pool);
+        if !matches!(&add_chosen.amount, Value::Fixed(_) | Value::X) {
+            return format!(
+                "Add an amount of mana of the chosen color equal to {}{}",
+                describe_value(&add_chosen.amount),
+                destination
+            );
+        }
+        return format!("Add {} mana of the chosen color{}", amount, destination);
     }
     if let Some(add_land_produced) =
         effect.downcast_ref::<crate::effects::AddManaOfLandProducedTypesEffect>()
@@ -23871,21 +24027,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ""
         };
         return format!(
-            "Add {} mana of any{} {} to {} that {} could produce",
-            describe_value(&add_land_produced.amount),
+            "Add {} mana of any{} {}{} that {} could produce",
+            describe_mana_amount_for_add_effect(&add_land_produced.amount),
             one_word,
             any_word,
-            describe_mana_pool_owner(&add_land_produced.player),
+            describe_add_mana_destination_suffix(&add_land_produced.player),
             add_land_produced.land_filter.description()
         );
     }
     if let Some(add_commander) =
         effect.downcast_ref::<crate::effects::AddManaFromCommanderColorIdentityEffect>()
     {
+        let destination = describe_add_mana_destination_suffix(&add_commander.player);
+        if matches!(add_commander.amount, Value::Fixed(1)) {
+            return format!(
+                "Add one mana of any color in your commander's color identity{}",
+                destination
+            );
+        }
         return format!(
-            "Add {} mana of commander's color identity to {}",
-            describe_value(&add_commander.amount),
-            describe_mana_pool_owner(&add_commander.player)
+            "Add {} mana of any color in your commander's color identity{}",
+            describe_mana_amount_for_add_effect(&add_commander.amount),
+            destination
         );
     }
     if effect
@@ -24170,8 +24333,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         trigger_text = cleanup_decompiled_text(&trigger_text);
         let trigger_lower = trigger_text.to_ascii_lowercase();
         let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
-        if delayed_text.contains("if it matches card in exile, put it into its owner's graveyard")
-        {
+        if delayed_text.contains("if it matches card in exile, put it into its owner's graveyard") {
             delayed_text = delayed_text.replace(
                 "if it matches card in exile, put it into its owner's graveyard",
                 "if any of those cards remain exiled, return them to their owners' graveyards",
@@ -27355,12 +27517,11 @@ pub(super) fn describe_ability(
             }
             if !activated.effects.is_empty() {
                 line.push_str(": ");
-                let effects = super::ast_render::describe_mana_ability_resolution_program(
-                    &activated.effects,
-                )
-                .unwrap_or_else(|| {
-                    super::ast_render::describe_resolution_program(&activated.effects)
-                });
+                let effects =
+                    super::ast_render::describe_mana_ability_resolution_program(&activated.effects)
+                        .unwrap_or_else(|| {
+                            super::ast_render::describe_resolution_program(&activated.effects)
+                        });
                 let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                     &effects,
                     subject,
