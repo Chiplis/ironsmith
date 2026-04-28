@@ -4014,6 +4014,10 @@ fn resolve_value_with_context(
         | Value::CardTypesInGraveyard(_)
         | Value::EffectValue(_)
         | Value::EffectValueOffset(_, _)
+        | Value::EffectMetric { .. }
+        | Value::EffectMetricOffset { .. }
+        | Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
         | Value::WasKicked
         | Value::WasBoughtBack
         | Value::WasEntwined

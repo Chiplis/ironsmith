@@ -4793,6 +4793,7 @@ pub struct LookAtTopCardsEffect {
     pub player: PlayerFilter,
     pub count: Value,
     pub tag: TagKey,
+    pub reveal: bool,
 }
 
 impl LookAtTopCardsEffect {
@@ -4801,6 +4802,20 @@ impl LookAtTopCardsEffect {
             player,
             count: count.into(),
             tag: tag.into(),
+            reveal: false,
+        }
+    }
+
+    pub fn revealing(
+        player: PlayerFilter,
+        count: impl Into<Value>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        Self {
+            player,
+            count: count.into(),
+            tag: tag.into(),
+            reveal: true,
         }
     }
 }
@@ -4935,6 +4950,9 @@ impl PutTaggedRemainderOnLibraryBottomEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveAnyCountersAmongEffect {
     pub count: u32,
+    pub min_count: u32,
+    pub dynamic_count: bool,
+    pub display_x: bool,
     pub filter: ObjectFilter,
     pub counter_type: Option<crate::counter::CounterType>,
 }
@@ -4943,6 +4961,20 @@ impl RemoveAnyCountersAmongEffect {
     pub fn new(count: u32, filter: ObjectFilter) -> Self {
         Self {
             count,
+            min_count: count,
+            dynamic_count: false,
+            display_x: false,
+            filter,
+            counter_type: None,
+        }
+    }
+
+    pub fn dynamic(min_count: u32, max_count: u32, filter: ObjectFilter, display_x: bool) -> Self {
+        Self {
+            count: max_count,
+            min_count,
+            dynamic_count: true,
+            display_x,
             filter,
             counter_type: None,
         }

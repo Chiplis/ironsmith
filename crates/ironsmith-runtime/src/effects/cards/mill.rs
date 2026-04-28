@@ -1,6 +1,6 @@
 //! Mill effect implementation.
 
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::{EffectOutcome, OutcomeObjectMemory, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
@@ -67,12 +67,14 @@ impl EffectExecutor for MillEffect {
             .unwrap_or_default();
 
         let mut milled = Vec::new();
+        let mut milled_memory = Vec::new();
         let mut any_prevented = false;
 
         for card_id in cards_to_mill {
             let Some(from_zone) = game.object(card_id).map(|obj| obj.zone) else {
                 continue;
             };
+            let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             match apply_zone_change_with_additional_effects(
@@ -89,6 +91,9 @@ impl EffectExecutor for MillEffect {
                         && let Some(new_id) = change.new_object_id
                     {
                         milled.push(new_id);
+                        if let Some(memory) = pre_memory {
+                            milled_memory.push(memory);
+                        }
                     }
                 }
                 EventOutcome::Prevented => {
@@ -99,7 +104,9 @@ impl EffectExecutor for MillEffect {
         }
 
         if !milled.is_empty() {
-            return Ok(EffectOutcome::with_objects(milled));
+            return Ok(EffectOutcome::with_objects(milled.clone())
+                .with_affected_objects(milled)
+                .with_affected_object_memory(milled_memory));
         }
         if any_prevented {
             return Ok(EffectOutcome::prevented());

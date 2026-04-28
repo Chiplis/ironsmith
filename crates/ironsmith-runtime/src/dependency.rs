@@ -1241,6 +1241,18 @@ fn value_references_pt(value: &Value) -> bool {
 
         // EffectValue could reference P/T from a prior effect
         Value::EffectValue(_) | Value::EffectValueOffset(_, _) => true,
+        Value::EffectMetric { metric, .. }
+        | Value::EffectMetricOffset { metric, .. }
+        | Value::PendingEffectMetric { metric, .. }
+        | Value::PendingEffectMetricOffset { metric, .. } => matches!(
+            metric,
+            crate::effect::EffectMetric::FirstPower
+                | crate::effect::EffectMetric::FirstToughness
+                | crate::effect::EffectMetric::TotalPower
+                | crate::effect::EffectMetric::TotalToughness
+                | crate::effect::EffectMetric::GreatestPower
+                | crate::effect::EffectMetric::GreatestToughness
+        ),
 
         // These don't reference P/T
         Value::Fixed(_)

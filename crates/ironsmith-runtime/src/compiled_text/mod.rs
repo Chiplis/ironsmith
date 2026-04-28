@@ -96,7 +96,9 @@ fn finalize_ast_surface_line(line: String) -> String {
             "at the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.",
         );
     }
-    if line.to_ascii_lowercase().starts_with("this creature has flying as long as it's your turn.")
+    if line
+        .to_ascii_lowercase()
+        .starts_with("this creature has flying as long as it's your turn.")
         && line
             .to_ascii_lowercase()
             .contains("that player gains control of this creature")
@@ -145,15 +147,14 @@ fn finalize_ast_surface_line(line: String) -> String {
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_conditioned_spell_and_activation_tax_lines(
-            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
-                merge_lose_all_transform_lines(merge_blockability_lines(
-                    annotate_color_choice_exclusions(merge_subject_predicate_surface_lines(
-                        previous.clone(),
+        let merged =
+            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
+                drop_redundant_spell_cost_lines(merge_lose_all_transform_lines(
+                    merge_blockability_lines(annotate_color_choice_exclusions(
+                        merge_subject_predicate_surface_lines(previous.clone()),
                     )),
                 )),
-            )),
-        );
+            ));
         if merged == previous {
             return merged;
         }
@@ -213,7 +214,10 @@ mod tests {
             "{T}: Add {U} or one mana of the chosen color.".to_string(),
         ]);
 
-        assert_eq!(lines[1], "As this land enters, choose a color other than blue");
+        assert_eq!(
+            lines[1],
+            "As this land enters, choose a color other than blue"
+        );
     }
 }
 

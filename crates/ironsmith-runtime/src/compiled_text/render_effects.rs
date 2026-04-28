@@ -8,6 +8,61 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
     describe_effect_list(effects)
 }
 
+fn is_effect_count_reference(value: &Value, effect_id: Option<crate::effect::EffectId>) -> bool {
+    match value {
+        Value::EffectValue(id) => effect_id.map_or(true, |expected| *id == expected),
+        Value::EventValue(EventValueSpec::Amount) => true,
+        Value::EffectMetric {
+            effect_id: id,
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            ..
+        } => effect_id.map_or(true, |expected| *id == expected),
+        Value::PendingEffectMetric {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            ..
+        } => effect_id.is_none(),
+        _ => false,
+    }
+}
+
+fn effect_count_reference_offset(
+    value: &Value,
+    effect_id: Option<crate::effect::EffectId>,
+) -> Option<i32> {
+    match value {
+        Value::EffectValueOffset(id, offset)
+            if effect_id.map_or(true, |expected| *id == expected) =>
+        {
+            Some(*offset)
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset) => Some(*offset),
+        Value::EffectMetricOffset {
+            effect_id: id,
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            offset,
+            ..
+        } if effect_id.map_or(true, |expected| *id == expected) => Some(*offset),
+        Value::PendingEffectMetricOffset {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            offset,
+            ..
+        } if effect_id.is_none() => Some(*offset),
+        _ => None,
+    }
+}
+
 fn describe_each_object_subject(target: &ChooseSpec) -> Option<String> {
     match target {
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
@@ -27,7 +82,7 @@ fn prevention_put_counters_follow_up(
     if put.distributed || put.target_count.is_some() {
         return None;
     }
-    if !matches!(put.amount, Value::EventValue(EventValueSpec::Amount)) {
+    if !is_effect_count_reference(&put.amount, None) {
         return None;
     }
     if !matches!(put.target, ChooseSpec::AnyTarget) {
@@ -3315,6 +3370,66 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         unwrap_tag_wrappers(effect)
     }
 
+    fn describe_dynamic_return_from_graveyard_bundle(
+        effects: &[Effect],
+        filtered: &[&Effect],
+    ) -> Option<String> {
+        if filtered.len() != effects.len() || filtered.len() < 2 {
+            return None;
+        }
+        let choose_effect = filtered[filtered.len() - 2];
+        let return_effect = filtered[filtered.len() - 1];
+        let choose = unwrap_render_wrappers(choose_effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        if choose.chooser != PlayerFilter::You
+            || choose_primary_zone(choose) != Some(Zone::Graveyard)
+            || !choose.count.dynamic_x
+            || !choose
+                .count_value
+                .as_ref()
+                .is_some_and(|value| is_effect_count_reference(value, None))
+        {
+            return None;
+        }
+
+        let return_to_battlefield = unwrap_render_wrappers(return_effect)
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
+        )?;
+        if !matches!(&return_to_battlefield.target, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+            return None;
+        }
+
+        let from_text = match &choose.filter.owner {
+            Some(owner) => format!(
+                "from {} graveyard",
+                describe_possessive_player_filter(owner)
+            ),
+            None => "from a graveyard".to_string(),
+        };
+        let return_sentence = format!(
+            "Return {} {from_text} to the battlefield{}",
+            describe_choose_selection(choose),
+            if return_to_battlefield.tapped {
+                " tapped"
+            } else {
+                ""
+            }
+        );
+        if effects.len() == 2 {
+            return Some(return_sentence);
+        }
+
+        let prefix = describe_effect_list(&effects[..effects.len() - 2]);
+        Some(format!(
+            "{}. {return_sentence}",
+            prefix.trim_end_matches('.')
+        ))
+    }
+
+    if let Some(compact) = describe_dynamic_return_from_graveyard_bundle(effects, &filtered) {
+        return compact;
+    }
+
     fn describe_exile_graveyard_reflexive_copy_artifact(effects: &[&Effect]) -> Option<String> {
         let [exile_effect, choose_effect, copy_effect] = effects else {
             return None;
@@ -4855,6 +4970,108 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             } else {
                 ""
             }
+        ))
+    }
+
+    fn prior_effect_count_metric(value: &Value) -> Option<crate::effect::EffectId> {
+        match value {
+            Value::EffectValue(id)
+            | Value::EffectMetric {
+                effect_id: id,
+                metric:
+                    crate::effect::EffectMetric::Count | crate::effect::EffectMetric::AffectedCount,
+                ..
+            } => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn prior_effect_count_subject(effect: &Effect) -> Option<(String, &'static str)> {
+        fn clean_subject(filter: &ObjectFilter) -> String {
+            let mut subject = describe_count_filter_value_subject(filter);
+            for suffix in [
+                " in exile",
+                " in all graveyards",
+                " in a graveyard",
+                " in graveyard",
+                " on the battlefield",
+            ] {
+                if let Some(stripped) = subject.strip_suffix(suffix) {
+                    subject = stripped.to_string();
+                    break;
+                }
+            }
+            subject
+        }
+
+        fn choose_subject(spec: &ChooseSpec) -> Option<String> {
+            match spec.base() {
+                ChooseSpec::All(filter) | ChooseSpec::Object(filter) => Some(clean_subject(filter)),
+                ChooseSpec::WithCount(inner, _) => choose_subject(inner),
+                _ => None,
+            }
+        }
+
+        let effect = unwrap_render_wrappers(effect);
+        if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
+            return choose_subject(&destroy.spec).map(|subject| (subject, "destroyed"));
+        }
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+            return choose_subject(&exile.spec).map(|subject| (subject, "exiled"));
+        }
+        if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+            return Some((clean_subject(&sacrifice.filter), "sacrificed"));
+        }
+        if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(filter) = discard.card_filter.as_ref()
+        {
+            return Some((clean_subject(filter), "discarded"));
+        }
+        None
+    }
+
+    fn describe_prior_effect_dynamic_count_token_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [prior_effect, create_effect, set_pt_effect] = filtered else {
+            return None;
+        };
+        let with_id = prior_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let create = downcast_create_token(create_effect)?;
+        let set_pt = downcast_set_base_power_toughness(set_pt_effect)?;
+        let created_tag = wrapped_effect_tag(create_effect)?;
+        if create.count != Value::Fixed(1)
+            || create.enters_tapped
+            || create.enters_attacking
+            || set_pt.duration != Until::Forever
+            || set_pt.power != set_pt.toughness
+            || matches!(set_pt.power, Value::Fixed(_))
+            || !matches!(&set_pt.target, ChooseSpec::Tagged(tag) if tag == created_tag)
+        {
+            return None;
+        }
+        if prior_effect_count_metric(&set_pt.power) != Some(with_id.id) {
+            return None;
+        }
+        let (subject, action) = prior_effect_count_subject(&with_id.effect)?;
+        let dynamic_pt_prefix = if create.enters_tapped {
+            "tapped X/X "
+        } else {
+            "X/X "
+        };
+        let token_phrase =
+            describe_token_blueprint(&create.token).replacen("0/0 ", dynamic_pt_prefix, 1);
+        let controller_suffix = if matches!(create.controller, PlayerFilter::You) {
+            String::new()
+        } else {
+            format!(
+                " under {} control",
+                describe_possessive_player_filter(&create.controller)
+            )
+        };
+        Some(format!(
+            "{}. Create {}{}, where X is the number of {subject} {action} this way",
+            describe_effect(prior_effect),
+            with_indefinite_article(&token_phrase),
+            controller_suffix
         ))
     }
 
@@ -7232,7 +7449,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
                     selection
                 }
-                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::EffectValue(_)) => {
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)
+                    if is_effect_count_reference(count, None) =>
+                {
                     format!(
                         "a number of {} equal to the number of {} sacrificed this way",
                         pluralize_noun_phrase(&selection),
@@ -8462,6 +8681,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 4;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(rendered) =
+                describe_prior_effect_dynamic_count_token_bundle(&filtered[idx..idx + 3])
+        {
+            parts.push(rendered);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()
@@ -9931,10 +10158,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(first_draw) =
-                filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
-            && let Some(second_draw) =
-                filtered[idx + 1].downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(first_draw) = draw_cards_view(filtered[idx])
+            && let Some(second_draw) = draw_cards_view(filtered[idx + 1])
             && let Some(compact) = describe_shared_draw(first_draw, second_draw)
         {
             parts.push(compact);
@@ -10657,6 +10882,46 @@ pub(super) fn describe_inline_ability(ability: &Ability) -> String {
     describe_inline_ability_with_self_subject(ability, "this creature")
 }
 
+fn rewrite_cost_bound_x_phrases(mut effects: String, costs: &[crate::costs::Cost]) -> String {
+    if let Some(x_phrase) = removed_counters_this_way_x_phrase(costs) {
+        effects = effects.replace("where X is X", &format!("where X is {x_phrase}"));
+    }
+    effects
+}
+
+fn removed_counters_this_way_x_phrase(costs: &[crate::costs::Cost]) -> Option<String> {
+    fn counter_phrase(counter_type: Option<CounterType>) -> String {
+        match counter_type {
+            Some(counter_type) => format!("{} counters", counter_type.description()),
+            None => "counters".to_string(),
+        }
+    }
+
+    for cost in costs {
+        let Some(effect) = cost.effect_ref() else {
+            continue;
+        };
+        if let Some(remove_among) =
+            effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
+            && remove_among.dynamic_count
+        {
+            return Some(format!(
+                "the number of {} removed this way",
+                counter_phrase(remove_among.counter_type)
+            ));
+        }
+        if let Some(remove_from_source) =
+            effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+        {
+            return Some(format!(
+                "the number of {} removed this way",
+                counter_phrase(remove_from_source.counter_type)
+            ));
+        }
+    }
+    None
+}
+
 pub(super) fn describe_inline_ability_with_self_subject(
     ability: &Ability,
     self_subject: &str,
@@ -10755,6 +11020,7 @@ pub(super) fn describe_inline_ability_with_self_subject(
                     &capitalize_first(self_subject),
                     true,
                 );
+                effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
                 let self_subject = if self_subject == "this spell" {
                     "this creature"
                 } else {
@@ -11270,12 +11536,49 @@ mod tests {
 
     #[test]
     fn commander_identity_mana_uses_oracle_color_identity_surface() {
-        let effect = Effect::new(crate::effects::AddManaFromCommanderColorIdentityEffect::you(
-            Value::Fixed(1),
-        ));
+        let effect = Effect::new(
+            crate::effects::AddManaFromCommanderColorIdentityEffect::you(Value::Fixed(1)),
+        );
         assert_eq!(
             describe_effect(&effect),
             "Add one mana of any color in your commander's color identity"
+        );
+    }
+
+    #[test]
+    fn effect_metric_values_render_oracle_reference_surfaces() {
+        let count_metric = Value::EffectMetric {
+            effect_id: crate::effect::EffectId(0),
+            source: crate::effect::EffectMetricSource::AffectedObjects,
+            metric: crate::effect::EffectMetric::Count,
+        };
+        assert!(
+            describe_effect(&Effect::draw(count_metric)).contains("that many"),
+            "count metrics should render as a prior-effect reference"
+        );
+
+        let life_lost_metric = Value::EffectMetric {
+            effect_id: crate::effect::EffectId(1),
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::LifeLost,
+        };
+        assert_eq!(
+            describe_effect(&Effect::gain_life(life_lost_metric)),
+            "you gain life equal to the life lost this way"
+        );
+
+        let total_mana_value_metric = Value::EffectMetric {
+            effect_id: crate::effect::EffectId(2),
+            source: crate::effect::EffectMetricSource::AffectedObjects,
+            metric: crate::effect::EffectMetric::TotalManaValue,
+        };
+        assert!(
+            describe_effect(&Effect::deal_damage(
+                total_mana_value_metric,
+                ChooseSpec::target_player(),
+            ))
+            .contains("the total mana value of those cards"),
+            "aggregate metrics should render as oracle-style aggregate references"
         );
     }
 
@@ -12744,7 +13047,7 @@ pub(super) fn describe_tap_then_damage_for_tapped_this_way(
     with_id: &crate::effects::WithIdEffect,
     deal: &crate::effects::DealDamageEffect,
 ) -> Option<String> {
-    if deal.amount != Value::EffectValue(with_id.id) {
+    if !is_effect_count_reference(&deal.amount, Some(with_id.id)) {
         return None;
     }
     if !matches!(deal.target, ChooseSpec::Player(PlayerFilter::Active)) {
@@ -14635,6 +14938,10 @@ pub(super) fn should_render_token_count_with_where_x(value: &Value) -> bool {
             | Value::EffectValueOffset(_, _)
             | Value::EventValue(_)
             | Value::EventValueOffset(_, _)
+            | Value::EffectMetric { .. }
+            | Value::EffectMetricOffset { .. }
+            | Value::PendingEffectMetric { .. }
+            | Value::PendingEffectMetricOffset { .. }
             | Value::WasKicked
             | Value::WasBoughtBack
             | Value::WasEntwined
@@ -14789,6 +15096,17 @@ fn describe_runtime_choice_count(choose: &crate::effects::ChooseObjectsEffect) -
     if !choose.count.dynamic_x || choose.count_value.is_none() {
         return None;
     }
+    if let Some(count_value) = choose.count_value.as_ref() {
+        if is_effect_count_reference(count_value, None) {
+            return Some(
+                if choose.count.up_to_x || choose.search_mode == SearchSelectionMode::Optional {
+                    "up to that many".to_string()
+                } else {
+                    "that many".to_string()
+                },
+            );
+        }
+    }
     Some(
         if choose.count.up_to_x || choose.search_mode == SearchSelectionMode::Optional {
             "up to X"
@@ -14804,6 +15122,9 @@ fn describe_runtime_choice_where_clause(
 ) -> Option<String> {
     let count_value = choose.count_value.as_ref()?;
     if !choose.count.dynamic_x {
+        return None;
+    }
+    if is_effect_count_reference(count_value, None) {
         return None;
     }
     Some(format!(", where X is {}", describe_value(count_value)))
@@ -16169,7 +16490,7 @@ pub(super) fn describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand_owner = describe_possessive_player_filter(&hand_choose.chooser);
     let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
-    let opener = if reveal_top.is_some() {
+    let opener = if reveal_top.is_some() || look_at_top.reveal {
         "Reveal"
     } else {
         "Look at"
@@ -16611,7 +16932,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&choose.chooser);
     let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
-    let opener = if reveal_top.is_some() {
+    let opener = if reveal_top.is_some() || look_at_top.reveal {
         "Reveal"
     } else {
         "Look at"
@@ -16994,11 +17315,27 @@ fn shared_draw_partner(filter: &PlayerFilter) -> String {
     }
 }
 
+fn draw_cards_view(effect: &Effect) -> Option<&crate::effects::DrawCardsEffect> {
+    if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+        return Some(draw);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return draw_cards_view(&with_id.effect);
+    }
+    None
+}
+
 pub(super) fn describe_shared_draw(
     first: &crate::effects::DrawCardsEffect,
     second: &crate::effects::DrawCardsEffect,
 ) -> Option<String> {
-    if first.count != second.count || first.player == second.player {
+    if first.player == second.player {
+        return None;
+    }
+    if first.count != second.count
+        && !(is_effect_count_reference(&first.count, None)
+            && is_effect_count_reference(&second.count, None))
+    {
         return None;
     }
     if first.player != PlayerFilter::You {
@@ -19614,23 +19951,21 @@ fn describe_damaged_player_gain_control_then_rewards(
     let [draw_effect, create_effect, lose_life_effect] = if_effect.then.as_slice() else {
         return None;
     };
-    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
-    if draw.player != PlayerFilter::You
-        || !matches!(draw.count, Value::EventValue(EventValueSpec::Amount))
-    {
+    let draw = draw_cards_view(draw_effect)?;
+    if draw.player != PlayerFilter::You || !is_effect_count_reference(&draw.count, None) {
         return None;
     }
-    let create = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let create = created_token_effect(create_effect)?;
     if create.controller != PlayerFilter::You
         || !create.enters_tapped
         || create.token.card.name != "Treasure"
-        || !matches!(create.count, Value::EventValue(EventValueSpec::Amount))
+        || !is_effect_count_reference(&create.count, None)
     {
         return None;
     }
     let lose_life = lose_life_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
     if lose_life.player != ChooseSpec::Player(PlayerFilter::You)
-        || !matches!(lose_life.amount, Value::EventValue(EventValueSpec::Amount))
+        || !is_effect_count_reference(&lose_life.amount, None)
     {
         return None;
     }
@@ -20953,10 +21288,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 return format!("{subject} {verb} damage equal to its {stat} to {target}");
             }
 
-            return format!(
-                "{subject} deals {} damage to {target}",
+            let amount = if is_effect_count_reference(&deal_damage.amount, None) {
+                "that much".to_string()
+            } else {
                 describe_value(&deal_damage.amount)
-            );
+            };
+            return format!("{subject} deals {amount} damage to {target}");
         }
         return describe_effect(&with_source.effect);
     }
@@ -21063,6 +21400,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return format!(
                 "Deal {amount_text} damage to {}, where X is {where_x}",
+                describe_choose_spec(&deal_damage.target)
+            );
+        }
+        if is_effect_count_reference(&deal_damage.amount, None) {
+            return format!(
+                "Deal that much damage to {}",
                 describe_choose_spec(&deal_damage.target)
             );
         }
@@ -21249,15 +21592,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_counter_type(counter_type.clone()),
             );
         }
-        if matches!(
-            put_counters.counter_type,
-            crate::object::CounterType::PlusOnePlusOne
-                | crate::object::CounterType::MinusOneMinusOne
-        ) && let Value::Add(left, right) = &put_counters.amount
+        if let Value::Add(left, right) = &put_counters.amount
             && left == right
         {
             let per_text = match left.as_ref() {
                 Value::Count(filter) => Some(describe_for_each_count_filter(filter)),
+                Value::EffectMetric { metric, .. } | Value::PendingEffectMetric { metric, .. } => {
+                    match metric {
+                        crate::effect::EffectMetric::Count
+                        | crate::effect::EffectMetric::AffectedCount => {
+                            Some("object affected this way".to_string())
+                        }
+                        crate::effect::EffectMetric::ChosenCount => {
+                            Some("object chosen this way".to_string())
+                        }
+                        _ => None,
+                    }
+                }
                 Value::SpellsCastThisTurn(player) => {
                     Some(describe_for_each_spells_cast_this_turn(player, false))
                 }
@@ -21544,6 +21895,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::PowerOf(_)
                 | Value::ToughnessOf(_)
                 | Value::ManaValueOf(_)
+                | Value::EffectMetric { .. }
+                | Value::EffectMetricOffset { .. }
+                | Value::PendingEffectMetric { .. }
+                | Value::PendingEffectMetricOffset { .. }
         ) {
             return format!(
                 "{} {} life equal to {}",
@@ -21867,26 +22222,27 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
-        if let Value::EffectValue(_) = &add_scaled.amount {
+        if is_effect_count_reference(&add_scaled.amount, None) {
             return format!(
                 "Add that much {}{}",
                 mana_text,
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
-        if let Value::EventValue(EventValueSpec::Amount)
-        | Value::EventValue(EventValueSpec::LifeAmount) = &add_scaled.amount
-        {
+        if matches!(
+            add_scaled.amount,
+            Value::EventValue(EventValueSpec::LifeAmount)
+        ) {
             return format!(
                 "Add that much {}{}",
                 mana_text,
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
-        if let Value::EffectValueOffset(_, offset) = &add_scaled.amount {
-            let amount_text = if *offset == 0 {
+        if let Some(offset) = effect_count_reference_offset(&add_scaled.amount, None) {
+            let amount_text = if offset == 0 {
                 "that much".to_string()
-            } else if *offset > 0 {
+            } else if offset > 0 {
                 format!("that much plus {}", offset)
             } else {
                 format!("that much minus {}", -offset)
@@ -21898,9 +22254,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
-        if let Value::EventValueOffset(EventValueSpec::Amount, offset)
-        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) = &add_scaled.amount
-        {
+        if let Value::EventValueOffset(EventValueSpec::LifeAmount, offset) = &add_scaled.amount {
             let amount_text = if *offset == 0 {
                 "that much".to_string()
             } else if *offset > 0 {
@@ -22304,6 +22658,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
         let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+        if look_at_top.reveal {
+            if look_at_top.player == PlayerFilter::You {
+                return format!("Reveal the top {count_text} {noun} of your library");
+            }
+            let subject = describe_player_filter(&look_at_top.player);
+            let verb = player_verb(&subject, "reveal", "reveals");
+            return format!("{subject} {verb} the top {count_text} {noun} of {owner} library");
+        }
         return format!("Look at the top {count_text} {noun} of {owner} library");
     }
     if let Some(rearrange) =
@@ -27527,6 +27889,7 @@ pub(super) fn describe_ability(
                     subject,
                     rewrite_it_deals,
                 );
+                effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
                 if subject != "This spell" {
                     effects = effects
                         .replace("This spell", subject)
@@ -27589,11 +27952,12 @@ pub(super) fn describe_ability(
                     line.push(' ');
                     let effects =
                         super::ast_render::describe_resolution_program(&activated.effects);
-                    let effects = rewrite_damage_phrases_for_permanent_abilities(
+                    let mut effects = rewrite_damage_phrases_for_permanent_abilities(
                         &effects,
                         subject,
                         rewrite_it_deals,
                     );
+                    effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
                     line.push_str(&effects);
                 }
                 return vec![line];
@@ -27629,6 +27993,7 @@ pub(super) fn describe_ability(
                     subject,
                     rewrite_it_deals,
                 );
+                effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
                 if subject != "This spell" {
                     effects = effects
                         .replace("This spell", subject)

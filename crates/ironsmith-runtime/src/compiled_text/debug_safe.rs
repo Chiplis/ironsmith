@@ -186,7 +186,9 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         normalized = "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.".to_string();
     }
     if normalized.eq_ignore_ascii_case("Undaunted") {
-        normalized = "Undaunted — Spells cost {X} less to cast, where X is the number of opponents.".to_string();
+        normalized =
+            "Undaunted — Spells cost {X} less to cast, where X is the number of opponents."
+                .to_string();
     }
     let lower = normalized.to_ascii_lowercase();
     if lower.contains("discard this card: put two +1/+1 counters on target creature") {
@@ -211,7 +213,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
     if lower.contains("exile this card from your graveyard:")
         && lower.contains("+1/+1 counters")
         && lower.contains("activate only as a sorcery")
-        && (lower.contains("equal to this creature's power") || lower.contains("equal to its power"))
+        && (lower.contains("equal to this creature's power")
+            || lower.contains("equal to its power"))
     {
         let cost = normalized
             .split_once(", Exile this card from your graveyard:")
@@ -244,8 +247,8 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
     if normalized.eq_ignore_ascii_case(
         "If an opponent has cast a blue or black spell this turn, draw a card.",
     ) {
-        normalized = "Draw a card if an opponent has cast a blue or black spell this turn."
-            .to_string();
+        normalized =
+            "Draw a card if an opponent has cast a blue or black spell this turn.".to_string();
     }
     if normalized.starts_with(
         "You may have this creature enter as a copy of any creature on the battlefield except it has ",

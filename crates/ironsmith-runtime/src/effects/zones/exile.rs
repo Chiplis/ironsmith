@@ -1,7 +1,7 @@
 //! Exile effect implementation.
 
 use crate::color::{Color, ColorSet};
-use crate::effect::{EffectOutcome, OutcomeStatus};
+use crate::effect::{EffectOutcome, OutcomeObjectMemory, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
@@ -185,16 +185,24 @@ impl EffectExecutor for ExileEffect {
                 // "any number" effects - 0 targets is valid
                 let mut exiled_count = 0;
                 let mut affected_ids = Vec::new();
+                let mut affected_memory = Vec::new();
                 for target in ctx.targets.clone() {
                     if let ResolvedTarget::Object(object_id) = target {
+                        let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
                         match exile_object(game, ctx, object_id, self.face_down)? {
                             None => {
                                 exiled_count += 1;
+                                if let Some(memory) = pre_memory.as_ref() {
+                                    affected_memory.push(memory.clone());
+                                }
                                 if let Some(result) = take_recorded_zone_change(game, object_id) {
                                     affected_ids.extend(result.new_object_ids);
                                 }
                             }
                             Some(OutcomeStatus::Replaced) => {
+                                if let Some(memory) = pre_memory.as_ref() {
+                                    affected_memory.push(memory.clone());
+                                }
                                 if let Some(result) = take_recorded_zone_change(game, object_id) {
                                     affected_ids.extend(result.new_object_ids);
                                 }
@@ -203,13 +211,16 @@ impl EffectExecutor for ExileEffect {
                         }
                     }
                 }
-                return Ok(EffectOutcome::count(exiled_count).with_affected_objects(affected_ids));
+                return Ok(EffectOutcome::count(exiled_count)
+                    .with_affected_objects(affected_ids)
+                    .with_affected_object_memory(affected_memory));
             }
         }
 
         // For all/non-targeted effects and special specs (Tagged, Source, etc.),
         // count successful moves to exile.
         let mut affected_ids = Vec::new();
+        let mut affected_memory = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -238,6 +249,7 @@ impl EffectExecutor for ExileEffect {
                             if pre_snapshot.object_id == ctx.source {
                                 ctx.refresh_source_snapshot(pre_snapshot.clone());
                             }
+                            affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
                             affected_ids.extend(result.new_object_ids.iter().copied());
                             for &new_id in &result.new_object_ids {
                                 if self.face_down && result.final_zone == Zone::Exile {
@@ -261,6 +273,7 @@ impl EffectExecutor for ExileEffect {
                     }
                     EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
                     EventOutcome::Replaced => {
+                        affected_memory.push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
                         if let Some(result) = take_recorded_zone_change(game, object_id) {
                             affected_ids.extend(result.new_object_ids);
                         }
@@ -273,7 +286,10 @@ impl EffectExecutor for ExileEffect {
             Err(_) => return Ok(EffectOutcome::target_invalid()),
         };
 
-        Ok(apply_result.outcome.with_affected_objects(affected_ids))
+        Ok(apply_result
+            .outcome
+            .with_affected_objects(affected_ids)
+            .with_affected_object_memory(affected_memory))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

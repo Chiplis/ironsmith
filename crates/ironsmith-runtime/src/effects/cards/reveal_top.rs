@@ -1,7 +1,7 @@
 //! Reveal top card effect implementation.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -51,7 +51,8 @@ impl EffectExecutor for RevealTopEffect {
                 .view_cards(game, viewer, &[card_id], &view_ctx);
         }
 
-        Ok(
+        let memory = snapshot.as_ref().map(OutcomeObjectMemory::from_snapshot);
+        let mut outcome =
             EffectOutcome::count(1).with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::CardRevealedEvent::new(
                     player_id,
@@ -61,8 +62,13 @@ impl EffectExecutor for RevealTopEffect {
                     snapshot,
                 ),
                 ctx.provenance,
-            )),
-        )
+            ));
+        if let Some(memory) = memory {
+            outcome = outcome
+                .with_chosen_object_memory(vec![memory.clone()])
+                .with_affected_object_memory(vec![memory]);
+        }
+        Ok(outcome)
     }
 }
 

@@ -4,7 +4,7 @@
 //! through tagged contexts when later stack objects still need it.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -73,7 +73,14 @@ impl EffectExecutor for RevealTaggedEffect {
             })
             .collect::<Vec<_>>();
 
-        Ok(EffectOutcome::count(count as i32).with_events(reveal_events))
+        let memory = tagged
+            .iter()
+            .map(OutcomeObjectMemory::from_snapshot)
+            .collect::<Vec<_>>();
+        Ok(EffectOutcome::count(count as i32)
+            .with_events(reveal_events)
+            .with_chosen_object_memory(memory.clone())
+            .with_affected_object_memory(memory))
     }
 }
 

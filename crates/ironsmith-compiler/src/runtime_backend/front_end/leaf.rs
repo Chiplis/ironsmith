@@ -104,6 +104,7 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         filter_text: String,
         display_x: bool,
+        dynamic: bool,
     },
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,
@@ -1100,6 +1101,7 @@ fn parse_remove_counter_segment_tokens(
                 count: 0,
                 filter_text: target_filter_text,
                 display_x: true,
+                dynamic: true,
             })
         } else {
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
@@ -1128,6 +1130,36 @@ fn parse_remove_counter_segment_tokens(
                 count: 0,
                 filter_text: target_filter_text,
                 display_x: false,
+                dynamic: true,
+            })
+        } else {
+            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type,
+                display_x: false,
+            })
+        };
+    }
+
+    if word_slice_starts_with(descriptor, &["one", "or", "more"]) {
+        let counter_type = if descriptor.len() <= 3 {
+            None
+        } else {
+            let counter_tokens =
+                token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
+            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+            (!counter_descriptor.is_empty()
+                && counter_descriptor != "counter"
+                && counter_descriptor != "counters")
+                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
+                .transpose()?
+        };
+        return if target_among {
+            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type,
+                count: 1,
+                filter_text: target_filter_text,
+                display_x: false,
+                dynamic: true,
             })
         } else {
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
@@ -1164,6 +1196,7 @@ fn parse_remove_counter_segment_tokens(
             count,
             filter_text: target_filter_text,
             display_x: false,
+            dynamic: false,
         });
     }
 
@@ -1185,6 +1218,7 @@ fn parse_remove_counter_segment_tokens(
             count,
             filter_text: target_filter_text,
             display_x: false,
+            dynamic: false,
         });
     }
 
@@ -1993,6 +2027,7 @@ pub(crate) fn lower_activation_cost_cst(
                 count,
                 filter_text,
                 display_x,
+                dynamic,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = parse_filter_text(filter_text, false)?;
@@ -2002,12 +2037,18 @@ pub(crate) fn lower_activation_cost_cst(
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);
                 }
-                let max_count = if *display_x { u32::MAX / 4 } else { *count };
-                costs.push(Cost::validated_effect(Effect::remove_any_counters_among(
-                    max_count,
-                    filter,
-                    *counter_type,
-                )));
+                let effect = if *dynamic {
+                    Effect::remove_dynamic_counters_among(
+                        *count,
+                        u32::MAX / 4,
+                        filter,
+                        *counter_type,
+                        *display_x,
+                    )
+                } else {
+                    Effect::remove_any_counters_among(*count, filter, *counter_type)
+                };
+                costs.push(Cost::validated_effect(effect));
             }
             ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,

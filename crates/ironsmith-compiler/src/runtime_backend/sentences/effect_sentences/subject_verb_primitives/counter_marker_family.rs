@@ -562,6 +562,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         false,
         false,
         battlefield_controller,
+        None,
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
     for descriptor in descriptors {
@@ -777,6 +778,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                 transformed,
                 converted,
                 controller,
+                count_value,
             } => {
                 let mut cloned_target = target.clone();
                 replace_target_subtype(&mut cloned_target, subtype).then_some(
@@ -786,6 +788,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                         *transformed,
                         *converted,
                         *controller,
+                        count_value.clone(),
                     ),
                 )
             }

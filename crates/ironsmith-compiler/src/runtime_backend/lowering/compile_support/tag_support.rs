@@ -429,13 +429,21 @@ pub(crate) fn effects_reference_its_controller(effects: &[EffectAst]) -> bool {
 }
 
 pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
-    matches!(
-        value,
+    match value {
         Value::EventValue(EventValueSpec::Amount)
-            | Value::EventValue(EventValueSpec::LifeAmount)
-            | Value::EventValueOffset(EventValueSpec::Amount, _)
-            | Value::EventValueOffset(EventValueSpec::LifeAmount, _)
-    )
+        | Value::EventValue(EventValueSpec::LifeAmount)
+        | Value::EventValueOffset(EventValueSpec::Amount, _)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, _) => true,
+        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_event_derived_amount(left)
+                || value_references_event_derived_amount(right)
+        }
+        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+            value_references_event_derived_amount(value)
+        }
+        _ => false,
+    }
 }
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
@@ -710,6 +718,17 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                     }
                     SubjectVerbActionAst::PumpForEach { count, .. } => {
                         value_references_event_derived_amount(count)
+                    }
+                    SubjectVerbActionAst::ReturnToBattlefield {
+                        count_value: Some(count_value),
+                        ..
+                    } => value_references_event_derived_amount(count_value),
+                    SubjectVerbActionAst::CreateTokenWithMods {
+                        dynamic_power_toughness: Some((power, toughness)),
+                        ..
+                    } => {
+                        value_references_event_derived_amount(power)
+                            || value_references_event_derived_amount(toughness)
                     }
                     SubjectVerbActionAst::ConsultTopOfLibrary { stop_rule, .. } => matches!(
                         stop_rule,

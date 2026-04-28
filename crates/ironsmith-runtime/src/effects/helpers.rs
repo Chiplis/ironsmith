@@ -10,7 +10,10 @@ use std::collections::HashSet;
 
 use crate::cost::OptionalCostsPaid;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
-use crate::effect::{EffectOutcome, EventValueSpec, OutcomeStatus, Value};
+use crate::effect::{
+    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeObjectMemory,
+    OutcomeStatus, Value,
+};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
@@ -74,6 +77,176 @@ pub fn get_optional_costs_paid<'a>(
     }
     // Fallback to context (empty)
     &ctx.optional_costs_paid
+}
+
+fn memories_from_object_ids(game: &GameState, ids: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
+    ids.iter()
+        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+        .collect()
+}
+
+fn effect_metric_memory(
+    game: &GameState,
+    outcome: &EffectOutcome,
+    source: EffectMetricSource,
+) -> Vec<OutcomeObjectMemory> {
+    match source {
+        EffectMetricSource::AffectedObjects => outcome
+            .affected_object_memory()
+            .map(<[OutcomeObjectMemory]>::to_vec)
+            .unwrap_or_else(|| {
+                outcome
+                    .affected_objects()
+                    .map(|ids| memories_from_object_ids(game, ids))
+                    .unwrap_or_default()
+            }),
+        EffectMetricSource::ChosenObjects => outcome
+            .chosen_object_memory()
+            .map(<[OutcomeObjectMemory]>::to_vec)
+            .unwrap_or_else(|| {
+                outcome
+                    .chosen_objects()
+                    .map(|ids| memories_from_object_ids(game, ids))
+                    .unwrap_or_default()
+            }),
+        EffectMetricSource::Outcome => {
+            if let Some(ids) = outcome.explicit_objects() {
+                let memory = memories_from_object_ids(game, ids);
+                if !memory.is_empty() {
+                    return memory;
+                }
+            }
+            if let Some(memory) = outcome.chosen_object_memory()
+                && !memory.is_empty()
+            {
+                return memory.to_vec();
+            }
+            if let Some(ids) = outcome.chosen_objects() {
+                let memory = memories_from_object_ids(game, ids);
+                if !memory.is_empty() {
+                    return memory;
+                }
+            }
+            if let Some(memory) = outcome.affected_object_memory()
+                && !memory.is_empty()
+            {
+                return memory.to_vec();
+            }
+            if let Some(ids) = outcome.affected_objects() {
+                let memory = memories_from_object_ids(game, ids);
+                if !memory.is_empty() {
+                    return memory;
+                }
+            }
+            Vec::new()
+        }
+    }
+}
+
+fn effect_metric_object_count(
+    game: &GameState,
+    outcome: &EffectOutcome,
+    source: EffectMetricSource,
+) -> i32 {
+    match source {
+        EffectMetricSource::Outcome => outcome.as_count().unwrap_or_else(|| {
+            let memory = effect_metric_memory(game, outcome, EffectMetricSource::Outcome);
+            if !memory.is_empty() {
+                memory.len() as i32
+            } else {
+                outcome.output_objects().len() as i32
+            }
+        }),
+        EffectMetricSource::ChosenObjects => outcome
+            .chosen_object_memory()
+            .map(|memory| memory.len() as i32)
+            .or_else(|| outcome.chosen_objects().map(|ids| ids.len() as i32))
+            .unwrap_or(0),
+        EffectMetricSource::AffectedObjects => outcome
+            .affected_object_memory()
+            .map(|memory| memory.len() as i32)
+            .or_else(|| outcome.affected_objects().map(|ids| ids.len() as i32))
+            .unwrap_or(0),
+    }
+}
+
+fn resolve_effect_metric(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    effect_id: crate::effect::EffectId,
+    source: EffectMetricSource,
+    metric: EffectMetric,
+) -> Result<i32, ExecutionError> {
+    let outcome = ctx
+        .get_outcome(effect_id)
+        .ok_or(ExecutionError::EffectNotFound(effect_id))?;
+
+    let object_memory = || effect_metric_memory(game, outcome, source);
+
+    let resolved = match metric {
+        EffectMetric::Count => effect_metric_object_count(game, outcome, source),
+        EffectMetric::ChosenCount => {
+            effect_metric_object_count(game, outcome, EffectMetricSource::ChosenObjects)
+        }
+        EffectMetric::AffectedCount => {
+            effect_metric_object_count(game, outcome, EffectMetricSource::AffectedObjects)
+        }
+        EffectMetric::LifeLost => outcome
+            .events_of_type::<LifeLossEvent>()
+            .map(|event| event.amount as i32)
+            .sum(),
+        EffectMetric::LifeGained => outcome
+            .events_of_type::<LifeGainEvent>()
+            .map(|event| event.amount as i32)
+            .sum(),
+        EffectMetric::DamageDealt => outcome
+            .events_of_type::<DamageEvent>()
+            .map(|event| event.amount as i32)
+            .sum(),
+        EffectMetric::DamagePrevented => 0,
+        EffectMetric::FirstPower => object_memory()
+            .into_iter()
+            .find_map(|memory| memory.power)
+            .unwrap_or(0),
+        EffectMetric::FirstToughness => object_memory()
+            .into_iter()
+            .find_map(|memory| memory.toughness)
+            .unwrap_or(0),
+        EffectMetric::FirstManaValue => object_memory()
+            .into_iter()
+            .map(|memory| memory.mana_value)
+            .next()
+            .unwrap_or(0),
+        EffectMetric::TotalPower => object_memory()
+            .into_iter()
+            .map(|memory| memory.power.unwrap_or(0))
+            .sum(),
+        EffectMetric::TotalToughness => object_memory()
+            .into_iter()
+            .map(|memory| memory.toughness.unwrap_or(0))
+            .sum(),
+        EffectMetric::TotalManaValue => object_memory()
+            .into_iter()
+            .map(|memory| memory.mana_value)
+            .sum(),
+        EffectMetric::GreatestPower => object_memory()
+            .into_iter()
+            .filter_map(|memory| memory.power)
+            .max()
+            .unwrap_or(0),
+        EffectMetric::GreatestToughness => object_memory()
+            .into_iter()
+            .filter_map(|memory| memory.toughness)
+            .max()
+            .unwrap_or(0),
+        EffectMetric::GreatestManaValue => object_memory()
+            .into_iter()
+            .map(|memory| memory.mana_value)
+            .max()
+            .unwrap_or(0),
+    };
+
+    Ok(resolved)
 }
 
 /// Resolve a Value to a concrete i32.
@@ -1001,6 +1174,25 @@ pub fn resolve_value(
                 .get_outcome(*effect_id)
                 .ok_or(ExecutionError::EffectNotFound(*effect_id))?;
             Ok(outcome.count_or_zero() + *offset)
+        }
+
+        Value::EffectMetric {
+            effect_id,
+            source,
+            metric,
+        } => resolve_effect_metric(game, ctx, *effect_id, *source, *metric),
+
+        Value::EffectMetricOffset {
+            effect_id,
+            source,
+            metric,
+            offset,
+        } => Ok(resolve_effect_metric(game, ctx, *effect_id, *source, *metric)? + *offset),
+
+        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => {
+            Err(ExecutionError::UnresolvableValue(
+                "pending effect metric was not bound to a prior effect".to_string(),
+            ))
         }
 
         Value::HalfRoundedDown(value) => {
@@ -2854,6 +3046,208 @@ mod tests {
             .power_toughness(PowerToughness::fixed(1, 1))
             .build();
         game.create_object_from_card(&card, owner, Zone::Hand)
+    }
+
+    fn add_custom_creature(
+        game: &mut GameState,
+        id_raw: u32,
+        name: &str,
+        owner: PlayerId,
+        mana_value: u8,
+        power: i32,
+        toughness: i32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(id_raw), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn metric_value(
+        effect_id: crate::effect::EffectId,
+        source: EffectMetricSource,
+        metric: EffectMetric,
+    ) -> Value {
+        Value::EffectMetric {
+            effect_id,
+            source,
+            metric,
+        }
+    }
+
+    #[test]
+    fn effect_metric_resolves_count_from_outcome_chosen_and_affected_memory() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let chosen = add_battlefield_permanent(
+            &mut game,
+            410,
+            "Chosen Creature",
+            alice,
+            vec![CardType::Creature],
+        );
+        let affected_a = add_battlefield_permanent(
+            &mut game,
+            411,
+            "Affected Creature A",
+            alice,
+            vec![CardType::Creature],
+        );
+        let affected_b = add_battlefield_permanent(
+            &mut game,
+            412,
+            "Affected Creature B",
+            alice,
+            vec![CardType::Creature],
+        );
+        let chosen_memory = vec![OutcomeObjectMemory::from_object_id(&game, chosen).unwrap()];
+        let affected_memory = vec![
+            OutcomeObjectMemory::from_object_id(&game, affected_a).unwrap(),
+            OutcomeObjectMemory::from_object_id(&game, affected_b).unwrap(),
+        ];
+        let effect_id = crate::effect::EffectId(17);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::count(9)
+                .with_chosen_object_memory(chosen_memory)
+                .with_affected_object_memory(affected_memory),
+        );
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(effect_id, EffectMetricSource::Outcome, EffectMetric::Count),
+                &ctx,
+            )
+            .unwrap(),
+            9
+        );
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::ChosenObjects,
+                    EffectMetric::ChosenCount,
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::AffectedObjects,
+                    EffectMetric::AffectedCount,
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn effect_metric_resolves_lki_object_stats_after_objects_leave_battlefield() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let creature_a = add_custom_creature(&mut game, 420, "First Creature", alice, 3, 4, 2);
+        let creature_b = add_custom_creature(&mut game, 421, "Second Creature", alice, 6, 6, 5);
+        let snapshots = [creature_a, creature_b]
+            .into_iter()
+            .map(|id| {
+                let object = game.object(id).expect("creature should exist");
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, &game)
+            })
+            .collect::<Vec<_>>();
+        game.move_object_by_effect(creature_a, Zone::Graveyard)
+            .expect("first creature should move");
+        game.move_object_by_effect(creature_b, Zone::Exile)
+            .expect("second creature should move");
+        let memory = snapshots
+            .iter()
+            .map(OutcomeObjectMemory::from_snapshot)
+            .collect::<Vec<_>>();
+        let effect_id = crate::effect::EffectId(18);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::count(2).with_affected_object_memory(memory),
+        );
+
+        for (metric, expected) in [
+            (EffectMetric::FirstPower, 4),
+            (EffectMetric::FirstToughness, 2),
+            (EffectMetric::FirstManaValue, 3),
+            (EffectMetric::TotalPower, 10),
+            (EffectMetric::TotalToughness, 7),
+            (EffectMetric::TotalManaValue, 9),
+            (EffectMetric::GreatestPower, 6),
+            (EffectMetric::GreatestToughness, 5),
+            (EffectMetric::GreatestManaValue, 6),
+        ] {
+            assert_eq!(
+                resolve_value(
+                    &game,
+                    &metric_value(effect_id, EffectMetricSource::AffectedObjects, metric),
+                    &ctx,
+                )
+                .unwrap(),
+                expected,
+                "metric {metric:?} should resolve from stored LKI"
+            );
+        }
+    }
+
+    #[test]
+    fn effect_metric_resolves_life_lost_from_stored_events() {
+        use crate::events::life::LifeLossEvent;
+        use crate::provenance::ProvNodeId;
+        use crate::triggers::TriggerEvent;
+
+        let game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = ObjectId(999);
+        let effect_id = crate::effect::EffectId(19);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::resolved().with_events([
+                TriggerEvent::new_with_provenance(
+                    LifeLossEvent::from_effect(alice, 2),
+                    ProvNodeId::default(),
+                ),
+                TriggerEvent::new_with_provenance(
+                    LifeLossEvent::from_effect(bob, 3),
+                    ProvNodeId::default(),
+                ),
+            ]),
+        );
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::Outcome,
+                    EffectMetric::LifeLost
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            5
+        );
     }
 
     #[test]

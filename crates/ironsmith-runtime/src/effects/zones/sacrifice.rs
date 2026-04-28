@@ -1,6 +1,6 @@
 //! Sacrifice effect implementation.
 
-use crate::effect::{EffectOutcome, ExecutionFact, Value};
+use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory, Value};
 use crate::effects::helpers::{
     normalize_object_selection, resolve_player_filter, resolve_single_object_for_effect,
     resolve_value,
@@ -257,8 +257,13 @@ impl EffectExecutor for SacrificeEffect {
             choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)?
         };
         let chosen_to_sacrifice = to_sacrifice.clone();
+        let chosen_memory: Vec<_> = chosen_to_sacrifice
+            .iter()
+            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+            .collect();
         let mut sacrificed_count = 0;
         let mut sacrificed_objects = Vec::new();
+        let mut sacrificed_memory = Vec::new();
         let mut sacrifice_events = Vec::new();
 
         for id in to_sacrifice {
@@ -296,6 +301,9 @@ impl EffectExecutor for SacrificeEffect {
                     sacrificed_count += 1;
                     let _ = result;
                     sacrificed_objects.push(id);
+                    if let Some(snapshot) = pre_snapshot.as_ref() {
+                        sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                    }
                     sacrifice_events.push(TriggerEvent::new_with_provenance(
                         SacrificeEvent::new(id, Some(ctx.source))
                             .with_snapshot(pre_snapshot, sacrificing_player),
@@ -306,6 +314,9 @@ impl EffectExecutor for SacrificeEffect {
                     // Replacement effects already executed by process_zone_change
                     sacrificed_count += 1;
                     sacrificed_objects.push(id);
+                    if let Some(snapshot) = pre_snapshot.as_ref() {
+                        sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                    }
                     sacrifice_events.push(TriggerEvent::new_with_provenance(
                         SacrificeEvent::new(id, Some(ctx.source))
                             .with_snapshot(pre_snapshot, sacrificing_player),
@@ -321,10 +332,12 @@ impl EffectExecutor for SacrificeEffect {
 
         let mut outcome = EffectOutcome::count(sacrificed_count)
             .with_events(sacrifice_events)
-            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_to_sacrifice));
+            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_to_sacrifice))
+            .with_chosen_object_memory(chosen_memory);
         if !sacrificed_objects.is_empty() {
             outcome =
                 outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
+            outcome = outcome.with_affected_object_memory(sacrificed_memory);
         }
         Ok(outcome)
     }
@@ -492,10 +505,16 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 
         let mut chosen_by_player = Vec::new();
         let mut all_chosen = Vec::new();
+        let mut chosen_memory = Vec::new();
         for player_id in players {
             let chosen = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                 choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)
             })?;
+            chosen_memory.extend(
+                chosen
+                    .iter()
+                    .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id)),
+            );
             all_chosen.extend(chosen.iter().copied());
             chosen_by_player.push((player_id, chosen));
         }
@@ -503,6 +522,7 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
         let additional_effects = ctx.additional_replacement_effects_snapshot();
         let mut sacrificed_count = 0;
         let mut sacrificed_objects = Vec::new();
+        let mut sacrificed_memory = Vec::new();
         let mut sacrifice_events = Vec::new();
 
         for (_player_id, chosen) in chosen_by_player {
@@ -527,6 +547,9 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
                     EventOutcome::Proceed(_) | EventOutcome::Replaced => {
                         sacrificed_count += 1;
                         sacrificed_objects.push(id);
+                        if let Some(snapshot) = pre_snapshot.as_ref() {
+                            sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                        }
                         sacrifice_events.push(TriggerEvent::new_with_provenance(
                             SacrificeEvent::new(id, Some(ctx.source))
                                 .with_snapshot(pre_snapshot, sacrificing_player),
@@ -539,10 +562,12 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 
         let mut outcome = EffectOutcome::count(sacrificed_count)
             .with_events(sacrifice_events)
-            .with_execution_fact(ExecutionFact::ChosenObjects(all_chosen));
+            .with_execution_fact(ExecutionFact::ChosenObjects(all_chosen))
+            .with_chosen_object_memory(chosen_memory);
         if !sacrificed_objects.is_empty() {
             outcome =
                 outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
+            outcome = outcome.with_affected_object_memory(sacrificed_memory);
         }
         Ok(outcome)
     }
@@ -637,14 +662,21 @@ impl EffectExecutor for SacrificeTargetEffect {
             Err(err) => return Err(err),
         };
 
+        let object_memory = OutcomeObjectMemory::from_object_id(game, object_id);
         let (sacrificed, event) = sacrifice_target_object(game, ctx, object_id)?;
         let mut outcome = EffectOutcome::count(if sacrificed { 1 } else { 0 });
         if let Some(event) = event {
             outcome = outcome.with_event(event);
         }
         outcome = outcome.with_execution_fact(ExecutionFact::ChosenObjects(vec![object_id]));
+        if let Some(memory) = object_memory.clone() {
+            outcome = outcome.with_chosen_object_memory(vec![memory]);
+        }
         if sacrificed {
             outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(vec![object_id]));
+            if let Some(memory) = object_memory {
+                outcome = outcome.with_affected_object_memory(vec![memory]);
+            }
         }
         Ok(outcome)
     }

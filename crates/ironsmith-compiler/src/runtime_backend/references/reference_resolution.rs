@@ -7,6 +7,7 @@ use crate::filter::{Comparison, TaggedOpbjectRelation};
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 #[cfg(test)]
 use crate::TagKey;
@@ -1117,7 +1118,7 @@ fn maybe_assign_effect_result_id(
     effects: &[EffectAst],
     idx: usize,
     id_gen: &mut IdGenContext,
-    allow_life_event_value: bool,
+    _allow_life_event_value: bool,
 ) -> Option<EffectId> {
     let next_is_result_gate = idx + 1 < effects.len()
         && matches!(
@@ -1136,9 +1137,13 @@ fn maybe_assign_effect_result_id(
     let next_is_if_result_with_player_did = next_is_result_gate
         && idx + 2 < effects.len()
         && matches!(effects[idx + 2], EffectAst::ForEachPlayerDid { .. });
-    let next_needs_event_derived_amount = !allow_life_event_value
+    let next_needs_event_derived_amount =
+        idx + 1 < effects.len() && effect_references_event_derived_amount(&effects[idx + 1]);
+    let later_needs_event_derived_amount = effect_can_supply_prior_effect_memory(&effects[idx])
         && idx + 1 < effects.len()
-        && effect_references_event_derived_amount(&effects[idx + 1]);
+        && effects[idx + 1..]
+            .iter()
+            .any(effect_references_event_derived_amount);
     let next_needs_prior_effect_value = idx + 1 < effects.len()
         && matches!(
             &effects[idx + 1],
@@ -1155,6 +1160,7 @@ fn maybe_assign_effect_result_id(
         || next_is_if_result_with_player_did
         || next_is_result_gate
         || next_needs_event_derived_amount
+        || later_needs_event_derived_amount
         || next_needs_prior_effect_value)
     {
         return None;
@@ -1163,6 +1169,37 @@ fn maybe_assign_effect_result_id(
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
+}
+
+fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => matches!(
+            subject_verb.action,
+            SubjectVerbActionAst::Destroy { .. }
+                | SubjectVerbActionAst::DestroyAll { .. }
+                | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
+                | SubjectVerbActionAst::Exile { .. }
+                | SubjectVerbActionAst::ExileAll { .. }
+                | SubjectVerbActionAst::Sacrifice { .. }
+                | SubjectVerbActionAst::SacrificeAll { .. }
+                | SubjectVerbActionAst::Discard { .. }
+                | SubjectVerbActionAst::Mill { .. }
+                | SubjectVerbActionAst::SearchLibrary { .. }
+                | SubjectVerbActionAst::RevealTop
+                | SubjectVerbActionAst::RevealTagged { .. }
+                | SubjectVerbActionAst::RevealCardsFromHand { .. }
+                | SubjectVerbActionAst::LookAtTopCards { .. }
+                | SubjectVerbActionAst::Draw { .. }
+        ),
+        EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. } => {
+            effects.iter().any(effect_can_supply_prior_effect_memory)
+        }
+        _ => false,
+    }
 }
 
 fn resolve_effect_references_in_effect(
@@ -1577,7 +1614,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
@@ -1607,9 +1643,24 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Cant { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::CreateTokenCopy { count: amount, .. }
-            | SubjectVerbActionAst::CreateTokenCopyFromSource { count: amount, .. }
-            | SubjectVerbActionAst::CreateTokenWithMods { count: amount, .. } => {
+            | SubjectVerbActionAst::CreateTokenCopyFromSource { count: amount, .. } => {
                 resolve_effect_result_value(amount, state)?;
+            }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                count,
+                dynamic_power_toughness: Some((power, toughness)),
+                ..
+            } => {
+                resolve_effect_result_value(count, state)?;
+                resolve_effect_result_value(power, state)?;
+                resolve_effect_result_value(toughness, state)?;
+            }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                count,
+                dynamic_power_toughness: None,
+                ..
+            } => {
+                resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::ConsultTopOfLibrary { stop_rule, .. } => {
                 if let crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value) =
@@ -1624,6 +1675,15 @@ fn resolve_effect_result_values_in_fields(
             } => {
                 resolve_effect_result_value(count_value, state)?;
             }
+            SubjectVerbActionAst::ReturnToBattlefield {
+                count_value: Some(count_value),
+                ..
+            } => {
+                resolve_effect_result_value(count_value, state)?;
+            }
+            SubjectVerbActionAst::ReturnToBattlefield {
+                count_value: None, ..
+            } => {}
             SubjectVerbActionAst::PutOrRemoveCounters {
                 put_count,
                 remove_count,
@@ -1720,14 +1780,43 @@ fn resolve_effect_result_value(
             })?;
             *value = Value::EffectValue(id);
         }
-        Value::Add(left, right) => {
+        Value::Add(left, right) | Value::Min(left, right) => {
             resolve_effect_result_value(left, state)?;
             resolve_effect_result_value(right, state)?;
         }
-        Value::EventValue(EventValueSpec::Amount)
-        | Value::EventValue(EventValueSpec::LifeAmount)
-            if !state.allow_life_event_value =>
-        {
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            resolve_effect_result_value(inner, state)?;
+        }
+        Value::PendingEffectMetric { source, metric } => {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending effect metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            *value = Value::EffectMetric {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+            };
+        }
+        Value::PendingEffectMetricOffset {
+            source,
+            metric,
+            offset,
+        } => {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending effect metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            *value = Value::EffectMetricOffset {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+                offset: *offset,
+            };
+        }
+        Value::EventValue(EventValueSpec::Amount) if !state.allow_life_event_value => {
             let id = state.last_effect_id.ok_or_else(|| {
                 CardTextError::ParseError(
                     "event-derived amount requires a compatible trigger or prior effect"
@@ -1736,8 +1825,20 @@ fn resolve_effect_result_value(
             })?;
             *value = Value::EffectValue(id);
         }
+        Value::EventValue(EventValueSpec::LifeAmount) if !state.allow_life_event_value => {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event-derived amount requires a compatible trigger or prior effect"
+                        .to_string(),
+                )
+            })?;
+            *value = Value::EffectMetric {
+                effect_id: id,
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::LifeLost,
+            };
+        }
         Value::EventValueOffset(EventValueSpec::Amount, offset)
-        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset)
             if !state.allow_life_event_value =>
         {
             let id = state.last_effect_id.ok_or_else(|| {
@@ -1747,6 +1848,22 @@ fn resolve_effect_result_value(
                 )
             })?;
             *value = Value::EffectValueOffset(id, *offset);
+        }
+        Value::EventValueOffset(EventValueSpec::LifeAmount, offset)
+            if !state.allow_life_event_value =>
+        {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event-derived amount requires a compatible trigger or prior effect"
+                        .to_string(),
+                )
+            })?;
+            *value = Value::EffectMetricOffset {
+                effect_id: id,
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::LifeLost,
+                offset: *offset,
+            };
         }
         _ => {}
     }
@@ -2017,7 +2134,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
                 bind_unresolved_it_in_value(amount, seed_tag)
             }
-            SubjectVerbActionAst::LookAtTopCards { count, tag } => {
+            SubjectVerbActionAst::LookAtTopCards { count, tag, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
                     + bind_unresolved_it_in_tag(tag, seed_tag)
             }
@@ -2258,8 +2375,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
-            SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
+            SubjectVerbActionAst::ReturnToBattlefield {
+                target,
+                count_value,
+                ..
+            } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+                    + count_value
+                        .as_mut()
+                        .map(|value| bind_unresolved_it_in_value(value, seed_tag))
+                        .unwrap_or(0)
+            }
+            SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
             | SubjectVerbActionAst::TargetOnly { target }
             | SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
@@ -2952,6 +3079,52 @@ mod tests {
                 ..
             }) => {
                 assert_eq!(count, &Value::EffectValue(EffectId(0)));
+            }
+            other => panic!("expected draw effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_pending_effect_metric_to_prior_memory_effect() {
+        let effects = vec![
+            EffectAst::subject_verb_sacrifice_all(
+                PlayerAst::You,
+                ObjectFilter::creature().you_control(),
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::PendingEffectMetric {
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::Count,
+                    },
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate pending metric sequence");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        match &annotated.effects[1].effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count },
+                ..
+            }) => {
+                assert_eq!(
+                    count,
+                    &Value::EffectMetric {
+                        effect_id: EffectId(0),
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::Count,
+                    }
+                );
             }
             other => panic!("expected draw effect, got {other:?}"),
         }

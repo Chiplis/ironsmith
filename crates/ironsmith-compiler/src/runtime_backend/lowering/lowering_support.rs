@@ -1255,6 +1255,18 @@ fn rewrite_validate_unbound_iterated_player(
     Ok(())
 }
 
+fn rewrite_validate_no_unresolved_dynamic_values(
+    debug_repr: String,
+    context: &str,
+) -> Result<(), CardTextError> {
+    if debug_repr.contains("PendingEffectMetric") {
+        return Err(CardTextError::ParseError(format!(
+            "{context} contains an unresolved prior-effect metric value: {debug_repr}"
+        )));
+    }
+    Ok(())
+}
+
 fn rewrite_validate_choose_specs_for_iterated_player(
     choices: &[ChooseSpec],
     iterated_player_bound: bool,
@@ -1516,6 +1528,7 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
     initial_iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
+    rewrite_validate_no_unresolved_dynamic_values(format!("{:?}", lowered.effects), context)?;
     let iterated_player_bound = initial_iterated_player_bound || lowered.exports.iterated_player;
     rewrite_validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
     rewrite_validate_choose_specs_for_iterated_player(

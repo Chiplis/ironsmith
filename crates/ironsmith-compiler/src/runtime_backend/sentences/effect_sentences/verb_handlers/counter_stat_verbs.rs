@@ -592,7 +592,95 @@ pub(crate) fn parse_reveal(
         )));
     }
 
+    let top_prefix_len = if words.starts_with(&["the", "top"]) {
+        Some(2usize)
+    } else if words.starts_with(&["top"]) {
+        Some(1usize)
+    } else {
+        None
+    };
+    if let Some(prefix_len) = top_prefix_len
+        && let Some(count_token_idx) = token_index_for_word_index(tokens, prefix_len)
+        && let Some((mut count, used)) = parse_value(&tokens[count_token_idx..])
+    {
+        let after_count = &tokens[count_token_idx + used..];
+        let after_words = crate::runtime_backend::token_word_refs(after_count);
+        let top_library_tail = matches!(
+            after_words.get(..4),
+            Some(["card", "of", "your", "library"] | ["cards", "of", "your", "library"])
+        );
+        if top_library_tail {
+            if count == Value::X
+                && let Some(where_word_idx) =
+                    find_word_sequence_start(&words, &["where", "x", "is"])
+                && let Some(where_token_idx) = token_index_for_word_index(tokens, where_word_idx)
+                && let Some(where_value) =
+                    parse_prior_effect_count_binding_clause(&tokens[where_token_idx..])
+                        .or_else(|| parse_value_binding_clause(&tokens[where_token_idx..]))
+            {
+                count = where_value;
+            }
+            if count != Value::Fixed(1) {
+                return Ok(EffectAst::subject_verb_reveal_top_cards(
+                    player,
+                    count,
+                    TagKey::from(IT_TAG),
+                ));
+            }
+        }
+    }
+
     Ok(EffectAst::subject_verb_reveal_top(player))
+}
+
+fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_commas(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    let words = word_view.word_refs();
+    if !slice_starts_with(&words, &["where", "x", "is"]) {
+        return None;
+    }
+
+    let mut idx = 3usize;
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if words.get(idx).copied() != Some("number")
+        || words.get(idx + 1).copied() != Some("of")
+    {
+        return None;
+    }
+
+    let object_words = &words[idx + 2..];
+    let references_this_way = object_words
+        .windows(2)
+        .any(|window| window == ["this", "way"]);
+    let references_memory_action = object_words.iter().any(|word| {
+        matches!(
+            *word,
+            "chosen"
+                | "destroyed"
+                | "discarded"
+                | "exiled"
+                | "milled"
+                | "revealed"
+                | "sacrificed"
+                | "searched"
+        )
+    });
+    if !references_this_way && !references_memory_action {
+        return None;
+    }
+
+    let source = if object_words.iter().any(|word| *word == "chosen") {
+        ironsmith_core::EffectMetricSource::ChosenObjects
+    } else {
+        ironsmith_core::EffectMetricSource::AffectedObjects
+    };
+    Some(Value::PendingEffectMetric {
+        source,
+        metric: ironsmith_core::EffectMetric::Count,
+    })
 }
 
 pub(crate) fn parse_life_amount(

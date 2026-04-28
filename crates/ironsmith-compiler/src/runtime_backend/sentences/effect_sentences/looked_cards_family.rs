@@ -15,11 +15,54 @@ use crate::cards::builders::IT_TAG;
 use crate::cards::builders::{
     CardTextError, EffectAst, ObjectFilter, PlayerAst, TagKey, TextSpan, parse_object_filter_lexed,
 };
+use crate::effect::Value;
 use crate::runtime_backend::grammar::primitives::TokenWordView;
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+
+fn parse_prior_effect_number_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_commas(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    let words = word_view.word_refs();
+    let mut idx = 0usize;
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
+        return None;
+    }
+    let object_words = &words[idx + 2..];
+    let references_this_way = object_words
+        .windows(2)
+        .any(|window| window == ["this", "way"]);
+    let references_memory_action = object_words.iter().any(|word| {
+        matches!(
+            *word,
+            "chosen"
+                | "destroyed"
+                | "discarded"
+                | "exiled"
+                | "milled"
+                | "revealed"
+                | "sacrificed"
+                | "searched"
+        )
+    });
+    if !references_this_way && !references_memory_action {
+        return None;
+    }
+    Some(Value::PendingEffectMetric {
+        source: if object_words.iter().any(|word| *word == "chosen") {
+            EffectMetricSource::ChosenObjects
+        } else {
+            EffectMetricSource::AffectedObjects
+        },
+        metric: EffectMetric::Count,
+    })
+}
 
 fn parse_prefixed_top_of_your_library_value<T: Copy>(
     tokens: &[OwnedLexToken],
@@ -52,6 +95,9 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     {
         let value_start = tail_word_view.token_index_for_word_index(7)?;
         let value_tokens = trim_commas(&tail_tokens[value_start..]);
+        if let Some(resolved) = parse_prior_effect_number_value(&value_tokens) {
+            return Some((marker, resolved));
+        }
         if let Some((resolved, used_value)) = parse_value_from_lexed(&value_tokens)
             && TokenWordView::new(&value_tokens[used_value..]).is_empty()
         {

@@ -1,6 +1,6 @@
 //! Discard effect implementation.
 
-use crate::effect::{EffectOutcome, ExecutionFact, Value};
+use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory, Value};
 use crate::effects::helpers::{normalize_object_selection, resolve_player_filter, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -217,7 +217,13 @@ impl EffectExecutor for DiscardEffect {
         // the execution context so discard-as-cost stays cost-caused.
         let cause = ctx.cause.clone();
         let chosen_cards = cards_to_discard.clone();
+        let chosen_memory: Vec<_> = chosen_cards
+            .iter()
+            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+            .collect();
+        let mut affected_memory = Vec::new();
         for card_id in cards_to_discard {
+            let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
             let result = execute_discard(
                 game,
                 card_id,
@@ -240,6 +246,9 @@ impl EffectExecutor for DiscardEffect {
                 }
                 discarded += 1;
                 discarded_cards.push(card_id);
+                if let Some(memory) = pre_memory {
+                    affected_memory.push(memory);
+                }
                 discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
                     DiscardEvent::with_cause(card_id, player_id, cause.clone())
                         .with_destination(result.final_zone),
@@ -264,9 +273,11 @@ impl EffectExecutor for DiscardEffect {
 
         let mut outcome = EffectOutcome::count(discarded)
             .with_events(discard_events)
-            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_cards));
+            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_cards))
+            .with_chosen_object_memory(chosen_memory);
         if !discarded_cards.is_empty() {
             outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(discarded_cards));
+            outcome = outcome.with_affected_object_memory(affected_memory);
         }
 
         Ok(outcome)

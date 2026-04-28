@@ -322,8 +322,7 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
         return false;
     }
     let rendered = describe_resolution_program(&triggered.effects).to_ascii_lowercase();
-    rendered.starts_with("if the gift was promised")
-        || is_standard_gift_render_payload(&rendered)
+    rendered.starts_with("if the gift was promised") || is_standard_gift_render_payload(&rendered)
 }
 
 fn describe_resolution_program_for_card(
@@ -1642,12 +1641,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            let mut ability_lines = describe_ability(
-                ability_idx + 1,
-                ability,
-                subject,
-                rewrite_it_deals,
-            );
+            let mut ability_lines =
+                describe_ability(ability_idx + 1, ability, subject, rewrite_it_deals);
             if ability_has_begin_on_battlefield_pregame(ability) {
                 for line in &mut ability_lines {
                     *line = substitute_pregame_self_reference(line, &def.card.name);

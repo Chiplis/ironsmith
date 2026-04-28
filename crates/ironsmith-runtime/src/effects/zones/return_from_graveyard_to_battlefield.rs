@@ -3,11 +3,12 @@
 use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::ReturnFromGraveyardToBattlefieldEffect;
@@ -36,35 +37,51 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-
-        // Verify target is in a graveyard
-        let obj = game
-            .object(target_id)
-            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-
-        if obj.zone != Zone::Graveyard {
+        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
 
-        let outcome = move_to_battlefield_with_options(
-            game,
-            ctx,
-            target_id,
-            BattlefieldEntryOptions::preserve(self.tapped),
-        );
+        let mut memories = Vec::new();
+        for target_id in &target_ids {
+            let obj = game
+                .object(*target_id)
+                .ok_or(ExecutionError::ObjectNotFound(*target_id))?;
 
-        match outcome {
-            BattlefieldEntryOutcome::Moved(new_id) => Ok(EffectOutcome::with_objects(vec![new_id])),
-            BattlefieldEntryOutcome::Prevented => {
-                // ETB was prevented entirely
-                Ok(EffectOutcome::impossible())
+            if obj.zone != Zone::Graveyard {
+                return Ok(EffectOutcome::target_invalid());
             }
+            memories.push(OutcomeObjectMemory::from_snapshot(
+                &ObjectSnapshot::from_object(obj, game),
+            ));
+        }
+
+        let mut moved = Vec::new();
+        for target_id in target_ids {
+            match move_to_battlefield_with_options(
+                game,
+                ctx,
+                target_id,
+                BattlefieldEntryOptions::preserve(self.tapped),
+            ) {
+                BattlefieldEntryOutcome::Moved(new_id) => moved.push(new_id),
+                BattlefieldEntryOutcome::Prevented => {}
+            }
+        }
+
+        if moved.is_empty() {
+            Ok(EffectOutcome::impossible())
+        } else {
+            Ok(EffectOutcome::with_objects(moved).with_affected_object_memory(memories))
         }
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        Some(self.target.count())
     }
 
     fn target_description(&self) -> &'static str {
@@ -219,6 +236,40 @@ mod tests {
             .expect("reanimated permanent should exist");
         assert_eq!(returned_name, "Second");
         assert!(game.players[0].graveyard.contains(&first));
+    }
+
+    #[test]
+    fn test_reanimate_multiple_non_targeted_choices() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature_in_graveyard(&mut game, "First", alice);
+        let second = create_creature_in_graveyard(&mut game, "Second", alice);
+        let third = create_creature_in_graveyard(&mut game, "Third", alice);
+        let source = game.new_object_id();
+        let mut dm = SelectIdsDecisionMaker {
+            chosen: vec![first, third],
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let mut filter = crate::filter::ObjectFilter::creature();
+        filter.zone = Some(Zone::Graveyard);
+
+        let effect = ReturnFromGraveyardToBattlefieldEffect::new(
+            ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(2)),
+            false,
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 2);
+        let returned_names = ids
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.as_str()))
+            .collect::<Vec<_>>();
+        assert!(returned_names.contains(&"First"));
+        assert!(returned_names.contains(&"Third"));
+        assert!(game.players[0].graveyard.contains(&second));
     }
 
     #[test]

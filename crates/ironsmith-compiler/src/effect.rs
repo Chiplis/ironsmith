@@ -583,6 +583,16 @@ impl Effect {
         ))
     }
 
+    pub fn reveal_top_cards(
+        player: crate::target::PlayerFilter,
+        count: Value,
+        tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self::new(crate::effects::LookAtTopCardsEffect::revealing(
+            player, count, tag,
+        ))
+    }
+
     pub fn for_players(_filter: crate::target::PlayerFilter, _effects: Vec<Effect>) -> Self {
         Self::new(crate::effects::ForPlayersEffect {
             filter: _filter,
@@ -1158,6 +1168,21 @@ impl Effect {
         Self::new(
             crate::effects::RemoveAnyCountersAmongEffect::new(count, filter)
                 .with_counter_type(counter_type),
+        )
+    }
+
+    pub fn remove_dynamic_counters_among(
+        min_count: u32,
+        max_count: u32,
+        filter: crate::target::ObjectFilter,
+        counter_type: Option<crate::object::CounterType>,
+        display_x: bool,
+    ) -> Self {
+        Self::new(
+            crate::effects::RemoveAnyCountersAmongEffect::dynamic(
+                min_count, max_count, filter, display_x,
+            )
+            .with_counter_type(counter_type),
         )
     }
 

@@ -2,7 +2,7 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
-use crate::effect::{EffectOutcome, SearchSelectionMode};
+use crate::effect::{EffectOutcome, OutcomeObjectMemory, SearchSelectionMode};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::zones::{
@@ -86,6 +86,7 @@ impl EffectExecutor for SearchLibraryEffect {
                 .is_some_and(|p| p.library.contains(&card_id));
 
             if still_in_library {
+                let chosen_memory = OutcomeObjectMemory::from_object_id(game, card_id);
                 // For "put on top of library" effects (like Vampiric Tutor), we need to:
                 // 1. Remove the card from the library
                 // 2. Shuffle the library
@@ -102,8 +103,14 @@ impl EffectExecutor for SearchLibraryEffect {
                     if let Some(p) = game.player_mut(player_id) {
                         p.library.push(card_id);
                     }
-                    return Ok(EffectOutcome::with_objects(vec![card_id])
-                        .with_events([search_event.clone(), shuffle_event.clone()]));
+                    let mut outcome = EffectOutcome::with_objects(vec![card_id])
+                        .with_events([search_event.clone(), shuffle_event.clone()]);
+                    if let Some(memory) = chosen_memory {
+                        outcome = outcome
+                            .with_chosen_object_memory(vec![memory.clone()])
+                            .with_affected_object_memory(vec![memory]);
+                    }
+                    return Ok(outcome);
                 }
 
                 // For other destinations, move then shuffle
@@ -124,8 +131,15 @@ impl EffectExecutor for SearchLibraryEffect {
                 if let Some(new_id) = new_id {
                     // Shuffle the library after searching
                     game.shuffle_player_library(player_id);
-                    return Ok(EffectOutcome::with_objects(vec![new_id])
-                        .with_events([search_event.clone(), shuffle_event.clone()]));
+                    let mut outcome = EffectOutcome::with_objects(vec![new_id])
+                        .with_affected_objects(vec![new_id])
+                        .with_events([search_event.clone(), shuffle_event.clone()]);
+                    if let Some(memory) = chosen_memory {
+                        outcome = outcome
+                            .with_chosen_object_memory(vec![memory.clone()])
+                            .with_affected_object_memory(vec![memory]);
+                    }
+                    return Ok(outcome);
                 }
             }
         }

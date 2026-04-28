@@ -1,7 +1,9 @@
 //! Effect for removing counters from among matching permanents.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::{CounterRemovalSpec, DistributeSpec, make_decision_with_fallback};
+use crate::decisions::{
+    CounterRemovalSpec, DistributeSpec, NumberSpec, make_decision_with_fallback,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -91,6 +93,23 @@ fn total_available(
 pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
     let target_phrase_single = remove_counters_target_phrase(&effect.filter, false);
     let target_phrase_plural = remove_counters_target_phrase(&effect.filter, true);
+    if effect.dynamic_count {
+        let amount_text = if effect.display_x {
+            "X".to_string()
+        } else if effect.min_count > 0 {
+            "one or more".to_string()
+        } else {
+            "any number of".to_string()
+        };
+        return match effect.counter_type {
+            Some(counter_type) => format!(
+                "Remove {amount_text} {} counters from among {}",
+                counter_type.description(),
+                target_phrase_plural
+            ),
+            None => format!("Remove {amount_text} counters from among {target_phrase_plural}"),
+        };
+    }
     match (effect.count, effect.counter_type) {
         (1, Some(counter_type)) => {
             let counter_name = counter_type.description();
@@ -132,11 +151,28 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if total_available_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects)
-            < self.count
-        {
+        let total_available =
+            total_available_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
+        if total_available < self.min_count {
             return Ok(EffectOutcome::impossible());
         }
+        let requested_count = if self.dynamic_count {
+            let max_count = self.count.min(total_available);
+            if max_count < self.min_count {
+                return Ok(EffectOutcome::impossible());
+            }
+            make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                NumberSpec::range(ctx.source, self.min_count, max_count, "counters to remove"),
+                FallbackStrategy::Maximum,
+            )
+            .clamp(self.min_count, max_count)
+        } else {
+            self.count
+        };
 
         let valid_targets =
             valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
@@ -147,7 +183,7 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             &mut ctx.decision_maker,
             ctx.controller,
             Some(ctx.source),
-            DistributeSpec::counters(ctx.source, self.count, distribute_targets),
+            DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
             FallbackStrategy::Maximum,
         );
 
@@ -159,12 +195,12 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
         }
 
         let distributed_total: u32 = allocations.values().copied().sum();
-        if distributed_total > self.count {
+        if distributed_total > requested_count {
             return Ok(EffectOutcome::impossible());
         }
 
-        if distributed_total < self.count {
-            let mut remaining = self.count - distributed_total;
+        if distributed_total < requested_count {
+            let mut remaining = requested_count - distributed_total;
             for object_id in &valid_targets {
                 if remaining == 0 {
                     break;
@@ -281,7 +317,7 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             }
         }
 
-        if removed_total != self.count {
+        if removed_total != requested_count {
             return Ok(EffectOutcome::impossible());
         }
 
@@ -301,7 +337,7 @@ impl CostExecutableEffect for RemoveAnyCountersAmongEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if total_available(self, game, source, controller) < self.count {
+        if total_available(self, game, source, controller) < self.min_count {
             return Err(CostValidationError::Other(
                 "not enough counters".to_string(),
             ));
@@ -501,11 +537,61 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_cost_removes_chosen_counter_total_and_sets_x() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card_a = simple_card("A", 1);
+        let a_id = game.create_object_from_card(&card_a, alice, Zone::Battlefield);
+        let card_b = simple_card("B", 2);
+        let b_id = game.create_object_from_card(&card_b, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(a_id) {
+            obj.counters.insert(CounterType::PlusOnePlusOne, 2);
+        }
+        if let Some(obj) = game.object_mut(b_id) {
+            obj.counters.insert(CounterType::PlusOnePlusOne, 1);
+        }
+
+        let cost = Cost::effect(
+            RemoveAnyCountersAmongEffect::dynamic(
+                1,
+                u32::MAX / 4,
+                ObjectFilter::creature().you_control(),
+                false,
+            )
+            .with_counter_type(Some(CounterType::PlusOnePlusOne)),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(a_id, alice, &mut dm);
+
+        let result = cost.pay(&mut game, &mut ctx);
+        assert_eq!(result, Ok(crate::costs::CostPaymentResult::Paid));
+        assert_eq!(game.counter_count(a_id, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(game.counter_count(b_id, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(ctx.x_value, Some(3));
+    }
+
+    #[test]
     fn display_permanent_you_control_singular() {
         let effect = RemoveAnyCountersAmongEffect::new(1, ObjectFilter::permanent().you_control());
         assert_eq!(
             cost_display(&effect),
             "Remove a counter from a permanent you control"
+        );
+    }
+
+    #[test]
+    fn display_dynamic_one_or_more_typed_counters_among_creatures() {
+        let effect = RemoveAnyCountersAmongEffect::dynamic(
+            1,
+            u32::MAX / 4,
+            ObjectFilter::creature().you_control(),
+            false,
+        )
+        .with_counter_type(Some(CounterType::PlusOnePlusOne));
+        assert_eq!(
+            cost_display(&effect),
+            "Remove one or more +1/+1 counters from among creatures you control"
         );
     }
 

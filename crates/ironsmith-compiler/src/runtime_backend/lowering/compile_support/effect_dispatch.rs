@@ -964,7 +964,7 @@ fn compile_subject_verb_effect(
             ctx.last_player_filter = Some(player_filter);
             Ok((vec![Effect::new(choose)], subject.into_choices()))
         }
-        SubjectVerbActionAst::LookAtTopCards { count, tag } => {
+        SubjectVerbActionAst::LookAtTopCards { count, tag, reveal } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let resolved_tag = if tag.as_str() == IT_TAG {
@@ -973,12 +973,16 @@ fn compile_subject_verb_effect(
                 tag.clone()
             };
             ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            if *reveal {
+                ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+            }
+            let effect = if *reveal {
+                Effect::reveal_top_cards(player_filter, count.clone(), resolved_tag)
+            } else {
+                Effect::look_at_top_cards(player_filter, count.clone(), resolved_tag)
+            };
             Ok((
-                vec![Effect::look_at_top_cards(
-                    player_filter,
-                    count.clone(),
-                    resolved_tag,
-                )],
+                vec![effect],
                 subject.into_choices(),
             ))
         }
@@ -1653,6 +1657,7 @@ fn compile_subject_verb_effect(
             transformed,
             converted,
             controller,
+            count_value,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1677,7 +1682,7 @@ fn compile_subject_verb_effect(
                         ChooseSpec::tagged(tag)
                     }
                     ChooseSpec::WithCount(inner, count)
-                        if count.is_single()
+                        if (count.is_single() || count_value.is_some())
                             && matches!(inner.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty() && filter.zone == Some(Zone::Graveyard)) =>
                     {
                         let ChooseSpec::Object(filter) = inner.base() else {
@@ -1685,11 +1690,14 @@ fn compile_subject_verb_effect(
                         };
                         let tag = ctx.next_tag("chosen_return");
                         ctx.last_object_tag = Some(tag.clone());
-                        effects.push(Effect::choose_objects(
-                            filter.clone(),
-                            count.clone(),
-                            PlayerFilter::You,
-                            tag.clone(),
+                        effects.push(Effect::new(
+                            crate::effects::ChooseObjectsEffect::new(
+                                filter.clone(),
+                                *count,
+                                PlayerFilter::You,
+                                tag.clone(),
+                            )
+                            .with_count_value_opt(count_value.clone()),
                         ));
                         ChooseSpec::tagged(tag)
                     }

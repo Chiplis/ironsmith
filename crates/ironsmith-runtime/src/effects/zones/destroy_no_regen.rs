@@ -4,7 +4,9 @@
 //! - "Destroy target creature. It can't be regenerated."
 //! - "Destroy all creatures. They can't be regenerated."
 
-use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus};
+use crate::effect::{
+    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeStatus,
+};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
@@ -12,6 +14,7 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_destroy};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 
 /// Effect that destroys permanents while ignoring regeneration shields.
@@ -93,6 +96,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
         }
 
         let mut destroyed_objects = Vec::new();
+        let mut destroyed_memory = Vec::new();
         let apply_result = match apply_to_selected_objects(
             game,
             ctx,
@@ -103,9 +107,15 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
                     .replacement_effects
                     .remove_one_shot_effects_from_source(object_id);
                 game.clear_regeneration_shields(object_id);
+                let pre_snapshot = game.object(object_id).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                });
                 let result =
                     process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
                 if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
+                    if let Some(snapshot) = pre_snapshot.as_ref() {
+                        destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                    }
                     destroyed_objects.extend(game.take_zone_change_results(object_id));
                     return Ok(true);
                 }
@@ -120,6 +130,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
         if !destroyed_objects.is_empty() {
             outcome =
                 outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
+            outcome = outcome.with_affected_object_memory(destroyed_memory);
         }
 
         Ok(outcome)

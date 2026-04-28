@@ -139,6 +139,57 @@ fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
         && words.ends_with(&["tapped", "this", "way"])
 }
 
+fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
+    if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
+        return None;
+    }
+    let mut idx = 3usize;
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
+        return None;
+    }
+
+    let object_words = &words[idx + 2..];
+    if object_words.iter().any(|word| *word == "counter" || *word == "counters")
+        && object_words.iter().any(|word| *word == "removed")
+        && object_words
+            .windows(2)
+            .any(|window| window == ["this", "way"])
+    {
+        return Some(Value::X);
+    }
+    let references_this_way = object_words
+        .windows(2)
+        .any(|window| window == ["this", "way"]);
+    let references_memory_action = object_words.iter().any(|word| {
+        matches!(
+            *word,
+            "chosen"
+                | "destroyed"
+                | "discarded"
+                | "exiled"
+                | "milled"
+                | "revealed"
+                | "sacrificed"
+                | "searched"
+        )
+    });
+    if !references_this_way && !references_memory_action {
+        return None;
+    }
+
+    Some(Value::PendingEffectMetric {
+        source: if object_words.iter().any(|word| *word == "chosen") {
+            ironsmith_core::EffectMetricSource::ChosenObjects
+        } else {
+            ironsmith_core::EffectMetricSource::AffectedObjects
+        },
+        metric: ironsmith_core::EffectMetric::Count,
+    })
+}
+
 fn parse_tap_then_damage_for_number_tapped_this_way(
     stripped: &[OwnedLexToken],
     stripped_words: &[&str],
@@ -627,7 +678,10 @@ fn parse_effect_sentence_with_where_x_lexed(
         return Ok(effects);
     }
 
-    let where_value = match where_words.get(3..) {
+    let where_value = if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
+        value
+    } else {
+        match where_words.get(3..) {
         Some(["its", "power"]) => {
             if stripped_words.iter().any(|w| *w == "target") {
                 Value::PowerOf(Box::new(crate::target::ChooseSpec::target(
@@ -760,6 +814,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 clause_words.join(" ")
             ))
         })?,
+        }
     };
 
     let search_like = stripped_words.first().copied() == Some("search");

@@ -623,6 +623,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
                         false,
                         false,
                         ReturnControllerAst::Preserve,
+                        None,
                     )],
                     player: PlayerAst::Any,
                     cost: TotalCost::from_cost(Cost::life(5)),

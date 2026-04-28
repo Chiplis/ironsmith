@@ -1522,10 +1522,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("card ins", "cards in");
     normalized = normalized.replace("one or more another ", "one or more other ");
     normalized = normalized.replace("One or more another ", "One or more other ");
-    normalized = normalized.replace(
-        "This creature ability costs ",
-        "This ability costs ",
-    );
+    normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
     normalized = normalized.replace("this creature has flying", "Kain has flying");
     normalized = normalized.replace("This creature has flying", "Kain has flying");
@@ -1630,13 +1627,12 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         == "create a lander token. you may sacrifice an artifact. if you do, for each creature, lithobraking deals 2 damage to that object"
         || (lower_compact.contains("create a lander token")
             && lower_compact.contains("you may sacrifice an artifact")
-            && lower_compact.contains("for each creature, lithobraking deals 2 damage to that object"))
+            && lower_compact
+                .contains("for each creature, lithobraking deals 2 damage to that object"))
     {
         return "Create a Lander token. Then you may sacrifice an artifact. When you do, Lithobraking deals 2 damage to each creature.".to_string();
     }
-    if lower_compact
-        == "target creature becomes a 5/5 blue serpent creature until end of turn."
-    {
+    if lower_compact == "target creature becomes a 5/5 blue serpent creature until end of turn." {
         return "target creature becomes a blue serpent creature with base power and toughness 5/5 until end of turn.".to_string();
     }
     if lower_compact
@@ -1674,9 +1670,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             1,
         );
     }
-    if lower_compact
-        == "if an opponent has cast a blue or black spell this turn, draw a card."
-    {
+    if lower_compact == "if an opponent has cast a blue or black spell this turn, draw a card." {
         return "Draw a card if an opponent has cast a blue or black spell this turn.".to_string();
     }
     if lower_compact
@@ -1742,8 +1736,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Magecraft — Whenever you cast an instant or sorcery spell or copy an instant or sorcery spell, look at the top three cards of your library. You may reveal a land card from among them and put that card into your hand. Put the rest on the bottom of your library in any order.".to_string();
     }
-    if lower_compact
-        == "create a 1/1 red satyr creature token. it has \"this token can't block.\""
+    if lower_compact == "create a 1/1 red satyr creature token. it has \"this token can't block.\""
     {
         return "Create a 1/1 red Satyr creature token with \"Can't block.\"".to_string();
     }
@@ -5138,6 +5131,46 @@ pub(super) fn describe_effect_count_backref(value: &Value) -> Option<String> {
                 Some(format!("that many minus {}", -offset))
             }
         }
+        Value::EffectMetric {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            ..
+        } => Some("that many".to_string()),
+        Value::EffectMetricOffset {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            offset,
+            ..
+        }
+        | Value::PendingEffectMetricOffset {
+            metric:
+                crate::effect::EffectMetric::Count
+                | crate::effect::EffectMetric::ChosenCount
+                | crate::effect::EffectMetric::AffectedCount,
+            offset,
+            ..
+        } => {
+            if *offset == 0 {
+                Some("that many".to_string())
+            } else if *offset > 0 {
+                Some(format!("that many plus {}", offset))
+            } else if *offset == -1 {
+                Some("that many minus one".to_string())
+            } else {
+                Some(format!("that many minus {}", -offset))
+            }
+        }
         _ => None,
     }
 }
@@ -6590,6 +6623,45 @@ pub(super) fn describe_counter_type(counter_type: CounterType) -> String {
     counter_type.description().into_owned()
 }
 
+fn describe_effect_metric_value(
+    metric: crate::effect::EffectMetric,
+    offset: Option<i32>,
+) -> String {
+    let base = match metric {
+        crate::effect::EffectMetric::Count
+        | crate::effect::EffectMetric::ChosenCount
+        | crate::effect::EffectMetric::AffectedCount => "that many".to_string(),
+        crate::effect::EffectMetric::LifeLost => "the life lost this way".to_string(),
+        crate::effect::EffectMetric::LifeGained => "the life gained this way".to_string(),
+        crate::effect::EffectMetric::DamageDealt => "the damage dealt this way".to_string(),
+        crate::effect::EffectMetric::DamagePrevented => "the damage prevented this way".to_string(),
+        crate::effect::EffectMetric::FirstPower => "that creature's power".to_string(),
+        crate::effect::EffectMetric::FirstToughness => "that creature's toughness".to_string(),
+        crate::effect::EffectMetric::FirstManaValue => "that card's mana value".to_string(),
+        crate::effect::EffectMetric::TotalPower => "the total power of those creatures".to_string(),
+        crate::effect::EffectMetric::TotalToughness => {
+            "the total toughness of those creatures".to_string()
+        }
+        crate::effect::EffectMetric::TotalManaValue => {
+            "the total mana value of those cards".to_string()
+        }
+        crate::effect::EffectMetric::GreatestPower => {
+            "the greatest power among those creatures".to_string()
+        }
+        crate::effect::EffectMetric::GreatestToughness => {
+            "the greatest toughness among those creatures".to_string()
+        }
+        crate::effect::EffectMetric::GreatestManaValue => {
+            "the greatest mana value among those cards".to_string()
+        }
+    };
+    match offset {
+        Some(0) | None => base,
+        Some(n) if n > 0 => format!("{base} plus {n}"),
+        Some(n) => format!("{base} minus {}", -n),
+    }
+}
+
 pub(crate) fn describe_value(value: &Value) -> String {
     match value {
         Value::Fixed(n) => n.to_string(),
@@ -6945,6 +7017,14 @@ pub(crate) fn describe_value(value: &Value) -> String {
             } else {
                 format!("X minus {}", -offset)
             }
+        }
+        Value::EffectMetric { metric, .. } => describe_effect_metric_value(*metric, None),
+        Value::EffectMetricOffset { metric, offset, .. } => {
+            describe_effect_metric_value(*metric, Some(*offset))
+        }
+        Value::PendingEffectMetric { metric, .. } => describe_effect_metric_value(*metric, None),
+        Value::PendingEffectMetricOffset { metric, offset, .. } => {
+            describe_effect_metric_value(*metric, Some(*offset))
         }
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),

@@ -4,6 +4,33 @@ use crate::{
 };
 use crate::{ChooseSpec, Color};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EffectMetricSource {
+    Outcome,
+    ChosenObjects,
+    AffectedObjects,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EffectMetric {
+    Count,
+    ChosenCount,
+    AffectedCount,
+    LifeLost,
+    LifeGained,
+    DamageDealt,
+    DamagePrevented,
+    FirstPower,
+    FirstToughness,
+    FirstManaValue,
+    TotalPower,
+    TotalToughness,
+    TotalManaValue,
+    GreatestPower,
+    GreatestToughness,
+    GreatestManaValue,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Fixed(i32),
@@ -70,6 +97,26 @@ pub enum Value {
     ColorsOfManaSpentToCastThisSpell,
     EffectValue(EffectId),
     EffectValueOffset(EffectId, i32),
+    EffectMetric {
+        effect_id: EffectId,
+        source: EffectMetricSource,
+        metric: EffectMetric,
+    },
+    EffectMetricOffset {
+        effect_id: EffectId,
+        source: EffectMetricSource,
+        metric: EffectMetric,
+        offset: i32,
+    },
+    PendingEffectMetric {
+        source: EffectMetricSource,
+        metric: EffectMetric,
+    },
+    PendingEffectMetricOffset {
+        source: EffectMetricSource,
+        metric: EffectMetric,
+        offset: i32,
+    },
     EventValue(EventValueSpec),
     EventValueOffset(EventValueSpec, i32),
     WasKicked,

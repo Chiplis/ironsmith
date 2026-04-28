@@ -4552,6 +4552,76 @@ fn rewrite_intuition_search_stays_card_based_in_compiled_text() {
 }
 
 #[test]
+fn dynamic_top_library_count_lowers_to_prior_effect_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dynamic Reveal Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice any number of lands. Reveal the top X cards of your library, where X is the number of lands sacrificed this way.",
+        )
+        .expect("dynamic reveal count should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("AffectedObjects")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("reveal: true"),
+        "expected reveal count to bind to prior sacrifice metric, got {debug}"
+    );
+}
+
+#[test]
+fn life_lost_this_way_lowers_to_prior_effect_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life Lost Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Each opponent loses 1 life. You gain life equal to the life lost this way.")
+        .expect("life-lost-this-way should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("LifeLost"),
+        "expected life gain to bind to prior life-loss metric, got {debug}"
+    );
+}
+
+#[test]
+fn dynamic_return_count_lowers_to_prior_effect_metric_choice() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dynamic Return Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice any number of permanents. Return that many creature cards from your graveyard to the battlefield.",
+        )
+        .expect("dynamic return count should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && (debug.contains("EffectValue") || debug.contains("EffectMetric")),
+        "expected return count to bind to prior sacrifice metric choice, got {debug}"
+    );
+}
+
+#[test]
+fn unresolved_event_value_without_prior_effect_is_parse_error() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unbound Dynamic Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Return that many creature cards from your graveyard to the battlefield.")
+        .expect_err("unbound dynamic return count should fail");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("event-derived amount requires a compatible trigger")
+            || message
+                .contains("event-derived amount requires a compatible trigger or prior effect"),
+        "expected unresolved dynamic value parse error, got {message}"
+    );
+}
+
+#[test]
 fn rewrite_search_library_clause_marker_scan_tracks_destination_boundaries() {
     let reveal_put_shuffle = lex_line(
         "Search your library for a creature card, reveal it, put it into your hand, then shuffle.",
@@ -9192,7 +9262,26 @@ fn rewrite_activation_cost_token_entrypoint_parses_counter_variants() {
             count: 0,
             filter_text,
             display_x: false,
+            dynamic: true,
         }] if filter_text == "artifacts you control"
+    ));
+
+    let one_or_more_tokens = lex_line(
+        "Remove one or more +1/+1 counters from among creatures you control",
+        0,
+    )
+    .expect("lexer should classify one-or-more remove-counter activation cost");
+    let one_or_more_cst = parse_activation_cost_tokens_rewrite(&one_or_more_tokens)
+        .expect("token activation-cost parser should parse one-or-more remove-counter costs");
+    assert!(matches!(
+        one_or_more_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RemoveCountersAmong {
+            counter_type: Some(CounterType::PlusOnePlusOne),
+            count: 1,
+            filter_text,
+            display_x: false,
+            dynamic: true,
+        }] if filter_text == "creatures you control"
     ));
 }
 

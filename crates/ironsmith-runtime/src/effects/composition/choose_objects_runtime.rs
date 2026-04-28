@@ -2,7 +2,9 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
+use crate::effect::{
+    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, SearchSelectionMode,
+};
 use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_to_list, resolve_value,
 };
@@ -1035,8 +1037,13 @@ pub(crate) fn run_choose_objects(
         ctx.clear_object_tag(effect.tag.as_str());
     }
 
+    let chosen_memory: Vec<_> = chosen
+        .iter()
+        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+        .collect();
     let outcome = EffectOutcome::with_objects(chosen.clone())
-        .with_execution_fact(ExecutionFact::ChosenObjects(chosen));
+        .with_execution_fact(ExecutionFact::ChosenObjects(chosen))
+        .with_chosen_object_memory(chosen_memory);
     Ok(if let Some(search_event) = search_event {
         outcome.with_event(search_event)
     } else {

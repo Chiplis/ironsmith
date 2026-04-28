@@ -7,6 +7,7 @@ use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use winnow::combinator::separated;
@@ -41,6 +42,24 @@ const CREATURES_DIED_THIS_TURN_PREFIXES: &[&[&str]] = &[
 
 const REFERENTIAL_TAGGED_PREFIXES: &[&[&str]] = &[&["its"], &["those"], &["thiss"]];
 const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[&["that", "many"], &["that", "much"]];
+
+fn tokens_reference_objects_this_way(tokens: &[OwnedLexToken]) -> bool {
+    grammar::words_find_phrase(tokens, &["this", "way"]).is_some()
+        && (grammar::contains_word(tokens, "destroyed")
+            || grammar::contains_word(tokens, "died")
+            || grammar::contains_word(tokens, "exiled")
+            || grammar::contains_word(tokens, "sacrificed")
+            || grammar::contains_word(tokens, "discarded")
+            || grammar::contains_word(tokens, "milled")
+            || grammar::contains_word(tokens, "revealed"))
+}
+
+fn this_way_object_count_value() -> Value {
+    Value::PendingEffectMetric {
+        source: EffectMetricSource::AffectedObjects,
+        metric: EffectMetric::Count,
+    }
+}
 
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")
@@ -496,6 +515,8 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
             let mut count =
                 if let Some(dynamic) = parse_create_for_each_dynamic_count(&count_filter_tokens) {
                     dynamic
+                } else if tokens_reference_objects_this_way(&count_filter_tokens) {
+                    this_way_object_count_value()
                 } else {
                     Value::Count(parse_object_filter(&count_filter_tokens, false)?)
                 };

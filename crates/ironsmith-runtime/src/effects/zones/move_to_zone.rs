@@ -1,6 +1,6 @@
 //! Move to zone effect implementation.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -101,6 +101,7 @@ impl EffectExecutor for MoveToZoneEffect {
 
         let mut moved_ids = Vec::new();
         let mut affected_ids = Vec::new();
+        let mut affected_memory = Vec::new();
         let mut any_prevented = false;
         let mut any_replaced = false;
         let mut moved_source_lki = None;
@@ -158,6 +159,9 @@ impl EffectExecutor for MoveToZoneEffect {
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
                                 ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                                affected_memory.push(OutcomeObjectMemory::from_snapshot(
+                                    &target_lki_before_move,
+                                ));
                                 if let Some(snapshot) = source_lki_before_move.clone() {
                                     moved_source_lki = Some(snapshot);
                                 }
@@ -174,6 +178,8 @@ impl EffectExecutor for MoveToZoneEffect {
                         finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
                     if !result.new_object_ids.is_empty() {
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                        affected_memory
+                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
                         if let Some(snapshot) = source_lki_before_move.clone() {
                             moved_source_lki = Some(snapshot);
                         }
@@ -223,6 +229,8 @@ impl EffectExecutor for MoveToZoneEffect {
                     } else if let Some(result_id) = game.find_object_by_stable_id(stable_id) {
                         affected_ids.push(result_id);
                     }
+                    affected_memory
+                        .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
                 }
                 EventOutcome::NotApplicable => continue,
             }
@@ -236,13 +244,22 @@ impl EffectExecutor for MoveToZoneEffect {
         }
 
         if !moved_ids.is_empty() {
-            return Ok(EffectOutcome::with_objects(moved_ids).with_affected_objects(affected_ids));
+            let mut outcome =
+                EffectOutcome::with_objects(moved_ids).with_affected_objects(affected_ids);
+            if !affected_memory.is_empty() {
+                outcome = outcome.with_affected_object_memory(affected_memory);
+            }
+            return Ok(outcome);
         }
         if any_prevented {
             return Ok(EffectOutcome::prevented());
         }
         if any_replaced {
-            return Ok(EffectOutcome::replaced().with_affected_objects(affected_ids));
+            let mut outcome = EffectOutcome::replaced().with_affected_objects(affected_ids);
+            if !affected_memory.is_empty() {
+                outcome = outcome.with_affected_object_memory(affected_memory);
+            }
+            return Ok(outcome);
         }
         Ok(EffectOutcome::target_invalid())
     }

@@ -1,7 +1,7 @@
 //! Look at top cards effect implementation.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -42,17 +42,58 @@ impl EffectExecutor for LookAtTopCardsEffect {
         }
 
         ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
-        let view_ctx = ViewCardsContext::new(
-            ctx.controller,
-            player_id,
-            Some(ctx.source),
-            crate::zone::Zone::Library,
-            "Look at cards from the top of a library",
-        );
-        ctx.decision_maker
-            .view_cards(game, ctx.controller, &top_cards, &view_ctx);
-        ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
-        Ok(EffectOutcome::count(snapshots.len() as i32))
+        if self.reveal {
+            for viewer_idx in 0..game.players.len() {
+                let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+                let view_ctx = ViewCardsContext::new(
+                    viewer,
+                    player_id,
+                    Some(ctx.source),
+                    crate::zone::Zone::Library,
+                    "Reveal cards from the top of a library",
+                )
+                .with_public(true);
+                ctx.decision_maker
+                    .view_cards(game, viewer, &top_cards, &view_ctx);
+            }
+        } else {
+            let view_ctx = ViewCardsContext::new(
+                ctx.controller,
+                player_id,
+                Some(ctx.source),
+                crate::zone::Zone::Library,
+                "Look at cards from the top of a library",
+            );
+            ctx.decision_maker
+                .view_cards(game, ctx.controller, &top_cards, &view_ctx);
+            ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
+        }
+
+        let memory: Vec<_> = snapshots
+            .iter()
+            .map(OutcomeObjectMemory::from_snapshot)
+            .collect();
+        let mut outcome = EffectOutcome::count(snapshots.len() as i32)
+            .with_chosen_object_memory(memory.clone())
+            .with_affected_object_memory(memory);
+        if self.reveal {
+            outcome = outcome.with_events(top_cards.iter().filter_map(|card_id| {
+                let snapshot = game
+                    .object(*card_id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game));
+                Some(crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::CardRevealedEvent::new(
+                        player_id,
+                        *card_id,
+                        crate::zone::Zone::Library,
+                        Some(ctx.source),
+                        snapshot,
+                    ),
+                    ctx.provenance,
+                ))
+            }));
+        }
+        Ok(outcome)
     }
 }
 

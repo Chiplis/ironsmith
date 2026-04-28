@@ -1073,6 +1073,7 @@ pub(crate) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
         false,
         false,
         ReturnControllerAst::Preserve,
+        None,
     ));
     Ok(Some(effects))
 }

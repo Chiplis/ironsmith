@@ -780,6 +780,7 @@ pub(crate) enum SubjectVerbActionAst {
     LookAtTopCards {
         count: Value,
         tag: TagKey,
+        reveal: bool,
     },
     PutIntoHand {
         object: ObjectRefAst,
@@ -911,6 +912,7 @@ pub(crate) enum SubjectVerbActionAst {
         transformed: bool,
         converted: bool,
         controller: ReturnControllerAst,
+        count_value: Option<Value>,
     },
     ReturnAllToBattlefield {
         filter: ObjectFilter,
@@ -1743,10 +1745,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count_value", count_value)
                 .field("tag", tag)
                 .finish(),
-            Self::LookAtTopCards { count, tag } => f
+            Self::LookAtTopCards { count, tag, reveal } => f
                 .debug_struct("LookAtTopCards")
                 .field("count", count)
                 .field("tag", tag)
+                .field("reveal", reveal)
                 .finish(),
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
@@ -1959,6 +1962,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 transformed,
                 converted,
                 controller,
+                count_value,
             } => f
                 .debug_struct("ReturnToBattlefield")
                 .field("target", target)
@@ -1966,6 +1970,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("transformed", transformed)
                 .field("converted", converted)
                 .field("controller", controller)
+                .field("count_value", count_value)
                 .finish(),
             Self::ReturnAllToBattlefield { filter, tapped } => f
                 .debug_struct("ReturnAllToBattlefield")
@@ -3247,6 +3252,7 @@ impl EffectAst {
         transformed: bool,
         converted: bool,
         controller: ReturnControllerAst,
+        count_value: Option<Value>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3257,6 +3263,7 @@ impl EffectAst {
                 transformed,
                 converted,
                 controller,
+                count_value,
             },
         )
     }
@@ -4607,10 +4614,27 @@ impl EffectAst {
         count: Value,
         tag: TagKey,
     ) -> Self {
+        Self::subject_verb_top_library_cards(player, count, tag, false)
+    }
+
+    pub(crate) fn subject_verb_reveal_top_cards(
+        player: PlayerAst,
+        count: Value,
+        tag: TagKey,
+    ) -> Self {
+        Self::subject_verb_top_library_cards(player, count, tag, true)
+    }
+
+    fn subject_verb_top_library_cards(
+        player: PlayerAst,
+        count: Value,
+        tag: TagKey,
+        reveal: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::LookAtTopCards { count, tag },
+            SubjectVerbActionAst::LookAtTopCards { count, tag, reveal },
         )
     }
 

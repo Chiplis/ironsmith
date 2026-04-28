@@ -165,5 +165,8 @@ pub use trigger_model::{
     ZoneChangeTrigger as CompilerZoneChangeTrigger,
 };
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
-pub use value_model::{Condition, ManaSpendPermission, ManaSpendScope, Restriction, Value};
+pub use value_model::{
+    Condition, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope, Restriction,
+    Value,
+};
 pub use zone::Zone;

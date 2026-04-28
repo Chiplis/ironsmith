@@ -19,14 +19,17 @@
 //! Effects can be labeled with `EffectId` using `Effect::with_id`, and later effects
 //! can reference those results using `Effect::if_` with an `EffectPredicate`.
 
+use crate::color::ColorSet;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
+use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 pub use ironsmith_core::effect::{ChoiceCount, EffectId, SearchSelectionMode};
 pub use ironsmith_core::{
@@ -136,6 +139,48 @@ impl OutcomeValue {
 /// resolution details that are not game events and should not be fed into the
 /// trigger or replacement systems.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutcomeObjectMemory {
+    pub object_id: ObjectId,
+    pub stable_id: StableId,
+    pub controller: PlayerId,
+    pub owner: PlayerId,
+    pub zone: Zone,
+    pub power: Option<i32>,
+    pub toughness: Option<i32>,
+    pub mana_value: i32,
+    pub card_types: Vec<CardType>,
+    pub colors: ColorSet,
+    pub subtypes: Vec<Subtype>,
+    pub is_token: bool,
+}
+
+impl OutcomeObjectMemory {
+    pub fn from_snapshot(snapshot: &ObjectSnapshot) -> Self {
+        Self {
+            object_id: snapshot.object_id,
+            stable_id: snapshot.stable_id,
+            controller: snapshot.controller,
+            owner: snapshot.owner,
+            zone: snapshot.zone,
+            power: snapshot.power,
+            toughness: snapshot.toughness,
+            mana_value: snapshot.mana_value() as i32,
+            card_types: snapshot.card_types.clone(),
+            colors: snapshot.colors,
+            subtypes: snapshot.subtypes.clone(),
+            is_token: snapshot.is_token,
+        }
+    }
+
+    pub fn from_object_id(game: &GameState, object_id: ObjectId) -> Option<Self> {
+        game.object(object_id).map(|obj| {
+            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
+            Self::from_snapshot(&snapshot)
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionFact {
     Accepted,
     Declined,
@@ -146,6 +191,8 @@ pub enum ExecutionFact {
     Replaced,
     ChosenObjects(Vec<ObjectId>),
     AffectedObjects(Vec<ObjectId>),
+    ChosenObjectMemory(Vec<OutcomeObjectMemory>),
+    AffectedObjectMemory(Vec<OutcomeObjectMemory>),
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
 }
@@ -402,6 +449,24 @@ impl EffectOutcome {
         }
     }
 
+    /// Record chosen object last-known information for later dynamic values.
+    pub fn with_chosen_object_memory(self, memory: Vec<OutcomeObjectMemory>) -> Self {
+        if memory.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::ChosenObjectMemory(memory))
+        }
+    }
+
+    /// Record affected object last-known information for later dynamic values.
+    pub fn with_affected_object_memory(self, memory: Vec<OutcomeObjectMemory>) -> Self {
+        if memory.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::AffectedObjectMemory(memory))
+        }
+    }
+
     pub fn set_status(&mut self, status: OutcomeStatus) {
         self.status = status;
     }
@@ -465,6 +530,22 @@ impl EffectOutcome {
     pub fn affected_objects(&self) -> Option<&[ObjectId]> {
         self.execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::AffectedObjects(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access chosen object last-known information captured during execution.
+    pub fn chosen_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::ChosenObjectMemory(memory) => Some(memory.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access affected object last-known information captured during execution.
+    pub fn affected_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()),
             _ => None,
         })
     }
@@ -591,7 +672,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
 // ============================================================================
 
 pub use ironsmith_core::value_model::{
-    Condition, ManaSpendPermission, ManaSpendScope, Restriction, Value,
+    Condition, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope, Restriction,
+    Value,
 };
 
 pub(crate) trait RestrictionExt {
@@ -1834,6 +1916,21 @@ impl Effect {
     ) -> Self {
         use crate::effects::RemoveAnyCountersAmongEffect;
         Self::new(RemoveAnyCountersAmongEffect::new(count, filter).with_counter_type(counter_type))
+    }
+
+    /// Create an effect for removing a chosen number of counters from among matching permanents.
+    pub fn remove_dynamic_counters_among(
+        min_count: u32,
+        max_count: u32,
+        filter: crate::filter::ObjectFilter,
+        counter_type: Option<CounterType>,
+        display_x: bool,
+    ) -> Self {
+        use crate::effects::RemoveAnyCountersAmongEffect;
+        Self::new(
+            RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter, display_x)
+                .with_counter_type(counter_type),
+        )
     }
 
     /// Create an effect for removing any number of counters from the source.
@@ -3361,6 +3458,16 @@ impl Effect {
     ) -> Self {
         use crate::effects::LookAtTopCardsEffect;
         Self::new(LookAtTopCardsEffect::new(player, count, tag))
+    }
+
+    /// Create a "reveal the top N cards" effect, tagging the revealed cards.
+    pub fn reveal_top_cards(
+        player: PlayerFilter,
+        count: impl Into<Value>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        use crate::effects::LookAtTopCardsEffect;
+        Self::new(LookAtTopCardsEffect::revealing(player, count, tag))
     }
 
     /// Rearrange tagged library cards by keeping some on top and putting the

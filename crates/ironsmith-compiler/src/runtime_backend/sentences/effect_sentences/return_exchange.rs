@@ -469,7 +469,29 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
-    let target = if matches!(
+    let mut count_value = None;
+    let (target_tokens, dynamic_count) = if target_words
+        .get(..2)
+        .is_some_and(|words| words == ["that", "many"])
+    {
+        let mut object_start = 2usize;
+        if target_words.get(object_start).copied() == Some("of") {
+            object_start += 1;
+        }
+        let Some(token_start) = token_index_for_word_index(target_tokens, object_start) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing object phrase after 'that many' (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
+        };
+        count_value = Some(crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::Amount,
+        ));
+        (&target_tokens[token_start..], true)
+    } else {
+        (target_tokens, false)
+    };
+    let mut target = if matches!(
         target_words.as_slice(),
         ["it"]
             | ["them"]
@@ -486,6 +508,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     } else {
         parse_target_phrase(target_tokens)?
     };
+    if dynamic_count {
+        target = TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
+    }
     let effect = if is_battlefield {
         EffectAst::subject_verb_return_to_battlefield(
             target,
@@ -493,6 +518,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             transformed,
             converted,
             return_controller,
+            count_value,
         )
     } else if is_graveyard {
         EffectAst::subject_verb_move_to_zone(

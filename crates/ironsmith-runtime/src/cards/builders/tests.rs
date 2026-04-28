@@ -6906,6 +6906,7 @@ fn test_parse_add_any_type_that_land_produced_clause() {
     );
     assert!(
         rendered.contains("adds one mana of any type")
+            || rendered.contains("add one mana of any type")
             || rendered.contains("add 1 mana of any type"),
         "expected add-any-type mana text in oracle-like output, got {rendered}"
     );
@@ -7070,9 +7071,7 @@ fn test_parse_scent_of_cinder_uses_source_damage_surface() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("reveal any number of red cards in your hand")
-            && rendered.contains(
-                "scent of cinder deals x damage to any target, where x is the number of cards revealed this way"
-            ),
+            && rendered.contains("scent of cinder deals that much damage to any target"),
         "expected Scent of Cinder to keep its source-linked reveal-count damage text, got {rendered}"
     );
 }
@@ -10513,6 +10512,8 @@ fn parse_gain_life_equal_to_life_lost_this_way() {
         spell_debug.contains("GainLifeEffect")
             && (spell_debug.contains("EventValue")
                 || spell_debug.contains("EffectValue(")
+                || spell_debug.contains("EffectMetric")
+                || spell_debug.contains("LifeLost")
                 || spell_debug.contains("life lost this way")),
         "expected life-gain amount to use life-lost event value, got {spell_debug}"
     );
@@ -29263,9 +29264,8 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
         unprocessed_compiled_lines(&parse_oracle_card_definition("Adéwalé, Breaker of Chains"))
             .join("\n");
     assert!(
-        adewale.contains(
-            "When this creature enters, reveal the top card of your library. Put it into your hand"
-        ),
+        adewale.contains("When this creature enters, reveal the top six cards of your library")
+            && adewale.contains("into your hand"),
         "expected Adéwalé helper chain to normalize, got {adewale}"
     );
     assert!(

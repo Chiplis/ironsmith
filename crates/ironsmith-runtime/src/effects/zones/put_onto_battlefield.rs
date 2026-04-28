@@ -3,11 +3,12 @@
 use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::PutOntoBattlefieldEffect;
 
@@ -46,12 +47,15 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
         }
 
         let mut moved_ids = Vec::new();
+        let mut affected_memory = Vec::new();
         let mut prevented = false;
 
         for object_id in object_ids {
-            if game.object(object_id).is_none() {
+            let Some(obj) = game.object(object_id) else {
                 continue;
-            }
+            };
+            let memory =
+                OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(obj, game));
             let outcome = move_to_battlefield_with_options(
                 game,
                 ctx,
@@ -59,13 +63,16 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
                 BattlefieldEntryOptions::specific(controller_id, self.tapped),
             );
             match outcome {
-                BattlefieldEntryOutcome::Moved(new_id) => moved_ids.push(new_id),
+                BattlefieldEntryOutcome::Moved(new_id) => {
+                    moved_ids.push(new_id);
+                    affected_memory.push(memory);
+                }
                 BattlefieldEntryOutcome::Prevented => prevented = true,
             }
         }
 
         if !moved_ids.is_empty() {
-            Ok(EffectOutcome::with_objects(moved_ids))
+            Ok(EffectOutcome::with_objects(moved_ids).with_affected_object_memory(affected_memory))
         } else if prevented {
             Ok(EffectOutcome::impossible())
         } else {

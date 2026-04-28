@@ -4,6 +4,7 @@ use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectFilter, Zone};
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 use super::effect_sentences::trim_edge_punctuation;
 use super::grammar::primitives::TokenWordView;
@@ -53,6 +54,73 @@ fn word_refs_find_sequence(words: &[&str], phrase: &[&str]) -> Option<usize> {
     }
 
     None
+}
+
+fn word_refs_have_any(words: &[&str], candidates: &[&str]) -> bool {
+    words
+        .iter()
+        .any(|word| candidates.iter().any(|candidate| word == candidate))
+}
+
+fn word_refs_reference_prior_effect_objects(words: &[&str]) -> bool {
+    word_refs_find_sequence(words, &["this", "way"]).is_some()
+        || word_refs_have_any(
+            words,
+            &[
+                "chosen",
+                "destroyed",
+                "discarded",
+                "exiled",
+                "milled",
+                "revealed",
+                "sacrificed",
+                "searched",
+            ],
+        )
+}
+
+fn effect_metric_source_for_prior_effect_words(words: &[&str]) -> EffectMetricSource {
+    if word_refs_have_any(words, &["chosen"]) {
+        EffectMetricSource::ChosenObjects
+    } else {
+        EffectMetricSource::AffectedObjects
+    }
+}
+
+fn aggregate_effect_metric(aggregate: &str, value_kind: &str) -> Option<EffectMetric> {
+    match (aggregate, value_kind) {
+        ("total", "power") => Some(EffectMetric::TotalPower),
+        ("total", "toughness") => Some(EffectMetric::TotalToughness),
+        ("total", "mana_value") => Some(EffectMetric::TotalManaValue),
+        ("greatest", "power") => Some(EffectMetric::GreatestPower),
+        ("greatest", "toughness") => Some(EffectMetric::GreatestToughness),
+        ("greatest", "mana_value") => Some(EffectMetric::GreatestManaValue),
+        _ => None,
+    }
+}
+
+fn pending_aggregate_metric_value(
+    aggregate: &str,
+    value_kind: &str,
+    object_words: &[&str],
+) -> Option<Value> {
+    if !word_refs_reference_prior_effect_objects(object_words) {
+        return None;
+    }
+    Some(Value::PendingEffectMetric {
+        source: effect_metric_source_for_prior_effect_words(object_words),
+        metric: aggregate_effect_metric(aggregate, value_kind)?,
+    })
+}
+
+fn pending_count_metric_value(object_words: &[&str]) -> Option<Value> {
+    if !word_refs_reference_prior_effect_objects(object_words) {
+        return None;
+    }
+    Some(Value::PendingEffectMetric {
+        source: effect_metric_source_for_prior_effect_words(object_words),
+        metric: EffectMetric::Count,
+    })
 }
 
 fn lower_words_have(words: &ValueHelperCompatWords, expected: &str) -> bool {
@@ -490,6 +558,10 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
 
     let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
+    let object_words = &clause_refs[idx..];
+    if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
+        return Some(value);
+    }
     let filter = parse_object_filter(filter_tokens, false).ok()?;
 
     match (aggregate, value_kind) {
@@ -799,6 +871,10 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
 
     let object_start_token_idx = clause_words.token_index_for_word_index(idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
+    let object_words = &clause_refs[idx..];
+    if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
+        return Some(value);
+    }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
 
     match (aggregate, value_kind) {
