@@ -1788,6 +1788,9 @@ fn resolve_effect_result_value(
         Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
             resolve_effect_result_value(inner, state)?;
         }
+        Value::SurfaceHinted { value, .. } => {
+            resolve_effect_result_value(value, state)?;
+        }
         Value::PendingEffectMetric { source, metric } => {
             let id = state.last_effect_id.ok_or_else(|| {
                 CardTextError::ParseError(
@@ -1941,6 +1944,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::ConniveIterated
+            | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }
@@ -2694,6 +2698,7 @@ fn bind_unresolved_it_in_choose_spec(spec: &mut ChooseSpec, seed_tag: &TagKey) -
 #[cfg(test)]
 fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
     match value {
+        Value::SurfaceHinted { value, .. } => bind_unresolved_it_in_value(value, seed_tag),
         Value::Add(left, right) => {
             bind_unresolved_it_in_value(left, seed_tag)
                 + bind_unresolved_it_in_value(right, seed_tag)

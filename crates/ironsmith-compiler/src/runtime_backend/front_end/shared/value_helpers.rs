@@ -4,6 +4,7 @@ use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectFilter, Zone};
+use ironsmith_core::ValueSurfaceHint;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 use super::effect_sentences::trim_edge_punctuation;
@@ -552,7 +553,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
 
     if aggregate == "greatest" && value_kind == "mana_value" {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
-            return Some(value);
+            return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
         }
     }
 
@@ -560,7 +561,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     let filter_tokens = &tokens[object_start_token_idx..];
     let object_words = &clause_refs[idx..];
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
-        return Some(value);
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     let filter = parse_object_filter(filter_tokens, false).ok()?;
 
@@ -670,7 +671,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
         return Some(value);
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
-    Some(Value::Count(filter))
+    Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
@@ -745,7 +746,10 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value_lexed(
         &clause_words,
         &["equal", "to", "number", "of", "opponents", "you", "have"],
     ) {
-        return Some(Value::CountPlayers(PlayerFilter::Opponent));
+        return Some(
+            Value::CountPlayers(PlayerFilter::Opponent)
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
     }
     None
 }
@@ -801,10 +805,13 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
         reference,
         ["it"] | ["this"] | ["this", "creature"] | ["this", "permanent"] | ["this", "source"]
     ) {
-        return Some(match counter_type {
-            Some(counter_type) => Value::CountersOnSource(counter_type),
-            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-        });
+        return Some(
+            match counter_type {
+                Some(counter_type) => Value::CountersOnSource(counter_type),
+                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            }
+            .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
     }
 
     if matches!(
@@ -817,10 +824,13 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
             | ["those", "creatures"]
             | ["those", "permanents"]
     ) {
-        return Some(Value::CountersOn(
-            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
-            counter_type,
-        ));
+        return Some(
+            Value::CountersOn(
+                Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                counter_type,
+            )
+            .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
     }
 
     None
@@ -865,7 +875,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
 
     if aggregate == "greatest" && value_kind == "mana_value" {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
-            return Some(value);
+            return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
         }
     }
 

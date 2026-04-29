@@ -646,6 +646,22 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_target_only(target));
     }
 
+    if let Some(choose_word_idx) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "choose" | "chooses"))
+        && choose_word_idx > 0
+        && clause_words.get(choose_word_idx + 1) == Some(&"target")
+        && let Some(target_token_idx) = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.as_word().is_some())
+            .nth(choose_word_idx + 1)
+            .map(|(idx, _)| idx)
+    {
+        let target = parse_target_phrase(&tokens[target_token_idx..])?;
+        return Ok(EffectAst::subject_verb_target_only(target));
+    }
+
     if let Some(effect) = parse_next_turn_cant_clause(tokens)? {
         return Ok(effect);
     }

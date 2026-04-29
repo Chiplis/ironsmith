@@ -1,3 +1,5 @@
+use ironsmith_core::ValueSurfaceHint;
+
 fn etb_token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     crate::runtime_backend::lexer::token_word_refs(tokens)
 }
@@ -675,6 +677,11 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
         .or_else(|| parse_equal_to_number_of_filter_value(&trimmed))
         .or_else(|| parse_equal_to_number_of_opponents_you_have_value(&trimmed))
         .or_else(|| parse_equal_to_number_of_counters_on_reference_value(&trimmed))
+        .map(|value| {
+            value
+                .into_unhinted()
+                .with_surface_hint(ValueSurfaceHint::EqualTo)
+        })
 }
 
 fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -868,7 +875,35 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
         return None;
     }
     let tagged_it = ChooseSpec::Tagged(TagKey::from(IT_TAG));
-    match words.get(3..) {
+    let tail = words.get(3..)?;
+    if tail.len() >= 2
+        && tail.last().copied() == Some("power")
+        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
+    {
+        return Some(Value::PowerOf(Box::new(
+            ChooseSpec::Source
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+        )));
+    }
+    if tail.len() >= 2
+        && tail.last().copied() == Some("toughness")
+        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 1])
+    {
+        return Some(Value::ToughnessOf(Box::new(
+            ChooseSpec::Source
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+        )));
+    }
+    if tail.len() >= 3
+        && tail[tail.len() - 2..] == ["mana", "value"]
+        && let Some(surface) = source_reference_surface_for_possessive_words(&tail[..tail.len() - 2])
+    {
+        return Some(Value::ManaValueOf(Box::new(
+            ChooseSpec::Source
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+        )));
+    }
+    match Some(tail) {
         Some(["this", "power"])
         | Some(["thiss", "power"])
         | Some(["this", "creature", "power"])

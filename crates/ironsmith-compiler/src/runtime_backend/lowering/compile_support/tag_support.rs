@@ -436,6 +436,7 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
         | Value::EventValueOffset(EventValueSpec::Amount, _)
         | Value::EventValueOffset(EventValueSpec::LifeAmount, _) => true,
         Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::SurfaceHinted { value, .. } => value_references_event_derived_amount(value),
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_event_derived_amount(left)
                 || value_references_event_derived_amount(right)

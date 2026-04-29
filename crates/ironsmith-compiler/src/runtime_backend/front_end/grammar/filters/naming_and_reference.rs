@@ -955,6 +955,17 @@ pub(super) fn apply_reference_and_tag_stage(
         contains_any_filter_phrase(all_words, &[&["same", "mana", "value", "as"]]);
     let has_equal_or_lesser_mana_value =
         contains_any_filter_phrase(all_words, &[&["equal", "or", "lesser", "mana", "value"]]);
+    let has_lte_mana_value_than_that_spell = contains_any_filter_phrase(
+        all_words,
+        &[
+            &[
+                "equal", "or", "lesser", "mana", "value", "than", "that", "spell",
+            ],
+            &[
+                "less", "than", "or", "equal", "to", "that", "spells", "mana", "value",
+            ],
+        ],
+    );
     let has_lte_mana_value_as_tagged = contains_any_filter_phrase(
         all_words,
         &[
@@ -1066,8 +1077,13 @@ pub(super) fn apply_reference_and_tag_stage(
     if has_lte_mana_value_as_tagged
         && (references_it_for_mana_value || has_equal_or_lesser_mana_value)
     {
+        let tag = if has_lte_mana_value_than_that_spell {
+            TagKey::from("triggering")
+        } else {
+            IT_TAG.into()
+        };
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: IT_TAG.into(),
+            tag,
             relation: TaggedOpbjectRelation::ManaValueLteTagged,
         });
     }

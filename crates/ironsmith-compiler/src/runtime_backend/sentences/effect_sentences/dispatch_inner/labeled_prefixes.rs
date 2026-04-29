@@ -223,7 +223,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         if let Some(unless_action) = super::parse_or_action_clause_lexed(tokens)? {
             return Ok(vec![unless_action]);
         }
-        return super::parse_effect_chain_inner_lexed(tokens);
+        let mut effects = super::parse_effect_chain_inner_lexed(tokens)?;
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
     }
     if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;

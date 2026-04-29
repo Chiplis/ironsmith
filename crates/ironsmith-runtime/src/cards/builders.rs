@@ -4820,6 +4820,7 @@ mod effect_parse_tests {
     use crate::types::CardType;
     use crate::types::Subtype;
     use crate::zone::Zone;
+    use ironsmith_core::ValueSurfaceHint;
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
@@ -5953,7 +5954,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include exchange control effect, got {debug}"
         );
         assert!(
-            debug.contains("permanent1: Source") && debug.contains("excluded_card_types: [Land]"),
+            (debug.contains("permanent1: Source")
+                || (debug.contains("permanent1: SurfaceHinted") && debug.contains("spec: Source")))
+                && debug.contains("excluded_card_types: [Land]"),
             "expected source-plus-target exchange, got {debug}"
         );
     }
@@ -7604,7 +7607,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfAnyOneColorEffect>())
             .expect("expected AddManaOfAnyOneColorEffect");
-        match &add_any_one.amount {
+        match add_any_one.amount.unhinted() {
             Value::Count(filter) => {
                 assert_eq!(filter.controller, Some(PlayerFilter::You));
                 assert!(
@@ -7772,7 +7775,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             2,
             "expected two-color restriction, got {colors:?}"
         );
-        assert_eq!(add_any.amount, Value::SourcePower);
+        assert_eq!(add_any.amount.unhinted(), &Value::SourcePower);
+        assert!(add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs));
         assert!(colors.contains(&crate::color::Color::Green));
         assert!(colors.contains(&crate::color::Color::Blue));
 
@@ -7823,7 +7827,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
             .expect("expected AddManaOfAnyColorEffect");
-        assert_eq!(add_any.amount, Value::SourcePower);
+        assert_eq!(add_any.amount.unhinted(), &Value::SourcePower);
+        assert!(add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs));
         let colors = add_any
             .available_colors
             .as_ref()

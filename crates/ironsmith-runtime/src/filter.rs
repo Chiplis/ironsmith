@@ -2825,10 +2825,15 @@ impl ObjectFilterExt for ObjectFilter {
                     }
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    post_noun_qualifiers.push(
-                        "with mana value less than or equal to that object's mana value"
-                            .to_string(),
-                    );
+                    if constraint.tag.as_str() == "triggering" {
+                        post_noun_qualifiers
+                            .push("with equal or lesser mana value than that spell".to_string());
+                    } else {
+                        post_noun_qualifiers.push(
+                            "with mana value less than or equal to that object's mana value"
+                                .to_string(),
+                        );
+                    }
                 }
                 TaggedOpbjectRelation::ManaValueLtTagged => {
                     post_noun_qualifiers
@@ -3068,23 +3073,7 @@ impl ObjectFilterExt for ObjectFilter {
             } else if has_all_permanent_types {
                 Some((true, "permanent".to_string()))
             } else {
-                let joiner = if self.zone == Some(Zone::Stack)
-                    && self.card_types.len() == 2
-                    && self.card_types.contains(&CardType::Instant)
-                    && self.card_types.contains(&CardType::Sorcery)
-                {
-                    " or "
-                } else {
-                    " or "
-                };
-                Some((
-                    true,
-                    self.card_types
-                        .iter()
-                        .map(|t| t.name().to_string())
-                        .collect::<Vec<_>>()
-                        .join(joiner),
-                ))
+                Some((true, describe_card_type_list(&self.card_types)))
             }
         } else if !self.token && !subtype_implies_type {
             // Default noun depends on zone context.

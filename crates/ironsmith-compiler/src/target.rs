@@ -1,4 +1,5 @@
 pub use ironsmith_core::{
-    ChooseSpec, FilterComparison as Comparison, ObjectFilter, ObjectRef, PlayerFilter,
-    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
+    ChooseSpec, ChooseSpecSurfaceHint, FilterComparison as Comparison, ObjectFilter, ObjectRef,
+    PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint, TaggedOpbjectRelation,
+    TargetabilityConstraint,
 };

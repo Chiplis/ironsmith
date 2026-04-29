@@ -8,7 +8,7 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
-use crate::value_model::{Restriction, Value};
+use crate::value_model::{Restriction, Value, ValueSurfaceHint};
 use crate::{Color, ColorSet};
 
 /// Identifier for an effect within an effect sequence.
@@ -2078,6 +2078,7 @@ pub struct CreateTokenEffect<D> {
 
 impl<D> CreateTokenEffect<D> {
     pub fn new(token: D, count: impl Into<Value>, controller: PlayerFilter) -> Self {
+        let count = count.into().without_surface_hint(ValueSurfaceHint::ForEach);
         let controller_target = match &controller {
             PlayerFilter::Target(filter) => {
                 Some(ChooseSpec::target(ChooseSpec::Player((**filter).clone())))
@@ -2086,7 +2087,7 @@ impl<D> CreateTokenEffect<D> {
         };
         Self {
             token,
-            count: count.into(),
+            count,
             controller,
             controller_target,
             suppress_aura_attachment_choice: false,
@@ -2853,7 +2854,7 @@ impl AddScaledManaEffect {
     pub fn new(mana: Vec<crate::mana::ManaSymbol>, amount: Value, player: PlayerFilter) -> Self {
         Self {
             mana,
-            amount,
+            amount: amount.into_unhinted(),
             player,
         }
     }

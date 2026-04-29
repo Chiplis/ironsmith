@@ -3666,6 +3666,9 @@ fn resolve_value_with_context(
     controller: PlayerId,
 ) -> i32 {
     match value {
+        Value::SurfaceHinted { value, .. } => {
+            resolve_value_with_context(value, ctx, source, controller)
+        }
         Value::Fixed(n) => *n,
         Value::Add(left, right) => {
             resolve_value_with_context(left, ctx, source, controller)

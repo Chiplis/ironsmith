@@ -199,10 +199,16 @@ pub(crate) fn compile_card_text(
 ) -> Result<CompiledCardText, CardTextError> {
     stacker::grow(16 * 1024 * 1024, || {
         let text = text.into();
-        let mut compiled =
-            CardTextCompiler::compile(builder, text.clone(), CompilePolicy { allow_unsupported })?;
-        normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
-        Ok(compiled)
+        let card_name = builder.card_builder.name_ref().to_string();
+        util::with_source_reference_context(card_name.as_str(), || {
+            let mut compiled = CardTextCompiler::compile(
+                builder,
+                text.clone(),
+                CompilePolicy { allow_unsupported },
+            )?;
+            normalize_do_this_trigger_frequency_conditions(&text, &mut compiled.definition);
+            Ok(compiled)
+        })
     })
 }
 

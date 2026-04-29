@@ -35,8 +35,19 @@ pub enum EffectMetric {
     IteratedPlayerCount,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValueSurfaceHint {
+    WhereXIs,
+    EqualTo,
+    ForEach,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    SurfaceHinted {
+        value: Box<Value>,
+        hints: Vec<ValueSurfaceHint>,
+    },
     Fixed(i32),
     Add(Box<Value>, Box<Value>),
     X,
@@ -145,6 +156,75 @@ impl Value {
 
     pub fn creatures_you_control() -> Self {
         Self::Count(ObjectFilter::creature().you_control())
+    }
+
+    pub fn with_surface_hint(self, hint: ValueSurfaceHint) -> Self {
+        self.with_surface_hints([hint])
+    }
+
+    pub fn with_surface_hints(self, hints: impl IntoIterator<Item = ValueSurfaceHint>) -> Self {
+        let mut hints_to_add: Vec<ValueSurfaceHint> = hints.into_iter().collect();
+        if hints_to_add.is_empty() {
+            return self;
+        }
+
+        match self {
+            Value::SurfaceHinted { value, mut hints } => {
+                for hint in hints_to_add.drain(..) {
+                    hints.push(hint);
+                }
+                Value::SurfaceHinted { value, hints }
+            }
+            value => Value::SurfaceHinted {
+                value: Box::new(value),
+                hints: hints_to_add,
+            },
+        }
+    }
+
+    pub fn surface_hints(&self) -> &[ValueSurfaceHint] {
+        match self {
+            Value::SurfaceHinted { hints, .. } => hints,
+            _ => &[],
+        }
+    }
+
+    pub fn has_surface_hint(&self, hint: ValueSurfaceHint) -> bool {
+        self.surface_hints().contains(&hint)
+    }
+
+    pub fn unhinted(&self) -> &Value {
+        match self {
+            Value::SurfaceHinted { value, .. } => value.unhinted(),
+            value => value,
+        }
+    }
+
+    pub fn into_unhinted(self) -> Value {
+        match self {
+            Value::SurfaceHinted { value, .. } => value.into_unhinted(),
+            value => value,
+        }
+    }
+
+    pub fn without_surface_hint(self, hint_to_remove: ValueSurfaceHint) -> Value {
+        match self {
+            Value::SurfaceHinted { value, hints } => {
+                let hints = hints
+                    .into_iter()
+                    .filter(|hint| *hint != hint_to_remove)
+                    .collect::<Vec<_>>();
+                if hints.is_empty() {
+                    value.without_surface_hint(hint_to_remove)
+                } else {
+                    Value::SurfaceHinted {
+                        value: Box::new(value.without_surface_hint(hint_to_remove)),
+                        hints,
+                    }
+                }
+            }
+            value => value,
+        }
     }
 }
 

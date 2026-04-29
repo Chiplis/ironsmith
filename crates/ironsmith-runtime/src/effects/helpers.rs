@@ -286,6 +286,7 @@ pub fn resolve_value(
     ctx: &ExecutionContext,
 ) -> Result<i32, ExecutionError> {
     match value {
+        Value::SurfaceHinted { value, .. } => resolve_value(game, value, ctx),
         Value::Fixed(n) => Ok(*n),
         Value::Add(left, right) => {
             Ok(resolve_value(game, left, ctx)? + resolve_value(game, right, ctx)?)
@@ -1501,6 +1502,9 @@ pub(crate) fn preview_object_ids_for_choose_spec(
     ctx: &ExecutionContext,
 ) -> Option<Vec<ObjectId>> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => {
+            preview_object_ids_for_choose_spec(game, spec, ctx)
+        }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             preview_object_ids_for_choose_spec(game, inner, ctx)
         }
@@ -1602,6 +1606,7 @@ pub fn resolve_player_from_spec(
     ctx: &ExecutionContext,
 ) -> Result<PlayerId, ExecutionError> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => resolve_player_from_spec(game, spec, ctx),
         // Target wrapper - look in ctx.targets for a player target
         ChooseSpec::Target(inner) => {
             if let Some(player_id) = matching_player_targets_for_spec(game, spec, ctx).first() {
@@ -2463,6 +2468,7 @@ pub fn resolve_objects_from_spec(
     ctx: &ExecutionContext,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => resolve_objects_from_spec(game, spec, ctx),
         // Target wrapper - handle special cases then fall back to ctx.targets
         ChooseSpec::Target(inner) => {
             // Handle special cases where target is embedded in the spec
@@ -2744,6 +2750,7 @@ pub fn resolve_players_from_spec(
     ctx: &ExecutionContext,
 ) -> Result<Vec<PlayerId>, ExecutionError> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => resolve_players_from_spec(game, spec, ctx),
         // Target/WithCount wrappers - delegate to inner
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             let players = matching_player_targets_for_spec(game, spec, ctx);

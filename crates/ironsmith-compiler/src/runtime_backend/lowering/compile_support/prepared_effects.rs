@@ -68,6 +68,7 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
@@ -134,6 +135,7 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, choices) =
         compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
@@ -296,6 +298,96 @@ fn extract_local_zone_replacement_followups(
         replacements.push(register);
     }
     Some(replacements)
+}
+
+fn normalize_two_target_counter_then_fight(effects: Vec<Effect>) -> Vec<Effect> {
+    let mut rewritten = Vec::with_capacity(effects.len());
+    let mut idx = 0;
+    while idx < effects.len() {
+        if idx + 3 < effects.len()
+            && let Some((first_tag, first_target)) = tagged_target_only(&effects[idx])
+            && let Some((second_tag, _second_target)) = tagged_target_only(&effects[idx + 1])
+            && let Some((counter_tag, condition, counters)) =
+                single_conditional_tagged_put_counters(&effects[idx + 2])
+            && counter_target_matches_choice(&counters.target, first_target)
+            && fight_references_counter_tag(&effects[idx + 3], counter_tag.as_str())
+        {
+            let mut fixed_counters = counters.clone();
+            fixed_counters.target = ChooseSpec::Tagged(first_tag.clone());
+            let fixed_counter_effect = Effect::new(fixed_counters).tag(counter_tag.as_str());
+            rewritten.push(effects[idx].clone());
+            rewritten.push(effects[idx + 1].clone());
+            rewritten.push(Effect::conditional(
+                condition.clone(),
+                vec![fixed_counter_effect],
+                Vec::new(),
+            ));
+            rewritten.push(Effect::fight(
+                ChooseSpec::Tagged(first_tag.clone()),
+                ChooseSpec::Tagged(second_tag.clone()),
+            ));
+            idx += 4;
+            continue;
+        }
+
+        rewritten.push(effects[idx].clone());
+        idx += 1;
+    }
+    rewritten
+}
+
+fn tagged_target_only(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    Some((&tagged.tag, &target_only.target))
+}
+
+fn single_conditional_tagged_put_counters(
+    effect: &Effect,
+) -> Option<(&TagKey, &Condition, &crate::effects::PutCountersEffect)> {
+    let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let tagged = conditional.if_true[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let counters = tagged
+        .effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    Some((&tagged.tag, &conditional.condition, counters))
+}
+
+fn counter_target_matches_choice(counter_target: &ChooseSpec, choice: &ChooseSpec) -> bool {
+    match (counter_target, choice) {
+        (ChooseSpec::Object(left), ChooseSpec::Target(inner)) => {
+            matches!(inner.as_ref(), ChooseSpec::Object(right) if left == right)
+        }
+        (left, right) => left == right,
+    }
+}
+
+fn fight_references_counter_tag(effect: &Effect, tag: &str) -> bool {
+    let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() else {
+        return false;
+    };
+    choose_spec_references_tag(&fight.creature1, tag) && choose_spec_references_tag(&fight.creature2, tag)
+}
+
+fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
+    match spec {
+        ChooseSpec::Tagged(candidate) => candidate.as_str() == tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == tag)
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            choose_spec_references_tag(inner, tag)
+        }
+        _ => false,
+    }
 }
 
 fn choose_spec_contains_it_tag(spec: &ChooseSpec) -> bool {

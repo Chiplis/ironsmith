@@ -1224,6 +1224,33 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             cost_reduction: None,
         });
     }
+    if tail.len() >= 13
+        && tail[..12]
+            == [
+                "without", "paying", "its", "mana", "cost", "if", "its", "a", "spell", "with",
+                "mana", "value",
+            ]
+        && tail.get(12).copied() == Some("less")
+        && tail.get(13).copied() == Some("than")
+        && tail.get(14).copied() == Some("or")
+        && tail.get(15).copied() == Some("equal")
+        && tail.get(16).copied() == Some("to")
+        && let Some((value, used)) = parse_value_expr_words(&tail[17..])
+        && used == tail.len().saturating_sub(17)
+    {
+        return Some(MayCastTaggedSpec {
+            tag,
+            verb,
+            as_copy,
+            without_paying_mana_cost: true,
+            predicate: Some(PredicateAst::ItMatches(
+                ObjectFilter::default().with_mana_value(
+                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(value)),
+                ),
+            )),
+            cost_reduction: None,
+        });
+    }
     if let [
         "without",
         "paying",

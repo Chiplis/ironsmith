@@ -1006,6 +1006,36 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
             {
                 continue;
             }
+            if grammar::contains_word(before, "target")
+                && (after_words.first().is_some_and(|word| {
+                    matches!(
+                        *word,
+                        "artifact"
+                            | "battle"
+                            | "creature"
+                            | "enchantment"
+                            | "instant"
+                            | "land"
+                            | "planeswalker"
+                            | "sorcery"
+                    )
+                }) || (after_words.first() == Some(&"or")
+                    && after_words.get(1).is_some_and(|word| {
+                        matches!(
+                            *word,
+                            "artifact"
+                                | "battle"
+                                | "creature"
+                                | "enchantment"
+                                | "instant"
+                                | "land"
+                                | "planeswalker"
+                                | "sorcery"
+                        )
+                    })))
+            {
+                continue;
+            }
             let is_inline_token_rules_split = (is_token_creation_context(before)
                 || has_inline_token_rules_context(&before_words))
                 && (starts_with_inline_token_rules_tail(after)

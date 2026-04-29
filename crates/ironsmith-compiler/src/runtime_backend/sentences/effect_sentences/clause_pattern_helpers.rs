@@ -1444,9 +1444,30 @@ pub(crate) fn parse_win_the_game_clause(
     }))
 }
 
+fn parse_choose_target_prelude_targets(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<TargetAst>>, CardTextError> {
+    let Some((first, second)) = grammar::split_lexed_once_on_separator(target_tokens, || {
+        use winnow::Parser as _;
+        grammar::kw("and").void()
+    }) else {
+        return Ok(None);
+    };
+    let first = trim_commas(first);
+    let second = trim_commas(second);
+    if first.is_empty() || second.is_empty() || !starts_with_target_indicator(&second) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        parse_target_phrase(&first)?,
+        parse_target_phrase(&second)?,
+    ]))
+}
+
 pub(crate) fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ClausePatternCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     if clause_words.first().copied() != Some("choose") {
@@ -1461,8 +1482,17 @@ pub(crate) fn parse_choose_target_prelude_sentence(
         return Ok(None);
     }
 
+    if let Some(targets) = parse_choose_target_prelude_targets(&target_tokens)? {
+        return Ok(Some(
+            targets
+                .into_iter()
+                .map(EffectAst::subject_verb_target_only)
+                .collect(),
+        ));
+    }
+
     let target = parse_target_phrase(&target_tokens)?;
-    Ok(Some(EffectAst::subject_verb_target_only(target)))
+    Ok(Some(vec![EffectAst::subject_verb_target_only(target)]))
 }
 
 pub(crate) fn parse_keyword_mechanic_clause(

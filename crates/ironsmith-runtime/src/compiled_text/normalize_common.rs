@@ -1892,8 +1892,45 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "draw half X cards, rounded down",
     );
     normalized = normalized.replace(
+        "You draw half X, rounded down cards",
+        "Draw half X cards, rounded down",
+    );
+    normalized = normalized.replace(
         "permanent can't untap during its controller's next untap step",
         "that permanent doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "Permanent can't untap during its controller's next untap step",
+        "it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "Tap each creature that was blocked by one of those creatures this turn. it doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "Tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "all permanent cards from your graveyard that was put there from the battlefield this turn",
+        "all permanent cards from your graveyard that were put there from the battlefield this turn",
+    );
+    normalized = normalized.replace("+1/+1 counterss", "+1/+1 counters");
+    normalized = normalized.replace(
+        "put that many +1/+1 counter on it",
+        "put that many +1/+1 counters on it",
+    );
+    normalized = normalized.replace("Sacrifice a Food:", "Sacrifice a Food you control:");
+    normalized = normalized.replace("sacrifice a food:", "sacrifice a food you control:");
+    normalized = normalized.replace("Sacrifice a Goblin:", "Sacrifice a Goblin you control:");
+    normalized = normalized.replace("sacrifice a goblin:", "sacrifice a goblin you control:");
+    normalized = normalized.replace(
+        "Sacrifice two Goblins:",
+        "Sacrifice two Goblins you control:",
+    );
+    normalized = normalized.replace(
+        "sacrifice two goblins:",
+        "sacrifice two goblins you control:",
     );
     normalized = normalized.replace(
         "Tap all blocked creature blocked by one of those creatures this turns. that permanent doesn't untap during its controller's next untap step",
@@ -4129,11 +4166,21 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized.starts_with(
         "Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
     )
+        || normalized.starts_with(
+            "Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+        )
     {
         return "Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle".to_string();
     }
     if let Some((prefix, _)) = normalized.split_once(
         ": Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+    ) {
+        return format!(
+            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
+        );
+    }
+    if let Some((prefix, _)) = normalized.split_once(
+        ": Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
     ) {
         return format!(
             "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
@@ -5346,6 +5393,9 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         .trim()
         .to_string();
     subject = pluralize_noun_phrase(&subject);
+    if let Some(rest) = subject.strip_prefix("the active player's ") {
+        subject = format!("{rest} they control");
+    }
 
     // Zone-restricted counts with no owner specified are typically phrased
     // as "in all <zone>s" in oracle text ("all players' hands", "all graveyards").
@@ -5355,6 +5405,9 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     if filter.owner.is_none() && !filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
         subject = subject.replace(" in graveyard", " in all graveyards");
         subject = subject.replace(" in a graveyard", " in all graveyards");
+        if !subject.contains("graveyard") {
+            subject.push_str(" in all graveyards");
+        }
     }
 
     let mentions_location = subject.contains(" in ") || subject.contains(" on ");
@@ -5510,7 +5563,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::NotYou) => Some("you don't control"),
         Some(PlayerFilter::Opponent) => Some("an opponent controls"),
         Some(PlayerFilter::Any) => Some("a player controls"),
-        Some(PlayerFilter::Active) => Some("active player controls"),
+        Some(PlayerFilter::Active) => Some("they control"),
         Some(PlayerFilter::Defending) => Some("defending player controls"),
         Some(PlayerFilter::Attacking) => Some("attacking player controls"),
         Some(PlayerFilter::DamagedPlayer) => Some("damaged player controls"),
@@ -5537,7 +5590,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::NotYou) => Some("you don't own"),
             Some(PlayerFilter::Opponent) => Some("an opponent owns"),
             Some(PlayerFilter::Any) => Some("a player owns"),
-            Some(PlayerFilter::Active) => Some("active player owns"),
+            Some(PlayerFilter::Active) => Some("they own"),
             Some(PlayerFilter::Defending) => Some("defending player owns"),
             Some(PlayerFilter::Attacking) => Some("attacking player owns"),
             Some(PlayerFilter::DamagedPlayer) => Some("damaged player owns"),
@@ -5560,6 +5613,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     if owner.is_none() && !filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
         subject = subject.replace(" in a graveyard", " in all graveyards");
         subject = subject.replace(" in graveyard", " in all graveyards");
+        if !subject.contains("graveyard") {
+            subject.push_str(" in all graveyards");
+        }
     }
 
     subject
@@ -5688,6 +5744,21 @@ pub(super) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
 
 pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, hints }
+            if matches!(spec.as_ref().unhinted(), ChooseSpec::Source) =>
+        {
+            match hints.iter().find_map(|hint| match hint {
+                crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
+            }) {
+                Some(crate::target::SourceReferenceSurface::FullName(text))
+                | Some(crate::target::SourceReferenceSurface::ShortName(text))
+                | Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) => {
+                    text.clone()
+                }
+                None => describe_choose_spec(spec),
+            }
+        }
+        ChooseSpec::SurfaceHinted { spec, .. } => describe_choose_spec(spec),
         ChooseSpec::Target(inner) => {
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
@@ -6754,6 +6825,7 @@ fn describe_effect_metric_value(
 
 pub(crate) fn describe_value(value: &Value) -> String {
     match value {
+        Value::SurfaceHinted { value, .. } => describe_value(value),
         Value::Fixed(n) => n.to_string(),
         Value::Add(left, right) => {
             if left == right {
@@ -7162,11 +7234,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::KickCount => "how many times this spell was kicked".to_string(),
         Value::CountersOnSource(counter_type) => format!(
-            "the number of {} counter(s) on this source",
+            "the number of {} counters on this source",
             counter_type.description()
         ),
         Value::CountersOn(spec, Some(counter_type)) => format!(
-            "the number of {} counter(s) on {}",
+            "the number of {} counters on {}",
             counter_type.description(),
             describe_choose_spec(spec)
         ),

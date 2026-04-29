@@ -1,7 +1,7 @@
 use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint};
 use crate::zone::Zone;
 
 use super::reference_model::ReferenceEnv;
@@ -491,6 +491,10 @@ pub(crate) fn resolve_choose_spec_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ChooseSpec, CardTextError> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => Ok(ChooseSpec::SurfaceHinted {
+            spec: Box::new(resolve_choose_spec_it_tag(spec, refs)?),
+            hints: hints.clone(),
+        }),
         ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG => {
             if refs
                 .known_last_object_tag()
@@ -568,6 +572,10 @@ pub(crate) fn resolve_value_it_tag(
             Box::new(resolve_value_it_tag(left, refs)?),
             Box::new(resolve_value_it_tag(right, refs)?),
         )),
+        Value::SurfaceHinted { value, hints } => Ok(Value::SurfaceHinted {
+            value: Box::new(resolve_value_it_tag(value, refs)?),
+            hints: hints.clone(),
+        }),
         Value::Count(filter) => Ok(Value::Count(resolve_it_tag(filter, refs)?)),
         Value::CountScaled(filter, multiplier) => Ok(Value::CountScaled(
             resolve_it_tag(filter, refs)?,
@@ -646,7 +654,16 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
 
 pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
-        TargetAst::Source(_) => ChooseSpec::Source,
+        TargetAst::Source(span) => {
+            let spec = ChooseSpec::Source;
+            if let Some(surface) =
+                crate::runtime_backend::util::source_reference_surface_for_span(*span)
+            {
+                spec.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
+            } else {
+                spec
+            }
+        }
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
         TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
         TargetAst::PlayerOrPlaneswalker(filter, _) => {
@@ -709,7 +726,7 @@ pub(crate) fn resolve_attach_object_spec(
     refs: &ReferenceEnv,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
     match object {
-        TargetAst::Source(_) => Ok((ChooseSpec::Source, Vec::new())),
+        TargetAst::Source(_) => Ok((choose_spec_for_target(object), Vec::new())),
         TargetAst::Tagged(tag, _) => {
             let resolved_tag = if tag.as_str() == IT_TAG {
                 refs.known_last_object_tag()

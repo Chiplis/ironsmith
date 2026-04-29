@@ -2868,6 +2868,22 @@ fn rewrite_etb_where_x_source_stat_normalizes_apostrophe_shapes() {
 }
 
 #[test]
+fn rewrite_etb_where_x_named_source_stat_preserves_surface_hint() {
+    let tokens = lex_line("Where X is Amy Rose's power", 0)
+        .expect("rewrite lexer should classify where-x named source-stat clause");
+
+    let parsed = super::util::with_source_reference_context("Amy Rose", || {
+        super::keyword_static::parse_where_x_source_stat_value(&tokens)
+    });
+
+    assert!(
+        format!("{parsed:?}").contains("ShortName(\"Amy Rose\")")
+            || format!("{parsed:?}").contains("FullName(\"Amy Rose\")"),
+        "expected named-source stat value to preserve a source-reference surface hint, got {parsed:?}"
+    );
+}
+
+#[test]
 fn rewrite_etb_enters_tapped_filter_preserves_played_by_opponents_suffix() {
     let tokens = lex_line("Artifacts played by your opponents enter tapped.", 0)
         .expect("rewrite lexer should classify enters-tapped filter clause");

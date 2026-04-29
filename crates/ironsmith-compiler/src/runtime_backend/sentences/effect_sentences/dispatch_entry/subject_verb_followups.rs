@@ -572,8 +572,8 @@ fn pre_rule_token_followups(
             )));
         }
     }
-    if let Some(effect) = parse_choose_target_prelude_sentence(sentence_tokens)? {
-        state.effects.push(effect);
+    if let Some(effects) = parse_choose_target_prelude_sentence(sentence_tokens)? {
+        state.effects.extend(effects);
         *state.carried_context = None;
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -662,6 +662,27 @@ fn pre_rule_exile_this_way_followup(
         )));
     };
 
+    let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
+    plan.wrap_if_result = Some(IfResultPredicate::Did);
+    Ok(Some(PreParseFollowupResult::Plan(plan)))
+}
+
+fn pre_rule_when_milled_this_way_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
+    if !words.starts_with(&["when", "one", "or", "more", "cards", "are", "milled", "this", "way"])
+    {
+        return Ok(None);
+    }
+    let Some((_before, after)) =
+        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
     let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::Did);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
@@ -836,6 +857,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 55,
         heads: &["if"],
         run: pre_rule_exile_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "milled-this-way",
+        priority: 55,
+        heads: &["when"],
+        run: pre_rule_when_milled_this_way_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "future-zone-replacement",

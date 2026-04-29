@@ -97,7 +97,7 @@ fn choose_reflexive_targets(
 
 #[cfg(test)]
 mod tests {
-    use super::{choose_reflexive_targets, ReflexiveTriggerEffect};
+    use super::{ReflexiveTriggerEffect, choose_reflexive_targets};
     use crate::cards::definitions::{grizzly_bears, lightning_bolt};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
@@ -149,7 +149,8 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
-        let source = game.create_object_from_definition(&lightning_bolt(), alice, Zone::Battlefield);
+        let source =
+            game.create_object_from_definition(&lightning_bolt(), alice, Zone::Battlefield);
         let tagged = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
         let tagged_snapshot =
             ObjectSnapshot::from_object(game.object(tagged).expect("tagged object"), &game);

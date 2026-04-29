@@ -15,6 +15,7 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
+use crate::types::CardType;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
@@ -170,6 +171,7 @@ fn replace_names_with_map(
     line: &str,
     full_name: &str,
     short_name: &str,
+    preserve_source_surfaces: bool,
     base_offset: usize,
 ) -> (String, Vec<usize>) {
     fn has_word_boundaries_at(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -398,6 +400,25 @@ fn replace_names_with_map(
         }) || apostrophe_s
     }
 
+    fn should_preserve_source_surface_context(bytes: &[u8], idx: usize, len: usize) -> bool {
+        let prev = previous_word(bytes, idx);
+        let next = next_word(bytes, idx + len);
+        let next_char = bytes.get(idx + len).copied();
+        let apostrophe_s = matches!(next_char, Some(b'\''))
+            && bytes
+                .get(idx + len + 1)
+                .is_some_and(|byte| matches!(*byte, b's' | b'S'));
+
+        apostrophe_s
+            || prev.is_some_and(|word| matches!(word, b"of" | b"to" | b"on"))
+            || next.is_some_and(|word| {
+                matches!(
+                    word,
+                    b"attack" | b"attacks" | b"deal" | b"deals" | b"power" | b"toughness"
+                )
+            })
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.as_bytes();
@@ -416,6 +437,8 @@ fn replace_names_with_map(
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
             && !within_vote_choice_clause(bytes, idx)
+            && !(preserve_source_surfaces
+                && should_preserve_source_surface_context(bytes, idx, full_bytes.len()))
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -435,12 +458,18 @@ fn replace_names_with_map(
         if !short_bytes.is_empty()
             && byte_slice_starts_with(&bytes[idx..], short_bytes)
             && has_word_boundaries_at(bytes, idx, short_bytes.len())
+            && !(preserve_source_surfaces
+                && !full_bytes.is_empty()
+                && byte_slice_starts_with(&bytes[idx..], full_bytes)
+                && has_word_boundaries_at(bytes, idx, full_bytes.len()))
             && !(idx == 0 && is_single_word_keyword_verb(short_name))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, idx)
             && is_short_name_self_reference_context(bytes, idx, short_bytes.len())
+            && !(preserve_source_surfaces
+                && should_preserve_source_surface_context(bytes, idx, short_bytes.len()))
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -457,7 +486,6 @@ fn replace_names_with_map(
             idx += short_bytes.len();
             continue;
         }
-
         let ch = lower[idx..].chars().next().unwrap();
         out.push(ch);
         map.push(base_offset + idx);
@@ -546,13 +574,15 @@ fn normalize_line_for_parse(
     line: &str,
     full_name: &str,
     short_name: &str,
+    preserve_source_surfaces: bool,
 ) -> Option<NormalizedLine> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
     }
 
-    let (replaced, map) = replace_names_with_map(trimmed, full_name, short_name, 0);
+    let (replaced, map) =
+        replace_names_with_map(trimmed, full_name, short_name, preserve_source_surfaces, 0);
     let (label_stripped, label_map) = strip_labeled_ability_word_prefix_with_map(&replaced, &map);
     let (stripped, stripped_map) = strip_parenthetical_with_map(&label_stripped, &label_map);
 
@@ -570,8 +600,13 @@ fn normalize_line_for_parse(
             return None;
         }
         let base_offset = str_find(trimmed, inner).unwrap_or(0);
-        let (inner_replaced, inner_map) =
-            replace_names_with_map(inner, full_name, short_name, base_offset);
+        let (inner_replaced, inner_map) = replace_names_with_map(
+            inner,
+            full_name,
+            short_name,
+            preserve_source_surfaces,
+            base_offset,
+        );
         return Some(NormalizedLine {
             original: trimmed.to_string(),
             normalized: inner_replaced,
@@ -1089,6 +1124,7 @@ pub(crate) fn preprocess_document(
         display_line_index: usize,
         full_name: &str,
         short_name: &str,
+        preserve_source_surfaces: bool,
         annotations: &mut ParseAnnotations,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
         let stripped = strip_parenthetical_segments(raw_line);
@@ -1096,8 +1132,12 @@ pub(crate) fn preprocess_document(
             return Ok(None);
         }
 
-        let Some(normalized) = normalize_line_for_parse(stripped.as_str(), full_name, short_name)
-        else {
+        let Some(normalized) = normalize_line_for_parse(
+            stripped.as_str(),
+            full_name,
+            short_name,
+            preserve_source_surfaces,
+        ) else {
             if is_ignorable_unparsed_line(raw_line) {
                 return Ok(None);
             }
@@ -1177,6 +1217,22 @@ pub(crate) fn preprocess_document(
         }
 
         for (split_index, split_line) in split_parse_line_variants(line).into_iter().enumerate() {
+            let preserve_source_surfaces =
+                builder
+                    .card_builder
+                    .card_types_ref()
+                    .iter()
+                    .any(|card_type| {
+                        matches!(
+                            card_type,
+                            CardType::Artifact
+                                | CardType::Battle
+                                | CardType::Creature
+                                | CardType::Enchantment
+                                | CardType::Land
+                                | CardType::Planeswalker
+                        )
+                    });
             let virtual_line_index = line_index.saturating_mul(8).saturating_add(split_index);
             let looks_like_resolution_followup = lex_line(split_line.as_str(), virtual_line_index)
                 .ok()
@@ -1193,6 +1249,7 @@ pub(crate) fn preprocess_document(
                     combined_raw_line.as_str(),
                     full_lower.as_str(),
                     short_lower.as_str(),
+                    preserve_source_surfaces,
                 ) else {
                     return Err(CardTextError::ParseError(format!(
                         "rewrite preprocessing could not normalize merged line: '{combined_raw_line}'"
@@ -1214,6 +1271,7 @@ pub(crate) fn preprocess_document(
                 line_index,
                 full_lower.as_str(),
                 short_lower.as_str(),
+                preserve_source_surfaces,
                 &mut annotations,
             )? {
                 items.push(PreprocessedItem::Line(parsed_line));

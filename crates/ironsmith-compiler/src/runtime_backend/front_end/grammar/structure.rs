@@ -437,6 +437,8 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
                 | "discarded"
                 | "exile"
                 | "exiled"
+                | "mill"
+                | "milled"
         )
     };
     let is_unqualified_this_way_result = |subject: &str| {
@@ -449,7 +451,10 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
             return false;
         }
         let qualifiers = &words[2..words.len() - 2];
-        matches!(qualifiers, [] | ["it"] | ["them"] | ["that"])
+        matches!(
+            qualifiers,
+            [] | ["it"] | ["them"] | ["that"] | ["a", "creature", "card"] | ["creature", "card"]
+        )
     };
     let is_exact_negated_result = |subject: &str| {
         (words.len() == 2 && words[0] == subject && matches!(words[1], "dont" | "didnt" | "cant"))
@@ -513,6 +518,13 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() == 3
+        && words[0] == "first"
+        && words[1] == "player"
+        && (words[2] == "do" || words[2] == "does")
+    {
+        return Some(IfResultPredicate::Did);
+    }
     if words.len() >= 6
         && words[0] == "you"
         && words[1] == "searched"
@@ -525,6 +537,20 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         return Some(IfResultPredicate::Did);
     }
     if is_unqualified_this_way_result("they") {
+        return Some(IfResultPredicate::Did);
+    }
+    let is_one_or_more_result = words.len() >= 6
+        && words[0] == "one"
+        && words[1] == "or"
+        && words[2] == "more"
+        && matches!(words[3], "card" | "cards" | "creature" | "creatures" | "permanent" | "permanents")
+        && ((matches!(words[4], "are" | "is")
+            && words.len() >= 7
+            && is_result_verb(words[5]))
+            || is_result_verb(words[4]))
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way";
+    if is_one_or_more_result {
         return Some(IfResultPredicate::Did);
     }
     if matches!(

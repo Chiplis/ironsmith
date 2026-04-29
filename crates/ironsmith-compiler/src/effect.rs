@@ -1248,7 +1248,10 @@ impl Effect {
         count: impl Into<Value>,
         player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::InvestigateEffect::new(count.into(), player))
+        Self::new(crate::effects::InvestigateEffect::new(
+            count.into().into_unhinted(),
+            player,
+        ))
     }
 
     pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
@@ -1497,14 +1500,19 @@ impl Effect {
     }
 
     pub fn energy_counters(count: impl Into<Value>) -> Self {
-        Self::new(crate::effects::EnergyCountersEffect::you(count))
+        Self::new(crate::effects::EnergyCountersEffect::you(
+            count.into().into_unhinted(),
+        ))
     }
 
     pub fn energy_counters_player(
         count: impl Into<Value>,
         player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::EnergyCountersEffect::new(count, player))
+        Self::new(crate::effects::EnergyCountersEffect::new(
+            count.into().into_unhinted(),
+            player,
+        ))
     }
 
     pub fn scry(count: impl Into<Value>) -> Self {

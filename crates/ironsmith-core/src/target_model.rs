@@ -1,8 +1,24 @@
 use crate::{ChoiceCount, ObjectFilter, ObjectId, PlayerFilter, PlayerId, TagKey, Zone};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceReferenceSurface {
+    FullName(String),
+    ShortName(String),
+    ThisPermanentType(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChooseSpecSurfaceHint {
+    SourceReference(SourceReferenceSurface),
+}
+
 /// Specifies what can be chosen or targeted by an effect.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChooseSpec {
+    SurfaceHinted {
+        spec: Box<ChooseSpec>,
+        hints: Vec<ChooseSpecSurfaceHint>,
+    },
     Target(Box<ChooseSpec>),
     Player(PlayerFilter),
     Object(ObjectFilter),
@@ -23,6 +39,64 @@ pub enum ChooseSpec {
 }
 
 impl ChooseSpec {
+    pub fn with_surface_hint(self, hint: ChooseSpecSurfaceHint) -> Self {
+        self.with_surface_hints([hint])
+    }
+
+    pub fn with_surface_hints(
+        self,
+        hints: impl IntoIterator<Item = ChooseSpecSurfaceHint>,
+    ) -> Self {
+        let mut hints_to_add: Vec<ChooseSpecSurfaceHint> = hints.into_iter().collect();
+        match self {
+            Self::SurfaceHinted {
+                spec,
+                hints: mut existing,
+            } => {
+                for hint in hints_to_add.drain(..) {
+                    if !existing.contains(&hint) {
+                        existing.push(hint);
+                    }
+                }
+                Self::SurfaceHinted {
+                    spec,
+                    hints: existing,
+                }
+            }
+            spec => Self::SurfaceHinted {
+                spec: Box::new(spec),
+                hints: hints_to_add,
+            },
+        }
+    }
+
+    pub fn surface_hints(&self) -> &[ChooseSpecSurfaceHint] {
+        match self {
+            Self::SurfaceHinted { hints, .. } => hints,
+            _ => &[],
+        }
+    }
+
+    pub fn source_reference_surface(&self) -> Option<&SourceReferenceSurface> {
+        self.surface_hints().iter().find_map(|hint| match hint {
+            ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
+        })
+    }
+
+    pub fn unhinted(&self) -> &ChooseSpec {
+        match self {
+            Self::SurfaceHinted { spec, .. } => spec.unhinted(),
+            spec => spec,
+        }
+    }
+
+    pub fn into_unhinted(self) -> ChooseSpec {
+        match self {
+            Self::SurfaceHinted { spec, .. } => spec.into_unhinted(),
+            spec => spec,
+        }
+    }
+
     pub fn target(inner: ChooseSpec) -> Self {
         if inner.is_target() {
             inner
@@ -33,6 +107,7 @@ impl ChooseSpec {
 
     pub fn is_target(&self) -> bool {
         match self {
+            Self::SurfaceHinted { spec, .. } => spec.is_target(),
             Self::Target(_)
             | Self::AnyTarget
             | Self::AnyOtherTarget
@@ -44,6 +119,7 @@ impl ChooseSpec {
 
     pub fn inner(&self) -> &ChooseSpec {
         match self {
+            Self::SurfaceHinted { spec, .. } => spec.inner(),
             Self::Target(inner) => inner.as_ref(),
             Self::WithCount(inner, _) => inner.inner(),
             _ => self,
@@ -52,6 +128,7 @@ impl ChooseSpec {
 
     pub fn base(&self) -> &ChooseSpec {
         match self {
+            Self::SurfaceHinted { spec, .. } => spec.base(),
             Self::Target(inner) => inner.base(),
             Self::WithCount(inner, _) => inner.base(),
             _ => self,
@@ -60,6 +137,10 @@ impl ChooseSpec {
 
     pub fn with_count(self, count: ChoiceCount) -> Self {
         match self {
+            Self::SurfaceHinted { spec, hints } => Self::SurfaceHinted {
+                spec: Box::new(spec.with_count(count)),
+                hints,
+            },
             Self::WithCount(inner, _) => Self::WithCount(inner, count),
             other => Self::WithCount(Box::new(other), count),
         }
@@ -67,6 +148,7 @@ impl ChooseSpec {
 
     pub fn count(&self) -> ChoiceCount {
         match self {
+            Self::SurfaceHinted { spec, .. } => spec.count(),
             Self::WithCount(_, count) => *count,
             Self::Target(inner) => inner.count(),
             _ => ChoiceCount::default(),
@@ -102,7 +184,7 @@ impl ChooseSpec {
     }
 
     pub fn is_all(&self) -> bool {
-        matches!(self, Self::All(_) | Self::EachPlayer(_))
+        matches!(self.base(), Self::All(_) | Self::EachPlayer(_))
     }
 
     pub fn creature() -> Self {

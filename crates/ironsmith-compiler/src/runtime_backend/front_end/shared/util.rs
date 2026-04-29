@@ -13,7 +13,10 @@ use crate::filter::AlternativeCastKind;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{
+    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SourceReferenceSurface,
+    TaggedOpbjectRelation,
+};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
@@ -34,6 +37,169 @@ use super::token_primitives::{
     slice_starts_with, str_contains, str_ends_with, str_split_once, str_starts_with,
     str_strip_prefix, str_strip_suffix,
 };
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+#[derive(Clone)]
+struct SourceReferenceAlias {
+    words: Vec<String>,
+    surface: SourceReferenceSurface,
+}
+
+#[derive(Clone, Default)]
+struct SourceReferenceContext {
+    aliases: Vec<SourceReferenceAlias>,
+    surfaces_by_span: HashMap<TextSpan, SourceReferenceSurface>,
+}
+
+thread_local! {
+    static SOURCE_REFERENCE_CONTEXT: RefCell<SourceReferenceContext> =
+        RefCell::new(SourceReferenceContext::default());
+}
+
+pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
+    let aliases = source_reference_aliases_for_name(card_name);
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        let previous = context.replace(SourceReferenceContext {
+            aliases,
+            surfaces_by_span: HashMap::new(),
+        });
+        let result = f();
+        context.replace(previous);
+        result
+    })
+}
+
+pub(crate) fn source_reference_surface_for_span(
+    span: Option<TextSpan>,
+) -> Option<SourceReferenceSurface> {
+    let span = span?;
+    SOURCE_REFERENCE_CONTEXT.with(|context| context.borrow().surfaces_by_span.get(&span).cloned())
+}
+
+fn record_source_reference_surface(span: Option<TextSpan>, surface: SourceReferenceSurface) {
+    let Some(span) = span else {
+        return;
+    };
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        context.borrow_mut().surfaces_by_span.insert(span, surface);
+    });
+}
+
+fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
+    let mut aliases = Vec::new();
+    let mut push_alias = |raw: &str, surface: SourceReferenceSurface| {
+        let words = source_reference_words_from_text(raw);
+        if !words.is_empty()
+            && !aliases
+                .iter()
+                .any(|alias: &SourceReferenceAlias| alias.words == words)
+        {
+            aliases.push(SourceReferenceAlias { words, surface });
+        }
+    };
+
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return aliases;
+    }
+    push_alias(
+        trimmed,
+        SourceReferenceSurface::FullName(trimmed.to_string()),
+    );
+    if let Some((short_name, _)) = trimmed.split_once(',') {
+        let short_name = short_name.trim();
+        push_alias(
+            short_name,
+            SourceReferenceSurface::ShortName(short_name.to_string()),
+        );
+    } else if let Some(rest) = trimmed.strip_prefix("A-") {
+        let rest = rest.trim();
+        push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
+    } else if let Some((short_name, _)) = trimmed.split_once(' ') {
+        let short_name = short_name.trim();
+        let lower_short_name = short_name.to_ascii_lowercase();
+        if !matches!(lower_short_name.as_str(), "a" | "an" | "the")
+            && parse_card_type(&lower_short_name).is_none()
+            && parse_subtype_word(&lower_short_name).is_none()
+        {
+            push_alias(
+                short_name,
+                SourceReferenceSurface::ShortName(short_name.to_string()),
+            );
+        }
+    }
+    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
+    aliases
+}
+
+fn source_reference_words_from_text(text: &str) -> Vec<String> {
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\'' || ch == '’' || ch == '-'))
+        .filter(|word| !word.is_empty())
+        .map(|word| word.to_ascii_lowercase().replace('’', "'"))
+        .collect()
+}
+
+pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        context
+            .borrow()
+            .aliases
+            .iter()
+            .find(|alias| {
+                alias.words.len() == words.len()
+                    && alias
+                        .words
+                        .iter()
+                        .map(String::as_str)
+                        .eq(words.iter().copied())
+            })
+            .map(|alias| alias.surface.clone())
+    })
+}
+
+pub(crate) fn source_reference_surface_for_possessive_words(
+    words: &[&str],
+) -> Option<SourceReferenceSurface> {
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        context
+            .borrow()
+            .aliases
+            .iter()
+            .find(|alias| source_reference_words_match_possessive(&alias.words, words))
+            .map(|alias| alias.surface.clone())
+    })
+}
+
+fn source_reference_words_match_possessive(alias_words: &[String], words: &[&str]) -> bool {
+    if alias_words.len() != words.len() || alias_words.is_empty() {
+        return false;
+    }
+
+    let Some((alias_last, alias_prefix)) = alias_words.split_last() else {
+        return false;
+    };
+    let Some((word_last, word_prefix)) = words.split_last() else {
+        return false;
+    };
+    let possessive_last = format!("{alias_last}s");
+    alias_prefix
+        .iter()
+        .map(String::as_str)
+        .eq(word_prefix.iter().copied())
+        && (*word_last == alias_last.as_str() || *word_last == possessive_last)
+}
+
+pub(crate) fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
+    ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
+}
+
+fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
+    if !is_this_source_reference_words(words) {
+        return None;
+    }
+    Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")))
+}
 
 #[cfg(test)]
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
@@ -243,6 +409,7 @@ pub(crate) fn find_last_exile_cost_choice_tag(mana_cost: &TotalCost) -> Option<T
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
     match value {
         Value::X | Value::XTimes(_) => true,
+        Value::SurfaceHinted { value, .. } => value_contains_unbound_x(value),
         Value::Scaled(value, _) => value_contains_unbound_x(value),
         Value::Add(left, right) => {
             value_contains_unbound_x(left) || value_contains_unbound_x(right)
@@ -268,6 +435,10 @@ pub(crate) fn replace_unbound_x_with_value(
             }
             Ok(Value::Scaled(Box::new(replacement.clone()), multiplier))
         }
+        Value::SurfaceHinted { value, hints } => Ok(Value::SurfaceHinted {
+            value: Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
+            hints,
+        }),
         Value::Scaled(value, multiplier) => Ok(Value::Scaled(
             Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
             multiplier,
@@ -680,6 +851,10 @@ pub(crate) fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
 }
 
 pub(crate) fn is_source_reference_words(words: &[&str]) -> bool {
+    is_this_source_reference_words(words) || source_reference_surface_for_words(words).is_some()
+}
+
+fn is_this_source_reference_words(words: &[&str]) -> bool {
     if words.is_empty() {
         return false;
     }
@@ -1220,6 +1395,32 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
 
     if let Some(value) = parse_number_word_i32(words[0]) {
         return Some((Value::Fixed(value), 1));
+    }
+
+    for source_len in (1..words.len()).rev() {
+        if let Some(surface) = source_reference_surface_for_possessive_words(&words[..source_len]) {
+            match words.get(source_len).copied() {
+                Some("power") => {
+                    return Some((
+                        Value::PowerOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 1,
+                    ));
+                }
+                Some("toughness") => {
+                    return Some((
+                        Value::ToughnessOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 1,
+                    ));
+                }
+                Some("mana") if words.get(source_len + 1).copied() == Some("value") => {
+                    return Some((
+                        Value::ManaValueOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 2,
+                    ));
+                }
+                _ => {}
+            }
+        }
     }
 
     if matches!(
@@ -2708,9 +2909,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
 
-    if is_source_reference_words(&remaining_words) {
+    if let Some(surface) = source_reference_surface_for_words(&remaining_words)
+        .or_else(|| this_source_surface_for_words(&remaining_words))
+    {
+        let source_span = target_span.or(span);
+        record_source_reference_surface(source_span, surface);
         return Ok(wrap_target_count(
-            TargetAst::Source(target_span),
+            TargetAst::Source(source_span),
             target_count,
         ));
     }
@@ -2731,8 +2936,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         || remaining_words.as_slice() == ["thiss", "base", "power", "and", "toughness"]
         || remaining_words.as_slice() == ["this", "base", "power", "and", "toughness"]
     {
+        let source_span = target_span.or(span);
+        record_source_reference_surface(
+            source_span,
+            SourceReferenceSurface::ThisPermanentType(remaining_words.join(" ")),
+        );
         return Ok(wrap_target_count(
-            TargetAst::Source(target_span),
+            TargetAst::Source(source_span),
             target_count,
         ));
     }
@@ -2761,9 +2971,17 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
     if remaining_words.as_slice() == ["itself"] {
+        record_source_reference_surface(
+            span,
+            SourceReferenceSurface::ThisPermanentType("itself".to_string()),
+        );
         return Ok(wrap_target_count(TargetAst::Source(span), target_count));
     }
     if matches!(remaining_words.as_slice(), ["him"] | ["her"]) {
+        record_source_reference_surface(
+            span,
+            SourceReferenceSurface::ThisPermanentType(remaining_words[0].to_string()),
+        );
         return Ok(wrap_target_count(TargetAst::Source(span), target_count));
     }
     if remaining_words.as_slice() == ["them"] {

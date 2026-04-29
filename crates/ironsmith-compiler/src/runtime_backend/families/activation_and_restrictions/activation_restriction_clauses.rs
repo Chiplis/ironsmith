@@ -38,6 +38,18 @@ pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> St
 pub(crate) fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+        ] | [
+            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+        ]
+    ) {
+        return Ok(None);
+    }
+
     if find_negation_span(tokens).is_none() {
         return Ok(None);
     }
@@ -94,6 +106,18 @@ pub(crate) fn parse_cant_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+        ] | [
+            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+        ]
+    ) {
+        return Ok(None);
+    }
 
     if let Some((_, remainder)) = parse_restriction_duration(tokens)?
         && !remainder.is_empty()
@@ -757,6 +781,21 @@ pub(crate) fn parse_negated_object_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        ["you", "dont", "lose", "this", "mana", "as", "steps"]
+            | ["you", "don't", "lose", "this", "mana", "as", "steps"]
+            | [
+                "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+            ]
+            | [
+                "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
+            ]
+    ) {
+        return Ok(None);
+    }
 
     let Some((neg_start, neg_end)) = find_negation_span(tokens) else {
         return Ok(None);

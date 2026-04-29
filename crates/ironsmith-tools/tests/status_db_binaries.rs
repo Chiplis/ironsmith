@@ -75,9 +75,9 @@ fn write_cards_with_semantic_mismatch_json(path: &Path) {
         r#"[
   {
     "name":"Mismatch Fixture",
-    "oracle_text":"Destroy target creature an opponent controls.",
-    "mana_cost":"{1}{B}",
-    "type_line":"Sorcery"
+    "oracle_text":"Activated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+    "mana_cost":"{1}{W}",
+    "type_line":"Enchantment"
   }
 ]"#,
     )

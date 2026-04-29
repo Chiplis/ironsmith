@@ -600,6 +600,23 @@ fn evaluate_value(
             use crate::target::ChooseSpec;
             let mut values = Vec::new();
             match target.as_ref() {
+                ChooseSpec::SurfaceHinted { spec, .. } => match spec.as_ref() {
+                    ChooseSpec::Source => {
+                        if let Some(chars) = baseline.get(&source) {
+                            let v = match value {
+                                Value::PowerOf(_) => chars.power,
+                                Value::ToughnessOf(_) => chars.toughness,
+                                _ => unreachable!(
+                                    "Value::PowerOf/ToughnessOf arm received non-PT value"
+                                ),
+                            };
+                            if let Some(v) = v {
+                                values.push(v);
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 ChooseSpec::Source => {
                     if let Some(chars) = baseline.get(&source) {
                         let v = match value {
@@ -1226,6 +1243,7 @@ fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> Va
 /// power, it depends on effects that modify that creature's power.
 fn value_references_pt(value: &Value) -> bool {
     match value {
+        Value::SurfaceHinted { value, .. } => value_references_pt(value),
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
         Value::PowerOf(_) | Value::ToughnessOf(_) => true,

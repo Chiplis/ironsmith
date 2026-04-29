@@ -68,6 +68,7 @@ use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
 
 mod subject_verb_followups;
@@ -1029,9 +1030,75 @@ fn parse_effect_sentences_lexed_inner(
         .map(SentenceInput::from_lexed)
         .collect::<Vec<_>>();
     let mut effects = parse_effect_sentences_from_sentence_inputs(sentences)?;
+    group_this_way_copy_cast_followups(tokens, &mut effects);
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+fn is_copy_reference_effect(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenCopy { .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+                    | SubjectVerbActionAst::CopySpell { .. }
+                    | SubjectVerbActionAst::CopySpellForEachTarget { .. },
+            ..
+        })
+    )
+}
+
+fn is_may_cast_copy_effect(effect: &EffectAst) -> bool {
+    let EffectAst::May { effects } = effect else {
+        return false;
+    };
+    matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CastTagged { as_copy: true, .. },
+            ..
+        })]
+    )
+}
+
+fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Vec<EffectAst>) {
+    if !(grammar::contains_phrase(tokens, &["one", "or", "more"])
+        && grammar::contains_phrase(tokens, &["this", "way"]))
+    {
+        return;
+    }
+
+    let Some(if_idx) = effects.iter().position(|effect| {
+        matches!(
+            effect,
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                ..
+            }
+        )
+    }) else {
+        return;
+    };
+
+    let mut followups = Vec::new();
+    while effects
+        .get(if_idx + 1)
+        .is_some_and(|effect| is_copy_reference_effect(effect) || is_may_cast_copy_effect(effect))
+    {
+        followups.push(effects.remove(if_idx + 1));
+    }
+    if followups.is_empty() {
+        return;
+    }
+
+    if let EffectAst::IfResult {
+        effects: nested, ..
+    } = &mut effects[if_idx]
+    {
+        nested.extend(followups);
+    }
 }
 
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -2169,20 +2236,29 @@ pub(crate) fn apply_where_x_to_damage_amounts(
             && window[2] == "life"
     })
     .is_some();
-    if !has_deal_x && !has_x_life {
-        return Ok(());
-    }
     let Some(where_idx) = find_word_sequence_start(&clause_words, &["where", "x", "is"]) else {
         return Ok(());
     };
+    let has_unbound_x_before_where = clause_words[..where_idx]
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("x"));
+    if !has_deal_x && !has_x_life && !has_unbound_x_before_where {
+        return Ok(());
+    }
     let Some(where_token_idx) = token_index_for_word_index(tokens, where_idx) else {
         return Ok(());
     };
     let where_tokens = &tokens[where_token_idx..];
-    let Some(where_value) = parse_value_binding_clause(where_tokens) else {
+    let Some(where_value) = parse_value_binding_clause(where_tokens)
+        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+    else {
         return Ok(());
     };
-    replace_unbound_x_in_damage_effects(effects, &where_value, &clause_words.join(" "))
+    if has_deal_x || has_x_life {
+        replace_unbound_x_in_damage_effects(effects, &where_value, &clause_words.join(" "))
+    } else {
+        replace_unbound_x_in_effects_anywhere(effects, &where_value, &clause_words.join(" "))
+    }
 }
 
 pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
@@ -2454,7 +2530,7 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
         do_token.replace_word("do");
         rewritten.push(do_token);
 
-        rewritten.push(OwnedLexToken::word(",".to_string(), tokens[0].span()));
+        rewritten.push(OwnedLexToken::comma(tokens[0].span()));
         rewritten.extend_from_slice(after);
         return rewritten;
     }

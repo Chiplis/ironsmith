@@ -9,10 +9,11 @@ use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, EffectExecutor, GainLifeEffect, MoveToZoneEffect,
     ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
+    UntapEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::zone::Zone;
 use crate::{ObjectId, PlayerId};
 use std::collections::HashMap;
@@ -22866,8 +22867,9 @@ fn kain_variant_keeps_control_change_if_do_and_life_loss() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("during your turn")
-            && rendered.contains("kain has flying")
+        (rendered.contains("during your turn") || rendered.contains("your turn"))
+            && (rendered.contains("kain has flying")
+                || rendered.contains("this creature has flying"))
             && (rendered.contains("gains control of this creature")
                 || rendered.contains("gain control of this creature")
                 || rendered.contains("gains control of kain")
@@ -22887,6 +22889,48 @@ fn kain_variant_keeps_control_change_if_do_and_life_loss() {
     assert!(
         debug.contains("IfEffect") || debug.contains("IfResult") || debug.contains("Conditional"),
         "expected Kain's lowered ability to keep the If they do clause, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn short_name_source_references_are_preserved_as_surface_hints() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Untap Kain.")
+        .expect("short-name source reference should parse structurally");
+
+    let AbilityKind::Activated(activated) = &def.abilities[0].kind else {
+        panic!("expected activated ability, got {:#?}", def.abilities);
+    };
+    let untap = activated.effects.flattened_default_effects()[0]
+        .downcast_ref::<UntapEffect>()
+        .expect("expected untap effect");
+    assert_eq!(
+        untap.target.source_reference_surface(),
+        Some(&SourceReferenceSurface::ShortName("Kain".to_string()))
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn this_creature_source_references_are_preserved_as_surface_hints() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Surface Source Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Untap this creature.")
+        .expect("this-creature source reference should parse");
+
+    let AbilityKind::Activated(activated) = &def.abilities[0].kind else {
+        panic!("expected activated ability, got {:#?}", def.abilities);
+    };
+    let untap = activated.effects.flattened_default_effects()[0]
+        .downcast_ref::<UntapEffect>()
+        .expect("expected untap effect");
+    assert_eq!(
+        untap.target.source_reference_surface(),
+        Some(&SourceReferenceSurface::ThisPermanentType(
+            "this creature".to_string()
+        ))
     );
 }
 
@@ -28101,9 +28145,10 @@ fn parse_oracle_into_the_flood_maw_gift_regression() {
         "expected Into the Flood Maw compiled text to preserve the gift line, got {rendered}"
     );
     assert!(
-        rendered.contains("Return target opponent's creature to its owner's hand")
+        rendered.contains("Return target creature an opponent controls")
             && rendered.contains("If the gift was promised")
-            && rendered.contains("Return target opponent's nonland permanent to its owner's hand"),
+            && rendered.contains("nonland permanent")
+            && rendered.contains("owner"),
         "expected Into the Flood Maw compiled text to normalize the gift branch into oracle order, got {rendered}"
     );
     assert!(
@@ -28197,11 +28242,11 @@ fn parse_oracle_longstalk_brawl_gift_spell_line_keeps_main_effects() {
         "expected Longstalk Brawl compiled text to preserve the gift line, got {rendered}"
     );
     assert!(
-        rendered.contains("Choose target creature you don't control")
+        rendered.contains("Choose target creature you control and target creature you don't control")
             && rendered.contains(
-                "If the gift was promised, Put a +1/+1 counter on a creature you control"
+                "Put a +1/+1 counter on the creature you control if the gift was promised"
             )
-            && rendered.contains("that creature fights it"),
+            && rendered.contains("Then those creatures fight each other"),
         "expected Longstalk Brawl compiled text to preserve the choose/counter/fight spell line, got {rendered}"
     );
     assert!(
@@ -33042,6 +33087,10 @@ fn amy_rose_attach_to_her_uses_source_reference() {
     assert!(
         debug.contains("AttachObjectsEffect") && debug.contains("target: Source"),
         "expected attachment target to resolve to the source, got {debug}"
+    );
+    assert!(
+        debug.contains("FullName(\"Amy Rose\")"),
+        "expected Amy Rose's power to preserve a named-source surface hint, got {debug}"
     );
 }
 

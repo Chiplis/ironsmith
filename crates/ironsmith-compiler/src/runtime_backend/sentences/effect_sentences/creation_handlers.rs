@@ -8,6 +8,7 @@ use crate::static_abilities::{Anthem, AnthemCountExpression, AnthemValue, Static
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
@@ -687,7 +688,7 @@ pub(crate) fn parse_create(
                 player = PlayerAst::You;
             }
         } else if let Some(dynamic) = parse_create_for_each_dynamic_count(filter_tokens) {
-            for_each_dynamic_count = Some(dynamic);
+            for_each_dynamic_count = Some(dynamic.with_surface_hint(ValueSurfaceHint::ForEach));
         } else {
             let filter = parse_object_filter(filter_tokens, false)?;
             for_each_object_filter = Some(filter);
@@ -1108,7 +1109,7 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
                 tag: TagKey::from(IT_TAG),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
-        return Some(Value::Count(filter));
+        return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     if grammar::words_match_any_prefix(
         tokens,
@@ -1119,7 +1120,7 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     )
     .is_some()
     {
-        return Some(Value::CreaturesDiedThisTurn);
+        return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
     }
     let clause_words = token_word_refs(tokens);
     if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))
@@ -1143,13 +1144,18 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         let other_than_first =
             grammar::words_find_phrase(tokens, &["other", "than", "the", "first"]).is_some();
         if other_than_first {
-            return Some(Value::Add(
-                Box::new(Value::SpellsCastThisTurn(player)),
-                Box::new(Value::Fixed(-1)),
-            ));
+            return Some(
+                Value::Add(
+                    Box::new(Value::SpellsCastThisTurn(player)),
+                    Box::new(Value::Fixed(-1)),
+                )
+                .with_surface_hint(ValueSurfaceHint::ForEach),
+            );
         }
         if grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn") {
-            return Some(Value::SpellsCastThisTurn(player));
+            return Some(
+                Value::SpellsCastThisTurn(player).with_surface_hint(ValueSurfaceHint::ForEach),
+            );
         }
     }
     if grammar::words_match_prefix(
@@ -1179,7 +1185,9 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         )
         .is_some()
     {
-        return Some(Value::ColorsOfManaSpentToCastThisSpell);
+        return Some(
+            Value::ColorsOfManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::ForEach),
+        );
     }
     if grammar::words_match_prefix(
         tokens,
@@ -1206,9 +1214,10 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         )
         .is_some()
     {
-        return Some(Value::BasicLandTypesAmong(
-            ObjectFilter::land().you_control(),
-        ));
+        return Some(
+            Value::BasicLandTypesAmong(ObjectFilter::land().you_control())
+                .with_surface_hint(ValueSurfaceHint::ForEach),
+        );
     }
     None
 }
@@ -1234,18 +1243,21 @@ fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, C
                 tag: TagKey::from(IT_TAG),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
-        return Ok(Value::Count(filter));
+        return Ok(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
 
     if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
-        return Ok(Value::EventValue(EventValueSpec::Amount));
+        return Ok(
+            Value::EventValue(EventValueSpec::Amount).with_surface_hint(ValueSurfaceHint::ForEach)
+        );
     }
 
     if let Some(dynamic) = parse_create_for_each_dynamic_count(tokens) {
-        return Ok(dynamic);
+        return Ok(dynamic.with_surface_hint(ValueSurfaceHint::ForEach));
     }
 
-    Ok(Value::Count(parse_object_filter(tokens, false)?))
+    Ok(Value::Count(parse_object_filter(tokens, false)?)
+        .with_surface_hint(ValueSurfaceHint::ForEach))
 }
 
 pub(crate) fn parse_investigate(

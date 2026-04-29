@@ -953,6 +953,17 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     }
 
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
+    let words = token_word_refs(tokens);
+    if words.contains(&"lose")
+        && words.contains(&"mana")
+        && words.contains(&"steps")
+        && words.contains(&"phases")
+        && words.contains(&"end")
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
+        ]));
+    }
     let Some(prepared_clause) = prepare_cant_sentence_restriction_clause_lexed(tokens)? else {
         return Ok(None);
     };

@@ -413,6 +413,17 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
     match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => {
+            compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
+                game,
+                spec,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                view,
+            )
+        }
         // Target wrapper - recursively compute targets from inner spec
         ChooseSpec::Target(inner) => {
             compute_legal_targets_with_tagged_objects_source_snapshot_with_view(

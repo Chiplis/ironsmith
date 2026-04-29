@@ -30,7 +30,8 @@ fn mechanical_cleanup(line: String) -> String {
     let line = normalize_debug_safe_sentence_surface(&line);
     let line = normalize_debug_safe_mana_symbol_case(&line);
     let line = strip_parenthetical_text(&line);
-    normalize_debug_safe_spelling_surface(&line)
+    let line = normalize_debug_safe_spelling_surface(&line);
+    normalize_each_player_x_token_damage_pair(&line)
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {
@@ -138,6 +139,26 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace(
             "add 1 mana of commander's color identity",
             "add one mana of any color in your commander's color identity",
+        )
+        .replace("gain its mana value life", "gain life equal to its mana value")
+        .replace("gains its mana value life", "gains life equal to its mana value")
+        .replace("lose its mana value life", "lose life equal to its mana value")
+        .replace("loses its mana value life", "loses life equal to its mana value")
+        .replace(
+            "gain that card's mana value life",
+            "gain life equal to that card's mana value",
+        )
+        .replace(
+            "gains that card's mana value life",
+            "gains life equal to that card's mana value",
+        )
+        .replace(
+            "lose that card's mana value life",
+            "lose life equal to that card's mana value",
+        )
+        .replace(
+            "loses that card's mana value life",
+            "loses life equal to that card's mana value",
         )
         .replace("You draw a card", "Draw a card")
         .replace("you draw a card", "draw a card")
@@ -308,6 +329,55 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         normalized.pop();
     }
     normalized
+}
+
+fn normalize_each_player_x_token_damage_pair(line: &str) -> String {
+    if let Some(normalized) = normalize_each_player_number_token_damage_pair(line) {
+        return normalized;
+    }
+    let Some((prefix, rest)) = line.split_once("Each player creates X ") else {
+        return line.to_string();
+    };
+    let Some((token_phrase, rest)) = rest.split_once(", where X is ") else {
+        return line.to_string();
+    };
+    let Some((basis, rest)) = rest.split_once(". For each player, ") else {
+        return line.to_string();
+    };
+    let Some((source, rest)) = rest.split_once(" deals X damage to that player, where X is ")
+    else {
+        return line.to_string();
+    };
+    let Some((second_basis, suffix)) = rest
+        .split_once(". ")
+        .map(|(head, tail)| (head, format!(". {tail}")))
+        .or_else(|| rest.strip_suffix('.').map(|head| (head, ".".to_string())))
+    else {
+        return line.to_string();
+    };
+    if basis != second_basis {
+        return line.to_string();
+    }
+    format!(
+        "{prefix}Each player creates X {token_phrase} and {source} deals X damage to each player, where X is {basis}{suffix}"
+    )
+}
+
+fn normalize_each_player_number_token_damage_pair(line: &str) -> Option<String> {
+    let (prefix, rest) = line.split_once("Each player creates the number of ")?;
+    let (basis, rest) = rest.split_once(" Treasure token. For each player, ")?;
+    let (source, rest) =
+        rest.split_once(" deals X damage to that player, where X is the number of ")?;
+    let (second_basis, suffix) = rest
+        .split_once(". ")
+        .map(|(head, tail)| (head, format!(". {tail}")))
+        .or_else(|| rest.strip_suffix('.').map(|head| (head, ".".to_string())))?;
+    if basis != second_basis {
+        return None;
+    }
+    Some(format!(
+        "{prefix}Each player creates X Treasure tokens and {source} deals X damage to each player, where X is the number of {basis}{suffix}"
+    ))
 }
 
 #[cfg(test)]

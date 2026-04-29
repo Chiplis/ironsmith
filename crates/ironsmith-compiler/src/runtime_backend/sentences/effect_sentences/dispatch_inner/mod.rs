@@ -49,6 +49,7 @@ use crate::target::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 const EXILE_ALL_CARDS_FROM_PREFIXES: &[&[&str]] = &[&["exile", "all", "cards", "from"]];
 include!("sentence_shape_predicates.rs");

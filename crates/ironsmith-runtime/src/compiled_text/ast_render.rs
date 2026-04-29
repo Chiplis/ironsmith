@@ -291,6 +291,7 @@ fn is_standard_gift_render_payload(lower: &str) -> bool {
         || lower.contains("chosen player creates a food token")
         || lower.contains("create a food token under the chosen player's control")
         || lower.contains("chosen player creates a tapped 1/1 blue fish creature token")
+        || lower.contains("chosen player creates a 1/1 blue fish creature token, tapped")
         || lower.contains("create a 1/1 blue fish creature token under the chosen player's control")
         || lower.contains("chosen player takes an extra turn after this one")
         || lower.contains("chosen player creates an 8/8 blue octopus creature token")
@@ -325,6 +326,22 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
     rendered.starts_with("if the gift was promised") || is_standard_gift_render_payload(&rendered)
 }
 
+fn describe_single_self_replacement_segment(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    if segment.self_replacements.len() != 1 || segment.default_effects.is_empty() {
+        return None;
+    }
+    let branch = &segment.self_replacements[0];
+    let default_text = describe_effect_list(&segment.default_effects);
+    let replacement_text = describe_effect_list(&branch.replacement_effects);
+    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    Some(format!(
+        "{default_text}. If {condition_text}, instead {}",
+        super::normalize_common::lowercase_first(&replacement_text)
+    ))
+}
+
 fn describe_resolution_program_for_card(
     def: &CardDefinition,
     program: &crate::resolution::ResolutionProgram,
@@ -345,12 +362,14 @@ fn describe_resolution_program_for_card(
         }
 
         if segment.self_replacements.len() == 1 {
-            let branch = &segment.self_replacements[0];
-            let rendered = describe_effect_list(&[Effect::conditional(
-                branch.condition.clone(),
-                branch.replacement_effects.clone(),
-                segment.default_effects.clone(),
-            )]);
+            let rendered = describe_single_self_replacement_segment(segment).unwrap_or_else(|| {
+                let branch = &segment.self_replacements[0];
+                describe_effect_list(&[Effect::conditional(
+                    branch.condition.clone(),
+                    branch.replacement_effects.clone(),
+                    segment.default_effects.clone(),
+                )])
+            });
             rendered_segments.push(rewrite_spell_resolution_damage_source(def, &rendered));
             continue;
         }

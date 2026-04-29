@@ -837,7 +837,8 @@ fn parse_effect_sentence_with_where_x_lexed(
             ))
         })?,
         }
-    };
+    }
+    .with_surface_hint(ValueSurfaceHint::WhereXIs);
 
     let search_like = stripped_words.first().copied() == Some("search");
     let mut effects = if search_like && !trailing_after_where.is_empty() {

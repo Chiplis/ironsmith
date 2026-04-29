@@ -130,6 +130,43 @@ fn finalize_ast_surface_line(line: String) -> String {
     if line.contains("Cascade and Cascade") {
         return line.replace("Cascade and Cascade", "Cascade, cascade");
     }
+    line = line.replace(
+        "Tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    line = line.replace(
+        "tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
+        "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    line = line.replace("non-Auran enchantments", "non-Aura enchantments");
+    line = line.replace("non-Auran enchantment", "non-Aura enchantment");
+    line = line.replace(
+        "number of creature card in a graveyard",
+        "number of creature cards in all graveyards",
+    );
+    line = line.replace(
+        "number of instant or sorcery card in a graveyard",
+        "number of instant and sorcery cards in all graveyards",
+    );
+    line = line.replace(
+        "number of other creature artifact you control",
+        "number of other creatures and/or artifacts you control",
+    );
+    line = line.replace(
+        "number of other creature.",
+        "number of other creatures on the battlefield.",
+    );
+    if let Some(each) = line
+        .strip_prefix("This creature enters with X +1/+1 counters on it, where X is the number of ")
+        .filter(|each| each.contains("creatures and/or artifacts"))
+    {
+        let each = each.trim_end_matches('.');
+        let each = each
+            .replace("creatures and/or artifacts", "creature and/or artifact")
+            .replace("creatures ", "creature ")
+            .replace("artifacts ", "artifact ");
+        return format!("This creature enters with a +1/+1 counter on it for each {each}");
+    }
     if line
         .to_ascii_lowercase()
         .contains("a land is put into a graveyard from the battlefield")

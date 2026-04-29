@@ -405,6 +405,20 @@ fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> boo
 }
 
 fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
+    fn is_card_type_word(word: &str) -> bool {
+        matches!(
+            word,
+            "artifact"
+                | "battle"
+                | "creature"
+                | "enchantment"
+                | "instant"
+                | "land"
+                | "planeswalker"
+                | "sorcery"
+        )
+    }
+
     let mut inside_quotes = false;
     let mut indices = Vec::new();
     for (idx, token) in tokens.iter().enumerate() {
@@ -414,6 +428,33 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
         }
         if inside_quotes {
             continue;
+        }
+        if token.is_word("or")
+            && tokens
+                .get(idx + 1)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(is_card_type_word)
+            && (tokens
+                .get(idx.saturating_sub(1))
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(is_card_type_word)
+                || tokens
+                    .get(idx.saturating_sub(1))
+                    .is_some_and(|token| matches!(token.kind, TokenKind::Comma)))
+        {
+            continue;
+        }
+        if matches!(token.kind, TokenKind::Comma) {
+            let before = &tokens[..idx];
+            let after = trim_lexed_commas(&tokens[idx + 1..]);
+            let after_words = token_word_refs(after);
+            if grammar::contains_word(before, "target")
+                && (after_words.first().is_some_and(|word| is_card_type_word(word))
+                    || (after_words.first() == Some(&"or")
+                        && after_words.get(1).is_some_and(|word| is_card_type_word(word))))
+            {
+                continue;
+            }
         }
         let is_separator = token.kind == TokenKind::Comma
             || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
@@ -442,6 +483,17 @@ pub(crate) fn parse_or_action_clause_lexed(
     }
 
     if !grammar::contains_word(tokens, "or") {
+        return Ok(None);
+    }
+    let words = token_word_refs(tokens);
+    if words.contains(&"target")
+        && words.windows(3).any(|window| {
+            matches!(
+                window,
+                ["artifact" | "battle" | "creature" | "enchantment" | "instant" | "land" | "planeswalker" | "sorcery", "or", "artifact" | "battle" | "creature" | "enchantment" | "instant" | "land" | "planeswalker" | "sorcery"]
+            )
+        })
+    {
         return Ok(None);
     }
 
@@ -526,6 +578,17 @@ mod tests {
             .expect("rewrite lexer should classify create-fragment text");
 
         assert!(starts_like_create_fragment_lexed(&tokens));
+    }
+
+    #[test]
+    fn parses_target_card_type_list_with_lte_mana_value_reference() {
+        let tokens = lex_line(
+            "Exile target enchantment, instant, or sorcery card with equal or lesser mana value than that spell from an opponent's graveyard",
+            0,
+        )
+        .expect("target list clause should lex");
+
+        parse_effect_chain_lexed(&tokens).expect("target list clause should parse");
     }
 
     #[test]

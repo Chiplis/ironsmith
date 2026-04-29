@@ -79,8 +79,10 @@ use super::util::{
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
     parse_counter_type_word, parse_flashback_keyword_line, parse_subtype_flexible, parse_value,
-    parse_zone_word, preserve_keyword_prefix_for_parse, trim_commas, words,
+    parse_zone_word, preserve_keyword_prefix_for_parse,
+    source_reference_surface_for_possessive_words, trim_commas, words,
 };
+use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
 use super::value_helpers::parse_commander_cast_count_player;
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
@@ -106,7 +108,7 @@ use crate::static_abilities::{
     Anthem, AnthemCountExpression, AnthemValue, GrantAbility, StaticAbility,
 };
 #[allow(unused_imports)]
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter};
 #[allow(unused_imports)]
 use crate::triggers::Trigger;
 #[allow(unused_imports)]
@@ -4677,6 +4679,12 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                 Some(counter_type) => Value::CountersOnSource(counter_type),
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
             }));
+        }
+        if let Some(surface) = source_reference_surface_for_words(tail) {
+            return Ok(Some(Value::CountersOn(
+                Box::new(source_choose_spec_for_surface(surface)),
+                counter_type,
+            )));
         }
     }
 

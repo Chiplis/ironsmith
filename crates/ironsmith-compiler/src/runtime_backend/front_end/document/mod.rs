@@ -1005,10 +1005,11 @@ mod tests {
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
         parse_statement_line_cst, parse_static_line_cst, parse_triggered_line_cst,
         preprocess_document, probe_triggered_split, render_token_slice,
-        rewrite_keyword_dash_parse_tokens, split_activation_text_parts_lexed, split_label_prefix,
-        split_label_prefix_lexed, split_reveal_first_draw_line_rewrite_lexed,
-        split_trigger_sentence_chunks_rewrite_lexed, strip_non_keyword_label_prefix,
-        strip_trailing_trigger_cap_suffix_tokens, tokens_after_non_keyword_label_prefix,
+        rewrite_keyword_dash_parse_tokens, rewrite_when_one_or_more_this_way_line,
+        split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
+        split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
+        strip_non_keyword_label_prefix, strip_trailing_trigger_cap_suffix_tokens,
+        tokens_after_non_keyword_label_prefix,
     };
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
@@ -1660,6 +1661,21 @@ mod tests {
     }
 
     #[test]
+    fn statement_parse_handles_when_one_or_more_this_way_target_card_type_list() {
+        let line = single_preprocessed_line(
+            "When one or more cards are milled this way, exile target enchantment, instant, or sorcery card with equal or lesser mana value than that spell from an opponent's graveyard.",
+        );
+        let rewritten = rewrite_when_one_or_more_this_way_line(&line);
+
+        assert!(
+            parse_statement_line_cst(&rewritten)
+                .expect("result follow-up should not error")
+                .is_some(),
+            "result follow-up should parse as an effect statement"
+        );
+    }
+
+    #[test]
     fn colon_nonactivation_statement_fallback_reuses_split_token_slice() {
         let line = single_preprocessed_line("Reveal this card from your hand: Draw a card.");
 
@@ -2076,6 +2092,21 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
     chunks
 }
 
+fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    (words.starts_with(&["when", "one", "or", "more"])
+        || words.starts_with(&["whenever", "one", "or", "more"]))
+        && grammar::contains_phrase(tokens, &["this", "way"])
+}
+
+fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
+    let rewritten_tokens =
+        crate::runtime_backend::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(
+            &line.tokens,
+        );
+    rewrite_line_tokens(line, &rewritten_tokens)
+}
+
 fn split_reveal_first_draw_line_rewrite_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<Vec<OwnedLexToken>>> {
@@ -2363,6 +2394,15 @@ fn try_parse_triggered_line_dispatch(
             match parse_triggered_line_cst(&chunk_line) {
                 Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
                 Err(_) => {
+                    if starts_with_when_one_or_more_this_way_clause(&chunk_line.tokens)
+                        && let Some(statement) =
+                            parse_statement_line_cst(&rewrite_when_one_or_more_this_way_line(
+                                &chunk_line,
+                            ))?
+                    {
+                        lines.push(RewriteLineCst::Statement(statement));
+                        continue;
+                    }
                     if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
                         &preprocessed.builder,
                         line,
@@ -2389,19 +2429,6 @@ fn try_parse_triggered_line_dispatch(
             lines,
             next_idx: idx + 1,
         }));
-    }
-
-    if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-        &preprocessed.builder,
-        line,
-        &line.info.normalized.normalized,
-    )? {
-        let (triggered, next_idx) =
-            extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Triggered(triggered),
-            next_idx,
-        )));
     }
 
     match parse_triggered_line_cst(line) {

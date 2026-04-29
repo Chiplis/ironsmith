@@ -11,8 +11,9 @@ use winnow::token::one_of;
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
@@ -21,7 +22,8 @@ use super::super::token_primitives::{find_index, slice_contains, slice_starts_wi
 #[cfg(test)]
 use super::super::util::parse_subtype_word;
 use super::super::util::{
-    parse_number_word_i32, parse_value_expr_words, token_index_for_word_index,
+    parse_number_word_i32, parse_value_expr_words, source_reference_surface_for_possessive_words,
+    token_index_for_word_index,
 };
 use super::primitives;
 
@@ -663,6 +665,27 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         let tagged_it_power = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
         let tagged_it_toughness =
             Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
+
+        if segment.len() >= 2 && segment.last().copied() == Some("power") {
+            if let Some(surface) =
+                source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
+            {
+                return Some(Value::PowerOf(Box::new(
+                    ChooseSpec::Source
+                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                )));
+            }
+        }
+        if segment.len() >= 2 && segment.last().copied() == Some("toughness") {
+            if let Some(surface) =
+                source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
+            {
+                return Some(Value::ToughnessOf(Box::new(
+                    ChooseSpec::Source
+                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                )));
+            }
+        }
 
         if is_source_power_segment(segment) {
             return Some(Value::PowerOf(Box::new(ChooseSpec::Source)));

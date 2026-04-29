@@ -158,7 +158,7 @@ pub use static_ability_model::{
     ThisSpellCostReductionManaCost,
 };
 pub use tag::{SOURCE_EXILED_TAG, TagKey};
-pub use target_model::ChooseSpec;
+pub use target_model::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 pub use trigger_model::{
     CountMode as CompilerTriggerCountMode, CounterPutOnTrigger as CompilerCounterPutOnTrigger,
     DamagedBySource, Trigger as CompilerTrigger, TriggerKind,
@@ -167,6 +167,6 @@ pub use trigger_model::{
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
     Condition, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope, Restriction,
-    Value,
+    Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

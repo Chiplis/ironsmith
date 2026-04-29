@@ -2344,11 +2344,11 @@ CardDefinition {
         CardPayload {
             name: "Mismatch Fixture".to_string(),
             parse_name: None,
-            oracle_text: "Destroy target creature an opponent controls.".to_string(),
-            raw_oracle_text: "Destroy target creature an opponent controls.".to_string(),
-            metadata_lines: vec!["Mana cost: {1}{B}".to_string(), "Type: Sorcery".to_string()],
+            oracle_text: "Activated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.".to_string(),
+            raw_oracle_text: "Activated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.".to_string(),
+            metadata_lines: vec!["Mana cost: {1}{W}".to_string(), "Type: Enchantment".to_string()],
             parse_input:
-                "Mana cost: {1}{B}\nType: Sorcery\nDestroy target creature an opponent controls."
+                "Mana cost: {1}{W}\nType: Enchantment\nActivated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana."
                     .to_string(),
             other_face_name: None,
             linked_face_layout: None,
