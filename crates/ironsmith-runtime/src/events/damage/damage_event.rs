@@ -7,6 +7,7 @@ use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType, RedirectValidTypes, RedirectableTarget};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
 
 /// A damage event that can be processed through the replacement effect system.
 #[derive(Debug, Clone)]
@@ -28,6 +29,8 @@ pub struct DamageEvent {
     /// This is used for partial-redirection effects that split one damage event
     /// into a redirected chunk plus a remainder to the original target.
     pub remainder: Option<(DamageTarget, u32)>,
+    /// Last-known information for an object that was dealt damage.
+    pub target_snapshot: Option<ObjectSnapshot>,
 }
 
 impl DamageEvent {
@@ -47,6 +50,7 @@ impl DamageEvent {
             is_unpreventable: false,
             cause,
             remainder: None,
+            target_snapshot: None,
         }
     }
 
@@ -66,6 +70,7 @@ impl DamageEvent {
             is_unpreventable: true,
             cause,
             remainder: None,
+            target_snapshot: None,
         }
     }
 
@@ -113,6 +118,14 @@ impl DamageEvent {
     pub fn with_remainder(&self, target: DamageTarget, amount: u32) -> Self {
         Self {
             remainder: Some((target, amount)),
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with last-known information for the damaged object.
+    pub fn with_target_snapshot(&self, snapshot: ObjectSnapshot) -> Self {
+        Self {
+            target_snapshot: Some(snapshot),
             ..self.clone()
         }
     }

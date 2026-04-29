@@ -1,6 +1,6 @@
 //! Put counters effect implementation.
 
-use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, Value};
+use crate::effect::{ChoiceCount, EffectOutcome, Value};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -115,7 +115,7 @@ impl EffectExecutor for PutCountersEffect {
 
         let mut outcome = EffectOutcome::aggregate(outcomes);
         if !affected_objects.is_empty() {
-            outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(affected_objects));
+            outcome = outcome.with_affected_objects_from_game(game, affected_objects);
         }
         Ok(outcome)
     }
@@ -154,7 +154,6 @@ impl EffectExecutor for PutCountersEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::effect::ExecutionFact;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
@@ -186,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn test_put_counters_emits_affected_objects_fact() {
+    fn test_put_counters_emits_affected_result_memory() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -200,11 +199,12 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("effect should resolve");
 
-        assert!(
-            result
-                .execution_facts()
-                .contains(&ExecutionFact::AffectedObjects(vec![target]))
-        );
+        assert_eq!(result.affected_objects(), Some([target].as_slice()));
+        let memory = result
+            .affected_object_memory()
+            .expect("counter target memory should be recorded");
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory[0].object_id, target);
         assert_eq!(game.counter_count(target, CounterType::PlusOnePlusOne), 2);
         assert_eq!(result.events.len(), 1);
     }

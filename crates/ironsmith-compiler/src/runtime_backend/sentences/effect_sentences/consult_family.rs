@@ -29,6 +29,7 @@ use crate::cards::builders::{
     TargetAst,
 };
 use crate::effect::{EventValueSpec, Value};
+use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
@@ -132,7 +133,10 @@ pub(crate) fn parse_consult_traversal_sentence(
         return Ok(None);
     }
 
-    let until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
+    let mut until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
+    if let Some(comma_idx) = until_tokens.iter().position(|token| token.is_comma()) {
+        until_tokens = trim_commas(&until_tokens[..comma_idx]);
+    }
     let (stop_rule, filter) = if let Some((stop_rule, filter)) =
         parse_passive_consult_stop_rule_and_filter(&until_tokens, mode)?
     {
@@ -154,7 +158,6 @@ pub(crate) fn parse_consult_traversal_sentence(
         if filter_tokens.is_empty() {
             return Ok(None);
         }
-
         let stop_rule = if TokenWordView::new(&filter_tokens)
             .word_refs()
             .as_slice()
@@ -185,9 +188,23 @@ pub(crate) fn parse_consult_traversal_sentence(
         } else {
             match super::super::object_filters::parse_object_filter(&filter_tokens, false) {
                 Ok(filter) => filter,
-                Err(_) => return Ok(None),
+                Err(_) => {
+                    let Some(stripped_filter_tokens) =
+                        without_consult_relative_mana_value_clause(&filter_tokens)
+                    else {
+                        return Ok(None);
+                    };
+                    match super::super::object_filters::parse_object_filter(
+                        &stripped_filter_tokens,
+                        false,
+                    ) {
+                        Ok(filter) => filter,
+                        Err(_) => return Ok(None),
+                    }
+                }
             }
         };
+        apply_consult_relative_mana_value_filter(&filter_tokens, &mut filter);
         normalize_search_library_filter(&mut filter);
         filter.zone = None;
         (stop_rule, filter)
@@ -217,6 +234,46 @@ pub(crate) fn parse_consult_traversal_sentence(
         all_tag,
         match_tag,
     }))
+}
+
+fn apply_consult_relative_mana_value_filter(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
+    let has_lesser_mana_value = tokens
+        .iter()
+        .any(|token| token.is_word("lesser") || token.is_word("less"))
+        && tokens.iter().any(|token| token.is_word("mana"))
+        && tokens.iter().any(|token| token.is_word("value"));
+    if !has_lesser_mana_value {
+        return;
+    }
+    if filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            TaggedOpbjectRelation::ManaValueLtTagged
+        )
+    }) {
+        return;
+    }
+
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("sacrificed_0"),
+        relation: TaggedOpbjectRelation::ManaValueLtTagged,
+    });
+}
+
+fn without_consult_relative_mana_value_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let start = tokens.iter().position(|token| token.is_word("with"))?;
+    let tail = &tokens[start..];
+    let has_lesser_mana_value = tail
+        .iter()
+        .any(|token| token.is_word("lesser") || token.is_word("less"))
+        && tail.iter().any(|token| token.is_word("mana"))
+        && tail.iter().any(|token| token.is_word("value"));
+    if !has_lesser_mana_value {
+        return None;
+    }
+    Some(trim_commas(&tokens[..start]).to_vec())
 }
 
 fn parse_passive_consult_stop_rule_and_filter(
@@ -275,6 +332,7 @@ fn parse_passive_consult_stop_rule_and_filter(
         }
     };
     normalize_search_library_filter(&mut filter);
+    apply_consult_relative_mana_value_filter(&filter_tokens, &mut filter);
     filter.zone = None;
 
     Ok(Some((

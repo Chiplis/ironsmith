@@ -70,6 +70,13 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_if_enters_with_additional_counter_sentence
     ),
     primitive!(
+        "if-any-tagged-cards-share-card-type-with-triggering-spell",
+        55,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("if")],
+        parse_if_any_tagged_cards_share_card_type_with_triggering_spell
+    ),
+    primitive!(
         "put-onto-battlefield-with-additional-counters",
         60,
         PreDiagnostic,

@@ -1953,6 +1953,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }

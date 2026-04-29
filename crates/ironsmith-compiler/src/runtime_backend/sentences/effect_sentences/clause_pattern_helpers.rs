@@ -1519,6 +1519,13 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::subject_verb_amass(subtype, amount)));
     }
 
+    if matches!(clause_words.as_slice(), ["forage"] | ["forages"]) {
+        return Ok(Some(EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::Forage,
+            1,
+        )));
+    }
+
     if clause_words.first() == Some(&"roll") && word_slice_contains(&clause_words, "dice") {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll-dice clause (clause: '{}')",

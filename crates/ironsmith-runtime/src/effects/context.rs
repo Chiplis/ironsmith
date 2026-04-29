@@ -129,6 +129,28 @@ pub struct CombatExecutionContext {
     pub chosen_player: Option<PlayerId>,
 }
 
+/// Triggering combat-damage context available while resolving combat-damage triggers.
+#[derive(Debug, Clone)]
+pub struct CombatDamageEventContext {
+    pub source: ObjectId,
+    pub source_controller: Option<PlayerId>,
+    pub source_snapshot: Option<ObjectSnapshot>,
+    pub damaged_player: Option<PlayerId>,
+    pub damaged_object: Option<ObjectSnapshot>,
+    pub is_combat: bool,
+    pub amount: u32,
+}
+
+/// Block-declaration context available while resolving block-related triggers.
+#[derive(Debug, Clone)]
+pub struct BlockEventContext {
+    pub attacker: ObjectId,
+    pub attacker_snapshot: Option<ObjectSnapshot>,
+    pub blockers: Vec<ObjectId>,
+    pub blocker_snapshots: Vec<ObjectSnapshot>,
+    pub became_blocked: bool,
+}
+
 /// Mana-choice restrictions scoped to the current resolution path.
 #[derive(Debug, Clone, Default)]
 pub struct ManaExecutionContext {
@@ -861,6 +883,7 @@ impl<'a> ExecutionContext<'a> {
             })
             .collect::<Vec<_>>();
         let mut tagged_objects = self.tagged_objects.clone();
+        let mut tagged_players = self.tagged_players.clone();
         let source_exiled = game
             .get_exiled_with_source_links(self.source)
             .iter()
@@ -887,6 +910,48 @@ impl<'a> ExecutionContext<'a> {
                 .or_default()
                 .push(snapshot);
         }
+        if let Some(combat_damage) = self.combat_damage_event_context(game) {
+            if let Some(snapshot) = combat_damage.source_snapshot {
+                tagged_objects
+                    .entry(TagKey::from("damage_source"))
+                    .or_default()
+                    .push(snapshot);
+            }
+            if let Some(snapshot) = combat_damage.damaged_object {
+                target_objects.push(snapshot.clone());
+                tagged_objects
+                    .entry(TagKey::from("damaged"))
+                    .or_default()
+                    .push(snapshot);
+            }
+            if let Some(player) = combat_damage.damaged_player {
+                tagged_players
+                    .entry(TagKey::from("damaged_player"))
+                    .or_default()
+                    .push(player);
+            }
+        }
+        if let Some(block_context) = self.block_event_context(game) {
+            if let Some(snapshot) = block_context.attacker_snapshot {
+                target_objects.push(snapshot.clone());
+                tagged_objects
+                    .entry(TagKey::from("blocked"))
+                    .or_default()
+                    .push(snapshot.clone());
+                if block_context.became_blocked {
+                    tagged_objects
+                        .entry(TagKey::from("became_blocked"))
+                        .or_default()
+                        .push(snapshot);
+                }
+            }
+            if !block_context.blocker_snapshots.is_empty() {
+                tagged_objects
+                    .entry(TagKey::from("blocking"))
+                    .or_default()
+                    .extend(block_context.blocker_snapshots);
+            }
+        }
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
             .with_iterated_player(self.iteration.iterated_player)
@@ -899,7 +964,7 @@ impl<'a> ExecutionContext<'a> {
             .with_target_players(target_players)
             .with_target_objects(target_objects)
             .with_tagged_objects(&tagged_objects)
-            .with_tagged_players(&self.tagged_players);
+            .with_tagged_players(&tagged_players);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
         }
@@ -908,8 +973,263 @@ impl<'a> ExecutionContext<'a> {
         }
         filter_ctx
     }
+
+    pub fn combat_damage_event_context(
+        &self,
+        game: &GameState,
+    ) -> Option<CombatDamageEventContext> {
+        let triggering_event = self.triggering_event.as_ref()?;
+        let damage = triggering_event.downcast::<crate::events::DamageEvent>()?;
+        if !damage.is_combat {
+            return None;
+        }
+        let source_snapshot = triggering_event.source_snapshot().cloned().or_else(|| {
+            game.object(damage.source)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+        });
+        let source_controller = game
+            .object(damage.source)
+            .map(|obj| game.controller_of(obj))
+            .or_else(|| source_snapshot.as_ref().map(|snapshot| snapshot.controller));
+        let (damaged_player, damaged_object) = match damage.target {
+            crate::events::DamageTarget::Player(player) => (Some(player), None),
+            crate::events::DamageTarget::Object(object_id) => {
+                let snapshot = damage.target_snapshot.clone().or_else(|| {
+                    game.object(object_id).map(|obj| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    })
+                });
+                (None, snapshot)
+            }
+        };
+        Some(CombatDamageEventContext {
+            source: damage.source,
+            source_controller,
+            source_snapshot,
+            damaged_player,
+            damaged_object,
+            is_combat: damage.is_combat,
+            amount: damage.amount,
+        })
+    }
+
+    pub fn block_event_context(&self, game: &GameState) -> Option<BlockEventContext> {
+        let triggering_event = self.triggering_event.as_ref()?;
+        if let Some(blocked) =
+            triggering_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
+        {
+            let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
+                game.object(blocked.attacker).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                })
+            });
+            let blocker_snapshot = blocked.blocker_snapshot.clone().or_else(|| {
+                game.object(blocked.blocker).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                })
+            });
+            return Some(BlockEventContext {
+                attacker: blocked.attacker,
+                attacker_snapshot,
+                blockers: vec![blocked.blocker],
+                blocker_snapshots: blocker_snapshot.into_iter().collect(),
+                became_blocked: false,
+            });
+        }
+        if let Some(blocked) =
+            triggering_event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
+        {
+            let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
+                game.object(blocked.attacker).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                })
+            });
+            let blocker_snapshots = if blocked.blocker_snapshots.is_empty() {
+                blocked
+                    .blockers
+                    .iter()
+                    .filter_map(|blocker| {
+                        game.object(*blocker).map(|obj| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                        })
+                    })
+                    .collect()
+            } else {
+                blocked.blocker_snapshots.clone()
+            };
+            return Some(BlockEventContext {
+                attacker: blocked.attacker,
+                attacker_snapshot,
+                blockers: blocked.blockers.clone(),
+                blocker_snapshots,
+                became_blocked: true,
+            });
+        }
+        None
+    }
 }
 
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::cause::EventCause;
+    use crate::events::{DamageEvent, DamageTarget};
+    use crate::ids::CardId;
+    use crate::provenance::ProvNodeId;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    #[test]
+    fn combat_damage_event_context_exposes_source_player_and_amount() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Attacker", alice);
+
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                source,
+                DamageTarget::Player(bob),
+                3,
+                true,
+                EventCause::combat_damage(source),
+            ),
+            ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
+
+        let combat = ctx
+            .combat_damage_event_context(&game)
+            .expect("combat damage context");
+        assert_eq!(combat.source, source);
+        assert_eq!(combat.source_controller, Some(alice));
+        assert_eq!(combat.damaged_player, Some(bob));
+        assert_eq!(combat.amount, 3);
+        assert!(combat.is_combat);
+
+        let filter_ctx = ctx.filter_context(&game);
+        assert_eq!(
+            filter_ctx
+                .tagged_players
+                .get(&TagKey::from("damaged_player"))
+                .cloned()
+                .unwrap_or_default(),
+            vec![bob]
+        );
+        assert!(
+            filter_ctx
+                .tagged_objects
+                .get(&TagKey::from("damage_source"))
+                .is_some_and(|snapshots| snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == source))
+        );
+    }
+
+    #[test]
+    fn combat_damage_event_context_exposes_damaged_object_snapshot() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Attacker", alice);
+        let damaged = create_creature(&mut game, "Blocker", bob);
+        let damaged_snapshot = game
+            .object(damaged)
+            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, &game))
+            .expect("damaged object snapshot");
+
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                source,
+                DamageTarget::Object(damaged),
+                2,
+                true,
+                EventCause::combat_damage(source),
+            )
+            .with_target_snapshot(damaged_snapshot),
+            ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
+
+        let combat = ctx
+            .combat_damage_event_context(&game)
+            .expect("combat damage context");
+        assert_eq!(
+            combat
+                .damaged_object
+                .as_ref()
+                .map(|snapshot| snapshot.object_id),
+            Some(damaged)
+        );
+
+        let filter_ctx = ctx.filter_context(&game);
+        assert!(
+            filter_ctx
+                .tagged_objects
+                .get(&TagKey::from("damaged"))
+                .is_some_and(|snapshots| snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == damaged))
+        );
+        assert!(
+            filter_ctx
+                .target_objects
+                .iter()
+                .any(|snapshot| snapshot.object_id == damaged)
+        );
+    }
+
+    #[test]
+    fn block_event_context_tags_blocked_and_blocking_objects() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_creature(&mut game, "Attacker", alice);
+        let blocker = create_creature(&mut game, "Blocker", bob);
+        let attacker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(attacker).unwrap(),
+            &game,
+        );
+        let blocker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(blocker).unwrap(),
+            &game,
+        );
+        let event = crate::triggers::TriggerEvent::new(
+            crate::events::combat::CreatureBecameBlockedEvent::with_target_and_blockers(
+                attacker,
+                vec![blocker],
+                None,
+                Some(attacker_snapshot),
+                vec![blocker_snapshot],
+            ),
+            ProvNodeId::default(),
+        );
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let ctx = ExecutionContext::new(attacker, alice, &mut dm).with_triggering_event(event);
+
+        let filter_ctx = ctx.filter_context(&game);
+        assert_eq!(
+            filter_ctx.tagged_objects[&TagKey::from("became_blocked")][0].object_id,
+            attacker
+        );
+        assert_eq!(
+            filter_ctx.tagged_objects[&TagKey::from("blocking")][0].object_id,
+            blocker
+        );
+    }
+}

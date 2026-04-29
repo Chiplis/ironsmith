@@ -588,6 +588,10 @@ pub(crate) enum SubjectVerbActionAst {
     Investigate {
         count: Value,
     },
+    EmitKeywordAction {
+        action: crate::events::KeywordActionKind,
+        amount: u32,
+    },
     Amass {
         subtype: Option<Subtype>,
         amount: u32,
@@ -1510,6 +1514,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Surveil { count } => f.debug_tuple("Surveil").field(count).finish(),
             Self::Proliferate { count } => f.debug_tuple("Proliferate").field(count).finish(),
             Self::Investigate { count } => f.debug_tuple("Investigate").field(count).finish(),
+            Self::EmitKeywordAction { action, amount } => f
+                .debug_struct("EmitKeywordAction")
+                .field("action", action)
+                .field("amount", amount)
+                .finish(),
             Self::Amass { subtype, amount } => f
                 .debug_struct("Amass")
                 .field("subtype", subtype)
@@ -4184,6 +4193,17 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::Investigate { count },
+        )
+    }
+
+    pub(crate) fn subject_verb_emit_keyword_action(
+        action: crate::events::KeywordActionKind,
+        amount: u32,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::EmitKeywordAction { action, amount },
         )
     }
 

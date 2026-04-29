@@ -4097,6 +4097,25 @@ fn rewrite_lexed_permission_helpers_preserve_any_color_cast_suffix() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_tail_lifetime() {
+    let tokens = lex_line(
+        "cast that card for as long as it remains exiled and mana of any type can be spent to cast that spell",
+        0,
+    )
+    .expect("rewrite lexer should classify while-exiled tagged cast permission");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("while-exiled tagged permission should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
     let text = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.";
     let tokens =
@@ -4572,6 +4591,97 @@ fn dynamic_top_library_count_lowers_to_prior_effect_metric() {
 }
 
 #[test]
+fn scoped_revealed_this_way_choice_does_not_default_to_battlefield() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scoped Reveal Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top eight cards of your library. Choose any number of artifact and/or land cards revealed this way.",
+        )
+        .expect("scoped revealed-card choice should parse");
+
+    let rendered = format!("{def:#?}");
+    let compact = rendered.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("tag:TagKey(\"__sentence_helper_revealed")
+            && compact.contains("relation:IsTaggedObject")
+            && compact.contains("zone:None")
+            && compact.contains("additional_zones:[Hand,Graveyard,Library,Exile"),
+        "expected scoped revealed-card choice to stay tied to the revealed collection across hidden zones, got {rendered}"
+    );
+}
+
+#[test]
+fn bare_exiled_cards_in_sequence_bind_to_recent_exiled_result() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Recent Exiled Cards Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy X target artifacts and/or creatures. For each permanent destroyed this way, its controller reveals cards from the top of their library until an artifact or creature card is revealed and exiles that card. Those players put the exiled cards onto the battlefield, then shuffle.",
+        )
+        .expect("recent exiled-cards sequence should parse");
+
+    let rendered = format!("{def:#?}");
+    assert!(
+        rendered.contains("__sentence_helper_revealed") && !rendered.contains("__source_exiled__"),
+        "expected bare exiled cards to bind to the recent reveal/exile result set, got {rendered}"
+    );
+}
+
+#[test]
+fn result_metric_dynamic_token_count_uses_prior_search_exile_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Myr Incubator Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{6}, {T}, Sacrifice this artifact: Search your library for any number of artifact cards, exile them, then create that many 1/1 colorless Myr artifact creature tokens. Then shuffle.",
+        )
+        .expect("Myr Incubator-style dynamic token count should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("SequenceEffect")
+            && debug.contains("EffectValue")
+            && debug.contains("CreateTokenEffect"),
+        "expected token count to reference the prior search/exile effect result, got {debug}"
+    );
+}
+
+#[test]
+fn optional_cost_sacrifice_copy_count_uses_times_paid_runtime_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Plumb Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nYou draw a card and you lose 1 life.",
+        )
+        .expect("Plumb-style optional-cost copy count should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CopySpellEffect")
+            && debug.contains("TimesPaidLabel")
+            && debug.contains("ThisSpellPaidLabel"),
+        "expected copy count to use the optional sacrifice cost's runtime payment count, got {debug}"
+    );
+}
+
+#[test]
+fn exile_cost_count_can_drive_dynamic_token_power_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exile Cost Token Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{1}{B}, Exile one or more creature cards from your graveyard: Create a tapped X/X black Zombie Horror creature token, where X is twice the number of cards exiled this way.",
+        )
+        .expect("exile-cost X/X token should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("exile_cost_0")
+            && debug.contains("SetBasePowerToughnessEffect")
+            && debug.contains("CountScaled"),
+        "expected token power/toughness to count cards exiled as an activation cost, got {debug}"
+    );
+}
+
+#[test]
 fn life_lost_this_way_lowers_to_prior_effect_metric() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life Lost Variant")
         .card_types(vec![CardType::Sorcery])
@@ -4761,6 +4871,20 @@ fn rewrite_search_library_trailing_life_followup_scan_returns_life_clause_only()
         "you gain 3 life.",
         "trailing-life helper should strip the leading and-marker"
     );
+}
+
+#[test]
+fn rewrite_search_library_trailing_create_followup_preserves_create_before_shuffle() {
+    let text = "Search your library for any number of artifact cards, exile them, then create that many 1/1 colorless Myr artifact creature tokens. Then shuffle.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify search-create text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("search-create sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("SearchLibrary"), "{debug}");
+    assert!(debug.contains("CreateTokenWithMods"), "{debug}");
+    assert!(debug.contains("ShuffleLibrary"), "{debug}");
 }
 
 #[test]
@@ -7436,6 +7560,24 @@ fn rewrite_lexed_swindlers_scheme_trigger_keeps_opponent_hand_reveal_and_followu
 }
 
 #[test]
+fn rewrite_lexed_gandalf_trigger_keeps_each_opponent_reveal_in_effect_body() {
+    let text = "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify Gandalf trigger");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("Gandalf trigger line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("SpellCast"), "{debug}");
+    assert!(debug.contains("ForEachOpponent"), "{debug}");
+    assert!(debug.contains("RevealTop"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("SharesCardType"), "{debug}");
+    assert!(debug.contains("CopySpell"), "{debug}");
+    assert!(debug.contains("if_false"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_effect_sentence_supports_labeled_spent_to_cast_conditional() {
     let text =
         "Adamant — If at least three blue mana was spent to cast this spell, create a Food token.";
@@ -8209,6 +8351,103 @@ fn rewrite_lexed_effect_sequence_parses_consult_hand_bottom_family() {
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_optional_consult_battlefield_graveyard_family() {
+    let text = "You may reveal cards from the top of your library until you reveal a land card. If you do, put that card onto the battlefield and put all other cards revealed this way into your graveyard.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify optional consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(!debug.contains("RevealTop"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_parses_inline_consult_battlefield_bottom_family() {
+    let text = "Reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value, put it onto the battlefield, then put the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify inline consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("ManaValueLtTagged"), "{debug}");
+    assert!(debug.contains("sacrificed_0"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+    assert!(debug.contains("Random"), "{debug}");
+    assert!(!debug.contains("RevealTop"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_inline_consult_battlefield_bottom_preserves_any_order() {
+    let text = "Reveal cards from the top of your library until you reveal a creature card, put it onto the battlefield, then put the rest on the bottom of your library in any order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify inline consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+    assert!(debug.contains("ChooserChooses"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_prefixed_inline_consult_battlefield_bottom_preserves_remainder() {
+    let text = "If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value, put it onto the battlefield, then put the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify prefixed consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("ManaValueLtTagged"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+    assert!(debug.contains("Random"), "{debug}");
+    assert!(!debug.contains("RevealTop"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_reveal_top_count_handles_their_library() {
+    let text = "That player reveals the top two cards of their library. You choose one of those cards and put it into their graveyard.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify reveal-top-count text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(!debug.contains("RevealTop"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_consult_defers_dynamic_mana_value_gate_without_reveal_top_fallback() {
+    let text = "Target opponent reveals cards from the top of their library until they reveal a card with mana value equal to 1 plus the exiled spell's mana value. Exile that card, then that player shuffles. You may cast that exiled card without paying its mana cost.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify mana-value consult text");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("EqualExpr"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(!debug.contains("RevealTop"), "{debug}");
 }
 
 #[test]

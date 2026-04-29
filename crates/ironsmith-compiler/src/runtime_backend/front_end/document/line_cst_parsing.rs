@@ -98,6 +98,12 @@ pub(super) fn parse_triggered_line_cst(
         if inside_quotes || separator.kind != TokenKind::Comma || separator_idx <= 1 {
             continue;
         }
+        if tokens_without_cap[1..separator_idx]
+            .iter()
+            .any(|token| token.kind == TokenKind::Period)
+        {
+            continue;
+        }
 
         let probe = probe_triggered_split(
             &tokens_without_cap[1..separator_idx],

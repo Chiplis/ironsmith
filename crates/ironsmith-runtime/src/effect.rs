@@ -193,6 +193,8 @@ pub enum ExecutionFact {
     AffectedObjects(Vec<ObjectId>),
     ChosenObjectMemory(Vec<OutcomeObjectMemory>),
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
+    PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
+    PlayerCounts(Vec<(PlayerId, i32)>),
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
 }
@@ -247,6 +249,13 @@ pub struct EffectOutcome {
 }
 
 impl EffectOutcome {
+    fn object_memory_from_ids(game: &GameState, objects: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
+        objects
+            .iter()
+            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+            .collect()
+    }
+
     fn is_meaningful(status: OutcomeStatus, value: &OutcomeValue) -> bool {
         status != OutcomeStatus::Succeeded || !matches!(value, OutcomeValue::None)
     }
@@ -313,7 +322,59 @@ impl EffectOutcome {
         }
 
         let (status, value) = summary_fn(&results);
-        Self::with_details(status, value, all_events, all_execution_facts)
+        Self::with_details(
+            status,
+            value,
+            all_events,
+            Self::merge_execution_facts(all_execution_facts),
+        )
+    }
+
+    fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
+        let mut other = Vec::new();
+        let mut chosen_objects = Vec::new();
+        let mut affected_objects = Vec::new();
+        let mut chosen_memory = Vec::new();
+        let mut affected_memory = Vec::new();
+        let mut player_counts = Vec::new();
+        let mut player_affected_memory = Vec::new();
+
+        for fact in facts {
+            match fact {
+                ExecutionFact::ChosenObjects(ids) => chosen_objects.extend(ids),
+                ExecutionFact::AffectedObjects(ids) => affected_objects.extend(ids),
+                ExecutionFact::ChosenObjectMemory(memory) => chosen_memory.extend(memory),
+                ExecutionFact::AffectedObjectMemory(memory) => affected_memory.extend(memory),
+                ExecutionFact::PlayerCounts(counts) => player_counts.extend(counts),
+                ExecutionFact::PlayerAffectedObjectMemory(partitions) => {
+                    player_affected_memory.extend(partitions)
+                }
+                fact => other.push(fact),
+            }
+        }
+
+        if !chosen_objects.is_empty() {
+            other.push(ExecutionFact::ChosenObjects(chosen_objects));
+        }
+        if !affected_objects.is_empty() {
+            other.push(ExecutionFact::AffectedObjects(affected_objects));
+        }
+        if !chosen_memory.is_empty() {
+            other.push(ExecutionFact::ChosenObjectMemory(chosen_memory));
+        }
+        if !affected_memory.is_empty() {
+            other.push(ExecutionFact::AffectedObjectMemory(affected_memory));
+        }
+        if !player_counts.is_empty() {
+            other.push(ExecutionFact::PlayerCounts(player_counts));
+        }
+        if !player_affected_memory.is_empty() {
+            other.push(ExecutionFact::PlayerAffectedObjectMemory(
+                player_affected_memory,
+            ));
+        }
+
+        other
     }
 
     /// Create an outcome from just a status (no payload, no events).
@@ -449,6 +510,31 @@ impl EffectOutcome {
         }
     }
 
+    /// Record affected object ids and their current object memory in one step.
+    ///
+    /// Effects that move objects out of their old zone should capture explicit
+    /// `OutcomeObjectMemory` before the move instead. This helper is for actions
+    /// whose affected objects are still available after resolution, such as token
+    /// creation, damage to permanents, and counter changes.
+    pub fn with_affected_objects_from_game(self, game: &GameState, objects: Vec<ObjectId>) -> Self {
+        if objects.is_empty() {
+            return self;
+        }
+        let memory = Self::object_memory_from_ids(game, &objects);
+        self.with_affected_objects(objects)
+            .with_affected_object_memory(memory)
+    }
+
+    /// Record chosen object ids and their current object memory in one step.
+    pub fn with_chosen_objects_from_game(self, game: &GameState, objects: Vec<ObjectId>) -> Self {
+        if objects.is_empty() {
+            return self;
+        }
+        let memory = Self::object_memory_from_ids(game, &objects);
+        self.with_execution_fact(ExecutionFact::ChosenObjects(objects))
+            .with_chosen_object_memory(memory)
+    }
+
     /// Record chosen object last-known information for later dynamic values.
     pub fn with_chosen_object_memory(self, memory: Vec<OutcomeObjectMemory>) -> Self {
         if memory.is_empty() {
@@ -464,6 +550,27 @@ impl EffectOutcome {
             self
         } else {
             self.with_execution_fact(ExecutionFact::AffectedObjectMemory(memory))
+        }
+    }
+
+    /// Record per-player counts produced by an iterating effect.
+    pub fn with_player_counts(self, counts: Vec<(PlayerId, i32)>) -> Self {
+        if counts.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::PlayerCounts(counts))
+        }
+    }
+
+    /// Record affected object memory partitioned by the player whose iteration produced it.
+    pub fn with_player_affected_object_memory(
+        self,
+        partitions: Vec<(PlayerId, Vec<OutcomeObjectMemory>)>,
+    ) -> Self {
+        if partitions.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::PlayerAffectedObjectMemory(partitions))
         }
     }
 
@@ -546,6 +653,22 @@ impl EffectOutcome {
     pub fn affected_object_memory(&self) -> Option<&[OutcomeObjectMemory]> {
         self.execution_facts.iter().find_map(|fact| match fact {
             ExecutionFact::AffectedObjectMemory(memory) => Some(memory.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access per-player count partitions captured during execution.
+    pub fn player_counts(&self) -> Option<&[(PlayerId, i32)]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::PlayerCounts(counts) => Some(counts.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Access affected object memory partitioned by iterated player.
+    pub fn player_affected_object_memory(&self) -> Option<&[(PlayerId, Vec<OutcomeObjectMemory>)]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::PlayerAffectedObjectMemory(memory) => Some(memory.as_slice()),
             _ => None,
         })
     }
@@ -950,6 +1073,15 @@ impl RestrictionExt for Restriction {
                             .entry(obj_id)
                             .or_default();
                         required.extend(attacker_ids.iter().copied());
+                    }
+                }
+            }
+            Restriction::MustBeBlocked(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.must_be_blocked.insert(obj_id);
                     }
                 }
             }

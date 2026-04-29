@@ -42,14 +42,15 @@ impl EffectExecutor for TagTriggeringDamageTargetEffect {
         let DamageTarget::Object(target_id) = damage_event.target else {
             return Ok(EffectOutcome::count(0));
         };
-        let Some(target_obj) = game.object(target_id) else {
+        let snapshot = damage_event.target_snapshot.clone().or_else(|| {
+            game.object(target_id)
+                .map(|target_obj| ObjectSnapshot::from_object(target_obj, game))
+        });
+        let Some(snapshot) = snapshot else {
             return Ok(EffectOutcome::count(0));
         };
 
-        ctx.tag_object(
-            self.tag.clone(),
-            ObjectSnapshot::from_object(target_obj, game),
-        );
+        ctx.tag_object(self.tag.clone(), snapshot);
         Ok(EffectOutcome::count(1))
     }
 }

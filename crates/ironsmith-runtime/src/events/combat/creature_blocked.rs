@@ -16,12 +16,35 @@ pub struct CreatureBlockedEvent {
     pub blocker: ObjectId,
     /// The creature being blocked
     pub attacker: ObjectId,
+    /// Snapshot of the blocking creature at declaration time.
+    pub blocker_snapshot: Option<ObjectSnapshot>,
+    /// Snapshot of the attacking creature at declaration time.
+    pub attacker_snapshot: Option<ObjectSnapshot>,
 }
 
 impl CreatureBlockedEvent {
     /// Create a new creature blocked event.
     pub fn new(blocker: ObjectId, attacker: ObjectId) -> Self {
-        Self { blocker, attacker }
+        Self {
+            blocker,
+            attacker,
+            blocker_snapshot: None,
+            attacker_snapshot: None,
+        }
+    }
+
+    pub fn with_snapshots(
+        blocker: ObjectId,
+        attacker: ObjectId,
+        blocker_snapshot: ObjectSnapshot,
+        attacker_snapshot: ObjectSnapshot,
+    ) -> Self {
+        Self {
+            blocker,
+            attacker,
+            blocker_snapshot: Some(blocker_snapshot),
+            attacker_snapshot: Some(attacker_snapshot),
+        }
     }
 }
 
@@ -61,7 +84,7 @@ impl GameEventType for CreatureBlockedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.blocker_snapshot.as_ref()
     }
 }
 

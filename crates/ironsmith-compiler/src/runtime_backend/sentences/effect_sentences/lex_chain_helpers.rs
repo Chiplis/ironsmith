@@ -893,6 +893,17 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                             DEAL_DAMAGE_EQUAL_TO_PREFIXES,
                         )
                         .is_some();
+                let allow_deal_damage_equal_total_mana_value_followup =
+                    !starts_with_for_each_player_or_opponent
+                        && has_back_ref
+                        && after_words
+                            .iter()
+                            .any(|word| matches!(*word, "deal" | "deals"))
+                        && after_words.iter().any(|word| *word == "damage")
+                        && after_words.iter().any(|word| *word == "equal")
+                        && after_words.iter().any(|word| *word == "total")
+                        && after_words.iter().any(|word| *word == "mana")
+                        && after_words.iter().any(|word| *word == "value");
                 let allow_for_each_damage_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, GENERIC_FOR_EACH_PREFIXES)
                         .is_some()
@@ -923,6 +934,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || has_effect_head && allow_that_many_followup
                     || has_effect_head && allow_gain_or_lose_life_equal_followup
                     || has_effect_head && allow_deal_damage_equal_power_followup
+                    || has_effect_head && allow_deal_damage_equal_total_mana_value_followup
                     || has_effect_head && allow_for_each_damage_followup
                     || has_effect_head && allow_return_with_counter_followup
                     || has_effect_head && allow_put_into_hand_followup

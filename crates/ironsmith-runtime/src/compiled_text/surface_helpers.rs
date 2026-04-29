@@ -10,6 +10,7 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
         .to_string();
     normalized = normalized.replace('\u{00a0}', " ");
     normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized = normalize_top_card_exile_imperative(&normalized);
     if normalized
         .chars()
         .next()
@@ -17,6 +18,7 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     {
         normalized = capitalize_first(&normalized);
     }
+    normalized = capitalize_sentence_boundaries(&normalized);
     normalized = replace_standalone_phrase(&normalized, "a artifact", "an artifact");
     normalized = replace_standalone_phrase(&normalized, "a enchantment", "an enchantment");
     normalized = replace_standalone_phrase(&normalized, "a Aura", "an Aura");
@@ -41,6 +43,48 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     {
         normalized.push('.');
     }
+    normalized
+}
+
+pub(super) fn capitalize_sentence_boundaries(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut capitalize_next = false;
+
+    for ch in input.chars() {
+        if capitalize_next && ch.is_ascii_lowercase() {
+            output.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+            continue;
+        }
+
+        output.push(ch);
+
+        if matches!(ch, '.' | '!' | '?') {
+            capitalize_next = true;
+        } else if capitalize_next && !ch.is_whitespace() && ch != '"' && ch != '\'' {
+            capitalize_next = false;
+        }
+    }
+
+    output
+}
+
+pub(super) fn normalize_top_card_exile_imperative(input: &str) -> String {
+    let mut normalized = input
+        .replace("You exile the top card", "Exile the top card")
+        .replace("you exile the top card", "exile the top card")
+        .replace("You exile cards from the top", "Exile cards from the top")
+        .replace("you exile cards from the top", "exile cards from the top");
+
+    for (from, to) in [
+        (": exile the top card", ": Exile the top card"),
+        (": exile cards from the top", ": Exile cards from the top"),
+        (". exile the top card", ". Exile the top card"),
+        (". exile cards from the top", ". Exile cards from the top"),
+    ] {
+        normalized = normalized.replace(from, to);
+    }
+
     normalized
 }
 
@@ -176,4 +220,41 @@ pub(super) fn normalize_granted_activated_ability_clause(text: &str) -> Option<S
 
 pub(super) fn normalize_granted_beginning_trigger_clause(_text: &str) -> Option<String> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sentence_surface_capitalizes_sentence_boundaries() {
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "exile the top card of your library. you may play that card this turn",
+            ),
+            "Exile the top card of your library. You may play that card this turn."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "players can't cast noncreature spells this turn. exile this spell",
+            ),
+            "Players can't cast noncreature spells this turn. Exile this spell."
+        );
+    }
+
+    #[test]
+    fn sentence_surface_uses_top_card_exile_imperative() {
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "whenever this creature attacks, you exile the top card of your library. you may play that card this turn",
+            ),
+            "Whenever this creature attacks, exile the top card of your library. You may play that card this turn."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "{2}{R}: you exile cards from the top of your library until you exile a nonland card",
+            ),
+            "{2}{R}: Exile cards from the top of your library until you exile a nonland card."
+        );
+    }
 }

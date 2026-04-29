@@ -607,7 +607,12 @@ pub(crate) fn parse_reveal(
         let after_words = crate::runtime_backend::token_word_refs(after_count);
         let top_library_tail = matches!(
             after_words.get(..4),
-            Some(["card", "of", "your", "library"] | ["cards", "of", "your", "library"])
+            Some(
+                ["card", "of", "your", "library"]
+                    | ["cards", "of", "your", "library"]
+                    | ["card", "of", "their", "library"]
+                    | ["cards", "of", "their", "library"]
+            )
         );
         if top_library_tail {
             if count == Value::X

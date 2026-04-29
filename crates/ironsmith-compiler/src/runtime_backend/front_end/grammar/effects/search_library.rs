@@ -597,6 +597,57 @@ pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
     starts_with_life_clause.then_some(trailing_tokens)
 }
 
+pub(crate) fn find_search_library_trailing_create_followup_lexed<'a>(
+    search_tokens: &'a [OwnedLexToken],
+    start_idx: usize,
+) -> Option<&'a [OwnedLexToken]> {
+    let marker_idx = find_search_library_marker_lexed(
+        &search_tokens[start_idx..],
+        |input: &mut LexStream<'_>| {
+            let _ = (
+                alt((
+                    super::super::primitives::kw("then"),
+                    super::super::primitives::kw("and"),
+                )),
+                super::super::primitives::kw("create"),
+            )
+                .parse_next(input)?;
+            Ok(())
+        },
+    )?;
+    let mut trailing_start = start_idx + marker_idx;
+    if search_tokens
+        .get(trailing_start)
+        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
+    {
+        trailing_start += 1;
+    }
+    let mut trailing_end = search_tokens.len();
+    if let Some(shuffle_idx) = find_search_library_marker_lexed(
+        &search_tokens[trailing_start..],
+        search_library_shuffle_marker,
+    ) {
+        trailing_end = trailing_start + shuffle_idx;
+    }
+    while trailing_start < trailing_end && search_tokens[trailing_start].is_comma() {
+        trailing_start += 1;
+    }
+    while trailing_end > trailing_start {
+        let token = &search_tokens[trailing_end - 1];
+        if token.is_comma() || token.is_word("then") || token.is_word("and") {
+            trailing_end -= 1;
+            continue;
+        }
+        break;
+    }
+    let trailing_tokens = &search_tokens[trailing_start..trailing_end];
+    (!trailing_tokens.is_empty()
+        && trailing_tokens
+            .first()
+            .is_some_and(|token| token.is_word("create")))
+    .then_some(trailing_tokens)
+}
+
 pub(crate) fn derive_search_library_effect_routing_lexed(
     tokens: &[OwnedLexToken],
     search_tokens: &[OwnedLexToken],

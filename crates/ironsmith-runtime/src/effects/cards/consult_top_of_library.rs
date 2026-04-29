@@ -36,7 +36,8 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
         if result.exposed_object_ids.is_empty() {
             Ok(EffectOutcome::count(0))
         } else {
-            Ok(EffectOutcome::with_objects(result.exposed_object_ids))
+            let objects = result.exposed_object_ids.clone();
+            Ok(result.attach_to_outcome(EffectOutcome::with_objects(objects)))
         }
     }
 }

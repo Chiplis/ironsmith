@@ -256,6 +256,15 @@ pub(crate) fn resolve_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
+    if let Some(tag) = refs.known_last_object_tag()
+        && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+    {
+        for constraint in &mut resolved.tagged_constraints {
+            if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                constraint.tag = tag.clone();
+            }
+        }
+    }
     if !filter
         .tagged_constraints
         .iter()
@@ -427,6 +436,9 @@ pub(crate) fn resolve_restriction_it_tag(
                 resolve_it_tag(blockers, refs)?,
                 resolve_it_tag(attacker, refs)?,
             )
+        }
+        Restriction::MustBeBlocked(filter) => {
+            Restriction::must_be_blocked(resolve_it_tag(filter, refs)?)
         }
         Restriction::Untap(filter) => Restriction::untap(resolve_it_tag(filter, refs)?),
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),

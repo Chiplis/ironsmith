@@ -74,18 +74,35 @@ impl EffectExecutor for ForPlayersEffect {
         }
 
         let mut outcomes = Vec::new();
+        let mut player_counts = Vec::new();
+        let mut player_affected_memory = Vec::new();
 
         for player_id in players {
             ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                let start = outcomes.len();
                 // Execute all inner effects for this player
                 for effect in &self.effects {
                     outcomes.push(execute_effect(game, effect, ctx)?);
+                }
+                let count =
+                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
+                        .as_count()
+                        .unwrap_or(0);
+                player_counts.push((player_id, count));
+                let iteration_outcome =
+                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned());
+                if let Some(memory) = iteration_outcome.affected_object_memory()
+                    && !memory.is_empty()
+                {
+                    player_affected_memory.push((player_id, memory.to_vec()));
                 }
                 Ok::<(), ExecutionError>(())
             })?;
         }
 
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes)
+            .with_player_counts(player_counts)
+            .with_player_affected_object_memory(player_affected_memory))
     }
 }
 
@@ -115,5 +132,145 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).expect("alice").life, 19);
         assert_eq!(game.player(PlayerId::from_index(1)).expect("bob").life, 19);
+    }
+
+    #[test]
+    fn for_players_records_per_player_count_partitions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::lose_life_player(
+                crate::effect::Value::Fixed(1),
+                PlayerFilter::IteratedPlayer,
+            )],
+        );
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
+
+        assert_eq!(
+            result.player_counts(),
+            Some([(alice, 1), (bob, 1)].as_slice())
+        );
+    }
+
+    #[test]
+    fn for_players_records_per_player_affected_object_memory_partitions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let alice_card = game.new_object_id();
+        let bob_card = game.new_object_id();
+        let alice_memory = crate::effect::OutcomeObjectMemory {
+            object_id: alice_card,
+            stable_id: crate::ids::StableId::from(alice_card),
+            controller: alice,
+            owner: alice,
+            zone: crate::zone::Zone::Library,
+            power: None,
+            toughness: None,
+            mana_value: 1,
+            card_types: vec![crate::types::CardType::Creature],
+            colors: crate::color::ColorSet::COLORLESS,
+            subtypes: Vec::new(),
+            is_token: false,
+        };
+        let bob_memory = crate::effect::OutcomeObjectMemory {
+            object_id: bob_card,
+            stable_id: crate::ids::StableId::from(bob_card),
+            controller: bob,
+            owner: bob,
+            zone: crate::zone::Zone::Library,
+            power: None,
+            toughness: None,
+            mana_value: 2,
+            card_types: vec![crate::types::CardType::Instant],
+            colors: crate::color::ColorSet::COLORLESS,
+            subtypes: Vec::new(),
+            is_token: false,
+        };
+
+        let result = EffectOutcome::aggregate_summing_counts(vec![
+            EffectOutcome::count(1)
+                .with_affected_object_memory(vec![alice_memory.clone()])
+                .with_player_affected_object_memory(vec![(alice, vec![alice_memory])]),
+            EffectOutcome::count(1)
+                .with_affected_object_memory(vec![bob_memory.clone()])
+                .with_player_affected_object_memory(vec![(bob, vec![bob_memory])]),
+        ]);
+
+        let partitions = result
+            .player_affected_object_memory()
+            .expect("per-player affected memory");
+        assert_eq!(partitions.len(), 2);
+        assert_eq!(partitions[0].0, alice);
+        assert_eq!(partitions[0].1[0].controller, alice);
+        assert_eq!(partitions[1].0, bob);
+        assert_eq!(partitions[1].1[0].controller, bob);
+
+        let effect = ForPlayersEffect::new(PlayerFilter::Any, Vec::new());
+        let empty_result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("empty per-player effect should resolve");
+        assert!(empty_result.player_affected_object_memory().is_none());
+    }
+
+    #[test]
+    fn for_each_opponent_reveal_keeps_each_opponents_revealed_card_partitioned() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let bob_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1001), "Bob Top")
+            .card_types(vec![crate::types::CardType::Creature])
+            .build();
+        let cara_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1002), "Cara Top")
+                .card_types(vec![crate::types::CardType::Instant])
+                .build();
+        let bob_id = game.create_object_from_card(&bob_card, bob, crate::zone::Zone::Library);
+        let cara_id = game.create_object_from_card(&cara_card, cara, crate::zone::Zone::Library);
+
+        let effect = ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![Effect::reveal_top_cards(
+                PlayerFilter::IteratedPlayer,
+                crate::effect::Value::Fixed(1),
+                crate::tag::TagKey::from("revealed"),
+            )],
+        );
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("for each opponent reveal should resolve");
+
+        assert_eq!(result.events.len(), 2);
+        assert_eq!(
+            result.affected_object_memory().map(|memory| memory.len()),
+            Some(2)
+        );
+        let partitions = result
+            .player_affected_object_memory()
+            .expect("per-player reveal partitions");
+        assert_eq!(partitions.len(), 2);
+        assert_eq!(partitions[0].0, bob);
+        assert_eq!(partitions[0].1.len(), 1);
+        assert_eq!(partitions[0].1[0].object_id, bob_id);
+        assert_eq!(partitions[1].0, cara);
+        assert_eq!(partitions[1].1.len(), 1);
+        assert_eq!(partitions[1].1[0].object_id, cara_id);
     }
 }

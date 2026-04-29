@@ -20341,6 +20341,11 @@ fn parse_delayed_return_at_end_of_combat_parses() {
         debug.contains("ReturnToHandEffect"),
         "expected delayed return-to-hand payload, got {debug}"
     );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At this turn's next end of combat"),
+        "expected rendered delayed end-of-combat timing, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -20379,6 +20384,43 @@ fn parse_conquerors_galleon_attack_trigger_delays_return_and_transform_at_end_of
     assert!(
         debug.contains("TransformEffect"),
         "expected transformed return payload, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_this_turns_next_end_of_combat_prefix_wraps_payload() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Triton Tactics Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("At this turn's next end of combat, tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step.")
+        .expect("this-turn next-end-of-combat prefix should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect") && debug.contains("EndOfCombatTrigger"),
+        "expected scheduled end-of-combat payload, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("At this turn's next end of combat"),
+        "expected rendered next end-of-combat prefix, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_triton_tactics_combat_pronouns() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Triton Tactics")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Up to two target creatures each get +0/+3 until end of turn. Untap those creatures. At this turn's next end of combat, tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step.")
+        .expect("Triton Tactics should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Up to two target creatures each get +0/+3 until end of turn")
+            && rendered.contains("Untap those creatures")
+            && rendered.contains("tap each creature that was blocked by one of those creatures this turn and it doesn't untap"),
+        "expected Triton Tactics combat pronouns to render cleanly, got {rendered}"
     );
 }
 
@@ -21071,6 +21113,60 @@ fn parse_when_you_do_followup_clause_as_reflexive_trigger() {
     assert!(
         debug.contains("ReflexiveTriggerEffect"),
         "expected reflexive followup lowering, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_forage_when_you_do_followup_as_reflexive_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Curious Forager Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may forage. When you do, return target permanent card from your graveyard to your hand.",
+        )
+        .expect("forage when-you-do followup should parse as a reflexive trigger");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("you may forage"),
+        "expected visible forage action, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("when you do"),
+        "expected reflexive followup to keep when-you-do linkage, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("EmitKeywordActionEffect") && debug.contains("ReflexiveTriggerEffect"),
+        "expected forage emission and reflexive followup lowering, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_combustible_gearhulk_declined_optional_branch_gates_full_followup() {
+    let def = parse_oracle_card_definition("Combustible Gearhulk");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("target opponent may have you draw three cards"),
+        "expected opponent optional draw wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If the player doesn't, you mill three cards, then this creature deals damage to that player equal to the total mana value of those cards"),
+        "expected declined optional branch to include both mill and damage follow-up, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("IfEffect")
+            && debug.contains("DidNotHappen")
+            && debug.contains("MillEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("TotalManaValue")
+            && debug.contains("milled_0"),
+        "expected declined branch to gate the mill and tagged damage together, got {debug}"
     );
 }
 

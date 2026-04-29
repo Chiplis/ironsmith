@@ -1251,10 +1251,7 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
             | ["this", "must", "be", "blocked", "if", "able"]
     ) {
         return Ok(Some(StaticAbility::restriction(
-            crate::effect::Restriction::must_block_specific_attacker(
-                ObjectFilter::creature(),
-                ObjectFilter::source(),
-            ),
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
             "this creature must be blocked if able".to_string(),
         )));
     }

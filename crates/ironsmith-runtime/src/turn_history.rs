@@ -433,6 +433,15 @@ impl TurnHistory {
         })
     }
 
+    pub fn creature_was_blocked_by_this_turn(&self, attacker: ObjectId, blocker: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<CreatureBlockedEvent>()
+                .is_some_and(|event| event.attacker == attacker && event.blocker == blocker)
+        })
+    }
+
     pub fn player_searched_library_this_turn(&self, player: PlayerId) -> bool {
         self.projected_records().any(|record| {
             record

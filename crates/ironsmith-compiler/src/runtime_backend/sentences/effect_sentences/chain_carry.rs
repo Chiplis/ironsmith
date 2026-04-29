@@ -809,11 +809,11 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 Some(vec![match prefix.kind {
                     LeadingResultPrefixKind::If => EffectAst::IfResult {
                         predicate: prefix.predicate,
-                        effects: parse_effect_sentence_lexed(prefix.trailing_tokens)?,
+                        effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
                     },
                     LeadingResultPrefixKind::When => EffectAst::WhenResult {
                         predicate: prefix.predicate,
-                        effects: parse_effect_sentence_lexed(prefix.trailing_tokens)?,
+                        effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
                     },
                 }])
             } else {

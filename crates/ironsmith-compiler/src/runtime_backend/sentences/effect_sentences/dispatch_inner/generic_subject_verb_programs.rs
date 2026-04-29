@@ -113,8 +113,10 @@ enum GenericTopLevelProgram {
     Meld { effect: EffectAst },
     ControlCombatChoices { effect: EffectAst },
     PreventDamageAndPutCounters { effect: EffectAst },
+    ConsultRevealUntil { effects: Vec<EffectAst> },
     LookedCardsCountedRemainder { effects: Vec<EffectAst> },
     ConsultRevealUntilHand { effects: Vec<EffectAst> },
+    ConsultRevealUntilBattlefieldBottom { effects: Vec<EffectAst> },
     EachPlayerExileTopCast { effects: Vec<EffectAst> },
     Cant { effects: Vec<EffectAst> },
     ValueBinding { effects: Vec<EffectAst> },
@@ -130,11 +132,17 @@ impl GenericTopLevelProgram {
             Self::PreventDamageAndPutCounters { .. } => {
                 "subject-verb verb=Prevent subject=implicit recognizer=damage-replacement-counters"
             }
+            Self::ConsultRevealUntil { .. } => {
+                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until"
+            }
             Self::LookedCardsCountedRemainder { .. } => {
                 "subject-verb verb=Look subject=explicit recognizer=counted-looked-cards-remainder"
             }
             Self::ConsultRevealUntilHand { .. } => {
                 "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-hand"
+            }
+            Self::ConsultRevealUntilBattlefieldBottom { .. } => {
+                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-battlefield-bottom"
             }
             Self::EachPlayerExileTopCast { .. } => {
                 "subject-verb verb=Exile subject=explicit recognizer=each-player-exile-top-cast"
@@ -149,8 +157,10 @@ impl GenericTopLevelProgram {
             Self::Meld { effect }
             | Self::ControlCombatChoices { effect }
             | Self::PreventDamageAndPutCounters { effect } => vec![effect],
-            Self::LookedCardsCountedRemainder { effects }
+            Self::ConsultRevealUntil { effects }
+            | Self::LookedCardsCountedRemainder { effects }
             | Self::ConsultRevealUntilHand { effects }
+            | Self::ConsultRevealUntilBattlefieldBottom { effects }
             | Self::EachPlayerExileTopCast { effects }
             | Self::Cant { effects }
             | Self::ValueBinding { effects } => effects,
@@ -196,6 +206,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
         parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(tokens)?
     {
         Some(GenericTopLevelProgram::ConsultRevealUntilHand { effects })
+    } else if let Some(effects) =
+        parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(tokens)?
+    {
+        Some(GenericTopLevelProgram::ConsultRevealUntilBattlefieldBottom { effects })
+    } else if let Some(effects) = parse_generic_consult_reveal_until_subject_verb(tokens)? {
+        Some(GenericTopLevelProgram::ConsultRevealUntil { effects })
     } else if let Some(effects) =
         parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(tokens)?
     {
@@ -552,9 +568,18 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
         return Ok(None);
     }
 
-    let Some(parts) = super::consult_family::parse_consult_traversal_sentence(&consult_tokens)?
-    else {
-        return Ok(None);
+    let parts = if let Some(parts) =
+        super::consult_family::parse_consult_traversal_sentence(&consult_tokens)?
+    {
+        parts
+    } else {
+        let stripped_consult_tokens = without_deferred_mana_value_clause(&consult_tokens);
+        let Some(parts) =
+            super::consult_family::parse_consult_traversal_sentence(&stripped_consult_tokens)?
+        else {
+            return Ok(None);
+        };
+        parts
     };
     if !matches!(
         parts.effects.last(),
@@ -569,6 +594,8 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     ) {
         return Ok(None);
     }
+    let mut parts = parts;
+    apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
 
     let followup_words = TokenWordView::new(&followup_tokens).word_refs();
     let puts_all_revealed_into_hand = followup_words.as_slice()
@@ -589,6 +616,112 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
         false,
         None,
     ));
+    Ok(Some(effects))
+}
+
+fn parse_generic_consult_reveal_until_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence_tokens = trim_commas(tokens);
+    let mut parts = if let Some(parts) =
+        super::consult_family::parse_consult_traversal_sentence(&sentence_tokens)?
+    {
+        parts
+    } else {
+        let stripped_tokens = without_deferred_mana_value_clause(&sentence_tokens);
+        let Some(parts) =
+            super::consult_family::parse_consult_traversal_sentence(&stripped_tokens)?
+        else {
+            return Ok(None);
+        };
+        parts
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ConsultTopOfLibrary {
+                    mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                    ..
+                },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+    apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
+    Ok(Some(parts.effects))
+}
+
+fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence_tokens = trim_commas(
+        super::super::token_primitives::strip_leading_if_you_do_lexed(tokens),
+    );
+    let Some((consult_tokens, followup_tokens)) = split_once_on_comma(&sentence_tokens) else {
+        return Ok(None);
+    };
+    let consult_tokens = trim_commas(consult_tokens);
+    let followup_tokens = trim_commas(followup_tokens);
+    if consult_tokens.is_empty() || followup_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(parts) = super::consult_family::parse_consult_traversal_sentence(&consult_tokens)?
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ConsultTopOfLibrary {
+                    mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                    ..
+                },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+
+    let followup_words = TokenWordView::new(&followup_tokens).word_refs();
+    let puts_match_onto_battlefield = slice_starts_with(
+        followup_words.as_slice(),
+        &["put", "it", "onto", "the", "battlefield"],
+    ) || slice_starts_with(
+        followup_words.as_slice(),
+        &["put", "that", "card", "onto", "the", "battlefield"],
+    );
+    let puts_rest_bottom = slice_contains(&followup_words, &"rest")
+        && slice_contains(&followup_words, &"bottom")
+        && slice_contains(&followup_words, &"library");
+    if !puts_match_onto_battlefield || !puts_rest_bottom {
+        return Ok(None);
+    }
+    let Some(order) = super::consult_family::parse_consult_remainder_order(&followup_words) else {
+        return Ok(None);
+    };
+
+    let mut effects = parts.effects;
+    apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut effects);
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(parts.match_tag.clone(), None),
+        Zone::Battlefield,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            parts.all_tag,
+            Some(parts.match_tag),
+            order,
+            parts.player,
+        ),
+    );
     Ok(Some(effects))
 }
 
@@ -793,6 +926,60 @@ fn normalized_words_without_articles(tokens: &[OwnedLexToken]) -> Vec<&str> {
 fn split_once_on_comma(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let idx = tokens.iter().position(OwnedLexToken::is_comma)?;
     Some((&tokens[..idx], &tokens[idx + 1..]))
+}
+
+fn tokens_contain_relative_lesser_mana_value(tokens: &[OwnedLexToken]) -> bool {
+    tokens
+        .iter()
+        .any(|token| token.is_word("lesser") || token.is_word("less"))
+        && tokens.iter().any(|token| token.is_word("mana"))
+        && tokens.iter().any(|token| token.is_word("value"))
+}
+
+fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects: &mut [EffectAst]) {
+    if !tokens_contain_relative_lesser_mana_value(tokens) {
+        return;
+    }
+
+    for effect in effects {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            continue;
+        };
+        let SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } = &mut subject_verb.action
+        else {
+            continue;
+        };
+        let mut had_lesser_constraint = false;
+        for constraint in &mut filter.tagged_constraints {
+            if matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::ManaValueLtTagged
+            ) {
+                constraint.tag = TagKey::from("sacrificed_0");
+                had_lesser_constraint = true;
+            }
+        }
+        if had_lesser_constraint {
+            continue;
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::ManaValueLtTagged,
+        });
+    }
+}
+
+fn without_deferred_mana_value_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let lesser_start = find_window_by(tokens, 4, |window| {
+        TokenWordView::new(window).word_refs().as_slice() == ["with", "lesser", "mana", "value"]
+    });
+    let equal_start = find_window_by(tokens, 4, |window| {
+        TokenWordView::new(window).word_refs().as_slice() == ["with", "mana", "value", "equal"]
+    });
+    let Some(start) = lesser_start.or(equal_start) else {
+        return tokens.to_vec();
+    };
+    trim_commas(&tokens[..start]).to_vec()
 }
 
 pub(crate) fn parse_play_permission_subject_verb(

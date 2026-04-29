@@ -84,7 +84,9 @@ fn first_word_target_exile_look_or_reveal(
     sentence_head_word_in(
         sentences,
         sentence_idx,
-        &["if", "target", "exile", "look", "reveal"],
+        &[
+            "if", "target", "you", "that", "they", "exile", "look", "reveal",
+        ],
     )
 }
 

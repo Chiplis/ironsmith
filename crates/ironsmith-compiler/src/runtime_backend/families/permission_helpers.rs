@@ -419,6 +419,15 @@ fn parse_permission_tail_tokens(
         return Some((default_lifetime, true));
     }
 
+    if strip_prefix_phrase(
+        tokens,
+        &["for", "as", "long", "as", "it", "remains", "exiled"],
+    )
+    .is_some_and(|rest| rest.is_empty())
+    {
+        return Some((PermissionLifetime::ForAsLongAsExiled, false));
+    }
+
     if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
         if rest.is_empty() {
             return Some((permission_lifetime_from_turn_duration(duration), false));

@@ -687,6 +687,59 @@ pub fn declare_blockers(
         }
     }
 
+    // Enforce "must be blocked if able" requirements.
+    for attacker_info in &combat.attackers {
+        let attacker_id = attacker_info.creature;
+        if !game.must_be_blocked(attacker_id)
+            || blockers_by_attacker
+                .get(&attacker_id)
+                .is_some_and(|blockers| !blockers.is_empty())
+        {
+            continue;
+        }
+
+        let Some(attacker) = game.object(attacker_id) else {
+            continue;
+        };
+        let defending_player = match attacker_info.target {
+            AttackTarget::Player(player_id) => player_id,
+            AttackTarget::Planeswalker(planeswalker_id) => game
+                .object(planeswalker_id)
+                .map(|planeswalker| game.controller_of(planeswalker))
+                .unwrap_or(game.turn.active_player),
+        };
+        let has_legal_blocker = game.battlefield.iter().copied().any(|blocker_id| {
+            let Some(blocker) = game.object(blocker_id) else {
+                return false;
+            };
+            blocker.zone == Zone::Battlefield
+                && game.controller_of(blocker) == defending_player
+                && game.object_has_card_type_with_effects(
+                    blocker_id,
+                    crate::types::CardType::Creature,
+                    &all_effects,
+                )
+                && !game.is_tapped(blocker_id)
+                && !game.object_has_ability_with_effects(
+                    blocker_id,
+                    &StaticAbility::cant_block(),
+                    &all_effects,
+                )
+                && game.can_block(blocker_id)
+                && game.can_block_attacker(blocker_id, attacker_id)
+                && game.can_be_blocked(attacker_id)
+                && can_block(attacker, blocker, game)
+        });
+
+        if has_legal_blocker {
+            return Err(CombatError::NotEnoughBlockers {
+                attacker: attacker_id,
+                required: minimum_blockers_with_game(attacker, game),
+                provided: 0,
+            });
+        }
+    }
+
     // Enforce "must block specific attacker if able" requirements.
     for (&blocker_id, required_attackers) in
         &game.effect_store.cant_effects.must_block_specific_attackers
@@ -973,6 +1026,73 @@ mod tests {
         CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Enchantment])
             .build()
+    }
+
+    #[test]
+    fn declare_blockers_enforces_must_be_blocked_if_able() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = creature_card("Must Be Blocked", 2, 2);
+        let blocker = creature_card("Available Blocker", 2, 2);
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        let blocker_id = game.create_object_from_card(&blocker, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker_id);
+        game.effect_store
+            .cant_effects
+            .must_be_blocked
+            .insert(attacker_id);
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        )
+        .expect("attacker should be declared");
+
+        let missing_block = declare_blockers(&mut game, &mut combat.clone(), Vec::new());
+        assert_eq!(
+            missing_block,
+            Err(CombatError::NotEnoughBlockers {
+                attacker: attacker_id,
+                required: 1,
+                provided: 0,
+            })
+        );
+
+        declare_blockers(&mut game, &mut combat, vec![(blocker_id, attacker_id)])
+            .expect("blocking the required attacker should satisfy the requirement");
+    }
+
+    #[test]
+    fn declare_blockers_ignores_must_be_blocked_when_no_blocker_can_block() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = creature_card("Must Be Blocked", 2, 2);
+        let tapped_blocker = creature_card("Tapped Blocker", 2, 2);
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        let blocker_id = game.create_object_from_card(&tapped_blocker, bob, Zone::Battlefield);
+        game.tap(blocker_id);
+        game.remove_summoning_sickness(attacker_id);
+        game.effect_store
+            .cant_effects
+            .must_be_blocked
+            .insert(attacker_id);
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        )
+        .expect("attacker should be declared");
+
+        declare_blockers(&mut game, &mut combat, Vec::new())
+            .expect("no block should be required when no creature can block");
     }
 
     #[test]

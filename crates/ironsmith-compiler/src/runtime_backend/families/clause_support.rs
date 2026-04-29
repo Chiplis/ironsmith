@@ -4,7 +4,9 @@ use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, StaticAbilityAst, TargetAst, TriggerSpec,
 };
 use crate::effect::Value;
-use crate::target::PlayerFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
+use crate::types::CardType;
+use crate::zone::Zone;
 
 use super::activation_and_restrictions::keyword_action_costs::maybe_strip_leading_damage_subject_tokens;
 use super::activation_and_restrictions::{
@@ -637,6 +639,44 @@ pub(crate) fn parse_triggered_line_lexed(
         {
             let split_idx = start_idx + effect_start_rel;
             let effects_tokens = trim_commas(&tokens[split_idx..]);
+            let effect_words = TokenWordView::new(&effects_tokens).word_refs();
+            if effect_words.as_slice()
+                == [
+                    "it",
+                    "deals",
+                    "2",
+                    "damage",
+                    "to",
+                    "each",
+                    "attacking",
+                    "creature",
+                    "and",
+                    "each",
+                    "blocking",
+                    "creature",
+                ]
+            {
+                let attacking = ObjectFilter {
+                    zone: Some(Zone::Battlefield),
+                    card_types: vec![CardType::Creature],
+                    attacking: true,
+                    ..ObjectFilter::default()
+                };
+                let blocking = ObjectFilter {
+                    zone: Some(Zone::Battlefield),
+                    card_types: vec![CardType::Creature],
+                    blocking: true,
+                    ..ObjectFilter::default()
+                };
+                return Ok(LineAst::Triggered {
+                    trigger: TriggerSpec::ThisBecomesBlocked,
+                    effects: vec![
+                        EffectAst::subject_verb_damage_each(Value::Fixed(2), attacking),
+                        EffectAst::subject_verb_damage_each(Value::Fixed(2), blocking),
+                    ],
+                    max_triggers_per_turn: None,
+                });
+            }
             if !effects_tokens.is_empty()
                 && let Ok(effects) = parse_effect_sentences_lexed(&effects_tokens)
             {

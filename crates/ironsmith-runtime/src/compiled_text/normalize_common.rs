@@ -1895,6 +1895,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "permanent can't untap during its controller's next untap step",
         "that permanent doesn't untap during its controller's next untap step",
     );
+    normalized = normalized.replace(
+        "Tap all blocked creature blocked by one of those creatures this turns. that permanent doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "Tap all blocked creature blocked by one of those creatures this turns. That permanent doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "Untap that creature. At this turn's next end of combat",
+        "Untap those creatures. At this turn's next end of combat",
+    );
     if let Some(rest) = normalized.strip_prefix("Skyreaping deals damage to each ") {
         normalized = format!("Deal damage to each {rest}");
     }
@@ -4050,6 +4062,30 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = normalized.strip_prefix("up to two target creatures get ") {
         return format!("Up to two target creatures each get {rest}");
     }
+    if let Some(rest) = normalized.strip_prefix("Up to two target creatures get ") {
+        let rest = rest
+            .replace(
+                "Untap that creature. At this turn's next end of combat",
+                "Untap those creatures. At this turn's next end of combat",
+            )
+            .replace(
+                "Tap all blocked creature blocked by one of those creatures this turns. that permanent doesn't untap during its controller's next untap step",
+                "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+            )
+            .replace(
+                "tap all blocked creature blocked by one of those creatures this turns",
+                "tap each creature that was blocked by one of those creatures this turn",
+            )
+            .replace(
+                "Tap all blocked creature blocked by one of those creatures this turns",
+                "Tap each creature that was blocked by one of those creatures this turn",
+            )
+            .replace(
+                ". that permanent doesn't untap during its controller's next untap step",
+                " and it doesn't untap during its controller's next untap step",
+            );
+        return format!("Up to two target creatures each get {rest}");
+    }
     if let Some(rest) = normalized.strip_prefix("one or two target creatures get ") {
         return format!("One or two target creatures each get {rest}");
     }
@@ -5027,10 +5063,25 @@ pub(super) fn describe_card_count(value: &Value) -> String {
             if let Some(backref) = describe_effect_count_backref(value) {
                 format!("{backref} cards")
             } else {
-                format!("{} cards", describe_value(value))
+                let value_text = describe_value(value);
+                if value_text_describes_card_count(&value_text) {
+                    value_text
+                } else {
+                    format!("{value_text} cards")
+                }
             }
         }
     }
+}
+
+fn value_text_describes_card_count(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower == "a card"
+        || lower.ends_with(" card")
+        || lower.ends_with(" cards")
+        || lower.contains("number of cards")
+        || lower.contains("cards a player")
+        || lower.contains("cards that player")
 }
 
 pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> String {
@@ -5080,7 +5131,12 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             if let Some(backref) = describe_effect_count_backref(value) {
                 format!("{backref} {plural_card_phrase}")
             } else {
-                format!("{} {plural_card_phrase}", describe_value(value))
+                let value_text = describe_value(value);
+                if value_text_describes_card_count(&value_text) {
+                    value_text
+                } else {
+                    format!("{value_text} {plural_card_phrase}")
+                }
             }
         }
     }
@@ -5263,6 +5319,20 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }
     if describe_tagged_this_way_action(filter) == Some("revealed") {
         return pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+    }
+    if filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("milled_")
+    }) {
+        return "those cards".to_string();
+    }
+    if filter.zone == Some(Zone::Hand)
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && let Some(owner) = &filter.owner
+    {
+        return format!("cards in {} hand", describe_possessive_player_filter(owner));
     }
 
     let has_sacrificed_tag = filter.tagged_constraints.iter().any(|constraint| {
@@ -6664,6 +6734,16 @@ fn describe_effect_metric_value(
         crate::effect::EffectMetric::GreatestManaValue => {
             "the greatest mana value among those cards".to_string()
         }
+        crate::effect::EffectMetric::ColorsAmong => {
+            "the number of colors among those cards".to_string()
+        }
+        crate::effect::EffectMetric::CardTypesAmong => {
+            "the number of card types among those cards".to_string()
+        }
+        crate::effect::EffectMetric::GreatestPlayerCount => {
+            "the greatest number of cards a player discarded this way".to_string()
+        }
+        crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
     };
     match offset {
         Some(0) | None => base,
@@ -7302,7 +7382,7 @@ pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
                 .unwrap_or_else(|| n.to_string());
             format!("{amount} {counter_name} counters")
         }
-        _ => format!("{} {counter_name} counter(s)", describe_value(count)),
+        _ => format!("{} {counter_name} counters", describe_value(count)),
     }
 }
 
@@ -8553,6 +8633,9 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 attacker.description()
             )
         }
+        crate::effect::Restriction::MustBeBlocked(filter) => {
+            format!("{} must be blocked if able", filter.description())
+        }
         crate::effect::Restriction::BlockAlone(filter) => {
             format!("{} can't block alone", filter.description())
         }
@@ -8704,6 +8787,7 @@ pub(super) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
         "exiled" => Some("exiled"),
         "discarded" => Some("discarded"),
         "died" => Some("died"),
+        "milled" => Some("milled"),
         _ => None,
     }
 }

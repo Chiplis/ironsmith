@@ -17,6 +17,15 @@ pub(crate) struct TaggedRuntimeState {
     stable_id_fallback: Option<StableIdFallback>,
 }
 
+impl TaggedRuntimeState {
+    pub(crate) fn from_pre_snapshot(pre_snapshot: Option<ObjectSnapshot>) -> Self {
+        Self {
+            pre_snapshot,
+            stable_id_fallback: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct StableIdFallback {
     stable_ids: Vec<StableId>,
@@ -158,10 +167,18 @@ fn outcome_object_candidates(outcome: &EffectOutcome) -> Vec<crate::ids::ObjectI
     if let Some(affected) = outcome.affected_objects() {
         ids.extend(affected.iter().copied());
     }
+    if let Some(memory) = outcome.affected_object_memory() {
+        ids.extend(memory.iter().map(|memory| memory.object_id));
+    }
     if ids.is_empty()
         && let Some(chosen) = outcome.chosen_objects()
     {
         ids.extend(chosen.iter().copied());
+    }
+    if ids.is_empty()
+        && let Some(memory) = outcome.chosen_object_memory()
+    {
+        ids.extend(memory.iter().map(|memory| memory.object_id));
     }
     let mut seen = HashSet::new();
     ids.retain(|id| seen.insert(*id));

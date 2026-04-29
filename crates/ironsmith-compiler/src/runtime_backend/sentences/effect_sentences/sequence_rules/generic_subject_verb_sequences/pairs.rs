@@ -1,9 +1,9 @@
 use super::super::super::dispatch_entry::{
-    consult_cast_effects, consult_stop_rule_is_single_match, find_from_among_looked_cards_phrase,
-    leading_may_actor_to_player, parse_consult_cast_clause, parse_consult_remainder_order,
-    parse_consult_traversal_sentence, parse_looked_card_choice_filter,
-    parse_looked_card_reveal_filter, parse_prefixed_top_of_your_library_count,
-    parse_top_cards_view_sentence,
+    ConsultSentenceParts, consult_cast_effects, consult_stop_rule_is_single_match,
+    find_from_among_looked_cards_phrase, leading_may_actor_to_player, parse_consult_cast_clause,
+    parse_consult_remainder_order, parse_consult_traversal_sentence,
+    parse_looked_card_choice_filter, parse_looked_card_reveal_filter,
+    parse_prefixed_top_of_your_library_count, parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryBottomOrderAst,
@@ -56,6 +56,64 @@ fn sentence_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
 
 fn token_index_for_word(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
     TokenWordView::new(tokens).token_index_for_word_index(word_idx)
+}
+
+fn strip_leading_you_may(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let words = sentence_words(tokens);
+    let prefix_len = if words.as_slice().starts_with(&["you", "may"]) {
+        2
+    } else if words.as_slice().starts_with(&["that", "player", "may"]) {
+        3
+    } else if words.as_slice().starts_with(&["they", "may"]) {
+        2
+    } else {
+        return None;
+    };
+    let start = token_index_for_word(tokens, prefix_len).unwrap_or(tokens.len());
+    Some(trim_commas(&tokens[start..]))
+}
+
+fn parse_optional_consult_traversal_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(ConsultSentenceParts, bool)>, CardTextError> {
+    if let Some(parts) = parse_consult_traversal_sentence(tokens)? {
+        return Ok(Some((parts, false)));
+    }
+    let Some(stripped) = strip_leading_you_may(tokens) else {
+        return Ok(None);
+    };
+    parse_consult_traversal_sentence(&stripped).map(|parts| parts.map(|parts| (parts, true)))
+}
+
+fn strip_leading_if_you_do_sentence(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+    let stripped = crate::runtime_backend::token_primitives::strip_leading_if_you_do_lexed(tokens);
+    let was_stripped = stripped.len() != tokens.len();
+    (trim_commas(stripped), was_stripped)
+}
+
+fn wrap_optional_consult_effects(
+    parts: ConsultSentenceParts,
+    optional: bool,
+    followups: Vec<EffectAst>,
+    gate_on_result: bool,
+) -> Vec<EffectAst> {
+    let mut effects = Vec::new();
+    if optional {
+        effects.push(EffectAst::May {
+            effects: parts.effects,
+        });
+    } else {
+        effects.extend(parts.effects);
+    }
+    if gate_on_result || optional {
+        effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: followups,
+        });
+    } else {
+        effects.extend(followups);
+    }
+    effects
 }
 
 fn strip_controlled_by_same_player_suffix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
@@ -1613,7 +1671,7 @@ pub(crate) fn parse_consult_match_into_hand_exile_others(
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(second);
+    let (second_tokens, _gate_on_result) = strip_leading_if_you_do_sentence(second);
     let moves_to_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "into", "your", "hand"],
@@ -1673,7 +1731,7 @@ pub(crate) fn parse_consult_match_into_hand_others_graveyard(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = sentences[sentence_idx].lowered();
     let second = sentences[sentence_idx + 1].lowered();
-    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+    let Some((parts, optional)) = parse_optional_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
     if !matches!(
@@ -1689,7 +1747,7 @@ pub(crate) fn parse_consult_match_into_hand_others_graveyard(
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(second);
+    let (second_tokens, gate_on_result) = strip_leading_if_you_do_sentence(second);
     let moves_to_hand = crate::runtime_backend::grammar::primitives::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "into", "your", "hand"],
@@ -1708,37 +1766,43 @@ pub(crate) fn parse_consult_match_into_hand_others_graveyard(
         return Ok(None);
     }
 
-    let mut effects = parts.effects;
-    effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
-        Zone::Hand,
-        false,
-        crate::cards::builders::ReturnControllerAst::Preserve,
-        false,
-        None,
-    ));
-    effects.push(EffectAst::ForEachTagged {
-        tag: parts.all_tag,
-        effects: vec![EffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(
-                crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
-                ObjectFilter::tagged(parts.match_tag),
-            ),
-            if_true: Vec::new(),
-            if_false: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(
+    let followups = vec![
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(parts.match_tag.clone(), None),
+            Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::ForEachTagged {
+            tag: parts.all_tag.clone(),
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
                     crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
-                    None,
+                    ObjectFilter::tagged(parts.match_tag.clone()),
                 ),
-                Zone::Graveyard,
-                false,
-                crate::cards::builders::ReturnControllerAst::Preserve,
-                false,
-                None,
-            )],
-        }],
-    });
-    Ok(Some(effects))
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(
+                        crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                        None,
+                    ),
+                    Zone::Graveyard,
+                    false,
+                    crate::cards::builders::ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+    ];
+    Ok(Some(wrap_optional_consult_effects(
+        parts,
+        optional,
+        followups,
+        gate_on_result,
+    )))
 }
 
 pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
@@ -1747,7 +1811,7 @@ pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = sentences[sentence_idx].lowered();
     let second = sentences[sentence_idx + 1].lowered();
-    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+    let Some((parts, optional)) = parse_optional_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
     if !matches!(
@@ -1763,7 +1827,7 @@ pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(second);
+    let (second_tokens, gate_on_result) = strip_leading_if_you_do_sentence(second);
     let moves_to_battlefield = crate::runtime_backend::grammar::primitives::words_match_prefix(
         &second_tokens,
         &["put", "that", "card", "onto", "the", "battlefield"],
@@ -1810,35 +1874,41 @@ pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
         return Ok(None);
     }
 
-    let mut effects = parts.effects;
-    effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
-        Zone::Battlefield,
-        false,
-        crate::cards::builders::ReturnControllerAst::Preserve,
-        false,
-        None,
-    ));
-    effects.push(EffectAst::ForEachTagged {
-        tag: parts.all_tag,
-        effects: vec![EffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(
-                crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
-                ObjectFilter::tagged(parts.match_tag),
-            ),
-            if_true: Vec::new(),
-            if_false: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(
+    let followups = vec![
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(parts.match_tag.clone(), None),
+            Zone::Battlefield,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::ForEachTagged {
+            tag: parts.all_tag.clone(),
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
                     crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
-                    None,
+                    ObjectFilter::tagged(parts.match_tag.clone()),
                 ),
-                Zone::Graveyard,
-                false,
-                crate::cards::builders::ReturnControllerAst::Preserve,
-                false,
-                None,
-            )],
-        }],
-    });
-    Ok(Some(effects))
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(
+                        crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG),
+                        None,
+                    ),
+                    Zone::Graveyard,
+                    false,
+                    crate::cards::builders::ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+    ];
+    Ok(Some(wrap_optional_consult_effects(
+        parts,
+        optional,
+        followups,
+        gate_on_result,
+    )))
 }

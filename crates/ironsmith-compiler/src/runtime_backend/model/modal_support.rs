@@ -303,6 +303,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }

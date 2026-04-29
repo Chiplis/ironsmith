@@ -172,10 +172,17 @@ fn describe_return_all_to_battlefield_effect(
     let mut filter_text = describe_for_each_filter(&return_all.filter);
     filter_text = filter_text
         .replace("permanent card exiled", "permanent cards exiled")
-        .replace("card exiled", "cards exiled");
+        .replace("card exiled", "cards exiled")
+        .replace(" card in your graveyard", " cards from your graveyard");
+    let owner_suffix = if filter_text.contains(" from your graveyard") {
+        ""
+    } else {
+        " under their owners' control"
+    };
     format!(
-        "Return all {filter_text} to the battlefield{} under their owners' control",
-        if return_all.tapped { " tapped" } else { "" }
+        "Return all {filter_text} to the battlefield{}{}",
+        if return_all.tapped { " tapped" } else { "" },
+        owner_suffix,
     )
 }
 
@@ -6876,6 +6883,81 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             }
         }
 
+        fn render_consult_reveal_put_battlefield_then_bottom(
+            effects: &[&Effect],
+        ) -> Option<String> {
+            if effects.len() != 3 {
+                return None;
+            }
+
+            let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+                return None;
+            }
+
+            let move_effect = unwrap_tag_wrappers(effects[1]);
+            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_to_zone.zone != Zone::Battlefield || move_to_zone.to_top {
+                return None;
+            }
+            if !matches!(
+                &move_to_zone.target,
+                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            ) {
+                return None;
+            }
+
+            let remainder = effects[2]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+            if remainder.tag != consult.all_tag
+                || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
+            {
+                return None;
+            }
+
+            let player = describe_player_filter(&consult.player);
+            let library_owner = describe_possessive_player_filter(&consult.player);
+            let reveal_verb = player_verb(&player, "reveal", "reveals");
+            let put_verb = player_verb(&player, "put", "puts");
+            let pronoun = if player == "you" { "you" } else { "they" };
+            let pronoun_reveal_verb = if pronoun == "you" || pronoun == "they" {
+                "reveal"
+            } else {
+                "reveals"
+            };
+            let selection = describe_search_selection_with_cards(&consult.filter.description());
+            let stop_text = match &consult.stop_rule {
+                crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
+                    selection
+                }
+                crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
+                    "{} {}",
+                    describe_value(count),
+                    pluralize_noun_phrase(&selection)
+                ),
+            };
+            let order_text = match remainder.order {
+                crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+                    " in a random order".to_string()
+                }
+                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
+                    " in an order chosen by {}",
+                    describe_player_filter(&remainder.player)
+                ),
+            };
+
+            if player == "you" {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card onto the battlefield, then put the rest on the bottom of {library_owner} library{order_text}"
+                ))
+            } else {
+                Some(format!(
+                    "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield and {put_verb} the rest on the bottom of {library_owner} library{order_text}"
+                ))
+            }
+        }
+
         fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> Option<String> {
             if effects.len() != 3 {
                 return None;
@@ -8550,6 +8632,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
 
         if idx + 2 < filtered.len()
+            && let Some(rendered) = render_consult_reveal_put_battlefield_then_bottom(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
+        if idx + 2 < filtered.len()
             && let Some(rendered) = render_consult_reveal_put_hand_then_bottom(&[
                 filtered[idx],
                 filtered[idx + 1],
@@ -9155,6 +9249,23 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(compact) = describe_with_id_then_reflexive_trigger(with_id, reflexive)
         {
             parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(if_effect) = filtered[idx + 1].downcast_ref::<crate::effects::IfEffect>()
+            && if_effect.condition == with_id.id
+            && if_effect.predicate == EffectPredicate::Happened
+            && if_effect.else_.is_empty()
+            && if_effect.then.len() == 2
+            && let Some(rendered) = render_consult_reveal_put_battlefield_rest_graveyard(&[
+                &with_id.effect,
+                &if_effect.then[0],
+                &if_effect.then[1],
+            ])
+        {
+            parts.push(rendered);
             idx += 2;
             continue;
         }
@@ -11592,9 +11703,17 @@ mod tests {
             source: crate::effect::EffectMetricSource::AffectedObjects,
             metric: crate::effect::EffectMetric::Count,
         };
-        assert!(
-            describe_effect(&Effect::draw(count_metric)).contains("that many"),
-            "count metrics should render as a prior-effect reference"
+        assert_eq!(
+            describe_effect(&Effect::draw(count_metric.clone())),
+            "you draw that many cards"
+        );
+        assert_eq!(
+            describe_effect(&Effect::new(crate::effects::PutCountersEffect::new(
+                crate::object::CounterType::PlusOnePlusOne,
+                count_metric,
+                ChooseSpec::Source,
+            ))),
+            "Put that many +1/+1 counters on this source"
         );
 
         let life_lost_metric = Value::EffectMetric {
@@ -11619,6 +11738,54 @@ mod tests {
             ))
             .contains("the total mana value of those cards"),
             "aggregate metrics should render as oracle-style aggregate references"
+        );
+
+        let greatest_player_count = Value::EffectMetric {
+            effect_id: crate::effect::EffectId(3),
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::GreatestPlayerCount,
+        };
+        assert_eq!(
+            describe_effect(&Effect::draw(greatest_player_count)),
+            "you draw the greatest number of cards a player discarded this way"
+        );
+
+        let hand_count = Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::You),
+        );
+        assert_eq!(
+            describe_effect(&Effect::discard_player_filtered(
+                hand_count,
+                PlayerFilter::You,
+                false,
+                Some(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Hand)
+                        .owned_by(PlayerFilter::You)
+                ),
+            )),
+            "you discard the number of cards in your hand"
+        );
+
+        let iterated_hand_count = Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::IteratedPlayer),
+        );
+        assert_eq!(
+            describe_effect(&Effect::discard_player_filtered(
+                iterated_hand_count,
+                PlayerFilter::IteratedPlayer,
+                false,
+                Some(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Hand)
+                        .owned_by(PlayerFilter::IteratedPlayer)
+                ),
+            )),
+            "that player discards the number of cards in that player's hand"
         );
     }
 
@@ -18498,6 +18665,10 @@ fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
+    if let Some(compact) = describe_declined_may_mill_then_damage(with_id, if_effect) {
+        return Some(compact);
+    }
+
     let then_text = describe_effect_list(&if_effect.then);
     let else_text = describe_effect_list(&if_effect.else_);
 
@@ -18606,6 +18777,57 @@ fn describe_with_id_if_clause(
             lowercase_first(&else_text)
         ))
     }
+}
+
+fn describe_declined_may_mill_then_damage(
+    with_id: &crate::effects::WithIdEffect,
+    if_effect: &crate::effects::IfEffect,
+) -> Option<String> {
+    if !matches!(if_effect.predicate, EffectPredicate::DidNotHappen)
+        || !if_effect.else_.is_empty()
+        || if_effect.then.len() != 2
+    {
+        return None;
+    }
+    let may = with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(
+        may.decider.as_ref(),
+        Some(crate::filter::PlayerFilter::Target(inner))
+            if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent)
+    ) {
+        return None;
+    }
+
+    let tagged_mill = if_effect.then[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let mill = tagged_mill
+        .effect
+        .downcast_ref::<crate::effects::MillEffect>()?;
+    let damage = if_effect.then[1].downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(mill.player, PlayerFilter::You)
+        || !matches!(
+            damage.target,
+            ChooseSpec::Player(crate::filter::PlayerFilter::Target(ref inner))
+                if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent)
+        )
+    {
+        return None;
+    }
+    let Value::TotalManaValue(filter) = &damage.amount else {
+        return None;
+    };
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == tagged_mill.tag
+    }) {
+        return None;
+    }
+
+    let mill_text = lowercase_first(&describe_effect(&if_effect.then[0]));
+    Some(format!(
+        "If the player doesn't, {mill_text}, then this creature deals damage to that player equal to the total mana value of those cards"
+    ))
 }
 
 fn describe_optional_setup_effect_for_if_happened(
@@ -23361,6 +23583,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     let normalized = normalize_you_verb_phrase(rest);
                     return format!("you may have target player {normalized}");
                 }
+            } else if let Some(rest) = inner.strip_prefix("you ") {
+                let normalized = normalize_you_verb_phrase(rest);
+                return format!("{who} may have you {normalized}");
             }
             inner = normalize_you_verb_phrase(&inner);
             inner = lowercase_may_clause(&inner);
@@ -23876,6 +24101,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             && attacker.description().eq_ignore_ascii_case("creature")
         {
             return "All creatures able to block target creature this turn do so".to_string();
+        }
+        if cant.duration == Until::EndOfTurn
+            && let crate::effect::Restriction::MustBeBlocked(filter) = &cant.restriction
+        {
+            let description = filter.description();
+            let subject = match description.as_str() {
+                "permanent" | "creature" | "target permanent" | "target creature" => {
+                    "It".to_string()
+                }
+                "a creature you control" | "creature you control" => {
+                    "Each creature you control".to_string()
+                }
+                _ => capitalize_first(&description),
+            };
+            return format!("{subject} must be blocked this turn if able");
         }
         if cant.duration == Until::EndOfTurn {
             return format!("{} this turn", describe_restriction(&cant.restriction));
@@ -24934,6 +25174,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return format!("At the beginning of the next end step, {delayed_text}");
         }
+        if schedule.one_shot && trigger_lower.contains("end of combat") {
+            return format!("At this turn's next end of combat, {delayed_text}");
+        }
         if schedule.one_shot && trigger_lower.contains("beginning of your end step") {
             return format!("At the beginning of your next end step, {delayed_text}");
         }
@@ -25344,7 +25587,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
         let timing = match grant_play_tagged.duration {
-            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "until end of turn",
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn"
             }
@@ -25678,10 +25921,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&repeat.count)
         );
     }
-    if effect
-        .downcast_ref::<crate::effects::EmitKeywordActionEffect>()
-        .is_some()
-    {
+    if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
+        if keyword.action == crate::events::KeywordActionKind::Forage && keyword.amount == 1 {
+            return "forage".to_string();
+        }
         // Runtime keyword-action events are instrumentation; they should not leak
         // into oracle-like rendered rules text.
         return String::new();

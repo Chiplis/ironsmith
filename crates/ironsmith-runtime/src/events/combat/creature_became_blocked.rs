@@ -18,8 +18,14 @@ pub struct CreatureBecameBlockedEvent {
     pub attacker: ObjectId,
     /// Number of creatures currently blocking the attacker.
     pub blocker_count: u32,
+    /// The creatures currently blocking the attacker.
+    pub blockers: Vec<ObjectId>,
     /// What the attacker is attacking, if known at trigger generation time.
     pub attack_target: Option<AttackEventTarget>,
+    /// Snapshot of the attacker at declaration time.
+    pub attacker_snapshot: Option<ObjectSnapshot>,
+    /// Snapshots of the blockers at declaration time.
+    pub blocker_snapshots: Vec<ObjectSnapshot>,
 }
 
 impl CreatureBecameBlockedEvent {
@@ -28,7 +34,10 @@ impl CreatureBecameBlockedEvent {
         Self {
             attacker,
             blocker_count,
+            blockers: Vec::new(),
             attack_target: None,
+            attacker_snapshot: None,
+            blocker_snapshots: Vec::new(),
         }
     }
 
@@ -40,7 +49,27 @@ impl CreatureBecameBlockedEvent {
         Self {
             attacker,
             blocker_count,
+            blockers: Vec::new(),
             attack_target: Some(attack_target),
+            attacker_snapshot: None,
+            blocker_snapshots: Vec::new(),
+        }
+    }
+
+    pub fn with_target_and_blockers(
+        attacker: ObjectId,
+        blockers: Vec<ObjectId>,
+        attack_target: Option<AttackEventTarget>,
+        attacker_snapshot: Option<ObjectSnapshot>,
+        blocker_snapshots: Vec<ObjectSnapshot>,
+    ) -> Self {
+        Self {
+            attacker,
+            blocker_count: blockers.len() as u32,
+            blockers,
+            attack_target,
+            attacker_snapshot,
+            blocker_snapshots,
         }
     }
 }
@@ -84,7 +113,7 @@ impl GameEventType for CreatureBecameBlockedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.attacker_snapshot.as_ref()
     }
 }
 
@@ -97,6 +126,7 @@ mod tests {
         let event = CreatureBecameBlockedEvent::new(ObjectId::from_raw(1), 2);
         assert_eq!(event.attacker, ObjectId::from_raw(1));
         assert_eq!(event.blocker_count, 2);
+        assert!(event.blockers.is_empty());
         assert_eq!(event.attack_target, None);
     }
 

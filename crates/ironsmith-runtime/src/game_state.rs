@@ -386,6 +386,10 @@ pub struct CantEffectTracker {
     /// Example: "Target creature blocks this creature this turn if able."
     pub must_block_specific_attackers: HashMap<ObjectId, HashSet<ObjectId>>,
 
+    /// Attackers that must be blocked this turn if able.
+    /// Example: "Target creature must be blocked this turn if able."
+    pub must_be_blocked: HashSet<ObjectId>,
+
     /// Creatures that can't block alone.
     /// Example: "This creature can't block alone."
     pub cant_block_alone: HashSet<ObjectId>,
@@ -669,6 +673,7 @@ impl CantEffectTracker {
                 .or_default()
                 .extend(attackers);
         }
+        self.must_be_blocked.extend(other.must_be_blocked);
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
@@ -723,6 +728,7 @@ impl CantEffectTracker {
         self.cant_block.clear();
         self.cant_block_specific_attackers.clear();
         self.must_block_specific_attackers.clear();
+        self.must_be_blocked.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();
         self.cant_be_destroyed.clear();
@@ -805,6 +811,11 @@ impl CantEffectTracker {
         self.must_block_specific_attackers
             .get(&blocker)
             .is_some_and(|attackers| attackers.contains(&attacker))
+    }
+
+    /// Check if an attacker must be blocked this turn if able.
+    pub fn must_be_blocked(&self, attacker: ObjectId) -> bool {
+        self.must_be_blocked.contains(&attacker)
     }
 
     /// Get required attackers for a blocker, if any.
@@ -2350,6 +2361,11 @@ impl GameState {
         self.effect_store
             .cant_effects
             .must_block_attacker(blocker, attacker)
+    }
+
+    /// Must the attacker be blocked this turn if able?
+    pub fn must_be_blocked(&self, attacker: ObjectId) -> bool {
+        self.effect_store.cant_effects.must_be_blocked(attacker)
     }
 
     /// Get required attackers for a blocker, if any.
@@ -5810,6 +5826,12 @@ impl GameState {
         self.turn_store
             .turn_history
             .creature_blocked_this_turn(creature)
+    }
+
+    pub fn creature_was_blocked_by_this_turn(&self, attacker: ObjectId, blocker: ObjectId) -> bool {
+        self.turn_store
+            .turn_history
+            .creature_was_blocked_by_this_turn(attacker, blocker)
     }
 
     /// Record that a specific trigger fired this turn.

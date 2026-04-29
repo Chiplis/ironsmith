@@ -97,14 +97,16 @@ fn choose_reflexive_targets(
 
 #[cfg(test)]
 mod tests {
-    use super::choose_reflexive_targets;
+    use super::{choose_reflexive_targets, ReflexiveTriggerEffect};
     use crate::cards::definitions::{grizzly_bears, lightning_bolt};
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
-    use crate::effect::ChoiceCount;
-    use crate::effects::ExecutionContext;
+    use crate::effect::{ChoiceCount, Effect, EffectId, EffectOutcome, EffectPredicate};
+    use crate::effects::{EffectExecutor, ExecutionContext};
     use crate::game_state::{GameState, Target};
     use crate::ids::PlayerId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
     use crate::target::ChooseSpec;
     use crate::zone::Zone;
 
@@ -139,6 +141,57 @@ mod tests {
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0], Target::Object(first));
         assert_eq!(selected[1], Target::Object(second));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn reflexive_trigger_pushes_stack_ability_with_captured_context() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&lightning_bolt(), alice, Zone::Battlefield);
+        let tagged = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let tagged_snapshot =
+            ObjectSnapshot::from_object(game.object(tagged).expect("tagged object"), &game);
+
+        let condition = EffectId(77);
+        let reflexive = ReflexiveTriggerEffect::new(
+            condition,
+            EffectPredicate::Happened,
+            vec![Effect::draw(1)],
+            Vec::new(),
+        );
+
+        let mut dm = DuplicateTargetDecisionMaker {
+            target: Target::Object(tagged),
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.store_outcome(condition, EffectOutcome::count(1));
+        ctx.x_value = Some(7);
+        ctx.combat.defending_player = Some(bob);
+        ctx.set_tagged_objects(TagKey::from("sacrificed"), vec![tagged_snapshot.clone()]);
+
+        reflexive
+            .execute(&mut game, &mut ctx)
+            .expect("reflexive trigger should push a stack ability");
+
+        let entry = game.stack.last().expect("reflexive ability on stack");
+        assert!(entry.is_ability);
+        assert_eq!(entry.object_id, source);
+        assert_eq!(entry.controller, alice);
+        assert_eq!(entry.x_value, Some(7));
+        assert_eq!(entry.defending_player, Some(bob));
+        let captured = entry
+            .tagged_objects
+            .get(&TagKey::from("sacrificed"))
+            .expect("tagged object snapshots carried to stack entry");
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].object_id, tagged_snapshot.object_id);
+        assert_eq!(
+            entry.source_name.as_deref(),
+            Some(game.object(source).expect("source object").name.as_str())
+        );
+        assert!(entry.source_snapshot.is_some());
     }
 }
 

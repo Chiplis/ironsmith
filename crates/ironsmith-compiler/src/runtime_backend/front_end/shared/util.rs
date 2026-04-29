@@ -1329,6 +1329,10 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "spells", "mana", "value"],
         &["that", "card", "mana", "value"],
         &["that", "cards", "mana", "value"],
+        &["the", "exiled", "spell", "mana", "value"],
+        &["the", "exiled", "spells", "mana", "value"],
+        &["exiled", "spell", "mana", "value"],
+        &["exiled", "spells", "mana", "value"],
         &["the", "sacrificed", "creature", "mana", "value"],
         &["the", "sacrificed", "creatures", "mana", "value"],
         &["sacrificed", "creature", "mana", "value"],
@@ -1346,10 +1350,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         ],
         &["mana", "value", "of", "the", "army", "you", "amassed"],
     ]) {
-        return Some((
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
-            used,
-        ));
+        let tag = if matches!(
+            words.get(..used),
+            Some(["the", "exiled", "spell", "mana", "value"])
+                | Some(["the", "exiled", "spells", "mana", "value"])
+                | Some(["exiled", "spell", "mana", "value"])
+                | Some(["exiled", "spells", "mana", "value"])
+        ) {
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+        } else {
+            TagKey::from(IT_TAG)
+        };
+        return Some((Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag))), used));
     }
 
     let mut idx = 0usize;

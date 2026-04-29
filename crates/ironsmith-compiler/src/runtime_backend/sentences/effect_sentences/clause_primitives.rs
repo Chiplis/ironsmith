@@ -709,10 +709,7 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
     })?;
 
     Ok(Some(EffectAst::subject_verb_cant(
-        crate::effect::Restriction::must_block_specific_attacker(
-            ObjectFilter::creature(),
-            attacker_filter,
-        ),
+        crate::effect::Restriction::must_be_blocked(attacker_filter),
         Until::EndOfTurn,
         None,
     )))

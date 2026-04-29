@@ -244,6 +244,36 @@ fn resolve_effect_metric(
             .map(|memory| memory.mana_value)
             .max()
             .unwrap_or(0),
+        EffectMetric::ColorsAmong => object_memory()
+            .into_iter()
+            .fold(crate::color::ColorSet::COLORLESS, |colors, memory| {
+                colors.union(memory.colors)
+            })
+            .count() as i32,
+        EffectMetric::CardTypesAmong => {
+            let mut card_types = std::collections::HashSet::new();
+            for memory in object_memory() {
+                card_types.extend(memory.card_types);
+            }
+            card_types.len() as i32
+        }
+        EffectMetric::GreatestPlayerCount => outcome
+            .player_counts()
+            .and_then(|counts| counts.iter().map(|(_, count)| *count).max())
+            .unwrap_or(0),
+        EffectMetric::IteratedPlayerCount => {
+            let Some(player_id) = ctx.iteration.iterated_player else {
+                return Ok(0);
+            };
+            outcome
+                .player_counts()
+                .and_then(|counts| {
+                    counts.iter().find_map(|(count_player, count)| {
+                        (*count_player == player_id).then_some(*count)
+                    })
+                })
+                .unwrap_or(0)
+        }
     };
 
     Ok(resolved)
@@ -3012,6 +3042,7 @@ pub(crate) fn resolve_player_filter_to_list(
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::color::ColorSet;
     use crate::decision::DecisionMaker;
     use crate::decisions::context::SelectObjectsContext;
     use crate::effect::ChoiceCount;
@@ -3063,6 +3094,22 @@ mod tests {
             )]]))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(power, toughness))
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn add_custom_permanent(
+        game: &mut GameState,
+        id_raw: u32,
+        name: &str,
+        owner: PlayerId,
+        card_types: Vec<CardType>,
+        colors: ColorSet,
+    ) -> ObjectId {
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(id_raw), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(card_types)
+            .color_indicator(colors)
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
@@ -3207,6 +3254,66 @@ mod tests {
                 "metric {metric:?} should resolve from stored LKI"
             );
         }
+    }
+
+    #[test]
+    fn effect_metric_resolves_colors_and_card_types_among_result_memory() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let artifact_creature = add_custom_permanent(
+            &mut game,
+            430,
+            "Blue Artifact Creature",
+            alice,
+            vec![CardType::Artifact, CardType::Creature],
+            ColorSet::BLUE,
+        );
+        let red_enchantment = add_custom_permanent(
+            &mut game,
+            431,
+            "Red Enchantment",
+            alice,
+            vec![CardType::Enchantment],
+            ColorSet::RED,
+        );
+        let memory = [artifact_creature, red_enchantment]
+            .into_iter()
+            .map(|id| OutcomeObjectMemory::from_object_id(&game, id).unwrap())
+            .collect::<Vec<_>>();
+        let effect_id = crate::effect::EffectId(19);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::count(2).with_affected_object_memory(memory),
+        );
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::AffectedObjects,
+                    EffectMetric::ColorsAmong,
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::AffectedObjects,
+                    EffectMetric::CardTypesAmong,
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            3
+        );
     }
 
     #[test]

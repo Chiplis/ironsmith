@@ -1,12 +1,13 @@
 //! Reveal top card effect implementation.
 
-use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::consult_helpers::{
+    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::snapshot::ObjectSnapshot;
 pub use ironsmith_core::RevealTopEffect;
 
 /// Effect that reveals the top card of a player's library and tags it.
@@ -20,55 +21,19 @@ impl EffectExecutor for RevealTopEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        let top_card_id = game
-            .player(player_id)
-            .and_then(|p| p.library.last().copied());
+        let result = execute_library_consult(
+            game,
+            ctx,
+            player_id,
+            LibraryConsultMode::Reveal,
+            LibraryConsultStopRule::MatchCount(1),
+            self.tag.as_ref(),
+            self.tag.as_ref(),
+            |_, _| true,
+        )?;
 
-        let Some(card_id) = top_card_id else {
-            return Ok(EffectOutcome::count(0));
-        };
-
-        let snapshot = game
-            .object(card_id)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
-        if let Some(snapshot) = snapshot.clone()
-            && let Some(tag) = &self.tag
-        {
-            ctx.set_tagged_objects(tag.clone(), vec![snapshot]);
-        }
-
-        for viewer_idx in 0..game.players.len() {
-            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-            let view_ctx = ViewCardsContext::new(
-                viewer,
-                player_id,
-                Some(ctx.source),
-                crate::zone::Zone::Library,
-                "Reveal the top card of a library",
-            )
-            .with_public(true);
-            ctx.decision_maker
-                .view_cards(game, viewer, &[card_id], &view_ctx);
-        }
-
-        let memory = snapshot.as_ref().map(OutcomeObjectMemory::from_snapshot);
-        let mut outcome =
-            EffectOutcome::count(1).with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::CardRevealedEvent::new(
-                    player_id,
-                    card_id,
-                    crate::zone::Zone::Library,
-                    Some(ctx.source),
-                    snapshot,
-                ),
-                ctx.provenance,
-            ));
-        if let Some(memory) = memory {
-            outcome = outcome
-                .with_chosen_object_memory(vec![memory.clone()])
-                .with_affected_object_memory(vec![memory]);
-        }
-        Ok(outcome)
+        let count = result.exposed_object_ids.len() as i32;
+        Ok(result.attach_to_outcome(EffectOutcome::count(count)))
     }
 }
 

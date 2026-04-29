@@ -571,6 +571,10 @@ mod tests {
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
+        return Ok(None);
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.as_slice() == ["venture", "into", "the", "dungeon"] {
         return Ok(Some(vec![EffectAst::subject_verb_venture_into_dungeon(

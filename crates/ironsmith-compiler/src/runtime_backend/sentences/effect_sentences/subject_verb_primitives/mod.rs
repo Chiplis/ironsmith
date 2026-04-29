@@ -76,6 +76,50 @@ use std::cell::OnceCell;
 use std::sync::LazyLock;
 use winnow::Parser as _;
 
+pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = TokenWordView::new(tokens).word_refs();
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let predicate_words = TokenWordView::new(&tokens[..comma_idx]).word_refs();
+    let shares_with_triggering_spell = matches!(
+        predicate_words.as_slice(),
+        [
+            "if", "any", "of", "those", "cards", "shares", "a", "card", "type", "with", "that",
+            "spell"
+        ] | [
+            "if", "any", "of", "those", "cards", "share", "a", "card", "type", "with", "that",
+            "spell"
+        ]
+    );
+    if !shares_with_triggering_spell {
+        return Ok(None);
+    }
+
+    let trailing = trim_commas(&tokens[comma_idx + 1..]);
+    if trailing.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after revealed-card card-type condition (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("triggering"),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+    let if_true = parse_effect_chain_inner(&trailing)?;
+
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+        if_true,
+        if_false: Vec::new(),
+    }]))
+}
+
 #[path = "choice_damage_family.rs"]
 mod choice_damage_family;
 mod combat_and_damage_family;

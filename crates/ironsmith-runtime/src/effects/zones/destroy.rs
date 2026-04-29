@@ -272,6 +272,55 @@ mod tests {
     }
 
     #[test]
+    fn destroy_multi_target_records_actual_object_memory_not_only_count() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let first = create_creature(&mut game, alice, "Alice Target", 50_011);
+        let second = create_creature(&mut game, bob, "Bob Target", 50_012);
+        let first_stable_id = game.object(first).expect("first target").stable_id;
+        let second_stable_id = game.object(second).expect("second target").stable_id;
+
+        let spec = ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2));
+        let effect = DestroyEffect::with_spec(spec.clone());
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(first),
+                ResolvedTarget::Object(second),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec,
+                range: 0..2,
+            }]);
+
+        let outcome = effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(outcome.as_count(), Some(2));
+        let memory = outcome
+            .affected_object_memory()
+            .expect("destroyed object memory should be recorded");
+        assert_eq!(memory.len(), 2);
+        assert_eq!(memory[0].stable_id, first_stable_id);
+        assert_eq!(memory[0].controller, alice);
+        assert_eq!(memory[0].zone, Zone::Battlefield);
+        assert_eq!(memory[0].power, Some(2));
+        assert_eq!(memory[0].toughness, Some(2));
+        assert!(memory[0].card_types.contains(&CardType::Creature));
+        assert_eq!(memory[1].stable_id, second_stable_id);
+        assert_eq!(memory[1].controller, bob);
+        assert_eq!(memory[1].zone, Zone::Battlefield);
+        assert_eq!(memory[1].power, Some(2));
+        assert_eq!(memory[1].toughness, Some(2));
+        assert!(memory[1].card_types.contains(&CardType::Creature));
+        assert_eq!(outcome.output_objects().len(), 2);
+        assert!(outcome.output_objects().iter().all(|id| {
+            game.object(*id)
+                .is_some_and(|obj| obj.zone == Zone::Graveyard)
+        }));
+    }
+
+    #[test]
     fn destroy_multi_target_tagged_followup_uses_each_destroyed_objects_controller() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -1181,7 +1181,12 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let destination = effect_routing.destination;
     let reveal = effect_routing.reveal;
     let face_down_exile = effect_routing.face_down_exile;
-    let shuffle = effect_routing.shuffle;
+    let original_shuffle = effect_routing.shuffle;
+    let trailing_create_followup = find_search_library_trailing_create_followup_lexed(
+        search_tokens,
+        put_idx.unwrap_or(filter_boundary),
+    );
+    let shuffle = original_shuffle && trailing_create_followup.is_none();
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
     let mut handled_direct_may_in_iterated_search = false;
     let mut effects = if let Some(iterated_filter) = iterated_subject_filter.clone()
@@ -1488,6 +1493,18 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     ) {
         let trailing_effect = parse_effect_clause_lexed(trailing_tokens)?;
         effects.push(trailing_effect);
+    }
+
+    if let Some(trailing_tokens) = trailing_create_followup {
+        let trailing_effect = parse_effect_clause_lexed(trailing_tokens)?;
+        effects.push(trailing_effect);
+        if original_shuffle {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
+        }
     }
 
     if let Some(reference) = same_name_reference {

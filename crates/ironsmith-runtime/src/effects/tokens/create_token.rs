@@ -130,7 +130,9 @@ impl EffectExecutor for CreateTokenEffect {
             }
         }
 
-        Ok(EffectOutcome::with_objects(created_ids).with_events(events))
+        Ok(EffectOutcome::with_objects(created_ids.clone())
+            .with_events(events)
+            .with_affected_objects_from_game(game, created_ids))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -204,6 +206,29 @@ mod tests {
             .subtypes(vec![Subtype::Spirit])
             .power_toughness(PowerToughness::fixed(1, 1))
             .build()
+    }
+
+    #[test]
+    fn create_token_records_created_objects_as_affected_memory() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = CreateTokenEffect::you(soldier_token(), 2)
+            .execute(&mut game, &mut ctx)
+            .expect("tokens should be created");
+
+        let affected = outcome
+            .affected_objects()
+            .expect("created tokens should be affected objects");
+        assert_eq!(affected.len(), 2);
+        let memory = outcome
+            .affected_object_memory()
+            .expect("created token LKI should be recorded");
+        assert_eq!(memory.len(), 2);
+        assert!(memory.iter().all(|m| m.controller == alice));
+        assert!(memory.iter().all(|m| m.is_token));
     }
 
     #[test]

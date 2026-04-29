@@ -107,16 +107,24 @@ pub(super) fn generate_damage_triggers(
                 )
             })
             .unwrap_or_else(crate::events::cause::EventCause::effect);
-        let trigger_event = TriggerEvent::new_with_provenance(
-            DamageEvent::with_cause(
-                event.source,
-                damage_target,
-                event.amount,
-                true, // is_combat
-                cause,
-            ),
-            damage_event_provenance,
+        let mut damage_event = DamageEvent::with_cause(
+            event.source,
+            damage_target,
+            event.amount,
+            true, // is_combat
+            cause,
         );
+        if let DamageEventTarget::Object(object_id) = event.target
+            && let Some(obj) = game.object(object_id)
+        {
+            damage_event = damage_event.with_target_snapshot(
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                ),
+            );
+        }
+        let trigger_event =
+            TriggerEvent::new_with_provenance(damage_event, damage_event_provenance);
         queue_triggers_from_event(game, trigger_queue, trigger_event, false);
 
         if let DamageEventTarget::Player(player_id) = event.target

@@ -1,10 +1,11 @@
 use crate::decisions::context::{OrderContext, ViewCardsContext};
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
+use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::{LibraryBottomOrder, LibraryConsultMode};
 use std::collections::{HashMap, HashSet};
@@ -29,6 +30,36 @@ pub struct LibraryConsultResult {
     pub exposed_snapshots: Vec<ObjectSnapshot>,
     pub matched_snapshots: Vec<ObjectSnapshot>,
     pub exposed_object_ids: Vec<ObjectId>,
+    pub reveal_events: Vec<TriggerEvent>,
+}
+
+impl LibraryConsultResult {
+    pub fn attach_to_outcome(self, outcome: EffectOutcome) -> EffectOutcome {
+        let exposed_memory = self
+            .exposed_snapshots
+            .iter()
+            .map(OutcomeObjectMemory::from_snapshot)
+            .collect::<Vec<_>>();
+        let matched_ids = self
+            .matched_snapshots
+            .iter()
+            .map(|snapshot| snapshot.object_id)
+            .collect::<Vec<_>>();
+        let matched_memory = self
+            .matched_snapshots
+            .iter()
+            .map(OutcomeObjectMemory::from_snapshot)
+            .collect::<Vec<_>>();
+
+        let mut outcome = outcome
+            .with_events(self.reveal_events)
+            .with_affected_objects(self.exposed_object_ids)
+            .with_affected_object_memory(exposed_memory);
+        if !matched_ids.is_empty() {
+            outcome = outcome.with_execution_fact(ExecutionFact::ChosenObjects(matched_ids));
+        }
+        outcome.with_chosen_object_memory(matched_memory)
+    }
 }
 
 pub fn execute_library_consult(
@@ -71,6 +102,16 @@ pub fn execute_library_consult(
 
                 result.exposed_object_ids.push(object_id);
                 result.exposed_snapshots.push(snapshot.clone());
+                result.reveal_events.push(TriggerEvent::new_with_provenance(
+                    crate::events::CardRevealedEvent::new(
+                        player,
+                        object_id,
+                        Zone::Library,
+                        Some(ctx.source),
+                        Some(snapshot.clone()),
+                    ),
+                    ctx.provenance,
+                ));
                 if matched {
                     result.matched_snapshots.push(snapshot);
                     if result.matched_snapshots.len() >= required_matches {
@@ -434,6 +475,23 @@ mod tests {
         .expect("reveal consult should execute");
 
         assert_eq!(result.exposed_object_ids, vec![top, match_id]);
+        assert_eq!(result.reveal_events.len(), 2);
+        let outcome = result
+            .clone()
+            .attach_to_outcome(EffectOutcome::with_objects(
+                result.exposed_object_ids.clone(),
+            ));
+        assert_eq!(outcome.affected_objects(), Some([top, match_id].as_slice()));
+        assert_eq!(outcome.chosen_objects(), Some([match_id].as_slice()));
+        assert_eq!(
+            outcome.affected_object_memory().map(|memory| memory.len()),
+            Some(2)
+        );
+        assert_eq!(
+            outcome.chosen_object_memory().map(|memory| memory.len()),
+            Some(1)
+        );
+        assert_eq!(outcome.events.len(), 2);
         assert_eq!(snapshot_ids(&ctx, "all"), vec![top, match_id]);
         assert_eq!(snapshot_ids(&ctx, "match"), vec![match_id]);
         assert_eq!(game.player(alice).expect("alice exists").library, before);

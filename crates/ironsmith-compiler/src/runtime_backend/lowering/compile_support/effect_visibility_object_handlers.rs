@@ -109,6 +109,23 @@ pub(super) fn try_compile_visibility_and_card_selection_effect(
     Ok(None)
 }
 
+fn chooses_tagged_object_pool(filter: &ObjectFilter) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject))
+}
+
+fn scoped_collection_zones() -> Vec<Zone> {
+    vec![
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Graveyard,
+        Zone::Library,
+        Zone::Exile,
+    ]
+}
+
 pub(super) fn try_compile_object_zone_and_exchange_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -130,9 +147,12 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     constraint.tag.as_str() == IT_TAG
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 });
+            let chooses_tagged_pool = chooses_tagged_object_pool(filter);
             let mut resolved_filter =
                 if references_revealed_hand && ctx.last_player_filter.is_some() {
                     subject.bind_revealed_hand_choice_filter(filter, ctx)?
+                } else if chooses_tagged_pool {
+                    subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 } else {
                     subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
                 };
@@ -146,17 +166,35 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
-            let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+            if chooses_tagged_object_pool(&resolved_filter)
+                && matches!(resolved_filter.zone, None | Some(Zone::Battlefield))
+            {
+                resolved_filter.zone = None;
+            }
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
-            let (effects, choices) = compile_choose_objects_with_subject(
-                subject,
-                resolved_filter,
-                *count,
-                count_value.clone(),
-                tag.clone(),
-                choice_zone,
-            );
+            let (effects, choices) = if chooses_tagged_object_pool(&resolved_filter) {
+                compile_choose_objects_across_zones_with_subject(
+                    subject,
+                    resolved_filter,
+                    *count,
+                    count_value.clone(),
+                    tag.clone(),
+                    scoped_collection_zones(),
+                    None,
+                    false,
+                )
+            } else {
+                let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+                compile_choose_objects_with_subject(
+                    subject,
+                    resolved_filter,
+                    *count,
+                    count_value.clone(),
+                    tag.clone(),
+                    choice_zone,
+                )
+            };
             let extends_existing_it_choice_set = ctx
                 .last_object_tag
                 .as_deref()
@@ -212,9 +250,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
-            let chooses_tagged_pool = resolved_filter.tagged_constraints.iter().any(|constraint| {
-                matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-            });
+            let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
             let default_search =
                 slice_contains(zones.as_slice(), &Zone::Library) && !chooses_tagged_pool;
             let (effects, choices) = compile_choose_objects_across_zones_with_subject(

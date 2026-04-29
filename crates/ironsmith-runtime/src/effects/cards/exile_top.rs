@@ -89,7 +89,8 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
             }
         }
 
-        Ok(EffectOutcome::with_objects(moved_ids))
+        Ok(EffectOutcome::with_objects(moved_ids.clone())
+            .with_affected_objects_from_game(game, moved_ids))
     }
 }
 

@@ -184,9 +184,10 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         || filter
             .could_be_targeted_by
             .as_ref()
-            .is_some_and(|constraint| {
-                matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-            })
+        .is_some_and(|constraint| {
+            matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
+        })
+        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter
             .targets_object
             .as_deref()
@@ -501,6 +502,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealCardsFromHand { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
+        | SubjectVerbActionAst::EmitKeywordAction { .. }
         | SubjectVerbActionAst::Amass { .. }
         | SubjectVerbActionAst::Bolster { .. }
         | SubjectVerbActionAst::Support { .. }
@@ -985,6 +987,7 @@ pub(crate) fn restriction_references_tag(
     let maybe_filter = match restriction {
         Restriction::Attack(filter)
         | Restriction::Block(filter)
+        | Restriction::MustBeBlocked(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)

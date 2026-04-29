@@ -604,15 +604,7 @@ fn compute_player_targets(
         other => other,
     };
 
-    let filter_ctx = crate::target::FilterContext::new(controller)
-        .with_opponents(
-            game.players
-                .iter()
-                .filter(|p| p.id != controller && p.is_in_game())
-                .map(|p| p.id)
-                .collect(),
-        )
-        .with_active_player(game.turn.active_player);
+    let filter_ctx = target_filter_context(game, controller, source_id);
 
     game.players
         .iter()
@@ -674,7 +666,7 @@ fn compute_object_targets_with_view(
     let mut targets = Vec::new();
 
     // Build filter context
-    let mut filter_ctx = game.filter_context_for(caster, source_id);
+    let mut filter_ctx = target_filter_context(game, caster, source_id);
     if let Some(tagged) = tagged_objects {
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
@@ -717,6 +709,39 @@ fn compute_object_targets_with_view(
     }
 
     targets
+}
+
+fn target_filter_context(
+    game: &GameState,
+    controller: PlayerId,
+    source_id: Option<ObjectId>,
+) -> crate::target::FilterContext {
+    let mut filter_ctx = game.filter_context_for(controller, source_id);
+    if let Some(source_id) = source_id
+        && let Some((defending_player, attacking_player)) =
+            combat_players_for_attacking_source(game, source_id)
+    {
+        filter_ctx.defending_player = Some(defending_player);
+        filter_ctx.attacking_player = Some(attacking_player);
+    }
+    filter_ctx
+}
+
+fn combat_players_for_attacking_source(
+    game: &GameState,
+    source_id: ObjectId,
+) -> Option<(PlayerId, PlayerId)> {
+    let combat = game.combat.as_ref()?;
+    let attack_target = crate::combat_state::get_attack_target(combat, source_id)?;
+    let defending_player = match attack_target {
+        crate::combat_state::AttackTarget::Player(player_id) => *player_id,
+        crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => {
+            let planeswalker = game.object(*planeswalker_id)?;
+            game.controller_of(planeswalker)
+        }
+    };
+    let source = game.object(source_id)?;
+    Some((defending_player, game.controller_of(source)))
 }
 
 #[cfg(test)]
@@ -772,6 +797,20 @@ mod tests {
             Zone::Battlefield,
         );
         obj
+    }
+
+    fn create_planeswalker(id: u32, name: &str, controller: PlayerId) -> Object {
+        let card = CardBuilder::new(CardId::from_raw(id), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Planeswalker])
+            .build();
+
+        Object::from_card(
+            ObjectId::from_raw(id as u64),
+            &card,
+            controller,
+            Zone::Battlefield,
+        )
     }
 
     fn create_land(id: u32, name: &str, controller: PlayerId) -> Object {
@@ -947,6 +986,127 @@ mod tests {
             legal_targets.contains(&Target::Object(battle_id)),
             "battle permanents should be legal 'any target' choices"
         );
+    }
+
+    #[test]
+    fn legal_targets_filter_attackers_attacking_you_or_planeswalker_you_control() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(1, "Trap Door Source", alice);
+        let attacking_alice = create_creature(2, "Attacking Alice", bob);
+        let attacking_alice_walker = create_creature(3, "Attacking Walker", bob);
+        let attacking_bob = create_creature(4, "Attacking Bob", alice);
+        let not_attacking = create_creature(5, "Not Attacking", bob);
+        let alice_walker = create_planeswalker(6, "Alice Walker", alice);
+        let source_id = source.id;
+        let attacking_alice_id = attacking_alice.id;
+        let attacking_alice_walker_id = attacking_alice_walker.id;
+        let attacking_bob_id = attacking_bob.id;
+        let not_attacking_id = not_attacking.id;
+        let alice_walker_id = alice_walker.id;
+
+        game.add_object(source);
+        game.add_object(attacking_alice);
+        game.add_object(attacking_alice_walker);
+        game.add_object(attacking_bob);
+        game.add_object(not_attacking);
+        game.add_object(alice_walker);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![
+                crate::combat_state::AttackerInfo {
+                    creature: attacking_alice_id,
+                    target: crate::combat_state::AttackTarget::Player(alice),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: attacking_alice_walker_id,
+                    target: crate::combat_state::AttackTarget::Planeswalker(alice_walker_id),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: attacking_bob_id,
+                    target: crate::combat_state::AttackTarget::Player(bob),
+                },
+            ],
+            blockers: Default::default(),
+            damage_assignment_order: Default::default(),
+        });
+
+        let filter = ObjectFilter::creature()
+            .attacking_player_or_planeswalker_controlled_by(PlayerFilter::You);
+        let legal_targets =
+            compute_legal_targets(&game, &ChooseSpec::Object(filter), alice, Some(source_id));
+
+        assert!(legal_targets.contains(&Target::Object(attacking_alice_id)));
+        assert!(legal_targets.contains(&Target::Object(attacking_alice_walker_id)));
+        assert!(!legal_targets.contains(&Target::Object(attacking_bob_id)));
+        assert!(!legal_targets.contains(&Target::Object(not_attacking_id)));
+    }
+
+    #[test]
+    fn legal_targets_filter_creatures_defending_player_controls_for_attacking_source() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(1, "Attacking Source", alice);
+        let defending_creature = create_creature(2, "Defending Creature", bob);
+        let attacking_creature = create_creature(3, "Attacking Creature", alice);
+        let defending_creature_id = defending_creature.id;
+        let attacking_creature_id = attacking_creature.id;
+        let source_id = source.id;
+
+        game.add_object(source);
+        game.add_object(defending_creature);
+        game.add_object(attacking_creature);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: source_id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            blockers: Default::default(),
+            damage_assignment_order: Default::default(),
+        });
+
+        let filter = ObjectFilter::creature().controlled_by(PlayerFilter::Defending);
+        let legal_targets =
+            compute_legal_targets(&game, &ChooseSpec::Object(filter), alice, Some(source_id));
+
+        assert!(legal_targets.contains(&Target::Object(defending_creature_id)));
+        assert!(!legal_targets.contains(&Target::Object(attacking_creature_id)));
+    }
+
+    #[test]
+    fn legal_player_targets_include_planeswalker_controller_as_defending_player() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(1, "Attacking Source", alice);
+        let bob_walker = create_planeswalker(2, "Bob Walker", bob);
+        let source_id = source.id;
+        let bob_walker_id = bob_walker.id;
+
+        game.add_object(source);
+        game.add_object(bob_walker);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: source_id,
+                target: crate::combat_state::AttackTarget::Planeswalker(bob_walker_id),
+            }],
+            blockers: Default::default(),
+            damage_assignment_order: Default::default(),
+        });
+
+        let legal_targets = compute_legal_targets(
+            &game,
+            &ChooseSpec::Player(PlayerFilter::Defending),
+            alice,
+            Some(source_id),
+        );
+
+        assert!(legal_targets.contains(&Target::Player(bob)));
+        assert!(!legal_targets.contains(&Target::Player(alice)));
     }
 
     #[test]

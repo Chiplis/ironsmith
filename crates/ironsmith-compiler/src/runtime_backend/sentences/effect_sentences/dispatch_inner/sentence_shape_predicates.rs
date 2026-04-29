@@ -569,6 +569,28 @@ fn parse_effect_sentence_lexed_inner(tokens: &[OwnedLexToken]) -> Result<Vec<Eff
         }
     }
 
+    let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if sentence_words.first() == Some(&"at")
+        && sentence_words.get(1) == Some(&"this")
+        && let Some(end_idx) =
+            find_dispatch_inner_phrase_start(sentence_words.as_slice(), &["end", "of", "combat"])
+        && sentence_words[..end_idx].iter().any(|word| *word == "next")
+    {
+        let Some(remainder_start) = token_index_for_word_index(tokens, end_idx + 3) else {
+            return Err(CardTextError::ParseError(
+                "end-of-combat delayed trigger missing effect payload".to_string(),
+            ));
+        };
+        let remainder = trim_commas(&tokens[remainder_start..]);
+        if remainder.is_empty() {
+            return Err(CardTextError::ParseError(
+                "end-of-combat delayed trigger missing effect payload".to_string(),
+            ));
+        }
+        let effects = parse_effect_sentence_lexed_inner(&remainder)?;
+        return Ok(vec![EffectAst::DelayedUntilEndOfCombat { effects }]);
+    }
+
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
         crate::parse_trace::event(format!("effect-route: {route}"));
         normalize_search_followup_shuffles(&mut effects);

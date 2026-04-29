@@ -11,7 +11,8 @@ use crate::tag::TagKey;
 pub type TaggedEffect = ironsmith_core::TaggedEffect<crate::effect::Effect>;
 
 use super::tagging_runtime::{
-    apply_tagged_runtime_state, capture_all_effect_target_snapshots, capture_tagged_runtime_state,
+    TaggedRuntimeState, apply_tagged_runtime_state, capture_all_effect_target_snapshots,
+    capture_tagged_runtime_state,
 };
 
 /// Effect that executes an inner effect and tags its target for later reference.
@@ -157,15 +158,33 @@ impl EffectExecutor for TagAllEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let snapshots = capture_all_effect_target_snapshots(game, &self.effect, ctx);
+        let fallback_snapshots = capture_all_effect_target_snapshots(game, &self.effect, ctx);
 
-        // Tag all the snapshots
-        if !snapshots.is_empty() {
-            ctx.tag_objects(self.tag.clone(), snapshots);
+        // Execute the inner effect, then tag the objects the effect actually
+        // reports as affected. This keeps "destroyed this way" style tags from
+        // including objects protected by replacement/prevention.
+        let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
+        let has_result_objects = outcome.objects().is_some_and(|objects| !objects.is_empty())
+            || outcome
+                .affected_objects()
+                .is_some_and(|objects| !objects.is_empty())
+            || outcome
+                .affected_object_memory()
+                .is_some_and(|memory| !memory.is_empty())
+            || outcome
+                .chosen_objects()
+                .is_some_and(|objects| !objects.is_empty())
+            || outcome
+                .chosen_object_memory()
+                .is_some_and(|memory| !memory.is_empty());
+        if has_result_objects {
+            let runtime =
+                TaggedRuntimeState::from_pre_snapshot(fallback_snapshots.first().cloned());
+            apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime);
+        } else if outcome.something_happened() && !fallback_snapshots.is_empty() {
+            ctx.tag_objects(self.tag.clone(), fallback_snapshots);
         }
-
-        // Execute the inner effect
-        crate::effects::execute_effect(game, &self.effect, ctx)
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -496,5 +515,48 @@ mod tests {
         let tagged_all = ctx.get_tagged_all("kept").expect("kept tag should exist");
         assert_eq!(tagged_all.len(), 1);
         assert_eq!(tagged_all[0].stable_id, chosen_snapshot.stable_id);
+    }
+
+    #[test]
+    fn test_tag_all_effect_tags_actual_runtime_result_memory() {
+        use super::TagAllEffect;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let alice_target = create_creature(&mut game, "Alice Target", alice);
+        let bob_target = create_creature(&mut game, "Bob Target", bob);
+        let alice_stable_id = game.object(alice_target).expect("alice target").stable_id;
+        let bob_stable_id = game.object(bob_target).expect("bob target").stable_id;
+        let spec = ChooseSpec::target(ChooseSpec::creature())
+            .with_count(crate::effect::ChoiceCount::exactly(2));
+
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(alice_target),
+                ResolvedTarget::Object(bob_target),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: spec.clone(),
+                range: 0..2,
+            }]);
+
+        let effect = TagAllEffect::new(
+            "destroyed",
+            Effect::new(crate::effects::DestroyEffect::with_spec(spec)),
+        );
+        let outcome = effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(outcome.as_count(), Some(2));
+        let tagged = ctx
+            .get_tagged_all("destroyed")
+            .expect("destroyed objects should be tagged from result memory");
+        assert_eq!(tagged.len(), 2);
+        assert_eq!(tagged[0].name, "Alice Target");
+        assert_eq!(tagged[0].stable_id, alice_stable_id);
+        assert_eq!(tagged[0].zone, Zone::Graveyard);
+        assert_eq!(tagged[1].name, "Bob Target");
+        assert_eq!(tagged[1].stable_id, bob_stable_id);
+        assert_eq!(tagged[1].zone, Zone::Graveyard);
     }
 }

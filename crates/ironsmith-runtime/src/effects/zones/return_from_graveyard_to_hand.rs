@@ -100,7 +100,8 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
                 }
             }
 
-            return Ok(EffectOutcome::with_objects(returned));
+            return Ok(EffectOutcome::with_objects(returned.clone())
+                .with_affected_objects_from_game(game, returned));
         }
 
         // Non-random: return all resolved object targets that are still in a graveyard.
@@ -117,7 +118,8 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
         if returned.is_empty() {
             Ok(EffectOutcome::target_invalid())
         } else {
-            Ok(EffectOutcome::with_objects(returned))
+            Ok(EffectOutcome::with_objects(returned.clone())
+                .with_affected_objects_from_game(game, returned))
         }
     }
 

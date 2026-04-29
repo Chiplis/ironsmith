@@ -137,6 +137,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         return line.replace("that object's controller", "that land's controller");
     }
+    line = normalize_top_card_exile_imperative(&line);
+    line = capitalize_sentence_boundaries(&line);
     if is_keyword_style_line(&line) {
         line
     } else {

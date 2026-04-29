@@ -1474,6 +1474,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::DealDamageEqualToPower { .. }
             | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
+            | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
@@ -2773,6 +2774,7 @@ fn bind_unresolved_it_in_restriction(
     match restriction {
         Restriction::Attack(filter)
         | Restriction::Block(filter)
+        | Restriction::MustBeBlocked(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)

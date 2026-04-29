@@ -309,6 +309,18 @@ pub(super) fn parse_object_filter_inner(
 
     try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
+    if contains_any_filter_phrase(
+        &all_words,
+        &[
+            &["blocked", "by", "one", "of", "those"],
+            &["blocked", "by", "those"],
+            &["blocked", "by", "that"],
+        ],
+    ) {
+        filter.blocked = true;
+        filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(TagKey::from(IT_TAG)));
+    }
+
     // Avoid treating reference phrases like "... with mana value equal to the number of charge
     // counters on this artifact" as additional type selectors on the filtered object.
     // (Aether Vial: "put a creature card with mana value equal to the number of charge counters

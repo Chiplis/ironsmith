@@ -87,9 +87,10 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         || filter
             .could_be_targeted_by
             .as_ref()
-            .is_some_and(|constraint| {
-                matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-            })
+        .is_some_and(|constraint| {
+            matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
+        })
+        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter
             .targets_object
             .as_deref()
@@ -111,6 +112,12 @@ fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey
             constraint.tag = new_tag.clone();
             replaced = true;
         }
+    }
+    if let Some(crate::filter::ObjectRef::Tagged(tag)) = &mut filter.blocked_by
+        && tag.as_str() == old_tag
+    {
+        *tag = new_tag.clone();
+        replaced = true;
     }
     if let Some(targets) = filter.targets_object.as_deref_mut() {
         replaced |= replace_filter_tag(targets, old_tag, new_tag);

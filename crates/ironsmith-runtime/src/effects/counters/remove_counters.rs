@@ -52,7 +52,9 @@ impl EffectExecutor for RemoveCountersEffect {
             Some(ctx.source),
             Some(ctx.controller),
         ) {
-            Some((removed, event)) => Ok(EffectOutcome::count(removed as i32).with_event(event)),
+            Some((removed, event)) => Ok(EffectOutcome::count(removed as i32)
+                .with_event(event)
+                .with_affected_objects_from_game(game, vec![target_id])),
             None => {
                 // No counters were removed (object had 0 of this counter type)
                 Ok(EffectOutcome::count(0))
@@ -176,6 +178,34 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         let obj = game.object(creature_id).unwrap();
         assert_eq!(obj.counters.get(&CounterType::PlusOnePlusOne), Some(&3)); // 5 - 2
+    }
+
+    #[test]
+    fn remove_counters_records_affected_result_memory() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Hangarback Walker",
+            alice,
+            CounterType::PlusOnePlusOne,
+            5,
+        );
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+
+        let result = RemoveCountersEffect::plus_one_counters(2, ChooseSpec::creature())
+            .execute(&mut game, &mut ctx)
+            .expect("remove counters should resolve");
+
+        assert_eq!(result.affected_objects(), Some([creature_id].as_slice()));
+        let memory = result
+            .affected_object_memory()
+            .expect("counter target memory should be recorded");
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory[0].object_id, creature_id);
     }
 
     #[test]

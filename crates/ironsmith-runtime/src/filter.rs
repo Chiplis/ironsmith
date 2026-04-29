@@ -10,11 +10,13 @@
 //! - Triggered ability conditions (for triggers that watch for specific events)
 
 use crate::color::ColorSet;
+use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, Object, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
+use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
@@ -728,6 +730,27 @@ fn resolve_filter_comparison_rhs_value(
             }
             _ => None,
         },
+        Value::ManaValueOf(spec) => match spec.as_ref() {
+            ChooseSpec::Source => {
+                let source = game.object(ctx.source?)?;
+                Some(
+                    source
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32),
+                )
+            }
+            ChooseSpec::Tagged(tag) => {
+                let snapshot = ctx.tagged_objects.get(tag)?.first()?;
+                Some(
+                    snapshot
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32),
+                )
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -768,6 +791,51 @@ fn resolve_object_ref_id(object_ref: &ObjectRef, ctx: &FilterContext) -> Option<
             .and_then(|snapshots| snapshots.first())
             .map(|snapshot| snapshot.object_id),
     }
+}
+
+fn resolve_object_ref_ids(object_ref: &ObjectRef, ctx: &FilterContext) -> Vec<ObjectId> {
+    match object_ref {
+        ObjectRef::Target => ctx
+            .target_objects
+            .iter()
+            .map(|snapshot| snapshot.object_id)
+            .collect(),
+        ObjectRef::Specific(object_id) => vec![*object_id],
+        ObjectRef::Tagged(tag) => ctx
+            .tagged_objects
+            .get(tag)
+            .map(|snapshots| {
+                snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.object_id)
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn creature_was_blocked_by_ref(
+    game: &GameState,
+    ctx: &FilterContext,
+    attacker: ObjectId,
+    blocker_ref: &ObjectRef,
+) -> bool {
+    let blockers = resolve_object_ref_ids(blocker_ref, ctx);
+    if blockers.is_empty() {
+        return false;
+    }
+    if let Some(combat) = &game.combat {
+        let current_blockers = crate::combat_state::get_blockers(combat, attacker);
+        if blockers
+            .iter()
+            .any(|blocker| current_blockers.contains(blocker))
+        {
+            return true;
+        }
+    }
+    blockers
+        .iter()
+        .any(|blocker| game.creature_was_blocked_by_this_turn(attacker, *blocker))
 }
 
 fn effects_for_stack_entry(
@@ -1802,6 +1870,11 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(blocker_ref) = &self.blocked_by
+            && !creature_was_blocked_by_ref(game, ctx, object.id, blocker_ref)
+        {
+            return false;
+        }
         if self.in_combat_with_source {
             let Some(source_id) = ctx.source else {
                 return false;
@@ -2326,6 +2399,11 @@ impl ObjectFilterExt for ObjectFilter {
             if !source_attacks_object && !source_blocks_object {
                 return false;
             }
+        }
+        if let Some(blocker_ref) = &self.blocked_by
+            && !creature_was_blocked_by_ref(game, ctx, snapshot.object_id, blocker_ref)
+        {
+            return false;
         }
 
         // Power check
@@ -2887,6 +2965,15 @@ impl ObjectFilterExt for ObjectFilter {
             if self.unblocked {
                 parts.push("unblocked".to_string());
             }
+        }
+        if let Some(blocker) = &self.blocked_by {
+            let blocker_text = match blocker {
+                ObjectRef::Target => "target creature",
+                ObjectRef::Specific(_) => "that creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(_) => "one of those creatures",
+            };
+            post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
@@ -4109,6 +4196,15 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountersOn(_, None) => "the number of counters".to_string(),
             Value::SourcePower => "this creature's power".to_string(),
             Value::SourceToughness => "this creature's toughness".to_string(),
+            Value::ManaValueOf(spec) => {
+                if let ChooseSpec::Tagged(tag) = spec.base()
+                    && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                {
+                    "the exiled spell's mana value".to_string()
+                } else {
+                    "that card's mana value".to_string()
+                }
+            }
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",
@@ -4182,6 +4278,53 @@ mod tests {
         let filter = ObjectFilter::creature();
         assert_eq!(filter.zone, Some(Zone::Battlefield));
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn blocked_by_tagged_filter_matches_current_combat_relationship() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Attacker")
+                .card_types(vec![CardType::Creature])
+                .build();
+        let blocker_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Blocker")
+                .card_types(vec![CardType::Creature])
+                .build();
+        let attacker = Object::from_card(
+            ObjectId::from_raw(1),
+            &attacker_card,
+            alice,
+            Zone::Battlefield,
+        );
+        let blocker =
+            Object::from_card(ObjectId::from_raw(2), &blocker_card, bob, Zone::Battlefield);
+        game.add_object(attacker.clone());
+        game.add_object(blocker.clone());
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker.id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            blockers: std::collections::HashMap::from([(attacker.id, vec![blocker.id])]),
+            damage_assignment_order: std::collections::HashMap::new(),
+        });
+
+        let blocker_snapshot =
+            ObjectSnapshot::from_object_with_calculated_characteristics(&blocker, &game);
+        let ctx = FilterContext::new(alice).with_tagged_objects(&std::collections::HashMap::from(
+            [(TagKey::from("chosen_blockers"), vec![blocker_snapshot])],
+        ));
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Creature],
+            blocked_by: Some(ObjectRef::Tagged(TagKey::from("chosen_blockers"))),
+            ..ObjectFilter::default()
+        };
+
+        assert!(filter.matches(game.object(attacker.id).unwrap(), &ctx, &game));
     }
 
     #[test]
@@ -5200,6 +5343,7 @@ mod tests {
                 is_unpreventable: false,
                 cause: crate::events::cause::EventCause::effect(),
                 remainder: None,
+                target_snapshot: None,
             },
             crate::provenance::ProvNodeId::default(),
         );

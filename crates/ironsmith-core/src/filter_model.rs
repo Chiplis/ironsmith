@@ -1,6 +1,6 @@
 use crate::{
-    CardType, ChoiceCount, Color, ColorSet, CounterType, ObjectId, PlayerId, StaticAbilityId,
-    Subtype, Supertype, TagKey, Value, Zone,
+    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, ObjectId, PlayerId,
+    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
 };
 
 fn small_number_word(n: u32) -> Option<&'static str> {
@@ -377,6 +377,7 @@ pub struct ObjectFilter {
     pub blocking: bool,
     pub nonblocking: bool,
     pub blocked: bool,
+    pub blocked_by: Option<ObjectRef>,
     pub unblocked: bool,
     pub in_combat_with_source: bool,
     pub entered_since_your_last_turn_ended: bool,
@@ -1459,6 +1460,15 @@ impl ObjectFilter {
                 parts.push("unblocked".to_string());
             }
         }
+        if let Some(blocker) = &self.blocked_by {
+            let blocker_text = match blocker {
+                ObjectRef::Target => "target creature",
+                ObjectRef::Specific(_) => "that creature",
+                ObjectRef::Tagged(tag) if tag.as_str() == "blocking" => "the blocking creature",
+                ObjectRef::Tagged(_) => "one of those creatures",
+            };
+            post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
+        }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
         } else {
@@ -2338,6 +2348,15 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountersOn(_, None) => "the number of counters".to_string(),
             Value::SourcePower => "this creature's power".to_string(),
             Value::SourceToughness => "this creature's toughness".to_string(),
+            Value::ManaValueOf(spec) => {
+                if let ChooseSpec::Tagged(tag) = spec.base()
+                    && tag.as_str() == crate::SOURCE_EXILED_TAG
+                {
+                    "the exiled spell's mana value".to_string()
+                } else {
+                    "that card's mana value".to_string()
+                }
+            }
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",

@@ -583,10 +583,24 @@ pub fn apply_blocker_declarations(
         let event_provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::CreatureBlocked);
-        let event = TriggerEvent::new_with_provenance(
-            CreatureBlockedEvent::new(*blocker, *attacker),
-            event_provenance,
-        );
+        let blocker_snapshot = game.object(*blocker).map(|obj| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+        });
+        let attacker_snapshot = game.object(*attacker).map(|obj| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+        });
+        let blocked_event = match (blocker_snapshot, attacker_snapshot) {
+            (Some(blocker_snapshot), Some(attacker_snapshot)) => {
+                CreatureBlockedEvent::with_snapshots(
+                    *blocker,
+                    *attacker,
+                    blocker_snapshot,
+                    attacker_snapshot,
+                )
+            }
+            _ => CreatureBlockedEvent::new(*blocker, *attacker),
+        };
+        let event = TriggerEvent::new_with_provenance(blocked_event, event_provenance);
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
 
@@ -611,15 +625,29 @@ pub fn apply_blocker_declarations(
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::CreatureBecameBlocked);
+            let attacker_snapshot = game.object(*attacker_id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            });
+            let blocker_snapshots = blockers
+                .iter()
+                .filter_map(|blocker| {
+                    game.object(*blocker).map(|obj| {
+                        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                            obj, game,
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
             let event = TriggerEvent::new_with_provenance(
-                match attack_target {
-                    Some(target) => CreatureBecameBlockedEvent::with_target(
-                        *attacker_id,
-                        blockers.len() as u32,
-                        target,
-                    ),
-                    None => CreatureBecameBlockedEvent::new(*attacker_id, blockers.len() as u32),
-                },
+                CreatureBecameBlockedEvent::with_target_and_blockers(
+                    *attacker_id,
+                    blockers.clone(),
+                    attack_target,
+                    attacker_snapshot,
+                    blocker_snapshots,
+                ),
                 event_provenance,
             );
             queue_triggers_from_event(game, trigger_queue, event, false);

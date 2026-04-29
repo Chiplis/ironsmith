@@ -69,7 +69,16 @@ pub(crate) fn apply_processed_damage_outcome(
     let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
     let mut outcomes = Vec::new();
     let mut total_damage_dealt = 0u32;
+    let mut affected_objects = Vec::new();
     for assignment in processed.assignments {
+        let target_snapshot = match assignment.target {
+            DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            }),
+            DamageTarget::Player(_) => None,
+        };
         let applied = crate::rules::damage::apply_processed_damage_assignment(
             game,
             source,
@@ -83,18 +92,22 @@ pub(crate) fn apply_processed_damage_outcome(
         }
 
         total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
+        if let DamageTarget::Object(object_id) = assignment.target {
+            affected_objects.push(object_id);
+        }
         let mut outcome = EffectOutcome::count(assignment.amount as i32);
         if assignment.amount > 0 {
-            let mut event = TriggerEvent::new_with_provenance(
-                DamageEvent::with_cause(
-                    source,
-                    assignment.target,
-                    assignment.amount,
-                    source_is_combat,
-                    cause.clone(),
-                ),
-                provenance,
+            let mut damage_event = DamageEvent::with_cause(
+                source,
+                assignment.target,
+                assignment.amount,
+                source_is_combat,
+                cause.clone(),
             );
+            if let Some(snapshot) = target_snapshot {
+                damage_event = damage_event.with_target_snapshot(snapshot);
+            }
+            let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
             if game.object(source).is_none()
                 && let Some(snapshot) = source_snapshot
             {
@@ -131,11 +144,15 @@ pub(crate) fn apply_processed_damage_outcome(
         }
     }
 
-    if outcomes.is_empty() {
+    let mut outcome = if outcomes.is_empty() {
         EffectOutcome::count(0)
     } else {
         EffectOutcome::aggregate_summing_counts(outcomes)
+    };
+    if !affected_objects.is_empty() {
+        outcome = outcome.with_affected_objects_from_game(game, affected_objects);
     }
+    outcome
 }
 
 impl EffectExecutor for DealDamageEffect {
@@ -393,6 +410,30 @@ mod tests {
                 ReplacementAction::Modify(EventModification::Multiply(2)),
             ),
         );
+    }
+
+    #[test]
+    fn damage_to_object_records_affected_object_memory() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(&mut game, "Pinger", 1, 1, alice, vec![]);
+        let target = create_creature(&mut game, "Target", 2, 2, bob, vec![]);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+
+        let outcome = DealDamageEffect::new(1, ChooseSpec::AnyTarget)
+            .execute(&mut game, &mut ctx)
+            .expect("damage should resolve");
+
+        assert_eq!(outcome.affected_objects(), Some([target].as_slice()));
+        let memory = outcome
+            .affected_object_memory()
+            .expect("damaged object memory should be recorded");
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory[0].controller, bob);
+        assert_eq!(memory[0].toughness, Some(2));
     }
 
     #[test]

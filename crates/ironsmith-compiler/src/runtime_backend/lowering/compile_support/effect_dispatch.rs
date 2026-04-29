@@ -237,6 +237,9 @@ fn compile_subject_verb_effect(
             |count| Effect::investigate_player(count, PlayerFilter::You),
             Effect::investigate_player,
         ),
+        SubjectVerbActionAst::EmitKeywordAction { action, amount } => {
+            Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
+        }
         SubjectVerbActionAst::Amass { subtype, amount } => {
             let mut effect = Effect::amass(*subtype, *amount);
             if ctx.auto_tag_object_targets {
@@ -2639,6 +2642,7 @@ fn compile_subject_verb_effect(
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();
+            let count = per_player_partition_value_for_filter(count, &player_filter);
             let mut choices = subject.into_choices();
             let mut effect = if matches!(player_filter, PlayerFilter::You) {
                 crate::effects::CreateTokenEffect::you(token, count.clone())
@@ -5003,10 +5007,32 @@ where
     };
     let you_value = value.clone();
     let (player_filter, choices) = subject.into_parts();
+    let value = per_player_partition_value_for_filter(value, &player_filter);
+    let you_value = per_player_partition_value_for_filter(you_value, &PlayerFilter::You);
     compile_player_effect_from_resolved_filter(
         player_filter,
         choices,
         || build_you(you_value),
         |filter| build_other(value, filter),
     )
+}
+
+fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFilter) -> Value {
+    if !matches!(player_filter, PlayerFilter::IteratedPlayer) {
+        return value;
+    }
+    match value {
+        Value::EffectValue(effect_id) => Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+        },
+        Value::EffectValueOffset(effect_id, offset) => Value::EffectMetricOffset {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+            offset,
+        },
+        other => other,
+    }
 }

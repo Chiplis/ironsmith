@@ -526,6 +526,31 @@ pub(crate) fn parse_draw_equal_to_value(
         return Ok(None);
     }
 
+    if grammar::words_match_prefix(
+        tokens,
+        &[
+            "equal",
+            "to",
+            "the",
+            "greatest",
+            "number",
+            "of",
+            "cards",
+            "a",
+            "player",
+            "discarded",
+            "this",
+            "way",
+        ],
+    )
+    .is_some()
+    {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::GreatestPlayerCount,
+        }));
+    }
+
     if let Some(value) = parse_devotion_value_from_add_clause(tokens)? {
         return Ok(Some(value));
     }

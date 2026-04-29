@@ -29,6 +29,10 @@ pub enum EffectMetric {
     GreatestPower,
     GreatestToughness,
     GreatestManaValue,
+    ColorsAmong,
+    CardTypesAmong,
+    GreatestPlayerCount,
+    IteratedPlayerCount,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -185,6 +189,7 @@ pub enum Restriction {
         blockers: ObjectFilter,
         attacker: ObjectFilter,
     },
+    MustBeBlocked(ObjectFilter),
     BlockAlone(ObjectFilter),
     Untap(ObjectFilter),
     BeBlocked(ObjectFilter),
@@ -363,6 +368,10 @@ impl Restriction {
 
     pub fn must_block_specific_attacker(blockers: ObjectFilter, attacker: ObjectFilter) -> Self {
         Self::MustBlockSpecificAttacker { blockers, attacker }
+    }
+
+    pub fn must_be_blocked(filter: ObjectFilter) -> Self {
+        Self::MustBeBlocked(filter)
     }
 
     pub fn block_alone(filter: ObjectFilter) -> Self {
