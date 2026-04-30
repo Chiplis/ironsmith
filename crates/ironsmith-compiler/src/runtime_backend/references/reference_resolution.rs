@@ -2757,7 +2757,7 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
             bind_unresolved_it_in_filter(control_filter, seed_tag)
                 + bind_unresolved_it_in_filter(graveyard_filter, seed_tag)
         }
-        PredicateAst::And(left, right) => {
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             bind_unresolved_it_in_predicate(left, seed_tag)
                 + bind_unresolved_it_in_predicate(right, seed_tag)
         }

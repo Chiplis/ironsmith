@@ -132,15 +132,15 @@ pub(crate) fn parse_sentence_exile_multi_target(
         || (grammar::strip_lexed_prefix_phrase(&second_tokens, &["up", "to"]).is_some()
             && grammar::contains_word(&second_tokens, "target"));
 
-    let mut first_target = match parse_target_phrase(&first_tokens) {
-        Ok(target) => target,
-        Err(_)
-            if !first_is_explicit_target
-                && is_likely_named_or_source_reference_words(&first_words) =>
-        {
-            TargetAst::Source(span_from_tokens(&first_tokens))
+    let mut first_target = if !first_is_explicit_target
+        && is_likely_named_or_source_reference_words(&first_words)
+    {
+        TargetAst::Source(span_from_tokens(&first_tokens))
+    } else {
+        match parse_target_phrase(&first_tokens) {
+            Ok(target) => target,
+            Err(err) => return Err(err),
         }
-        Err(err) => return Err(err),
     };
     let mut second_target = parse_target_phrase(&second_tokens)?;
 

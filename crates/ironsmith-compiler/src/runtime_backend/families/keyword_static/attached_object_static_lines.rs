@@ -1113,7 +1113,20 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         } else if word_slice_starts_with(&line_words[6..], &["this"]) {
             Some(1usize)
         } else {
-            None
+            let prevent_idx = find_word_index(&line_words[6..], |word| word == "prevent");
+            let source_end = prevent_idx.map(|idx| {
+                line_words[6..6 + idx]
+                    .iter()
+                    .position(|word| *word == "while")
+                    .unwrap_or(idx)
+            });
+            source_end.filter(|source_end| {
+                *source_end > 0
+                    && crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+                        &line_words[6..6 + *source_end],
+                    )
+                    .is_some()
+            })
         };
         if let Some(source_words_used) = source_words_used {
             let generic_tail = [

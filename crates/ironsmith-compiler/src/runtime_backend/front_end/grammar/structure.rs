@@ -453,7 +453,14 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         let qualifiers = &words[2..words.len() - 2];
         matches!(
             qualifiers,
-            [] | ["it"] | ["them"] | ["that"] | ["a", "creature", "card"] | ["creature", "card"]
+            []
+                | ["it"]
+                | ["them"]
+                | ["that"]
+                | ["card"]
+                | ["a", "card"]
+                | ["a", "creature", "card"]
+                | ["creature", "card"]
         )
     };
     let is_exact_negated_result = |subject: &str| {

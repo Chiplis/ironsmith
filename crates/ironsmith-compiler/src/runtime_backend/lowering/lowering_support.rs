@@ -48,7 +48,7 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
 fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::SourceMatches(_) => true,
-        PredicateAst::And(left, right) => {
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             predicate_contains_source_match(left) || predicate_contains_source_match(right)
         }
         PredicateAst::Not(inner) => predicate_contains_source_match(inner),
@@ -69,7 +69,7 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             ..
         } => Some(filter.clone()),
-        PredicateAst::And(left, right) => predicate_object_filter_antecedent(left)
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => predicate_object_filter_antecedent(left)
             .or_else(|| predicate_object_filter_antecedent(right)),
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
         _ => None,
@@ -502,7 +502,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     fn predicate_can_promote_to_intervening_if(predicate: &PredicateAst) -> bool {
         match predicate {
             PredicateAst::TargetMatches(_) => false,
-            PredicateAst::And(left, right) => {
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_can_promote_to_intervening_if(left)
                     && predicate_can_promote_to_intervening_if(right)
             }
@@ -525,6 +525,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
                     merge_intervening_predicates(left_remainder, right_remainder),
                 )
             }
+            PredicateAst::Or(left, right) => (None, Some(PredicateAst::Or(left, right))),
             other => (None, Some(other)),
         }
     }

@@ -762,6 +762,46 @@ fn tagged_target_only_effect(
     Some((&tagged.tag, target_only))
 }
 
+fn destroy_random_one_of_tagged_groups(
+    destroy: &crate::effects::DestroyEffect,
+    tags: &[&crate::TagKey],
+) -> bool {
+    let ChooseSpec::WithCount(inner, count) = &destroy.spec else {
+        return false;
+    };
+    if !count.is_single() || !count.is_random() {
+        return false;
+    }
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return false;
+    };
+    filter.any_of.len() == tags.len()
+        && tags
+            .iter()
+            .all(|tag| filter.any_of.iter().any(|candidate| is_tagged_only_filter(candidate, tag)))
+}
+
+fn describe_target_groups_then_random_destroy(effects: &[&Effect]) -> Option<String> {
+    let [first_target, second_target, destroy_effect] = effects else {
+        return None;
+    };
+    let (first_tag, first_target) = tagged_target_only_effect(first_target)?;
+    let (second_tag, second_target) = tagged_target_only_effect(second_target)?;
+    if first_tag == second_tag {
+        return None;
+    }
+    let destroy = destroy_effect.downcast_ref::<crate::effects::DestroyEffect>()?;
+    if !destroy_random_one_of_tagged_groups(destroy, &[first_tag, second_tag]) {
+        return None;
+    }
+
+    Some(format!(
+        "Choose {} and {}. Destroy one of them at random",
+        describe_choose_spec(&first_target.target),
+        describe_choose_spec(&second_target.target)
+    ))
+}
+
 fn is_tagged_only_filter(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
     let mut normalized = filter.clone();
     normalized.zone = None;
@@ -2183,10 +2223,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
 
         let copied = match &copy_spell.target {
+            ChooseSpec::Tagged(tag) if tag.as_str().starts_with("__sentence_helper_exiled") => {
+                "it".to_string()
+            }
             ChooseSpec::Tagged(tag)
-                if tag.as_str().starts_with("exiled_")
-                    || tag.as_str().starts_with("__sentence_helper_exiled") =>
+                if tag.as_str() == "triggering" && cast.cost_reduction.is_some() =>
             {
+                "that card".to_string()
+            }
+            ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exiled_") => {
                 "the exiled card".to_string()
             }
             _ => describe_choose_spec(&copy_spell.target),
@@ -2194,6 +2239,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let mut cast_text = "You may cast the copy".to_string();
         if cast.without_paying_mana_cost {
             cast_text.push_str(" without paying its mana cost");
+        }
+        if let Some(reduction) = cast.cost_reduction.as_ref() {
+            return Some(format!(
+                "Copy {copied} and you may cast the copy. That copy costs {} less to cast",
+                reduction.to_oracle()
+            ));
         }
         Some(format!("Copy {copied}. {cast_text}"))
     }
@@ -6683,9 +6734,66 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_exile_source_and_unless_pays_target(effects: &[&Effect]) -> Option<String> {
+        let [maybe_target_only, unless_effect] = effects else {
+            return None;
+        };
+        maybe_target_only.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let unless_pays = unless_effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+        let [source_move_effect, target_move_effect] = unless_pays.effects.as_slice() else {
+            return None;
+        };
+        let source_move = source_move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if source_move.zone != Zone::Exile || !matches!(source_move.target.unhinted(), ChooseSpec::Source) {
+            return None;
+        }
+        let target_move = unwrap_tag_wrappers(target_move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if target_move.zone != Zone::Exile {
+            return None;
+        }
+        let target = describe_choose_spec(&target_move.target);
+        if !target.starts_with("target ") {
+            return None;
+        }
+        let display = describe_total_cost_payment(&unless_pays.cost);
+        let payment_text = display.strip_prefix("Pay ").unwrap_or(&display);
+        let controller = if let Some(kind) = target
+            .strip_prefix("target ")
+            .and_then(|rest| rest.split_whitespace().next())
+        {
+            format!("that {kind}'s controller")
+        } else {
+            "its controller".to_string()
+        };
+        Some(format!(
+            "Exile this card and {target} unless {controller} pays {payment_text}"
+        ))
+    }
+
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_exile_source_and_unless_pays_target(&[filtered[idx], filtered[idx + 1]])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_target_groups_then_random_destroy(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+
         if idx + 2 < filtered.len()
             && let Some(compact) = describe_untap_gain_control_then_haste(&[
                 filtered[idx],
@@ -13233,7 +13341,7 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         };
     }
     if cost.is_sacrifice_self() {
-        return "Sacrifice this source".to_string();
+        return "Sacrifice this".to_string();
     }
     let display = cost.display().trim().to_string();
     if display.is_empty() {
@@ -14169,6 +14277,21 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
         trailing = ".";
     }
     if base.contains(" or ") {
+        if base.contains(", ") {
+            let normalized = base.replace(", or ", ", ");
+            let parts = normalized
+                .split(", ")
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+            if parts.len() > 1 {
+                let plural_parts = parts
+                    .iter()
+                    .map(|part| pluralize_noun_phrase(part))
+                    .collect::<Vec<_>>();
+                return format!("{}{}", join_with_or(&plural_parts), trailing);
+            }
+        }
         let parts = base
             .split(" or ")
             .map(str::trim)
@@ -19606,6 +19729,18 @@ fn describe_with_id_if_clause(
             EffectPredicate::DidNotHappen => "If you lose the flip".to_string(),
             _ => format!("If {}", describe_effect_predicate(&if_effect.predicate)),
         }
+    } else if with_id
+        .effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+        .is_some()
+        && matches!(if_effect.predicate, EffectPredicate::Happened)
+    {
+        if then_text.contains("except it's a ") {
+            "If you exiled a card this way".to_string()
+        } else {
+            "If you do".to_string()
+        }
     } else {
         match if_effect.predicate {
             EffectPredicate::Happened => "If it happened".to_string(),
@@ -23239,6 +23374,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         let player = describe_choose_spec(&lose.player);
+        if let Value::CountersOn(spec, Some(counter_type)) = &lose.amount {
+            return format!(
+                "{} {} 1 life for each {} counter on {}",
+                player,
+                player_verb(&player, "lose", "loses"),
+                describe_counter_type(*counter_type),
+                describe_choose_spec(spec)
+            );
+        }
         if value_prefers_where_x(&lose.amount)
             && let Some(where_x) = describe_where_x_basis(&lose.amount)
         {
@@ -24530,6 +24674,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
             && cast_tagged.as_copy
         {
+            if let Some(reduction) = cast_tagged.cost_reduction.as_ref() {
+                return format!(
+                    "Copy it. You may cast the copy. That copy costs {} less to cast",
+                    reduction.to_oracle()
+                );
+            }
             let mut inner = describe_effect_list(&may.effects);
             if inner.starts_with("you ") {
                 inner = inner["you ".len()..].to_string();
@@ -24750,6 +24900,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exile_cost_") => {
                 "the exiled card".to_string()
             }
+            ChooseSpec::Tagged(tag)
+                if tag.as_str().starts_with("__sentence_helper_exiled")
+                    && create_copy.set_base_power_toughness.is_some()
+                    && create_copy.added_card_types.is_empty()
+                    && create_copy.added_subtypes.is_empty() =>
+            {
+                "that card".to_string()
+            }
             _ => describe_choose_spec(&create_copy.target),
         };
         let mut text = match create_copy.count {
@@ -24804,6 +24962,39 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     ", except their power and toughness are each half that permanent's power and toughness, rounded up",
                 );
             }
+        }
+        if matches!(&create_copy.count, Value::Fixed(1))
+            && let (Some((power, toughness)), Some(colors), Some(subtypes)) = (
+                create_copy.set_base_power_toughness,
+                create_copy.set_colors,
+                create_copy.set_subtypes.as_ref(),
+            )
+            && create_copy.set_card_types.is_none()
+            && create_copy.pt_adjustment.is_none()
+            && create_copy.added_card_types.is_empty()
+            && create_copy.added_subtypes.is_empty()
+            && create_copy.removed_supertypes.is_empty()
+            && create_copy.granted_static_abilities.is_empty()
+        {
+            let mut words = Vec::new();
+            if colors.contains(crate::color::Color::White) {
+                words.push("white".to_string());
+            }
+            if colors.contains(crate::color::Color::Blue) {
+                words.push("blue".to_string());
+            }
+            if colors.contains(crate::color::Color::Black) {
+                words.push("black".to_string());
+            }
+            if colors.contains(crate::color::Color::Red) {
+                words.push("red".to_string());
+            }
+            if colors.contains(crate::color::Color::Green) {
+                words.push("green".to_string());
+            }
+            words.extend(subtypes.iter().map(|subtype| subtype.to_string()));
+            text.push_str(&format!(", except it's a {power}/{toughness} {}", words.join(" ")));
+            return text;
         }
         if let Some((power, toughness)) = create_copy.set_base_power_toughness {
             text.push_str(&format!(

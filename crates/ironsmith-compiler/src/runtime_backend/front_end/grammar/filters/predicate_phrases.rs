@@ -248,6 +248,33 @@ fn parse_both_spell_cast_predicate(
     Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
 }
 
+fn predicate_tokens_from_words(words: &[&str]) -> Vec<OwnedLexToken> {
+    words
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect()
+}
+
+fn parse_repeated_if_or_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(or_idx) = filtered
+        .windows(2)
+        .position(|window| window == ["or", "if"])
+    else {
+        return Ok(None);
+    };
+    if or_idx == 0 || or_idx + 2 >= filtered.len() {
+        return Ok(None);
+    }
+
+    let left_tokens = predicate_tokens_from_words(&filtered[..or_idx]);
+    let right_tokens = predicate_tokens_from_words(&filtered[or_idx + 2..]);
+    let left = parse_predicate(&left_tokens)?;
+    let right = parse_predicate(&right_tokens)?;
+    Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
 fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
@@ -454,6 +481,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
         ));
+    }
+
+    if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_this_ability_resolution_count_predicate(&filtered) {
@@ -2033,6 +2064,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "artifact"
                 | "card"
                 | "creature"
+                | "creatures"
                 | "enchantment"
                 | "land"
                 | "object"
@@ -2182,6 +2214,30 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(reference_len) = demonstrative_reference_len {
         let mut descriptor_words = filtered[reference_len..].to_vec();
+        if descriptor_words.len() >= 2
+            && matches!(descriptor_words[0], "power" | "toughness")
+        {
+            let axis = descriptor_words[0];
+            let value_tail = if matches!(
+                descriptor_words.get(1).copied(),
+                Some("is" | "are" | "was" | "were")
+            ) {
+                &descriptor_words[2..]
+            } else {
+                &descriptor_words[1..]
+            };
+            if let Some((cmp, _consumed)) =
+                parse_filter_comparison_tokens(axis, value_tail, &filtered)?
+            {
+                let mut filter = ObjectFilter::default();
+                if axis == "power" {
+                    filter.power = Some(cmp);
+                } else {
+                    filter.toughness = Some(cmp);
+                }
+                return Ok(PredicateAst::ItMatches(filter));
+            }
+        }
         if descriptor_words.as_slice() == ["has", "toxic"]
             || descriptor_words.as_slice() == ["have", "toxic"]
         {

@@ -604,6 +604,11 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let right = compile_condition_from_predicate_ast(right, ctx, saved_last_tag)?;
             Condition::And(Box::new(left), Box::new(right))
         }
+        PredicateAst::Or(left, right) => {
+            let left = compile_condition_from_predicate_ast(left, ctx, saved_last_tag)?;
+            let right = compile_condition_from_predicate_ast(right, ctx, saved_last_tag)?;
+            Condition::Or(Box::new(left), Box::new(right))
+        }
     })
 }
 

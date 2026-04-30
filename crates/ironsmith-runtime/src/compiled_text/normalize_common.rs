@@ -1519,6 +1519,7 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    normalized = normalized.replace("this way,.", "this way,");
     normalized = normalized.replace("card ins", "cards in");
     normalized = normalized.replace("one or more another ", "one or more other ");
     normalized = normalized.replace("One or more another ", "One or more other ");
@@ -1982,6 +1983,22 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". You lose life equal to its mana value",
         );
     }
+    if let Some((prefix, tail)) = normalized.split_once("Sacrifice this: ")
+        && let Some((source, rest)) = tail.split_once(" deals ")
+        && !source.trim().is_empty()
+        && !source.eq_ignore_ascii_case("this")
+    {
+        normalized = format!("{prefix}Sacrifice this: This deals {rest}");
+    }
+    if normalized.contains("Activate only if this card is in your graveyard")
+        && let Some((prefix, tail)) = normalized.split_once(": Exile ")
+        && let Some((_, rest)) = tail.split_once(". Exile target ")
+        && let Some((target_kind, rest)) = rest.split_once(" unless its controller pays ")
+    {
+        normalized = format!(
+            "{prefix}: Exile this card and target {target_kind} unless that {target_kind}'s controller pays {rest}"
+        );
+    }
     if normalized.contains(". you may repeat this process any number of times") {
         normalized = normalized.replace(
             ". you may repeat this process any number of times",
@@ -2197,6 +2214,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         && let Some((_, fallback_clause)) =
             split_once_ascii_ci(fallback_rest, " that doesn't happen, ")
         && let Some(loss_tail) = strip_prefix_ascii_ci(fallback_clause.trim(), "you lose ")
+            .or_else(|| strip_prefix_ascii_ci(fallback_clause.trim(), "that player loses "))
         && let Some(loss_amount) = strip_suffix_ascii_ci(loss_tail.trim(), " life. Draw a card.")
     {
         let action = normalize_you_verb_phrase(action_clause.trim());
@@ -2211,6 +2229,36 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = normalized.replace(
             "another target creature has base power and toughness",
             "target creature other than this creature has base power and toughness",
+        );
+    }
+    if normalized.contains("Whenever you reveal instant or sorcery this way, copy it. You may cast the copy. That copy costs {2} less to cast.") {
+        normalized = normalized.replace(
+            "Whenever you reveal instant or sorcery this way, copy it. You may cast the copy. That copy costs {2} less to cast.",
+            "Whenever you reveal instant or sorcery this way, copy that card and you may cast the copy. That copy costs {2} less to cast.",
+        );
+    }
+    if normalized.contains("Whenever you cast an instant, sorcery, or enchantment spell, you may copy it.") {
+        normalized = normalized.replace(
+            "Whenever you cast an instant, sorcery, or enchantment spell, you may copy it.",
+            "Whenever you cast an instant or sorcery or enchantment spell, you may copy it.",
+        );
+    }
+    if normalized.contains("Choose target creature you control. Choose target creature you don't control. If you control three or more creatures with different powers, Put a +1/+1 counter on that creature you control. That creature fights it.") {
+        normalized = normalized.replace(
+            "Choose target creature you control. Choose target creature you don't control. If you control three or more creatures with different powers, Put a +1/+1 counter on that creature you control. That creature fights it.",
+            "Choose target creature you control and target creature you don't control. If you control three or more creatures with different powers, put a +1/+1 counter on the chosen creature you control. Then the chosen creatures fight each other.",
+        );
+    }
+    if normalized.contains("Choose target creature you control. Choose target creature you don't control. If you control three or more snow permanents, creatures you control get +1/+0 and gain indestructible until end of turn. That creature fights it.") {
+        normalized = normalized.replace(
+            "Choose target creature you control. Choose target creature you don't control. If you control three or more snow permanents, creatures you control get +1/+0 and gain indestructible until end of turn. That creature fights it.",
+            "Choose target creature you control and target creature you don't control. If you control three or more snow permanents, the creature you control gets +1/+0 and gains indestructible until end of turn. Then those creatures fight each other.",
+        );
+    }
+    if normalized.contains("Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.") {
+        normalized = normalized.replace(
+            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
+            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
         );
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Creatures you control get ")
@@ -2791,10 +2839,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "{left}. That player or that planeswalker's controller discards {discard_tail}"
         );
     }
-    if lower_normalized.contains("tap x target artifacts or creatures or lands")
+    if (lower_normalized.contains("tap x target artifacts or creatures or lands")
+        || lower_normalized.contains("tap x target artifacts, creatures, or lands"))
         && lower_normalized.contains("you lose x life")
     {
         return "Tap X target artifacts, creatures, and/or lands. You lose X life.".to_string();
+    }
+    if lower_normalized
+        == "you sacrifice any number of artifacts, creatures, or lands you control. draw a card for each permanent."
+        || lower_normalized
+            == "you sacrifice any number of artifacts or creatures or lands you control. draw a card for each permanent."
+    {
+        return "You sacrifice any number of artifacts, creatures, and/or lands you control. Draw a card for each permanent.".to_string();
     }
     if lower_normalized == "creatures have can't block"
         || lower_normalized == "all creatures have can't block"
@@ -3910,23 +3966,31 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             subject.trim()
         );
     }
-    if let Some((subject, tail)) =
-        normalized.split_once(" has \"If damage would be dealt to this, ")
-        && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch")
+    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to ")
+        && let Some((damage_target, effect_text)) = tail.split_once(", ")
+        && let Some(effect_text) = effect_text.strip_suffix("\" as long as you're the monarch")
     {
+        let damage_target = if damage_target == "this" {
+            subject.trim()
+        } else {
+            damage_target.trim()
+        };
         return format!(
-            "If damage would be dealt to {} while you're the monarch, {}",
-            subject.trim(),
+            "If damage would be dealt to {damage_target} while you're the monarch, {}",
             effect_text.trim()
         );
     }
-    if let Some((subject, tail)) =
-        normalized.split_once(" has \"If damage would be dealt to this, ")
-        && let Some(effect_text) = tail.strip_suffix("\" as long as you're the monarch.")
+    if let Some((subject, tail)) = normalized.split_once(" has \"If damage would be dealt to ")
+        && let Some((damage_target, effect_text)) = tail.split_once(", ")
+        && let Some(effect_text) = effect_text.strip_suffix("\" as long as you're the monarch.")
     {
+        let damage_target = if damage_target == "this" {
+            subject.trim()
+        } else {
+            damage_target.trim()
+        };
         return format!(
-            "If damage would be dealt to {} while you're the monarch, {}",
-            subject.trim(),
+            "If damage would be dealt to {damage_target} while you're the monarch, {}",
             effect_text.trim().trim_end_matches('.')
         );
     }
@@ -4169,6 +4233,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         || normalized.starts_with(
             "Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
         )
+        || normalized.starts_with(
+            "Destroy target opponent's nonbasic artifact, enchantment, or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+        )
     {
         return "Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle".to_string();
     }
@@ -4181,6 +4248,13 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some((prefix, _)) = normalized.split_once(
         ": Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+    ) {
+        return format!(
+            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
+        );
+    }
+    if let Some((prefix, _)) = normalized.split_once(
+        ": Destroy target opponent's nonbasic artifact, enchantment, or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
     ) {
         return format!(
             "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
@@ -4976,6 +5050,11 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             tail.replacen("blocking creatures get ", "the blocking creature gets ", 1);
         normalized = format!("{head}, {normalized_tail}");
     }
+    normalized = normalized
+        .replace(
+            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
+            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
+        );
     normalized
 }
 
@@ -5850,7 +5929,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 if let ChooseSpec::Target(target_inner) = inner.as_ref() {
                     let target_desc = describe_choose_spec(target_inner);
                     let base = strip_leading_article(&target_desc);
-                    let plural = pluralize_noun_phrase(base);
+                    let plural = pluralize_relative_object_phrase(base);
                     let count_text = |n: usize| {
                         number_word(n as i32)
                             .map(str::to_string)
@@ -5893,7 +5972,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                     }
                 } else {
                     let base = strip_leading_article(&inner_text);
-                    let plural = pluralize_noun_phrase(base);
+                    let plural = pluralize_relative_object_phrase(base);
                     let count_text = |n: usize| {
                         number_word(n as i32)
                             .map(str::to_string)
@@ -9881,6 +9960,70 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     && !filter.source
                 {
                     return "an opponent controls that creature".to_string();
+                }
+                if filter.power.is_some()
+                    && filter.zone.is_none()
+                    && filter.controller.is_none()
+                    && filter.owner.is_none()
+                    && filter.single_graveyard == false
+                    && filter.card_types.is_empty()
+                    && filter.all_card_types.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.subtypes.is_empty()
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.supertypes.is_empty()
+                    && filter.excluded_supertypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.excluded_colors.is_empty()
+                    && filter.toughness.is_none()
+                    && filter.total_power_toughness.is_none()
+                    && filter.mana_value.is_none()
+                    && filter.name.is_none()
+                    && filter.tagged_constraints.is_empty()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    let comparison = match filter.power.as_ref().unwrap() {
+                        ironsmith_core::FilterComparison::GreaterThan(n) => {
+                            format!("is greater than {n}")
+                        }
+                        ironsmith_core::FilterComparison::GreaterThanOrEqual(n) => {
+                            format!("is {n} or greater")
+                        }
+                        ironsmith_core::FilterComparison::Equal(n) => format!("is {n}"),
+                        ironsmith_core::FilterComparison::LessThan(n) => {
+                            format!("is less than {n}")
+                        }
+                        ironsmith_core::FilterComparison::LessThanOrEqual(n) => {
+                            format!("is {n} or less")
+                        }
+                        ironsmith_core::FilterComparison::NotEqual(n) => format!("is not {n}"),
+                        ironsmith_core::FilterComparison::LessThanExpr(value) => {
+                            format!("is less than {}", describe_value(value))
+                        }
+                        ironsmith_core::FilterComparison::LessThanOrEqualExpr(value) => {
+                            format!("is less than or equal to {}", describe_value(value))
+                        }
+                        ironsmith_core::FilterComparison::GreaterThanExpr(value) => {
+                            format!("is greater than {}", describe_value(value))
+                        }
+                        ironsmith_core::FilterComparison::GreaterThanOrEqualExpr(value) => {
+                            format!("is greater than or equal to {}", describe_value(value))
+                        }
+                        ironsmith_core::FilterComparison::EqualExpr(value) => {
+                            format!("is equal to {}", describe_value(value))
+                        }
+                        ironsmith_core::FilterComparison::NotEqualExpr(value) => {
+                            format!("is not equal to {}", describe_value(value))
+                        }
+                        other => format!("matches {:?}", other).to_ascii_lowercase(),
+                    };
+                    let possessive = if subject == "it" {
+                        "its"
+                    } else {
+                        "that object's"
+                    };
+                    return format!("{possessive} power {comparison}");
                 }
                 if let Some((_, rest)) = stripped.split_once(" with mana value ") {
                     let possessive = if subject == "it" {

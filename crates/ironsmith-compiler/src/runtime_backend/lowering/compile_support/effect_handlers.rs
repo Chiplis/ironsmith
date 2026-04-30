@@ -348,7 +348,7 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
         | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
-        PredicateAst::And(left, right) => predicate_object_filter_antecedent(left)
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => predicate_object_filter_antecedent(left)
             .or_else(|| predicate_object_filter_antecedent(right)),
         _ => None,
     }

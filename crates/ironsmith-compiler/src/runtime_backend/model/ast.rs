@@ -497,6 +497,7 @@ pub(crate) enum PredicateAst {
     },
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
+    Or(Box<PredicateAst>, Box<PredicateAst>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -525,7 +526,7 @@ impl PredicateAst {
             | PredicateAst::ThisSpellWasCastFromZone(_) => {
                 Some(PredicateReferenceAntecedent::SourceObject)
             }
-            PredicateAst::And(left, right) => left
+            PredicateAst::And(left, right) | PredicateAst::Or(left, right) => left
                 .reference_antecedent()
                 .or_else(|| right.reference_antecedent()),
             PredicateAst::Not(inner) => inner.reference_antecedent(),

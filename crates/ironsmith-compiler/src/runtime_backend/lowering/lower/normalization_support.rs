@@ -4,7 +4,7 @@ use crate::cards::builders::SubjectVerbEffectAst;
 fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::SourceMatches(_) => true,
-        PredicateAst::And(left, right) => {
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             predicate_contains_source_match(left) || predicate_contains_source_match(right)
         }
         PredicateAst::Not(inner) => predicate_contains_source_match(inner),
@@ -25,7 +25,7 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             ..
         } => Some(filter.clone()),
-        PredicateAst::And(left, right) => predicate_object_filter_antecedent(left)
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => predicate_object_filter_antecedent(left)
             .or_else(|| predicate_object_filter_antecedent(right)),
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
         _ => None,
@@ -83,7 +83,7 @@ fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
 fn is_stack_object_targeting_predicate(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::ItMatches(filter) => is_stack_object_targeting_filter(filter),
-        PredicateAst::And(left, right) => {
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             is_stack_object_targeting_predicate(left) && is_stack_object_targeting_predicate(right)
         }
         _ => false,
@@ -144,6 +144,23 @@ fn absorb_predicate_into_trigger(
                 trigger,
                 merge_optional_predicates(left_remainder, right_remainder),
             )
+        }
+        PredicateAst::Or(left, right) => {
+            let (trigger_after_left, left_remainder) =
+                absorb_predicate_into_trigger(trigger.clone(), (*left).clone());
+            let (trigger_after_right, right_remainder) =
+                absorb_predicate_into_trigger(trigger, (*right).clone());
+            if left_remainder.is_none() && right_remainder.is_none() {
+                (trigger_after_left, None)
+            } else {
+                (
+                    trigger_after_right,
+                    Some(PredicateAst::Or(
+                        Box::new(left_remainder.unwrap_or(*left)),
+                        Box::new(right_remainder.unwrap_or(*right)),
+                    )),
+                )
+            }
         }
         PredicateAst::ItMatches(filter) if is_stack_object_targeting_filter(&filter) => {
             match trigger {

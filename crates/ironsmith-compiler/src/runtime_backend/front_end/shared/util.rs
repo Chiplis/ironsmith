@@ -107,6 +107,14 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
         trimmed,
         SourceReferenceSurface::FullName(trimmed.to_string()),
     );
+    for article in ["The ", "A ", "An "] {
+        if let Some(rest) = trimmed.strip_prefix(article) {
+            let rest = rest.trim();
+            if !rest.is_empty() {
+                push_alias(rest, SourceReferenceSurface::FullName(trimmed.to_string()));
+            }
+        }
+    }
     if let Some((short_name, _)) = trimmed.split_once(',') {
         let short_name = short_name.trim();
         push_alias(

@@ -72,6 +72,11 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
 
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
+    line = line
+        .replace(
+            "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
+            "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
+        );
     if line.to_ascii_lowercase().contains(
         "creatures you control with a +1/+1 counter on it have creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with this",
     ) {

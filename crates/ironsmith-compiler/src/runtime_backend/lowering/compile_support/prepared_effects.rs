@@ -2,7 +2,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PredicateAst, TagKey,
 };
 use crate::effect::{Condition, Effect, EffectPredicate};
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, ObjectFilter};
 
 use super::{
     EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering, PreparedPredicateForLowering,
@@ -69,6 +69,7 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
     let compiled = normalize_two_target_counter_then_fight(compiled);
+    let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
@@ -136,6 +137,7 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     let (compiled, choices) =
         compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
     let compiled = normalize_two_target_counter_then_fight(compiled);
+    let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
     Ok(LoweredEffects {
@@ -342,6 +344,62 @@ fn tagged_target_only(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)> {
         .effect
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     Some((&tagged.tag, &target_only.target))
+}
+
+fn random_single_tagged_destroy_tag(
+    destroy: &crate::effects::DestroyEffect,
+) -> Option<&TagKey> {
+    let ChooseSpec::WithCount(inner, count) = &destroy.spec else {
+        return None;
+    };
+    if !count.is_single() || !count.is_random() {
+        return None;
+    }
+    match inner.as_ref() {
+        ChooseSpec::Tagged(tag) => Some(tag),
+        _ => None,
+    }
+}
+
+fn any_of_tagged_objects(tags: &[&TagKey]) -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = tags
+        .iter()
+        .map(|tag| ObjectFilter::tagged((*tag).clone()))
+        .collect();
+    filter
+}
+
+fn normalize_random_destroy_across_target_groups(effects: Vec<Effect>) -> Vec<Effect> {
+    let mut rewritten = Vec::with_capacity(effects.len());
+    let mut idx = 0usize;
+    while idx < effects.len() {
+        if idx + 2 < effects.len()
+            && let Some((first_tag, _)) = tagged_target_only(&effects[idx])
+            && let Some((second_tag, _)) = tagged_target_only(&effects[idx + 1])
+            && first_tag != second_tag
+            && let Some(destroy) = effects[idx + 2]
+                .downcast_ref::<crate::effects::DestroyEffect>()
+            && random_single_tagged_destroy_tag(destroy) == Some(second_tag)
+            && let ChooseSpec::WithCount(_, count) = &destroy.spec
+        {
+            let target = ChooseSpec::WithCount(
+                Box::new(ChooseSpec::Object(any_of_tagged_objects(&[
+                    first_tag, second_tag,
+                ]))),
+                *count,
+            );
+            rewritten.push(effects[idx].clone());
+            rewritten.push(effects[idx + 1].clone());
+            rewritten.push(Effect::new(crate::effects::DestroyEffect::with_spec(target)));
+            idx += 3;
+            continue;
+        }
+
+        rewritten.push(effects[idx].clone());
+        idx += 1;
+    }
+    rewritten
 }
 
 fn single_conditional_tagged_put_counters(

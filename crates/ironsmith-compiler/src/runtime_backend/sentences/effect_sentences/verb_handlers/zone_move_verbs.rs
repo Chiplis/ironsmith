@@ -207,6 +207,10 @@ fn parse_draw_for_each_player_condition(
                 Box::new(bind_loop_player_predicate(*left)),
                 Box::new(bind_loop_player_predicate(*right)),
             ),
+            PredicateAst::Or(left, right) => PredicateAst::Or(
+                Box::new(bind_loop_player_predicate(*left)),
+                Box::new(bind_loop_player_predicate(*right)),
+            ),
             PredicateAst::Not(inner) => {
                 PredicateAst::Not(Box::new(bind_loop_player_predicate(*inner)))
             }

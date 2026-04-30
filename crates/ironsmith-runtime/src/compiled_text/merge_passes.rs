@@ -1048,6 +1048,14 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(line) =
+                merge_animation_with_granted_trigger_line(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(line);
+            idx += 2;
+            continue;
+        }
         if let Some(start) = parse_conditional_subject_predicate(&lines[idx])
             && matches!(start.verb.as_str(), "is" | "are")
             && is_creature_addition_predicate(&start.predicate)
@@ -1210,6 +1218,83 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     }
 
     merged
+}
+
+fn merge_animation_with_granted_trigger_line(animation: &str, granted: &str) -> Option<String> {
+    let animation = animation.trim().trim_end_matches('.');
+    let granted = granted.trim().trim_end_matches('.');
+    let (condition, animated_body) = animation.split_once(", ")?;
+    if !condition.eq_ignore_ascii_case("During your turn") {
+        return None;
+    }
+    let (animated_subject, animated_payload) = animated_body.split_once(" is ")?;
+    if !animated_payload
+        .to_ascii_lowercase()
+        .contains("creature in addition to its other types")
+    {
+        return None;
+    }
+
+    let (granted_body, granted_condition) = granted.rsplit_once(" As long as ")?;
+    if !granted_condition.eq_ignore_ascii_case("it's your turn") {
+        return None;
+    }
+    let (granted_subject, granted_ability) = granted_body.split_once(" have ")?;
+    let granted_ability = granted_ability.trim();
+    if !granted_ability.starts_with('"') || !granted_ability.ends_with('"') {
+        return None;
+    }
+    if !animation_subjects_equivalent(animated_subject, granted_subject) {
+        return None;
+    }
+
+    let mut payload = animated_payload
+        .replace(" and have ", " and has ")
+        .replace(" and has indestructible and has haste", " and has indestructible, haste");
+    let ability = granted_ability.trim_matches('"');
+    payload.push_str(", and \"");
+    payload.push_str(&capitalize_first(ability));
+    payload.push('"');
+    Some(format!("{condition}, {animated_subject} is {payload}"))
+}
+
+fn animation_subjects_equivalent(animated_subject: &str, granted_subject: &str) -> bool {
+    let animated_lower = animated_subject.to_ascii_lowercase();
+    let granted_lower = granted_subject.to_ascii_lowercase();
+    if [animated_lower.as_str(), granted_lower.as_str()]
+        .iter()
+        .all(|subject| {
+            subject.contains("non-equipment artifact")
+                && subject.contains("non-aura enchantment")
+                && subject.contains("mana value 4 or greater")
+        })
+    {
+        return true;
+    }
+
+    fn normalize_subject(subject: &str) -> String {
+        let normalized = subject
+            .trim()
+            .trim_start_matches("each ")
+            .replace(" you control with mana value ", " with mana value ")
+            .replace(" with mana value 4 or greater you control", " with mana value 4 or greater")
+            .replace("artifacts", "artifact")
+            .replace("enchantments", "enchantment")
+            .replace(" and ", " or ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase();
+        let mut parts = normalized
+            .split(" or ")
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>();
+        parts.sort_unstable();
+        parts.join(" or ")
+    }
+
+    normalize_subject(animated_subject) == normalize_subject(granted_subject)
 }
 
 pub(super) fn drop_redundant_spell_cost_lines(lines: Vec<String>) -> Vec<String> {
