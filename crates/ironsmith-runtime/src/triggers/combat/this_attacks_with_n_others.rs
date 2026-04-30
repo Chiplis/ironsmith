@@ -58,9 +58,13 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
             "creatures"
         };
         if self.exact {
+            let count = if self.other_count == 1 {
+                "one".to_string()
+            } else {
+                self.other_count.to_string()
+            };
             format!(
-                "Whenever this creature and exactly {} other {} attack",
-                self.other_count, noun
+                "Whenever this creature attacks, if you attacked with exactly {count} other {noun} this combat"
             )
         } else {
             format!(

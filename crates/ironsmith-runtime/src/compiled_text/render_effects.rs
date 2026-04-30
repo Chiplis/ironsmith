@@ -86,6 +86,60 @@ fn describe_each_object_subject(target: &ChooseSpec) -> Option<String> {
     }
 }
 
+fn possessive_subject(subject: &str) -> String {
+    if subject.ends_with('s') {
+        format!("{subject}'")
+    } else {
+        format!("{subject}'s")
+    }
+}
+
+fn may_causative_clause(inner: &str) -> Option<String> {
+    let trimmed = inner.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if ![
+        "a ", "an ", "all ", "another ", "each ", "it ", "other ", "that ", "the ", "those ",
+        "target ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
+    {
+        return None;
+    }
+
+    let base_pt_marker = " has base power and toughness ";
+    if let Some(idx) = lower.find(base_pt_marker) {
+        let subject = lowercase_first(trimmed[..idx].trim());
+        let rest = trimmed[idx + base_pt_marker.len()..].trim();
+        if !subject.is_empty() && !rest.is_empty() {
+            return Some(format!(
+                "have {} base power and toughness become {rest}",
+                possessive_subject(&subject)
+            ));
+        }
+    }
+
+    let replacements = [
+        (" becomes ", "become"),
+        (" gets ", "get"),
+        (" gains ", "gain"),
+        (" has ", "have"),
+        (" loses ", "lose"),
+        (" reveals ", "reveal"),
+    ];
+    replacements.iter().find_map(|(from, to)| {
+        lower.find(from).and_then(|idx| {
+            let subject = lowercase_first(trimmed[..idx].trim());
+            let rest = trimmed[idx + from.len()..].trim();
+            if subject.is_empty() || rest.is_empty() {
+                None
+            } else {
+                Some(format!("have {subject} {to} {rest}"))
+            }
+        })
+    })
+}
+
 fn prevention_put_counters_follow_up(
     follow_up_effects: &[Effect],
 ) -> Option<&crate::effects::PutCountersEffect> {
@@ -24672,6 +24726,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     let normalized = normalize_you_verb_phrase(rest);
                     return format!("you may have target player {normalized}");
                 }
+                if let Some(causative) = may_causative_clause(&inner) {
+                    return format!("you may {causative}");
+                }
             } else if let Some(rest) = inner.strip_prefix("you ") {
                 let normalized = normalize_you_verb_phrase(rest);
                 return format!("{who} may have you {normalized}");
@@ -24704,6 +24761,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let mut inner = describe_effect_list(&may.effects);
         if inner.starts_with("you ") {
             inner = inner["you ".len()..].to_string();
+        }
+        if let Some(causative) = may_causative_clause(&inner) {
+            return format!("You may {causative}");
         }
         inner = normalize_you_verb_phrase(&inner);
         inner = lowercase_may_clause(&inner);

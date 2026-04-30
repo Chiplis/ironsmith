@@ -1905,8 +1905,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalized.replace("another creatures", "other creatures");
-    normalized = normalized.replace("another creature", "other creature");
-    normalized = normalized.replace("one or more other creatures", "one or more other creatures");
+    normalized = normalized.replace("Another creatures", "Other creatures");
     normalized = normalized.replace(
         "This creature has Double strike",
         "This creature has double strike",
@@ -10599,6 +10598,20 @@ mod tests {
                 "At the beginning of your end step, for each opponent, that player loses 3 life."
             ),
             "At the beginning of your end step, each opponent loses 3 life."
+        );
+    }
+
+    #[test]
+    fn normalize_another_creatures_plural_typo_without_touching_singular() {
+        assert_eq!(
+            normalize_common_semantic_phrasing("another creatures you control get +1/+1."),
+            "other creatures you control get +1/+1."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Whenever another creature you control enters, you gain 1 life."
+            ),
+            "Whenever another creature enters under your control, you gain 1 life"
         );
     }
 }

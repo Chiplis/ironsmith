@@ -42,7 +42,8 @@ pub fn is_generated_internal_tag(tag: &str) -> bool {
 }
 
 pub fn is_implicit_reference_tag(tag: &str) -> bool {
-    matches!(tag, "triggering" | "damaged" | "__it__") || is_generated_internal_tag(tag)
+    matches!(tag, "triggering" | "damaged" | "__it__" | "other_attacker")
+        || is_generated_internal_tag(tag)
 }
 
 pub fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {
@@ -81,6 +82,16 @@ fn describe_each_other_filter(filter: &ObjectFilter) -> (String, bool) {
     }
 }
 
+fn demonstrative_reference_plurality(text: &str) -> Option<bool> {
+    if text == "it" || text.starts_with("that ") {
+        Some(false)
+    } else if text == "them" || text.starts_with("those ") {
+        Some(true)
+    } else {
+        None
+    }
+}
+
 pub fn describe_apply_continuous_target<FChooseSpec, FPluralizeFilter>(
     effect: &ApplyContinuousEffect,
     describe_choose_spec: FChooseSpec,
@@ -93,8 +104,12 @@ where
     if matches!(
         effect.target,
         EffectTarget::AllPermanents | EffectTarget::AllCreatures
-    ) && let Some(ChooseSpec::Object(filter)) = &effect.target_spec
+    ) && let Some(spec @ ChooseSpec::Object(filter)) = &effect.target_spec
     {
+        let described = describe_choose_spec(spec);
+        if let Some(is_plural) = demonstrative_reference_plurality(&described) {
+            return (described, is_plural);
+        }
         if filter.other {
             return describe_each_other_filter(filter);
         }
@@ -109,8 +124,12 @@ where
     }
 
     if matches!(effect.target, EffectTarget::Filter(_))
-        && let Some(ChooseSpec::Object(filter)) = &effect.target_spec
+        && let Some(spec @ ChooseSpec::Object(filter)) = &effect.target_spec
     {
+        let described = describe_choose_spec(spec);
+        if let Some(is_plural) = demonstrative_reference_plurality(&described) {
+            return (described, is_plural);
+        }
         if filter.other {
             return describe_each_other_filter(filter);
         }

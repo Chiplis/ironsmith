@@ -30013,9 +30013,48 @@ fn creepy_puppeteer_regression_renders_base_power_toughness_followup() {
         "expected Creepy Puppeteer to keep its temporary base power/toughness setting, got {rendered}"
     );
     assert!(
+        rendered.contains("you may have that creature's base power and toughness become 4/3"),
+        "expected Creepy Puppeteer to render the exact other attacker as that creature, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you may each creature"),
+        "expected Creepy Puppeteer not to render the tagged attacker as each creature, got {rendered}"
+    );
+    assert!(
         debug.contains("other_attacker"),
         "expected Creepy Puppeteer to bind the exact other attacker, got {debug}"
     );
+}
+
+#[test]
+fn optional_continuous_effects_render_causative_have() {
+    for (name, expected) in [
+        (
+            "Creepy Puppeteer",
+            "you may have that creature's base power and toughness become 4/3 until end of turn",
+        ),
+        (
+            "Cultivator of Blades",
+            "you may have each other attacking creature get +x/+x until end of turn",
+        ),
+        (
+            "Vihaan, Goldwaker",
+            "you may have each treasure you control become a 3/3",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains(expected),
+            "expected {name} to render optional continuous effect as causative have, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("you may each ") && !rendered.contains("you may that "),
+            "expected {name} not to render a declarative clause directly after may, got {rendered}"
+        );
+    }
 }
 
 #[test]
