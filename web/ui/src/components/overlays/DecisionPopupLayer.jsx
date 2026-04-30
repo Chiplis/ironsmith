@@ -12,6 +12,8 @@ import { ManaSymbol, SymbolText } from "@/lib/mana-symbols";
 import { nextPriorityAdvanceLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
+import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import {
   collectSelectedPriorityActionIndices,
   filterPriorityActionGroups,
@@ -1299,7 +1301,14 @@ function MobileDecisionDock({
   inline = false,
   orientation = "horizontal",
 }) {
+  const { state } = useGame();
+  const decision = state?.decision || null;
+  const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
   const isVertical = orientation === "vertical";
+  const effectivePrimaryDisabled = primaryDisabled || attackButtonTransition.locked;
+
   return (
     <div
       className={cn(
@@ -1328,8 +1337,11 @@ function MobileDecisionDock({
           type="button"
           variant="ghost"
           size="sm"
-          className="mobile-decision-primary-button"
-          disabled={primaryDisabled}
+          className="mobile-decision-primary-button decision-main-button"
+          style={decisionButtonStyle}
+          data-local-action={localDecisionButton ? "true" : "false"}
+          data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+          disabled={effectivePrimaryDisabled}
           onClick={onPrimary}
         >
           <span className="mobile-decision-primary-label">
@@ -2154,6 +2166,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const decision = state?.decision || null;
   const manaPayment = state?.mana_payment || null;
   const canAct = !!decision && state?.perspective === decision.player;
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
   const isPriorityDecision = decision?.kind === "priority";
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
   const decisionActions = useMemo(() => decision?.actions || [], [decision]);
@@ -2421,7 +2435,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                  className="decision-neon-button decision-main-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                  style={decisionButtonStyle}
+                  data-local-action={localDecisionButton ? "true" : "false"}
                   disabled={!canAdvanceViewedCardsStep}
                   onPointerDown={(event) => {
                     if (!canAdvanceViewedCardsStep || event.button !== 0) return;
@@ -2456,8 +2472,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="pass-priority-btn action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                    disabled={!canAct}
+                    className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    style={decisionButtonStyle}
+                    data-local-action={localDecisionButton ? "true" : "false"}
+                    aria-disabled={!canAct}
                     onClick={() => triggerPriorityAction(passAction)}
                   >
                     {passLabel}
@@ -2497,7 +2515,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                        className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                        style={decisionButtonStyle}
+                        data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
                         onPointerDown={(event) => {
                           if (showViewedCardsStep) {
@@ -2633,7 +2653,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               <Button
                 variant="ghost"
                 size="sm"
-                className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                className="decision-neon-button decision-main-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                style={decisionButtonStyle}
+                data-local-action={localDecisionButton ? "true" : "false"}
                 disabled={!canAdvanceViewedCardsStep}
                 onPointerDown={(event) => {
                   if (!canAdvanceViewedCardsStep || event.button !== 0) return;
@@ -2653,8 +2675,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="pass-priority-btn action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                    disabled={!canAct}
+                    className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    style={decisionButtonStyle}
+                    data-local-action={localDecisionButton ? "true" : "false"}
+                    aria-disabled={!canAct}
                     onClick={() => triggerPriorityAction(passAction)}
                   >
                     {passLabel}
@@ -2669,7 +2693,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="decision-neon-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                    className="decision-neon-button decision-main-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+                    style={decisionButtonStyle}
+                    data-local-action={localDecisionButton ? "true" : "false"}
                     disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
                     onPointerDown={(event) => {
                       if (showViewedCardsStep) {
@@ -2838,6 +2864,9 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     decision?.consequence_text || "",
   ].join("|");
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
+  const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
   const handleCombatActionChange = useCallback(
     (nextAction) => {
       setCombatActionState({ key: decisionIdentity, action: nextAction || null });
@@ -2854,7 +2883,11 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   const canSubmitCombat = canAct
     && !!combatAction
     && !combatAction.disabled
+    && !attackButtonTransition.locked
     && typeof combatAction.onSubmit === "function";
+  const combatPrimaryDisabled = !combatAction
+    || combatAction.disabled
+    || attackButtonTransition.locked;
   const panelClass = inline
     ? "pointer-events-none absolute inset-0 z-[120] flex items-center px-2"
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
@@ -2873,9 +2906,19 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
             <Button
               variant="ghost"
               size="sm"
-              className="decision-neon-button decision-submit-button h-full min-w-[140px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
-              disabled={!canSubmitCombat}
-              onClick={() => combatAction?.onSubmit?.()}
+              className={cn(
+                "decision-neon-button decision-main-button decision-submit-button h-full w-[176px] min-w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
+                compactPortraitViewport && "w-full min-w-0"
+              )}
+              style={decisionButtonStyle}
+              data-local-action={localDecisionButton ? "true" : "false"}
+              data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+              disabled={combatPrimaryDisabled}
+              aria-disabled={!canSubmitCombat}
+              onClick={() => {
+                if (!canSubmitCombat) return;
+                combatAction?.onSubmit?.();
+              }}
             >
               {combatAction?.label || (
                 decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)"

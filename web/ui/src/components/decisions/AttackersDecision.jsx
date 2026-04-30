@@ -3,6 +3,8 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
+import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -99,6 +101,9 @@ export default function AttackersDecision({
   const players = state?.players || [];
   const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const optionsRef = useRef(options);
+  const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const [declarations, setDeclarations] = useState(() => {
     const initial = [];
@@ -362,23 +367,14 @@ export default function AttackersDecision({
 
     onCompactActionChange({
       label: `Confirm Attackers (${declarations.length})`,
-      disabled: !canAct,
+      disabled: !canAct || attackButtonTransition.locked,
       onSubmit: () =>
         dispatch(
           { type: "declare_attackers", declarations },
           `Declared ${declarations.length} attacker(s)`
         ),
     });
-  }, [canAct, compact, declarations, dispatch, onCompactActionChange]);
-
-  const creatureNameById = useMemo(() => {
-    const map = new Map();
-    for (const opt of options) {
-      const creatureId = Number(opt.creature);
-      map.set(creatureId, opt.creature_name || opt.name || `Creature ${creatureId}`);
-    }
-    return map;
-  }, [options]);
+  }, [attackButtonTransition.locked, canAct, compact, declarations, dispatch, onCompactActionChange]);
 
   if (compact) {
     return null;
@@ -468,8 +464,11 @@ export default function AttackersDecision({
         <Button
           variant="ghost"
           size="sm"
-          className="decision-neon-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
-          disabled={!canAct}
+          className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+          style={decisionButtonStyle}
+          data-local-action={localDecisionButton ? "true" : "false"}
+          data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
+          disabled={!canAct || attackButtonTransition.locked}
           onClick={() =>
             dispatch(
               { type: "declare_attackers", declarations },

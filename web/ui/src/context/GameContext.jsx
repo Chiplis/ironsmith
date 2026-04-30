@@ -8,6 +8,7 @@ import {
   priorityHoldReason,
 } from "@/lib/priority-automation";
 import { createWasmInteractionGate } from "@/lib/wasmInteractionGate";
+import usePhaseSounds from "@/hooks/usePhaseSounds";
 import {
   buildTriggerOrderingKey,
   defaultTriggerOrderingOrder,
@@ -492,6 +493,8 @@ export function GameProvider({ children }) {
     (task) => wasmInteractionGateRef.current.run(task),
     []
   );
+
+  usePhaseSounds(state);
 
   const armTargetSubmitDebounce = useCallback(() => {
     const now = performance.now();

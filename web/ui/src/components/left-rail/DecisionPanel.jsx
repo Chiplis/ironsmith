@@ -4,7 +4,8 @@ import { useHoveredObjectId } from "@/context/HoverContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { SymbolText } from "@/lib/mana-symbols";
-import { nextPriorityAdvanceLabel, priorityPassButtonColor } from "@/lib/constants";
+import { nextPriorityAdvanceLabel } from "@/lib/constants";
+import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Undo2 } from "lucide-react";
@@ -51,37 +52,6 @@ function formatPriorityActionLabel(action) {
   }
   return label;
 }
-
-const PASS_COLORS = {
-  yellow: {
-    text: "#f7b869",
-    border: "rgba(247,184,105,0.45)",
-    glow: "rgba(247,184,105,0.3)",
-    glowOuter: "rgba(247,184,105,0.12)",
-    glowInner: "rgba(247,184,105,0.1)",
-  },
-  red: {
-    text: "#f76969",
-    border: "rgba(247,105,105,0.45)",
-    glow: "rgba(247,105,105,0.3)",
-    glowOuter: "rgba(247,105,105,0.12)",
-    glowInner: "rgba(247,105,105,0.1)",
-  },
-  blue: {
-    text: "#69b5f7",
-    border: "rgba(105,181,247,0.45)",
-    glow: "rgba(105,181,247,0.3)",
-    glowOuter: "rgba(105,181,247,0.12)",
-    glowInner: "rgba(105,181,247,0.1)",
-  },
-  orange: {
-    text: "#f7a040",
-    border: "rgba(247,160,64,0.45)",
-    glow: "rgba(247,160,64,0.3)",
-    glowOuter: "rgba(247,160,64,0.12)",
-    glowInner: "rgba(247,160,64,0.1)",
-  },
-};
 
 function isBattlefieldObject(players, hoveredObjectId) {
   if (hoveredObjectId == null) return false;
@@ -166,8 +136,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const passLabel = holdingPriority || hasCustomPassLabel
     ? passAction?.label || "Pass priority"
     : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`;
-  const passColorKey = priorityPassButtonColor(state?.phase, state?.step, stackSize);
-  const passColors = PASS_COLORS[passColorKey];
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const undoAvailable = !!state?.cancelable && (!decision || canAct);
   const undoDisabled = cancelling || !undoAvailable;
@@ -292,21 +262,17 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="decision-neon-button pass-priority-btn group h-auto min-h-7 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
-                style={{
-                  "--pass-text": passColors.text,
-                  "--pass-border": passColors.border,
-                  "--pass-glow": passColors.glow,
-                  "--pass-glow-outer": passColors.glowOuter,
-                  "--pass-glow-inner": passColors.glowInner,
-                }}
-                disabled={!canAct}
-                onClick={() =>
+                className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-7 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
+                style={decisionButtonStyle}
+                data-local-action={localDecisionButton ? "true" : "false"}
+                aria-disabled={!canAct}
+                onClick={() => {
+                  if (!canAct) return;
                   dispatch(
                     { type: "priority_action", action_index: passAction.index },
                     passAction.label
-                  )
-                }
+                  );
+                }}
               >
                 <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">
                   {passLabel}

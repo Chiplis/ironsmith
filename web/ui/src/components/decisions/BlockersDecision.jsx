@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
+import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -45,7 +46,7 @@ export default function BlockersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
-  const { dispatch } = useGame();
+  const { dispatch, state } = useGame();
   const {
     updateArrows,
     clearArrows,
@@ -62,6 +63,8 @@ export default function BlockersDecision({
   const blockerOptionsRef = useRef(blockerOptions);
   const selectedBlockerRef = useRef(null);
   const declarationsRef = useRef([]);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const [declarations, setDeclarations] = useState([]);
   const [selectedBlockerId, setSelectedBlockerId] = useState(null);
@@ -355,7 +358,9 @@ export default function BlockersDecision({
         <Button
           variant="ghost"
           size="sm"
-          className="decision-neon-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+          className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
+          style={decisionButtonStyle}
+          data-local-action={localDecisionButton ? "true" : "false"}
           disabled={!canAct}
           onClick={() =>
             dispatch(
