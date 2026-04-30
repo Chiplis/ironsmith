@@ -106,7 +106,9 @@ impl CostPayer for CostEffect {
             && (self
                 .effect
                 .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                .is_some_and(|effect| matches!(effect.target, crate::target::ChooseSpec::Source))
+                .is_some_and(|effect| {
+                    matches!(effect.target.base(), crate::target::ChooseSpec::Source)
+                })
                 || self
                     .effect
                     .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
@@ -255,13 +257,13 @@ impl CostPayer for CostEffect {
         }
 
         if let Some(effect) = self.effect.downcast_ref::<PutCountersEffect>()
-            && matches!(effect.target, ChooseSpec::Source)
+            && matches!(effect.target.base(), ChooseSpec::Source)
         {
             return CostProcessingMode::Immediate;
         }
 
         if let Some(effect) = self.effect.downcast_ref::<RemoveCountersEffect>()
-            && matches!(effect.target, ChooseSpec::Source)
+            && matches!(effect.target.base(), ChooseSpec::Source)
         {
             return CostProcessingMode::Immediate;
         }

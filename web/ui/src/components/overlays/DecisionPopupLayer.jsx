@@ -1297,10 +1297,21 @@ function MobileDecisionDock({
   secondaryDisabled = false,
   onSecondary,
   inline = false,
+  orientation = "horizontal",
 }) {
+  const isVertical = orientation === "vertical";
   return (
-    <div className={cn("mobile-decision-dock", inline && "mobile-decision-dock--inline")}>
-      <div className="mobile-decision-dock-actions">
+    <div
+      className={cn(
+        "mobile-decision-dock",
+        inline && "mobile-decision-dock--inline",
+        isVertical && "mobile-decision-dock--vertical"
+      )}
+    >
+      <div className={cn(
+        "mobile-decision-dock-actions",
+        isVertical && "mobile-decision-dock-actions--vertical"
+      )}>
         {secondaryLabel ? (
           <Button
             type="button"
@@ -1514,6 +1525,7 @@ function MobileBattleDecisionLayer({
   portalTarget = null,
   dockInline = false,
   dockHidden = false,
+  dockOrientation = "horizontal",
 }) {
   const {
     state,
@@ -1834,6 +1846,7 @@ function MobileBattleDecisionLayer({
             secondaryDisabled={secondaryAction?.disabled || false}
             onSecondary={secondaryAction?.onClick}
             inline={dockInline}
+            orientation={dockOrientation}
           />,
           portalTarget
         )}
@@ -1960,6 +1973,7 @@ function MobileBattleDecisionLayer({
           secondaryDisabled={!canCancelDecision}
           onSecondary={canCancelDecision ? () => cancelDecision() : null}
           inline={dockInline}
+          orientation={dockOrientation}
         />
         <div className="hidden" aria-hidden="true">
           <DecisionRouter
@@ -1995,6 +2009,7 @@ function MobileBattleDecisionLayer({
           secondaryDisabled={!canCancelDecision}
           onSecondary={canCancelDecision ? () => cancelDecision() : null}
           inline={dockInline}
+          orientation={dockOrientation}
         />
         <DecisionRouter
           decision={decision}
@@ -2910,6 +2925,7 @@ export default function DecisionPopupLayer({
   mobileBattlePortalTarget = null,
   mobileBattleDockInline = false,
   mobileBattleDockHidden = false,
+  mobileBattleDockOrientation = "horizontal",
 }) {
   const { state } = useGame();
   const decision = state?.decision || null;
@@ -2923,6 +2939,7 @@ export default function DecisionPopupLayer({
         portalTarget={mobileBattlePortalTarget}
         dockInline={mobileBattleDockInline}
         dockHidden={mobileBattleDockHidden}
+        dockOrientation={mobileBattleDockOrientation}
       />
     );
   }

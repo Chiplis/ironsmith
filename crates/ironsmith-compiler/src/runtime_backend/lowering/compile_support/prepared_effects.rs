@@ -346,9 +346,7 @@ fn tagged_target_only(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)> {
     Some((&tagged.tag, &target_only.target))
 }
 
-fn random_single_tagged_destroy_tag(
-    destroy: &crate::effects::DestroyEffect,
-) -> Option<&TagKey> {
+fn random_single_tagged_destroy_tag(destroy: &crate::effects::DestroyEffect) -> Option<&TagKey> {
     let ChooseSpec::WithCount(inner, count) = &destroy.spec else {
         return None;
     };
@@ -378,8 +376,7 @@ fn normalize_random_destroy_across_target_groups(effects: Vec<Effect>) -> Vec<Ef
             && let Some((first_tag, _)) = tagged_target_only(&effects[idx])
             && let Some((second_tag, _)) = tagged_target_only(&effects[idx + 1])
             && first_tag != second_tag
-            && let Some(destroy) = effects[idx + 2]
-                .downcast_ref::<crate::effects::DestroyEffect>()
+            && let Some(destroy) = effects[idx + 2].downcast_ref::<crate::effects::DestroyEffect>()
             && random_single_tagged_destroy_tag(destroy) == Some(second_tag)
             && let ChooseSpec::WithCount(_, count) = &destroy.spec
         {
@@ -391,7 +388,9 @@ fn normalize_random_destroy_across_target_groups(effects: Vec<Effect>) -> Vec<Ef
             );
             rewritten.push(effects[idx].clone());
             rewritten.push(effects[idx + 1].clone());
-            rewritten.push(Effect::new(crate::effects::DestroyEffect::with_spec(target)));
+            rewritten.push(Effect::new(crate::effects::DestroyEffect::with_spec(
+                target,
+            )));
             idx += 3;
             continue;
         }
@@ -429,18 +428,17 @@ fn fight_references_counter_tag(effect: &Effect, tag: &str) -> bool {
     let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() else {
         return false;
     };
-    choose_spec_references_tag(&fight.creature1, tag) && choose_spec_references_tag(&fight.creature2, tag)
+    choose_spec_references_tag(&fight.creature1, tag)
+        && choose_spec_references_tag(&fight.creature2, tag)
 }
 
 fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     match spec {
         ChooseSpec::Tagged(candidate) => candidate.as_str() == tag,
-        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
-            filter
-                .tagged_constraints
-                .iter()
-                .any(|constraint| constraint.tag.as_str() == tag)
-        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag),
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_references_tag(inner, tag)
         }

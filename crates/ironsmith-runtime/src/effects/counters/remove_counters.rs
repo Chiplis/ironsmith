@@ -71,7 +71,7 @@ impl EffectExecutor for RemoveCountersEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.target, ChooseSpec::Source)
+        if matches!(self.target.base(), ChooseSpec::Source)
             && let Value::Fixed(count) = self.count
         {
             let label = self.counter_type.description();
@@ -92,7 +92,7 @@ impl CostExecutableEffect for RemoveCountersEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if !matches!(self.target, ChooseSpec::Source) {
+        if !matches!(self.target.base(), ChooseSpec::Source) {
             return Err(crate::effects::CostValidationError::Other(
                 "remove-counters cost supports only source".to_string(),
             ));

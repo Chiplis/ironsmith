@@ -44,7 +44,7 @@ impl EffectExecutor for PutCountersEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         // Handle Source target specially (for abilities like level-up that target themselves).
-        let target_ids = match &self.target {
+        let target_ids = match self.target.base() {
             ChooseSpec::Source => vec![ctx.source],
             _ => match resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(objects) if !objects.is_empty() => objects,
@@ -133,7 +133,7 @@ impl EffectExecutor for PutCountersEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.target, ChooseSpec::Source)
+        if matches!(self.target.base(), ChooseSpec::Source)
             && let Value::Fixed(count) = self.amount
         {
             return Some(if count == 1 {
@@ -217,7 +217,7 @@ impl CostExecutableEffect for PutCountersEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if !matches!(self.target, ChooseSpec::Source) {
+        if !matches!(self.target.base(), ChooseSpec::Source) {
             return Err(crate::effects::CostValidationError::Other(
                 "put-counters cost supports only source".to_string(),
             ));

@@ -2395,10 +2395,9 @@ fn try_parse_triggered_line_dispatch(
                 Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
                 Err(_) => {
                     if starts_with_when_one_or_more_this_way_clause(&chunk_line.tokens)
-                        && let Some(statement) =
-                            parse_statement_line_cst(&rewrite_when_one_or_more_this_way_line(
-                                &chunk_line,
-                            ))?
+                        && let Some(statement) = parse_statement_line_cst(
+                            &rewrite_when_one_or_more_this_way_line(&chunk_line),
+                        )?
                     {
                         lines.push(RewriteLineCst::Statement(statement));
                         continue;

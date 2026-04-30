@@ -231,6 +231,12 @@ function cloneMultiplayerPayload(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function enqueueAsync(queueRef, task) {
+  const next = queueRef.current.catch(() => undefined).then(task);
+  queueRef.current = next.catch(() => undefined);
+  return next;
+}
+
 function sanitizeCardList(cards) {
   if (!Array.isArray(cards)) return [];
   return cards
@@ -368,6 +374,12 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
   const multiplayerRef = useRef(multiplayer);
   const peerOptionsRef = useRef(initialPeerOptions);
   const peerServerLabelRef = useRef(describePeerServer(initialPeerOptions));
+  const hostMessageQueueRef = useRef(Promise.resolve());
+  const clientMessageQueueRef = useRef(Promise.resolve());
+  const hostedActionQueueRef = useRef(Promise.resolve());
+  const resyncingPeerIdsRef = useRef(new Set());
+  const resyncWaitersRef = useRef([]);
+  const awaitingStateResyncRef = useRef(false);
 
   useEffect(() => {
     gameRef.current = game;
@@ -385,7 +397,43 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
     return next;
   }, [setMultiplayer]);
 
+  const resolvePeerResyncWaitersIfIdle = useCallback(() => {
+    if (resyncingPeerIdsRef.current.size > 0) return;
+    const waiters = resyncWaitersRef.current;
+    resyncWaitersRef.current = [];
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }, []);
+
+  const finishPeerResync = useCallback(
+    (peerId) => {
+      if (peerId) {
+        resyncingPeerIdsRef.current.delete(peerId);
+      }
+      resolvePeerResyncWaitersIfIdle();
+    },
+    [resolvePeerResyncWaitersIfIdle]
+  );
+
+  const clearAllPeerResyncs = useCallback(() => {
+    resyncingPeerIdsRef.current.clear();
+    resolvePeerResyncWaitersIfIdle();
+  }, [resolvePeerResyncWaitersIfIdle]);
+
+  const waitForPeerResyncs = useCallback(() => {
+    if (resyncingPeerIdsRef.current.size === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      resyncWaitersRef.current.push(resolve);
+    });
+  }, []);
+
   const teardownPeer = useCallback(() => {
+    clearAllPeerResyncs();
+    awaitingStateResyncRef.current = false;
+
     const hostConn = hostConnectionRef.current;
     hostConnectionRef.current = null;
     if (hostConn) {
@@ -414,7 +462,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
         void err;
       }
     }
-  }, []);
+  }, [clearAllPeerResyncs]);
 
   const leaveLobby = useCallback(
     (message = "Left lobby") => {
@@ -529,6 +577,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       ...prev,
       submittingAction: false,
     }));
+    awaitingStateResyncRef.current = true;
     safeSend(conn, {
       type: "resync_request",
       protocolVersion: PROTOCOL_VERSION,
@@ -586,6 +635,13 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           ? `Resynced with host at action ${lastSequence}`
           : "Resynced with host",
       );
+      awaitingStateResyncRef.current = false;
+
+      safeSend(hostConnectionRef.current, {
+        type: "resync_ack",
+        protocolVersion: PROTOCOL_VERSION,
+        lastSequence,
+      });
     },
     [applyMatchStart, applySyncedCommand, setStatus, updateMultiplayer]
   );
@@ -728,6 +784,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           );
           return;
         case "match_start":
+          awaitingStateResyncRef.current = false;
           await applyMatchStart(message);
           return;
         case "state_resync":
@@ -746,6 +803,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
         case "apply_action": {
           const nextSequence = Number(message.seq || 0);
           const session = multiplayerRef.current;
+          if (awaitingStateResyncRef.current) return;
           if (nextSequence <= session.lastAppliedSequence) return;
           if (nextSequence !== session.lastAppliedSequence + 1) {
             reportSyncFailure(
@@ -799,6 +857,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
   const handleClientDisconnect = useCallback(
     (peerId) => {
       clientConnectionsRef.current.delete(peerId);
+      finishPeerResync(peerId);
       const departed = multiplayerRef.current.players.find(
         (player) => player.peerId === peerId
       );
@@ -827,69 +886,57 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
         broadcastLobbyState();
       }
     },
-    [broadcastLobbyState, broadcastMatchPresence, setStatus, updateMultiplayer]
+    [
+      broadcastLobbyState,
+      broadcastMatchPresence,
+      finishPeerResync,
+      setStatus,
+      updateMultiplayer,
+    ]
   );
 
   const sequenceHostedAction = useCallback(
-    async ({ actorIndex, command, label, senderPeerId = null }) => {
-      const session = multiplayerRef.current;
-      const expectedActor = gameRef.current
-        ? (await gameRef.current.uiState())?.decision?.player
-        : null;
-      if (
-        expectedActor !== null
-        && expectedActor !== undefined
-        && Number(expectedActor) !== Number(actorIndex)
-      ) {
-        if (senderPeerId) {
-          const conn = clientConnectionsRef.current.get(senderPeerId);
-          safeSend(conn, {
-            type: "action_error",
-            protocolVersion: PROTOCOL_VERSION,
-            reason: "It is not that player's turn to act",
-          });
+    ({ actorIndex, command, label, senderPeerId = null }) => enqueueAsync(
+      hostedActionQueueRef,
+      async () => {
+        if (resyncingPeerIdsRef.current.size > 0) {
+          setStatus("Waiting for peers to finish resyncing");
+          await waitForPeerResyncs();
         }
-        return;
-      }
 
-      const nextSequence = session.lastAppliedSequence + 1;
-      try {
-        await applySyncedCommand(command, label || "", {
-          actorIndex,
-          sequence: nextSequence,
-        });
-        actionHistoryRef.current = [
-          ...actionHistoryRef.current,
-          {
-            seq: nextSequence,
-            actorIndex: Number(actorIndex),
-            command: cloneMultiplayerPayload(command),
-            label: String(label || ""),
-          },
-        ];
-        updateMultiplayer((prev) => ({
-          ...prev,
-          lastAppliedSequence: nextSequence,
-          submittingAction: false,
-        }));
-        broadcastToClients({
-          type: "apply_action",
-          protocolVersion: PROTOCOL_VERSION,
-          seq: nextSequence,
-          actorIndex,
-          command,
-          label: label || "",
-        });
-      } catch (err) {
-        if (err?.syncedRollbackApplied) {
-          const rollbackCommand = { type: "cancel_decision" };
+        const session = multiplayerRef.current;
+        const expectedActor = gameRef.current
+          ? (await gameRef.current.uiState())?.decision?.player
+          : null;
+        if (
+          expectedActor !== null
+          && expectedActor !== undefined
+          && Number(expectedActor) !== Number(actorIndex)
+        ) {
+          if (senderPeerId) {
+            const conn = clientConnectionsRef.current.get(senderPeerId);
+            safeSend(conn, {
+              type: "action_error",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "It is not that player's turn to act",
+            });
+          }
+          return;
+        }
+
+        const nextSequence = session.lastAppliedSequence + 1;
+        try {
+          await applySyncedCommand(command, label || "", {
+            actorIndex,
+            sequence: nextSequence,
+          });
           actionHistoryRef.current = [
             ...actionHistoryRef.current,
             {
               seq: nextSequence,
               actorIndex: Number(actorIndex),
-              command: rollbackCommand,
-              label: "",
+              command: cloneMultiplayerPayload(command),
+              label: String(label || ""),
             },
           ];
           updateMultiplayer((prev) => ({
@@ -902,18 +949,50 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             protocolVersion: PROTOCOL_VERSION,
             seq: nextSequence,
             actorIndex,
-            command: rollbackCommand,
-            label: "",
+            command,
+            label: label || "",
           });
-          if (err && typeof err === "object") {
-            err.syncedRollbackBroadcast = true;
-            err.syncedRollbackSequence = nextSequence;
+        } catch (err) {
+          if (err?.syncedRollbackApplied) {
+            const rollbackCommand = { type: "cancel_decision" };
+            actionHistoryRef.current = [
+              ...actionHistoryRef.current,
+              {
+                seq: nextSequence,
+                actorIndex: Number(actorIndex),
+                command: rollbackCommand,
+                label: "",
+              },
+            ];
+            updateMultiplayer((prev) => ({
+              ...prev,
+              lastAppliedSequence: nextSequence,
+              submittingAction: false,
+            }));
+            broadcastToClients({
+              type: "apply_action",
+              protocolVersion: PROTOCOL_VERSION,
+              seq: nextSequence,
+              actorIndex,
+              command: rollbackCommand,
+              label: "",
+            });
+            if (err && typeof err === "object") {
+              err.syncedRollbackBroadcast = true;
+              err.syncedRollbackSequence = nextSequence;
+            }
           }
+          throw err;
         }
-        throw err;
       }
-    },
-    [applySyncedCommand, broadcastToClients, updateMultiplayer]
+    ),
+    [
+      applySyncedCommand,
+      broadcastToClients,
+      setStatus,
+      updateMultiplayer,
+      waitForPeerResyncs,
+    ]
   );
 
   const handleClientMessage = useCallback(
@@ -977,6 +1056,19 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           broadcastLobbyState();
           return;
         }
+        case "resync_ack": {
+          const ackSequence = Number(message.lastSequence ?? 0);
+          const wasPending = resyncingPeerIdsRef.current.has(conn.peer);
+          finishPeerResync(conn.peer);
+          if (!wasPending) return;
+          const remaining = resyncingPeerIdsRef.current.size;
+          setStatus(
+            remaining > 0
+              ? `Peer resynced; waiting for ${remaining} more`
+              : `Peers resynced at action ${ackSequence}`
+          );
+          return;
+        }
         case "resync_request": {
           const session = multiplayerRef.current;
           if (!session.matchStarted) {
@@ -1016,6 +1108,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             return;
           }
 
+          resyncingPeerIdsRef.current.add(conn.peer);
           safeSend(conn, {
             type: "state_resync",
             protocolVersion: PROTOCOL_VERSION,
@@ -1024,7 +1117,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             lastSequence: nextSession.lastAppliedSequence,
           });
           broadcastMatchPresence(conn.peer, true);
-          setStatus(`${existingPlayer.name} reconnected`);
+          setStatus(`${existingPlayer.name} is resyncing; host actions paused`);
           return;
         }
         case "deck_update": {
@@ -1094,6 +1187,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       buildHostedResyncPayload,
       broadcastMatchPresence,
       broadcastLobbyState,
+      finishPeerResync,
       sequenceHostedAction,
       setStatus,
       updateMultiplayer,
@@ -1103,7 +1197,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
   const configureHostConnection = useCallback(
     (conn) => {
       conn.on("data", (message) => {
-        void handleClientMessage(conn, message).catch((err) => {
+        const handleError = (err) => {
           safeSend(conn, {
             type: "action_error",
             protocolVersion: PROTOCOL_VERSION,
@@ -1112,7 +1206,15 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             rollbackSequence:
               err?.syncedRollbackSequence == null ? null : Number(err.syncedRollbackSequence),
           });
-        });
+        };
+        // Acks must not wait behind actions that are blocked on those same acks.
+        if (message?.type === "resync_ack") {
+          void handleClientMessage(conn, message).catch(handleError);
+          return;
+        }
+        void enqueueAsync(clientMessageQueueRef, () =>
+          handleClientMessage(conn, message)
+        ).catch(handleError);
       });
       conn.on("close", () => handleClientDisconnect(conn.peer));
       conn.on("error", () => handleClientDisconnect(conn.peer));
@@ -1450,7 +1552,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
         });
       conn.on("data", (message) => {
         if (hostConnectionRef.current !== conn) return;
-        void handleHostMessage(message).catch((err) => {
+        void enqueueAsync(hostMessageQueueRef, () => handleHostMessage(message)).catch((err) => {
           emitSyncFailureNotice(
             "Sync failed",
             err instanceof Error ? err.message : String(err)

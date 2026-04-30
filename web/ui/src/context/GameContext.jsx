@@ -479,6 +479,14 @@ export function GameProvider({ children }) {
     expiresAt: -Infinity,
   });
   const wasmInteractionGateRef = useRef(createWasmInteractionGate());
+  // External UI-only auto-pass gate. The mobile phase-strip writes a closure here that
+  // returns a hold-reason string when the user has set a stop on the current phase.
+  // Returning a non-empty string suppresses *local* auto-pass without touching the engine
+  // or multiplayer sync — opponent priority and explicit user actions are unaffected.
+  const externalAutoPassGateRef = useRef(null);
+  const setExternalAutoPassGate = useCallback((gate) => {
+    externalAutoPassGateRef.current = typeof gate === "function" ? gate : null;
+  }, []);
 
   const runWasmInteraction = useCallback(
     (task) => wasmInteractionGateRef.current.run(task),
@@ -715,6 +723,14 @@ export function GameProvider({ children }) {
 
         holdReason = localTurnHoldReason(st.decision, st);
         if (holdReason) break;
+
+        const externalReason = externalAutoPassGateRef.current
+          ? externalAutoPassGateRef.current(st)
+          : null;
+        if (externalReason) {
+          holdReason = String(externalReason);
+          break;
+        }
 
         const passAction = (st.decision.actions || []).find((action) => action.kind === "pass_priority");
         if (!passAction) {
@@ -1624,6 +1640,7 @@ export function GameProvider({ children }) {
       leaveLobby,
       startHostedMatch,
       updateLobbyDeck,
+      setExternalAutoPassGate,
     }),
     [
       game,
@@ -1642,6 +1659,7 @@ export function GameProvider({ children }) {
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
+      setExternalAutoPassGate,
     ]
   );
 

@@ -41,6 +41,7 @@ export default function Topbar({
   mobileOpponentIndex = 0,
   setMobileOpponentIndex,
   mobileOverlay = false,
+  middleDocked = false,
 }) {
   const {
     inspectorDebug,
@@ -139,87 +140,27 @@ export default function Topbar({
   };
 
   if (mobileOverlay) {
+    // MTGA-aligned mobile UI moves phase + opponent chrome into MobileBattleScene.
+    // The Topbar's mobile branch shrinks to a single floating cog at the top-right.
     return (
-      <header className="topbar-mobile-overlay">
-        <div className="topbar-mobile-overlay-status">
-          <div className="topbar-mobile-overlay-phase" aria-label={phaseSummary}>
-            <span>{compactPhaseLabel}</span>
-            <span>T{state?.turn_number ?? "-"}</span>
-          </div>
-          {activeMobileOpponent ? (
-            <div
-              className={`topbar-opponent-chip topbar-mobile-overlay-opponent${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
-              aria-label={`Viewing opponent ${activeMobileOpponent.name}`}
-            >
-              {opponents.length > 1 ? (
-                <button
-                  type="button"
-                  className="topbar-opponent-chip-nav"
-                  data-player-nav-target={previousMobileOpponent?.index ?? previousMobileOpponent?.id}
-                  data-player-nav-target-name={previousMobileOpponent?.id ?? previousMobileOpponent?.index}
-                  onClick={() => cycleMobileOpponent(-1)}
-                  aria-label="Show previous opponent"
-                >
-                  <ChevronLeft className="size-3.5" />
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="topbar-opponent-chip-body topbar-opponent-chip-body--button"
-                data-player-target={activeMobileOpponent.index ?? activeMobileOpponent.id}
-                data-player-target-name={activeMobileOpponent.id ?? activeMobileOpponent.index}
-                onClick={(event) => {
-                  if (handleCombatOpponentTarget(event)) return;
-                  handleMobileOpponentTarget();
-                }}
-                disabled={!activeMobileOpponentButtonEnabled}
-                aria-label={`Opponent ${activeMobileOpponent.name}, life ${activeMobileOpponent.life}`}
-              >
-                <span
-                  className="topbar-opponent-chip-name"
-                  style={{ color: activeMobileOpponent.id === activePlayer?.id ? "#fff0ca" : undefined }}
-                >
-                  {activeMobileOpponent.name}
-                </span>
-                <span className="topbar-opponent-chip-life">{activeMobileOpponent.life}</span>
-                <span className="topbar-opponent-chip-meta">
-                  H {activeMobileOpponent.hand_size ?? 0} G {activeMobileOpponent.graveyard_size ?? 0} D {activeMobileOpponent.library_size ?? 0}
-                </span>
-              </button>
-              {opponents.length > 1 ? (
-                <button
-                  type="button"
-                  className="topbar-opponent-chip-nav"
-                  data-player-nav-target={nextMobileOpponent?.index ?? nextMobileOpponent?.id}
-                  data-player-nav-target-name={nextMobileOpponent?.id ?? nextMobileOpponent?.index}
-                  onClick={() => cycleMobileOpponent(1)}
-                  aria-label="Show next opponent"
-                >
-                  <ChevronRight className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="topbar-mobile-overlay-actions">
-          <TopbarMenuSheet
-            playerNames={playerNames}
-            setPlayerNames={setPlayerNames}
-            startingLife={startingLife}
-            setStartingLife={setStartingLife}
-            onReset={onReset}
-             onRefresh={onRefresh}
-             onToggleLog={onToggleLog}
-             onEnterDeckLoading={onEnterDeckLoading}
-             onOpenPuzzleSetup={onOpenPuzzleSetup}
-             onOpenLobby={onOpenLobby}
-             deckLoadingMode={deckLoadingMode}
-             puzzleSetupMode={puzzleSetupMode}
-             onAddCardNotice={onAddCardNotice}
-             triggerIcon="menu"
-             showQuickActions
-          />
-        </div>
+      <header className="topbar-mobile-overlay topbar-mobile-overlay--cog-only" aria-label="Mobile menu">
+        <TopbarMenuSheet
+          playerNames={playerNames}
+          setPlayerNames={setPlayerNames}
+          startingLife={startingLife}
+          setStartingLife={setStartingLife}
+          onReset={onReset}
+          onRefresh={onRefresh}
+          onToggleLog={onToggleLog}
+          onEnterDeckLoading={onEnterDeckLoading}
+          onOpenPuzzleSetup={onOpenPuzzleSetup}
+          onOpenLobby={onOpenLobby}
+          deckLoadingMode={deckLoadingMode}
+          puzzleSetupMode={puzzleSetupMode}
+          onAddCardNotice={onAddCardNotice}
+          triggerIcon="settings"
+          showQuickActions
+        />
       </header>
     );
   }
@@ -230,7 +171,10 @@ export default function Topbar({
   const viewportTier = largeDesktopViewport ? "large" : smallDesktopViewport ? "small" : tabletCompactViewport ? "tablet" : nonDesktopViewport ? "phone" : "desktop";
 
   return (
-    <header className="table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2" data-viewport-tier={viewportTier}>
+    <header
+      className={`table-toolbar table-toolbar--primary topbar-shell rounded-none px-3 py-2${middleDocked ? " topbar-shell--middle-docked" : ""}`}
+      data-viewport-tier={viewportTier}
+    >
       <div className="topbar-side-cluster topbar-side-cluster--left min-w-0">
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
           Ironsmith
@@ -316,7 +260,7 @@ export default function Topbar({
       {showCenterLane ? (
         <div className="topbar-center-lane min-w-0">
           <div className="topbar-phase-shell">
-            <PhaseTrack />
+            <PhaseTrack compact={middleDocked} />
           </div>
         </div>
       ) : null}

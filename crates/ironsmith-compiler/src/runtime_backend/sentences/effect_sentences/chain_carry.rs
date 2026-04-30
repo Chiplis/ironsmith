@@ -449,9 +449,13 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
             let after = trim_lexed_commas(&tokens[idx + 1..]);
             let after_words = token_word_refs(after);
             if grammar::contains_word(before, "target")
-                && (after_words.first().is_some_and(|word| is_card_type_word(word))
+                && (after_words
+                    .first()
+                    .is_some_and(|word| is_card_type_word(word))
                     || (after_words.first() == Some(&"or")
-                        && after_words.get(1).is_some_and(|word| is_card_type_word(word))))
+                        && after_words
+                            .get(1)
+                            .is_some_and(|word| is_card_type_word(word))))
             {
                 continue;
             }
@@ -490,7 +494,25 @@ pub(crate) fn parse_or_action_clause_lexed(
         && words.windows(3).any(|window| {
             matches!(
                 window,
-                ["artifact" | "battle" | "creature" | "enchantment" | "instant" | "land" | "planeswalker" | "sorcery", "or", "artifact" | "battle" | "creature" | "enchantment" | "instant" | "land" | "planeswalker" | "sorcery"]
+                [
+                    "artifact"
+                        | "battle"
+                        | "creature"
+                        | "enchantment"
+                        | "instant"
+                        | "land"
+                        | "planeswalker"
+                        | "sorcery",
+                    "or",
+                    "artifact"
+                        | "battle"
+                        | "creature"
+                        | "enchantment"
+                        | "instant"
+                        | "land"
+                        | "planeswalker"
+                        | "sorcery"
+                ]
             )
         })
     {

@@ -931,12 +931,19 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
     player_filter: &PlayerFilter,
 ) {
     match value {
+        Value::SurfaceHinted { value, .. } => {
+            bind_relative_iterated_player_in_value_to_player_filter(value, player_filter);
+        }
         Value::Add(left, right) => {
             bind_relative_iterated_player_in_value_to_player_filter(left, player_filter);
             bind_relative_iterated_player_in_value_to_player_filter(right, player_filter);
         }
-        Value::Scaled(inner, _) => {
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
             bind_relative_iterated_player_in_value_to_player_filter(inner, player_filter);
+        }
+        Value::Min(left, right) => {
+            bind_relative_iterated_player_in_value_to_player_filter(left, player_filter);
+            bind_relative_iterated_player_in_value_to_player_filter(right, player_filter);
         }
         Value::Count(filter)
         | Value::CountScaled(filter, _)
@@ -966,6 +973,38 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
             {
                 *player = player_filter.clone();
             }
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => {
+            bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
+        }
+        _ => {}
+    }
+}
+
+fn bind_relative_iterated_player_in_choose_spec_to_player_filter(
+    spec: &mut ChooseSpec,
+    player_filter: &PlayerFilter,
+) {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _) => {
+            bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
+        }
+        ChooseSpec::Player(player)
+        | ChooseSpec::PlayerOrPlaneswalker(player)
+        | ChooseSpec::EachPlayer(player) => {
+            if matches!(player, PlayerFilter::IteratedPlayer)
+                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
+            {
+                *player = player_filter.clone();
+            }
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
         }
         _ => {}
     }

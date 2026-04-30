@@ -4570,6 +4570,38 @@ body {
   pointer-events: none;
 }
 
+.table-shared-control-band {
+  display: grid;
+  overflow: visible;
+  border-radius: 12px 12px 0 0;
+}
+
+.table-shared-control-stack,
+.table-shared-action-slot,
+.table-shared-toolbar-slot,
+.table-shared-player-slot {
+  min-width: 0;
+  overflow: visible;
+}
+
+.table-shared-player-header {
+  min-height: 44px;
+  border-radius: 12px 12px 0 0 !important;
+}
+
+.table-shared-player-header > [data-my-zone-header-content] {
+  flex: 0 1 auto;
+}
+
+.table-shared-player-header .battlefield-counts {
+  max-width: min(52vw, 760px);
+  overflow: hidden;
+}
+
+.table-shared-inspector-dock {
+  width: min(25vw, 420px);
+}
+
 .board-zone-bg,
 .battlefield-subpanel {
   overflow: hidden;
@@ -11040,6 +11072,10 @@ textarea,
   pointer-events: none;
 }
 
+[data-my-zone][data-header-hidden="true"] > .relative:first-child::after {
+  content: none;
+}
+
 .battlefield-zones-shell {
   background:
     linear-gradient(
@@ -11217,4 +11253,636 @@ textarea,
 .stack-card-effect,
 .stack-entry-badge {
   color: #d8c18c !important;
+}
+
+/* ============================================================
+   MTGA-aligned mobile UI (landscape only).
+   These selectors style the new MobileBattleScene region
+   components: opponent/self HUDs, mana pools, phase strip,
+   turn action stack, battlefield bands, hand fan + fullscreen,
+   stack rail, and the cog-only Topbar overlay.
+   Reuses Ironsmith's warm palette — no MTGA colors.
+   ============================================================ */
+@media (max-height: 480px) and (orientation: landscape) {
+  /* Topbar trims to a floating cog at the top-right corner. */
+  .topbar-mobile-overlay--cog-only {
+    position: fixed;
+    top: max(env(safe-area-inset-top, 0px), 4px);
+    right: max(env(safe-area-inset-right, 0px), 8px);
+    left: auto;
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    pointer-events: auto;
+  }
+  .topbar-mobile-overlay--cog-only .topbar-menu-trigger {
+    background: rgba(8, 14, 22, 0.78);
+    border: 1px solid rgba(170, 208, 245, 0.25);
+    color: #efe2be;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+    border-radius: 999px;
+  }
+
+  /* Scene layout grid. The scene composes regions in a single column. */
+  .mobile-mtga-scene .mobile-mtga-scene-layout {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--mobile-battle-section-gap, 6px);
+    padding-left: var(--mobile-battle-scene-padding, 8px);
+    padding-right: var(--mobile-battle-scene-padding, 8px);
+    padding-top: max(env(safe-area-inset-top, 0px), 2px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 2px);
+    overflow: hidden;
+  }
+  .mobile-mtga-scene-row {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  .mobile-mtga-scene-row--hand {
+    flex: 0 0 auto;
+  }
+
+  /* HUDs (opponent + self) ------------------------------------- */
+  .mobile-mtga-opponent-hud,
+  .mobile-mtga-self-hud {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 100%;
+    min-height: 28px;
+    color: #efe2be;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .mobile-mtga-opponent-hud {
+    padding-right: 44px; /* leave room for the floating cog */
+  }
+  .mobile-mtga-opponent-hud-body,
+  .mobile-mtga-self-hud-body {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(28, 38, 52, 0.92), rgba(12, 18, 26, 0.94));
+    border: 1px solid rgba(170, 208, 245, 0.22);
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .mobile-mtga-opponent-hud-body--targetable,
+  .mobile-mtga-self-hud-body--targetable {
+    border-color: var(--player-accent, #f3b25a);
+    box-shadow: 0 0 0 2px rgba(243, 178, 90, 0.22), 0 0 14px var(--player-accent, rgba(243, 178, 90, 0.5));
+  }
+  .mobile-mtga-opponent-hud[data-active-turn="true"] .mobile-mtga-opponent-hud-body,
+  .mobile-mtga-self-hud[data-active-turn="true"] .mobile-mtga-self-hud-body {
+    border-color: rgba(255, 200, 100, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 200, 100, 0.25);
+  }
+
+  .mobile-mtga-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--player-accent, #2c3a4d);
+    color: #0a121a;
+    font-weight: 800;
+    font-size: 12px;
+    flex: 0 0 22px;
+    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .mobile-mtga-avatar-glyph {
+    line-height: 1;
+  }
+  .mobile-mtga-avatar--active-turn {
+    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25), 0 0 8px rgba(255, 200, 100, 0.7);
+  }
+
+  .mobile-mtga-hud-identity {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1;
+    gap: 2px;
+  }
+  .mobile-mtga-hud-name {
+    font-size: 10px;
+    font-weight: 600;
+    color: #efe2be;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-mtga-hud-life {
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff0ca;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+  }
+  .mobile-mtga-hud-zones-meta {
+    margin-left: auto;
+    font-size: 10px;
+    color: #b9c8d8;
+    opacity: 0.75;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .mobile-mtga-opponent-cycle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: #b9c8d8;
+    background: rgba(8, 14, 22, 0.7);
+    border: 1px solid rgba(170, 208, 245, 0.22);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .mobile-mtga-opponent-cycle:hover {
+    color: #efe2be;
+    border-color: rgba(170, 208, 245, 0.4);
+  }
+  .mobile-mtga-opponent-hud-trailing {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Mana pool -------------------------------------------------- */
+  .mobile-mtga-mana-pool {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    height: var(--mobile-mtga-mana-pool-height-self, 18px);
+    overflow: hidden;
+  }
+  .mobile-mtga-mana-pool--opponent {
+    height: var(--mobile-mtga-mana-pool-height-opp, 18px);
+    opacity: 0.85;
+  }
+  .mobile-mtga-mana-pool-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(11, 18, 27, 0.88);
+    border: 1px solid rgba(170, 208, 245, 0.18);
+    color: #d6e6fb;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: default;
+    transition: border-color 120ms ease, transform 120ms ease;
+  }
+  .mobile-mtga-mana-pool-chip--empty {
+    opacity: 0.45;
+  }
+  .mobile-mtga-mana-pool-chip--activatable {
+    border-color: rgba(243, 178, 90, 0.7);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(243, 178, 90, 0.45);
+  }
+  .mobile-mtga-mana-pool-chip--activatable:hover {
+    transform: translateY(-1px);
+  }
+  .mobile-mtga-mana-pool-chip-amount {
+    min-width: 8px;
+    text-align: center;
+  }
+
+  /* Phase strip + turn action stack (one row) ------------------ */
+  .mobile-mtga-control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    height: var(--mobile-battle-control-height, 30px);
+  }
+  .mobile-mtga-phase-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 3px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+  }
+  .mobile-mtga-phase-cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-width: 26px;
+    padding: 1px 0;
+    color: #b9c8d8;
+    background: rgba(11, 18, 27, 0.65);
+    border: 1px solid rgba(170, 208, 245, 0.16);
+    border-radius: 6px;
+    cursor: pointer;
+    position: relative;
+    transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  }
+  .mobile-mtga-phase-cell--compact {
+    flex: 0 0 auto;
+    min-width: 22px;
+  }
+  .mobile-mtga-phase-cell-short {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .mobile-mtga-phase-cell--active {
+    color: #fff0ca;
+    background: rgba(243, 140, 50, 0.28);
+    border-color: rgba(243, 140, 50, 0.7);
+    box-shadow: 0 0 12px rgba(243, 140, 50, 0.55), inset 0 0 0 1px rgba(255, 200, 100, 0.3);
+  }
+  .mobile-mtga-phase-cell--stopped {
+    border-color: rgba(243, 178, 90, 0.7);
+  }
+  .mobile-mtga-phase-cell-stop-dot {
+    position: absolute;
+    bottom: 2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #f3b25a;
+    box-shadow: 0 0 6px rgba(243, 178, 90, 0.8);
+  }
+
+  .mobile-mtga-turn-action-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    flex: 0 0 auto;
+    min-width: 88px;
+    max-width: 110px;
+    height: 100%;
+  }
+  /* When the existing MobileDecisionDock renders into the action stack with
+     orientation="vertical", layout its action buttons as a column. */
+  .mobile-mtga-turn-action-stack .mobile-decision-dock,
+  .mobile-decision-dock--vertical {
+    width: 100%;
+    height: 100%;
+  }
+  .mobile-mtga-turn-action-stack .mobile-decision-dock-actions,
+  .mobile-decision-dock-actions--vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+  }
+  .mobile-mtga-turn-action-stack .mobile-decision-primary-button,
+  .mobile-mtga-turn-action-stack .mobile-decision-secondary-button {
+    width: 100%;
+    height: 24px;
+    min-height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #efe2be;
+    background: linear-gradient(180deg, rgba(28, 38, 52, 0.95), rgba(12, 18, 26, 0.95));
+    border: 1px solid rgba(170, 208, 245, 0.28);
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  }
+  .mobile-mtga-turn-action-stack .mobile-decision-primary-button {
+    border-color: rgba(243, 178, 90, 0.6);
+    background: linear-gradient(180deg, rgba(46, 38, 22, 0.95), rgba(28, 22, 12, 0.95));
+  }
+
+  /* Battlefield bands ----------------------------------------- */
+  .mobile-mtga-battlefield-band {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mobile-battle-row-gap, 6px);
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .mobile-mtga-battlefield-band--opponent {
+    justify-content: flex-end;
+  }
+  .mobile-mtga-battlefield-band--self {
+    justify-content: flex-start;
+  }
+  .mobile-mtga-battlefield-lane {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+  }
+  .mobile-mtga-battlefield-lane-track {
+    position: relative;
+    width: 100%;
+  }
+  .mobile-mtga-battlefield-lane--self-back {
+    /* Back row is clipped to ~78% of card height — only the top rim peeks. */
+    align-self: flex-start;
+  }
+
+  /* Hand fan -------------------------------------------------- */
+  .mobile-mtga-hand-fan {
+    width: 100%;
+    height: var(--mobile-mtga-hand-peek-height, 24px);
+    overflow: visible;
+    transition: height 220ms ease-out;
+    cursor: pointer;
+    position: relative;
+    z-index: 30;
+  }
+  .mobile-mtga-hand-fan--fanned {
+    height: 92px;
+    overflow: visible;
+  }
+  .mobile-mtga-hand-fan-viewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  /* Hand fullscreen ------------------------------------------- */
+  .mobile-mtga-hand-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    background: rgba(6, 10, 16, 0.96);
+    padding: max(env(safe-area-inset-top, 0px), 4px) max(env(safe-area-inset-right, 0px), 8px) max(env(safe-area-inset-bottom, 0px), 4px) max(env(safe-area-inset-left, 0px), 8px);
+  }
+  .mobile-mtga-hand-fullscreen-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    color: #efe2be;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .mobile-mtga-hand-fullscreen-title {
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .mobile-mtga-hand-fullscreen-count {
+    font-size: 11px;
+    color: #b9c8d8;
+    opacity: 0.7;
+  }
+  .mobile-mtga-hand-fullscreen-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: #efe2be;
+    background: rgba(8, 14, 22, 0.78);
+    border: 1px solid rgba(170, 208, 245, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .mobile-mtga-hand-fullscreen-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* View toggle ----------------------------------------------- */
+  .mobile-mtga-view-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    color: #efe2be;
+    background: rgba(8, 14, 22, 0.78);
+    border: 1px solid rgba(170, 208, 245, 0.25);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+  }
+  .mobile-mtga-view-toggle--floating {
+    position: fixed;
+    top: max(env(safe-area-inset-top, 0px), 4px);
+    right: max(env(safe-area-inset-right, 0px), 56px); /* clear the cog */
+    z-index: 75;
+  }
+
+  /* Zone tray ------------------------------------------------- */
+  .mobile-mtga-zone-tray {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .mobile-mtga-zone-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    height: 18px;
+    color: #b9c8d8;
+    background: rgba(11, 18, 27, 0.7);
+    border: 1px solid rgba(170, 208, 245, 0.18);
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .mobile-mtga-zone-pill:hover {
+    color: #efe2be;
+    border-color: rgba(170, 208, 245, 0.36);
+  }
+  .mobile-mtga-zone-pill-short {
+    text-transform: uppercase;
+  }
+  .mobile-mtga-zone-pill-count {
+    color: #fff0ca;
+  }
+
+  /* Stack rail ------------------------------------------------ */
+  .mobile-mtga-stack-rail {
+    position: absolute;
+    top: var(--mobile-battle-top-status-height, 38px);
+    right: 4px;
+    bottom: var(--mobile-mtga-self-hud-height, 38px);
+    width: var(--mobile-mtga-stack-rail-width, 56px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+    z-index: 35;
+    overflow: hidden;
+    pointer-events: auto;
+  }
+  .mobile-mtga-stack-rail-entry {
+    position: relative;
+    width: 100%;
+    height: 64px;
+    flex: 0 0 auto;
+    cursor: pointer;
+  }
+  .mobile-mtga-stack-rail-entry--focused {
+    box-shadow: 0 0 14px rgba(243, 178, 90, 0.7);
+    border-radius: 6px;
+  }
+  .mobile-mtga-stack-rail-card {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+  .mobile-mtga-stack-rail-overflow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    color: #efe2be;
+    background: rgba(8, 14, 22, 0.86);
+    border: 1px solid rgba(170, 208, 245, 0.3);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* Stack browser (fullscreen for "+N more") ------------------ */
+  .mobile-mtga-stack-browser {
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    display: flex;
+    flex-direction: column;
+    background: rgba(6, 10, 16, 0.96);
+    padding: max(env(safe-area-inset-top, 0px), 4px) max(env(safe-area-inset-right, 0px), 8px) max(env(safe-area-inset-bottom, 0px), 4px) max(env(safe-area-inset-left, 0px), 8px);
+  }
+  .mobile-mtga-stack-browser-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    color: #efe2be;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .mobile-mtga-stack-browser-title {
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .mobile-mtga-stack-browser-count {
+    color: #fff0ca;
+  }
+  .mobile-mtga-stack-browser-close {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: #efe2be;
+    background: rgba(8, 14, 22, 0.78);
+    border: 1px solid rgba(170, 208, 245, 0.25);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .mobile-mtga-stack-browser-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+  }
+  .mobile-mtga-stack-browser-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    color: #efe2be;
+    background: rgba(11, 18, 27, 0.78);
+    border: 1px solid rgba(170, 208, 245, 0.2);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .mobile-mtga-stack-browser-row--focused {
+    border-color: rgba(243, 178, 90, 0.7);
+    box-shadow: 0 0 10px rgba(243, 178, 90, 0.4);
+  }
+  .mobile-mtga-stack-browser-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-mtga-stack-browser-kind {
+    color: #b9c8d8;
+    opacity: 0.7;
+    font-size: 10px;
+  }
+
+  /* Inspector close button (added to existing overlay shell) -- */
+  .mobile-battle-inspect-overlay-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    color: #efe2be;
+    background: rgba(8, 14, 22, 0.86);
+    border: 1px solid rgba(170, 208, 245, 0.3);
+    border-radius: 999px;
+    cursor: pointer;
+    z-index: 2;
+  }
 }

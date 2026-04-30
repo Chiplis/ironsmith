@@ -141,7 +141,7 @@ function buildActivatableMap(decision) {
   return activatableMap;
 }
 
-function ZoneCountInline({ player }) {
+export function ZoneCountInline({ player }) {
   const counts = zoneCounts(player);
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
@@ -211,7 +211,9 @@ export default function MyZone({
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
   headerControls = null,
+  headerInspectorDock = null,
   embeddedActionBar = null,
+  hideHeader = false,
   mobileBattleScene = false,
   playerAccent: explicitPlayerAccent = null,
   onMobileCardActionMenu = null,
@@ -226,6 +228,7 @@ export default function MyZone({
   const [mobileHandOcclusionViewportTop, setMobileHandOcclusionViewportTop] = useState(null);
   const playerAccent = explicitPlayerAccent || getPlayerAccent(state?.players || [], player?.id);
   const mergedMobileHeader = Boolean(embeddedActionBar);
+  const showHeader = !hideHeader;
   const mobileInspectorVisible = mergedMobileHeader && selectedObjectId != null;
 
   const transientZoneViews = Object.keys(zoneActivity || {});
@@ -571,97 +574,109 @@ export default function MyZone({
       style={{
         gridTemplateRows: mergedMobileHeader
           ? "auto minmax(0,1fr)"
-          : `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`,
+          : (showHeader ? `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)` : "minmax(0,1fr)"),
         alignContent: "stretch",
         "--player-accent": playerAccent?.hex || "#d8bf6a",
         "--panel-accent": playerAccent?.hex || "#b98946",
         "--player-accent-rgb": playerAccent?.rgb || "216, 191, 106",
       }}
       data-my-zone
+      data-header-hidden={showHeader ? "false" : "true"}
     >
-      <div className="relative min-h-0 overflow-visible">
-        <div
-          className={cn(
-            "battlefield-panel-header relative overflow-visible pr-2",
-            mergedMobileHeader
-              ? "z-[1] battlefield-panel-header--merged flex min-h-[44px] items-stretch gap-1.5"
-              : "z-[92] flex h-full items-center gap-2"
-          )}
-          data-turn-priority={isPriorityPlayer ? "true" : "false"}
-        >
+      {showHeader ? (
+        <div className="relative min-h-0 overflow-visible">
           <div
             className={cn(
+              "battlefield-panel-header relative overflow-visible pr-2",
               mergedMobileHeader
-                ? "my-zone-header-meta flex min-w-0 shrink-0 items-center gap-2"
-                : "flex min-w-0 items-center gap-2"
+                ? "z-[1] battlefield-panel-header--merged flex min-h-[44px] items-stretch gap-1.5"
+                : "z-[92] flex h-full items-center gap-2"
             )}
-            data-my-zone-header-content
+            data-turn-priority={isPriorityPlayer ? "true" : "false"}
           >
-            <span
+            <div
               className={cn(
-                "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
-                isPlayerLegalTarget
-                  && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+                mergedMobileHeader
+                  ? "my-zone-header-meta flex min-w-0 shrink-0 items-center gap-2"
+                  : "flex min-w-0 items-center gap-2"
               )}
-              onPointerDown={handlePlayerTargetPointerDown}
-              onClick={handlePlayerTargetClick}
-              style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+              data-my-zone-header-content
             >
-              {player.life}
-            </span>
-            <span
-              className={cn(
-                "battlefield-name text-[16px] uppercase tracking-wider font-bold",
-                isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-              )}
-              data-player-target={player.id}
-              data-player-target-name={player.id}
-              onPointerDown={handlePlayerTargetPointerDown}
-              onClick={handlePlayerTargetClick}
-              style={{
-                color: playerAccent?.hex,
-                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-              }}
-            >
-              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                {player.name}
+              <span
+                className={cn(
+                  "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
+                  isPlayerLegalTarget
+                    && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+                )}
+                onPointerDown={handlePlayerTargetPointerDown}
+                onClick={handlePlayerTargetClick}
+                style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+              >
+                {player.life}
               </span>
-              {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
-            </span>
-            <div className="ml-auto flex min-w-0 items-center gap-2">
-              {mergedMobileHeader ? (
-                <div className="my-zone-merged-zone-meta flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[#bcae93] whitespace-nowrap">
-                  <span className="font-bold text-[#d8cbb0]">Hand</span>
-                  <span className="text-[#efe0bb]">{player.hand_size ?? 0}</span>
-                  <span className="font-bold text-[#d8cbb0]">GY</span>
-                  <span className="text-[#efe0bb]">{player.graveyard_size ?? 0}</span>
-                </div>
-              ) : (
-                <ZoneCountInline player={player} />
-              )}
-              {!mergedMobileHeader && <ManaPool pool={player.mana_pool} />}
-              {headerControls}
+              <span
+                className={cn(
+                  "battlefield-name text-[16px] uppercase tracking-wider font-bold",
+                  isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
+                )}
+                data-player-target={player.id}
+                data-player-target-name={player.id}
+                onPointerDown={handlePlayerTargetPointerDown}
+                onClick={handlePlayerTargetClick}
+                style={{
+                  color: playerAccent?.hex,
+                  cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+                }}
+              >
+                <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                  {player.name}
+                </span>
+                {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+              </span>
+              <div className="ml-auto flex min-w-0 items-center gap-2">
+                {mergedMobileHeader ? (
+                  <div className="my-zone-merged-zone-meta flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[#bcae93] whitespace-nowrap">
+                    <span className="font-bold text-[#d8cbb0]">Hand</span>
+                    <span className="text-[#efe0bb]">{player.hand_size ?? 0}</span>
+                    <span className="font-bold text-[#d8cbb0]">GY</span>
+                    <span className="text-[#efe0bb]">{player.graveyard_size ?? 0}</span>
+                  </div>
+                ) : (
+                  <ZoneCountInline player={player} />
+                )}
+                {!mergedMobileHeader && <ManaPool pool={player.mana_pool} />}
+                {headerControls}
+              </div>
             </div>
+            {mergedMobileHeader ? (
+              <div className="my-zone-merged-action-shell relative z-[1] min-w-0 flex-1 self-stretch">
+                {embeddedActionBar}
+              </div>
+            ) : (
+              <StackTimelineRail
+                selectedObjectId={selectedObjectId}
+                onInspectObject={onInspect}
+                className="h-full flex-1 self-stretch pl-2"
+              />
+            )}
           </div>
-          {mergedMobileHeader ? (
-            <div className="my-zone-merged-action-shell relative z-[1] min-w-0 flex-1 self-stretch">
-              {embeddedActionBar}
+          {headerInspectorDock ? (
+            <div
+              className="my-zone-header-inspector-dock pointer-events-none absolute inset-y-0 right-2 z-[110] flex items-end justify-end overflow-visible"
+              style={{ width: "min(25vw, 420px)" }}
+              data-inspector-dock="middle"
+            >
+              {headerInspectorDock}
             </div>
-          ) : (
+          ) : null}
+          {mergedMobileHeader ? (
             <StackTimelineRail
               selectedObjectId={selectedObjectId}
               onInspectObject={onInspect}
-              className="h-full flex-1 self-stretch pl-2"
             />
-          )}
+          ) : null}
         </div>
-        {mergedMobileHeader ? (
-          <StackTimelineRail
-            selectedObjectId={selectedObjectId}
-            onInspectObject={onInspect}
-          />
-        ) : null}
-      </div>
+      ) : null}
       <div
         className={cn(
           "battlefield-zones-shell relative min-h-0 h-full overflow-visible",

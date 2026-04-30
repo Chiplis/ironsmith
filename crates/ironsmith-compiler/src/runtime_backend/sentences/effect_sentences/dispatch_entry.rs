@@ -1040,11 +1040,10 @@ fn is_copy_reference_effect(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
-                    | SubjectVerbActionAst::CopySpell { .. }
-                    | SubjectVerbActionAst::CopySpellForEachTarget { .. },
+            action: SubjectVerbActionAst::CreateTokenCopy { .. }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+                | SubjectVerbActionAst::CopySpell { .. }
+                | SubjectVerbActionAst::CopySpellForEachTarget { .. },
             ..
         })
     )

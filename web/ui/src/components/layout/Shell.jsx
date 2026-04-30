@@ -35,8 +35,10 @@ export default function Shell() {
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
+  const [mobileViewMode, setMobileViewMode] = useState("battlefield");
+  const [mobilePhaseStops, setMobilePhaseStops] = useState(() => new Set());
   const [notices, setNotices] = useState([]);
-  const { landscapeMobileViewport, tabletCompactViewport, smallDesktopViewport } = useViewportLayout();
+  const { landscapeMobileViewport, nonDesktopViewport, tabletCompactViewport, smallDesktopViewport } = useViewportLayout();
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
   const autoLoadAttemptedPuzzleRef = useRef(false);
@@ -413,68 +415,80 @@ export default function Shell() {
     );
   }
 
+  const dockToolbarsInTable = !nonDesktopViewport && !tabletCompactViewport;
+  const renderTopLevelAddCardBar = !landscapeMobileViewport && !tabletCompactViewport && !dockToolbarsInTable;
+  const topbarElement = (
+    <Topbar
+      playerNames={playerNames}
+      setPlayerNames={setPlayerNames}
+      startingLife={startingLife}
+      setStartingLife={setStartingLife}
+      onReset={handleReset}
+      onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
+      onToggleLog={() => setLogOpen((o) => !o)}
+      onEnterDeckLoading={() => {
+        setPuzzleSetupMode(false);
+        setDeckLoadingMode((mode) => !mode);
+      }}
+      onOpenPuzzleSetup={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode((mode) => !mode);
+      }}
+      puzzleSetupMode={puzzleSetupMode}
+      onOpenLobby={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        setLobbyOpen(true);
+      }}
+      deckLoadingMode={deckLoadingMode}
+      onAddCardNotice={pushNotice}
+      mobileOpponentIndex={mobileOpponentIndex}
+      setMobileOpponentIndex={setMobileOpponentIndex}
+      mobileOverlay={landscapeMobileViewport}
+      middleDocked={dockToolbarsInTable}
+    />
+  );
+  const addCardBarElement = (
+    <AddCardBar
+      compact={smallDesktopViewport}
+      zoneViews={zoneViews}
+      setZoneViews={setZoneViews}
+      onAddCardNotice={pushNotice}
+      onChangePerspective={handleChangePerspective}
+      onEnterDeckLoading={() => {
+        setPuzzleSetupMode(false);
+        setDeckLoadingMode((mode) => !mode);
+      }}
+      onOpenPuzzleSetup={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode((mode) => !mode);
+      }}
+      onOpenLobby={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        setLobbyOpen(true);
+      }}
+      deckLoadingMode={deckLoadingMode}
+      puzzleSetupMode={puzzleSetupMode}
+    />
+  );
+
   return (
     <div
       className={
         landscapeMobileViewport
           ? "app-shell mobile-app-shell relative w-full h-[100dvh] overflow-hidden"
-          : "app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+          : dockToolbarsInTable
+            ? "app-shell w-full h-[100dvh] p-2 grid grid-rows-[minmax(0,1fr)] gap-2"
+            : renderTopLevelAddCardBar
+              ? "app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+              : "app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_minmax(0,1fr)] gap-2"
       }
       data-borderless-preview={borderlessPreview ? "true" : "false"}
       data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
-      <Topbar
-        playerNames={playerNames}
-        setPlayerNames={setPlayerNames}
-        startingLife={startingLife}
-        setStartingLife={setStartingLife}
-        onReset={handleReset}
-        onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
-        onToggleLog={() => setLogOpen((o) => !o)}
-        onEnterDeckLoading={() => {
-          setPuzzleSetupMode(false);
-          setDeckLoadingMode((mode) => !mode);
-        }}
-        onOpenPuzzleSetup={() => {
-          setDeckLoadingMode(false);
-          setPuzzleSetupMode((mode) => !mode);
-        }}
-        puzzleSetupMode={puzzleSetupMode}
-        onOpenLobby={() => {
-          setDeckLoadingMode(false);
-          setPuzzleSetupMode(false);
-          setLobbyOpen(true);
-        }}
-        deckLoadingMode={deckLoadingMode}
-        onAddCardNotice={pushNotice}
-        mobileOpponentIndex={mobileOpponentIndex}
-        setMobileOpponentIndex={setMobileOpponentIndex}
-        mobileOverlay={landscapeMobileViewport}
-      />
-      {!landscapeMobileViewport && !tabletCompactViewport ? (
-        <AddCardBar
-          compact={smallDesktopViewport}
-          zoneViews={zoneViews}
-          setZoneViews={setZoneViews}
-          onAddCardNotice={pushNotice}
-          onChangePerspective={handleChangePerspective}
-          onEnterDeckLoading={() => {
-            setPuzzleSetupMode(false);
-            setDeckLoadingMode((mode) => !mode);
-          }}
-          onOpenPuzzleSetup={() => {
-            setDeckLoadingMode(false);
-            setPuzzleSetupMode((mode) => !mode);
-          }}
-          onOpenLobby={() => {
-            setDeckLoadingMode(false);
-            setPuzzleSetupMode(false);
-            setLobbyOpen(true);
-          }}
-          deckLoadingMode={deckLoadingMode}
-          puzzleSetupMode={puzzleSetupMode}
-        />
-      ) : null}
+      {!dockToolbarsInTable ? topbarElement : null}
+      {renderTopLevelAddCardBar ? addCardBarElement : null}
       <Workspace
         zoneViews={zoneViews}
         deckLoadingMode={deckLoadingMode}
@@ -489,6 +503,12 @@ export default function Shell() {
         onDismissNotice={dismissNotice}
         mobileOpponentIndex={mobileOpponentIndex}
         setMobileOpponentIndex={setMobileOpponentIndex}
+        mobileViewMode={mobileViewMode}
+        setMobileViewMode={setMobileViewMode}
+        mobilePhaseStops={mobilePhaseStops}
+        setMobilePhaseStops={setMobilePhaseStops}
+        middleTopbar={dockToolbarsInTable ? topbarElement : null}
+        middleAddCardBar={dockToolbarsInTable ? addCardBarElement : null}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (

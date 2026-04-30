@@ -22,6 +22,7 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
 
 fn is_effect_count_reference(value: &Value, effect_id: Option<crate::effect::EffectId>) -> bool {
     match value {
+        Value::SurfaceHinted { value, .. } => is_effect_count_reference(value, effect_id),
         Value::EffectValue(id) => effect_id.map_or(true, |expected| *id == expected),
         Value::EventValue(EventValueSpec::Amount) => true,
         Value::EffectMetric {
@@ -48,6 +49,7 @@ fn effect_count_reference_offset(
     effect_id: Option<crate::effect::EffectId>,
 ) -> Option<i32> {
     match value {
+        Value::SurfaceHinted { value, .. } => effect_count_reference_offset(value, effect_id),
         Value::EffectValueOffset(id, offset)
             if effect_id.map_or(true, |expected| *id == expected) =>
         {
@@ -776,9 +778,12 @@ fn destroy_random_one_of_tagged_groups(
         return false;
     };
     filter.any_of.len() == tags.len()
-        && tags
-            .iter()
-            .all(|tag| filter.any_of.iter().any(|candidate| is_tagged_only_filter(candidate, tag)))
+        && tags.iter().all(|tag| {
+            filter
+                .any_of
+                .iter()
+                .any(|candidate| is_tagged_only_filter(candidate, tag))
+        })
 }
 
 fn describe_target_groups_then_random_destroy(effects: &[&Effect]) -> Option<String> {
@@ -2259,7 +2264,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     fn describe_two_distinct_targets_counter_then_fight(effects: &[&Effect]) -> Option<String> {
-        let [first_target_effect, second_target_effect, counter_effect, fight_effect] = effects
+        let [
+            first_target_effect,
+            second_target_effect,
+            counter_effect,
+            fight_effect,
+        ] = effects
         else {
             return None;
         };
@@ -6744,7 +6754,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         };
         let source_move = source_move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-        if source_move.zone != Zone::Exile || !matches!(source_move.target.unhinted(), ChooseSpec::Source) {
+        if source_move.zone != Zone::Exile
+            || !matches!(source_move.target.unhinted(), ChooseSpec::Source)
+        {
             return None;
         }
         let target_move = unwrap_tag_wrappers(target_move_effect)
@@ -24993,7 +25005,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 words.push("green".to_string());
             }
             words.extend(subtypes.iter().map(|subtype| subtype.to_string()));
-            text.push_str(&format!(", except it's a {power}/{toughness} {}", words.join(" ")));
+            text.push_str(&format!(
+                ", except it's a {power}/{toughness} {}",
+                words.join(" ")
+            ));
             return text;
         }
         if let Some((power, toughness)) = create_copy.set_base_power_toughness {
@@ -29648,6 +29663,9 @@ pub(super) fn rewrite_damage_phrases_for_permanent_abilities(
 }
 
 fn describe_damage_amount_with_revealed_count_where_x(value: &Value) -> Option<(String, String)> {
+    if let Value::SurfaceHinted { value, .. } = value {
+        return describe_damage_amount_with_revealed_count_where_x(value);
+    }
     if matches!(value, Value::Count(_)) {
         let count_text = describe_value(value);
         if count_text.ends_with("revealed this way") {

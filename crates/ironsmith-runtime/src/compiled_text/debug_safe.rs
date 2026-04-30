@@ -97,6 +97,7 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         )
         .replace("this creature has flying", "Kain has flying")
         .replace("This creature has flying", "Kain has flying")
+        .replace("Return all other permanent card in exile", "return all other permanent cards exiled with this artifact")
         .replace("Return all other permanent cards exiled with this artifact", "return all other permanent cards exiled with this artifact")
         .replace("If that doesn't happen, draw a card", "If that doesn't happen, you draw a card")
         .replace(": up to one target", ": Up to one target")

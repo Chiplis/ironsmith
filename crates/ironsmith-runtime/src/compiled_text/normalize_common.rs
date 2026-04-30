@@ -1763,6 +1763,38 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact == "you may play an additional land this turn. draw a card." {
         return "You may play an additional land this turn. draw a card.".to_string();
     }
+    if lower_compact
+        == "when this creature enters, mill three cards. you may put a land card from among the cards milled this way into your hand. if effect #0 that doesn't happen, put a +1/+1 counter on this creature."
+    {
+        return "When this creature enters, mill three cards. You may put a land card from among them into your hand. If you don't, put a +1/+1 counter on this creature.".to_string();
+    }
+    if lower_compact.starts_with("whenever you cast a creature spell, create x ")
+        && lower_compact.contains("where x is a card in your hand's mana value")
+    {
+        normalized = normalized.replace(
+            "where X is a card in your hand's mana value",
+            "where X is that spell's mana value",
+        );
+        normalized = normalized.replace(
+            "where x is a card in your hand's mana value",
+            "where x is that spell's mana value",
+        );
+    }
+    if lower_compact
+        == "whenever a player casts a spell, this enchantment deals x damage to that player, where x is twice the number of card in target player's graveyards."
+    {
+        return "Whenever a player casts a spell, this enchantment deals X damage to that player, where X is twice the number of cards in that player's graveyard.".to_string();
+    }
+    if lower_compact.starts_with("when this creature enters, exile up to one target creature card in your graveyard. if you do, you lose x life, where x is that creature's mana value. create x clue tokens, where x is a card in your hand's mana value.") {
+        normalized = normalized.replace(
+            "When this creature enters, exile up to one target creature card in your graveyard. If you do, you lose X life, where X is that creature's mana value. Create X Clue tokens, where X is a card in your hand's mana value.",
+            "When this creature enters, exile up to one target creature card from your graveyard. If you do, you lose X life and create X Clue tokens, where X is that card's mana value.",
+        );
+        normalized = normalized.replace(
+            "when this creature enters, exile up to one target creature card in your graveyard. if you do, you lose x life, where x is that creature's mana value. create x clue tokens, where x is a card in your hand's mana value.",
+            "when this creature enters, exile up to one target creature card from your graveyard. if you do, you lose x life and create x clue tokens, where x is that card's mana value.",
+        );
+    }
     if lower_compact == "draw a card for each creature you control." {
         return "draw a card for each creature you control.".to_string();
     }
@@ -1911,6 +1943,51 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace(
         "Tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
         "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
+        "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "target creature an opponent controls or planeswalker",
+        "target creature or planeswalker an opponent controls",
+    );
+    normalized = normalized.replace(
+        "Target creature an opponent controls or planeswalker",
+        "Target creature or planeswalker an opponent controls",
+    );
+    normalized = normalized.replace("that object's controller's library", "their library");
+    normalized = normalized.replace(
+        "where X is the number of card in the active player's hands",
+        "where X is the number of cards in that player's hand",
+    );
+    normalized = normalized.replace(
+        "where X is the number of card in target player's hand",
+        "where X is the number of cards in that player's hand",
+    );
+    normalized = normalized.replace(
+        "where X is the number of cards in target player's hand",
+        "where X is the number of cards in that player's hand",
+    );
+    normalized = normalized.replace(
+        "a card in target player's hand deals damage",
+        "a card in that player's hand deals damage",
+    );
+    normalized = normalized.replace(
+        "Destroy target opponent's nonbasic land. Search their library for a basic land card, put it onto the battlefield tapped, then that player shuffles.",
+        "Destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles.",
+    );
+    normalized = normalized.replace(
+        "destroy target opponent's nonbasic land. Search their library for a basic land card, put it onto the battlefield tapped, then that player shuffles.",
+        "destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles.",
+    );
+    normalized = normalized.replace(
+        "At the beginning of the next end step, you lose 1 life. Return this card to its owner's hand",
+        "At the beginning of the next end step, you lose 1 life and return this card to your hand",
+    );
+    normalized = normalized.replace(
+        "at the beginning of the next end step, you lose 1 life. return this card to its owner's hand",
+        "at the beginning of the next end step, you lose 1 life and return this card to your hand",
     );
     normalized = normalized.replace(
         "all permanent cards from your graveyard that was put there from the battlefield this turn",
@@ -2237,7 +2314,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Whenever you reveal instant or sorcery this way, copy that card and you may cast the copy. That copy costs {2} less to cast.",
         );
     }
-    if normalized.contains("Whenever you cast an instant, sorcery, or enchantment spell, you may copy it.") {
+    if normalized
+        .contains("Whenever you cast an instant, sorcery, or enchantment spell, you may copy it.")
+    {
         normalized = normalized.replace(
             "Whenever you cast an instant, sorcery, or enchantment spell, you may copy it.",
             "Whenever you cast an instant or sorcery or enchantment spell, you may copy it.",
@@ -7037,7 +7116,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of creatures that died under {} control this turn",
             describe_possessive_player_filter(filter)
         ),
-        Value::CountPlayers(filter) => format!("the number of {}", describe_player_filter(filter)),
+        Value::CountPlayers(filter) => match filter {
+            PlayerFilter::Any => "the number of players".to_string(),
+            PlayerFilter::Opponent => "the number of opponents".to_string(),
+            PlayerFilter::NotYou => "the number of players other than you".to_string(),
+            PlayerFilter::You => "the number of you".to_string(),
+            _ => format!("the number of {}", describe_player_filter(filter)),
+        },
         Value::PlayersWhoControlMoreThanYou(filter) => {
             let mut controlled_filter = filter.clone();
             if controlled_filter.zone == Some(Zone::Battlefield) {

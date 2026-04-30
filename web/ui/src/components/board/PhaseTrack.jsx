@@ -3,7 +3,18 @@ import { useGame } from "@/context/GameContext";
 import { PHASE_TRACK, normalizePhaseStep } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-export default function PhaseTrack() {
+const COMPACT_PHASE_LABELS = {
+  Untap: "Untap",
+  Upkeep: "Keep",
+  Draw: "Draw",
+  Main: "Main",
+  Combat: "Combat",
+  Main2: "M2",
+  End: "End",
+  Cleanup: "Clean",
+};
+
+export default function PhaseTrack({ compact = false }) {
   const { state } = useGame();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
   const trackRef = useRef(null);
@@ -41,7 +52,11 @@ export default function PhaseTrack() {
   }, [active]);
 
   return (
-    <section ref={trackRef} className="phase-track grid grid-cols-8 gap-px min-h-[24px] relative overflow-hidden">
+    <section
+      ref={trackRef}
+      className="phase-track grid grid-cols-8 gap-px min-h-[24px] relative overflow-hidden"
+      data-compact={compact ? "true" : "false"}
+    >
       {/* Sliding glow indicator */}
       {indicator && (
         <div
@@ -67,7 +82,7 @@ export default function PhaseTrack() {
               : "text-[#d7c8a8]"
           )}
         >
-          {name}
+          {compact ? (COMPACT_PHASE_LABELS[name] || name) : name}
         </div>
       ))}
     </section>

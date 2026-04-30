@@ -453,8 +453,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         let qualifiers = &words[2..words.len() - 2];
         matches!(
             qualifiers,
-            []
-                | ["it"]
+            [] | ["it"]
                 | ["them"]
                 | ["that"]
                 | ["card"]
@@ -550,10 +549,11 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         && words[0] == "one"
         && words[1] == "or"
         && words[2] == "more"
-        && matches!(words[3], "card" | "cards" | "creature" | "creatures" | "permanent" | "permanents")
-        && ((matches!(words[4], "are" | "is")
-            && words.len() >= 7
-            && is_result_verb(words[5]))
+        && matches!(
+            words[3],
+            "card" | "cards" | "creature" | "creatures" | "permanent" | "permanents"
+        )
+        && ((matches!(words[4], "are" | "is") && words.len() >= 7 && is_result_verb(words[5]))
             || is_result_verb(words[4]))
         && words[words.len() - 2] == "this"
         && words[words.len() - 1] == "way";

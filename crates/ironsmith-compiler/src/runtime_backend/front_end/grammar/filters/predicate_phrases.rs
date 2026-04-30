@@ -482,6 +482,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "empty predicate in if clause".to_string(),
         ));
     }
+    if filtered[0] == "it's" {
+        filtered[0] = "it";
+    }
+    if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
+        filtered.remove(1);
+    }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
@@ -1972,6 +1978,28 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             symbol: Some(symbol),
         });
     }
+    if filtered.len() >= 8
+        && matches!(
+            filtered[filtered.len() - 6..],
+            ["was" | "were", "spent", "to", "cast", "this", "spell"]
+        )
+        && filtered[..filtered.len() - 6]
+            .iter()
+            .all(|word| matches!(*word, "w" | "u" | "b" | "r" | "g" | "c" | "s"))
+    {
+        let mut predicates = filtered[..filtered.len() - 6]
+            .iter()
+            .filter_map(|word| parse_mana_symbol(word).ok())
+            .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                amount: 1,
+                symbol: Some(symbol),
+            });
+        if let Some(first) = predicates.next() {
+            return Ok(predicates.fold(first, |left, right| {
+                PredicateAst::And(Box::new(left), Box::new(right))
+            }));
+        }
+    }
 
     if let Some(amount) = parse_same_color_mana_spent_to_cast_predicate(&filtered) {
         return Ok(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(
@@ -2048,7 +2076,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
-    if filtered[0] == "its" {
+    if filtered[0] == "its" || filtered[0] == "it's" {
         filtered[0] = "it";
     }
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
@@ -2214,9 +2242,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(reference_len) = demonstrative_reference_len {
         let mut descriptor_words = filtered[reference_len..].to_vec();
-        if descriptor_words.len() >= 2
-            && matches!(descriptor_words[0], "power" | "toughness")
-        {
+        if descriptor_words.len() >= 2 && matches!(descriptor_words[0], "power" | "toughness") {
             let axis = descriptor_words[0];
             let value_tail = if matches!(
                 descriptor_words.get(1).copied(),

@@ -2001,6 +2001,10 @@ pub(crate) fn lower_activation_cost_cst(
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);
                 }
+                if filter.source {
+                    costs.push(Cost::add_counters(*counter_type, *count));
+                    continue;
+                }
                 let tag = format!("put_counter_cost_{tap_tag_id}");
                 tap_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(

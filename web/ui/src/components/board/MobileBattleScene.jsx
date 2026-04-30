@@ -2,27 +2,41 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { MobileBattleProvider } from "@/context/MobileBattleContext";
 import DecisionPopupLayer, {
   MobileDecisionActionList,
   MobileDecisionSheet,
 } from "@/components/overlays/DecisionPopupLayer";
 import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
-import StackCard from "@/components/cards/StackCard";
-import BattlefieldRow from "@/components/board/BattlefieldRow";
-import HandZone from "@/components/board/HandZone";
-import useNewCards from "@/hooks/useNewCards";
-import useStackStartAlert from "@/hooks/useStackStartAlert";
 import useMobileBattleLayout from "@/hooks/useMobileBattleLayout";
+import {
+  MOBILE_OPPONENT_HUD_HEIGHT_PX,
+  MOBILE_SELF_HUD_HEIGHT_PX,
+  MOBILE_MANA_POOL_HEIGHT_PX,
+  MOBILE_HAND_PEEK_HEIGHT_PX,
+  MOBILE_STACK_RAIL_WIDTH_PX,
+} from "@/lib/mobile-battle-layout";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { partitionBattlefieldCards } from "@/lib/battlefield-layout";
-import { getPlayerAccent } from "@/lib/player-colors";
-import { scryfallImageUrl } from "@/lib/scryfall";
-import { cn } from "@/lib/utils";
+import { normalizePhaseStep } from "@/lib/constants";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 
-const DEFAULT_TOPBAR_HEIGHT = 30;
+import MobileOpponentHud from "@/components/board/mobile/MobileOpponentHud";
+import MobileSelfHud from "@/components/board/mobile/MobileSelfHud";
+import MobileManaPool from "@/components/board/mobile/MobileManaPool";
+import MobilePhaseStrip from "@/components/board/mobile/MobilePhaseStrip";
+import MobileTurnActionStack from "@/components/board/mobile/MobileTurnActionStack";
+import MobileBattlefieldBand from "@/components/board/mobile/MobileBattlefieldBand";
+import MobileHandFan from "@/components/board/mobile/MobileHandFan";
+import MobileHandFullscreen from "@/components/board/mobile/MobileHandFullscreen";
+import MobileViewToggle from "@/components/board/mobile/MobileViewToggle";
+import MobileStackRail from "@/components/board/mobile/MobileStackRail";
+
+const DEFAULT_TOPBAR_HEIGHT = MOBILE_OPPONENT_HUD_HEIGHT_PX;
 const DEFAULT_CONTROL_BAND_HEIGHT = 30;
-const DEFAULT_BOTTOM_BAND_HEIGHT = 58;
+const DEFAULT_SELF_HUD_HEIGHT = MOBILE_SELF_HUD_HEIGHT_PX;
+const DEFAULT_MANA_POOL_HEIGHT = MOBILE_MANA_POOL_HEIGHT_PX;
+const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_Y = 18;
@@ -31,51 +45,6 @@ function stripActionPrefix(label = "") {
   const activateMatch = String(label).match(/^Activate\s+.+?:\s*(.+)$/i);
   if (activateMatch) return activateMatch[1];
   return String(label);
-}
-
-function stackKindLabel(entry) {
-  if (!entry) return "Stack";
-  if (!entry.ability_kind) return "Spell";
-  return `${entry.ability_kind} ability`;
-}
-
-function buildInlineStackPreview(objects = [], previews = []) {
-  const topObject = objects[0] || null;
-  if (topObject) {
-    return {
-      key: `object:${topObject.id}`,
-      name: topObject.name || `Object #${topObject.id}`,
-      subtitle: stackKindLabel(topObject),
-      artUrl: scryfallImageUrl(topObject.name || "", "art_crop"),
-    };
-  }
-
-  const topPreview = previews[0] || null;
-  if (topPreview) {
-    return {
-      key: `preview:${topPreview}`,
-      name: String(topPreview),
-      subtitle: "Incoming",
-      artUrl: scryfallImageUrl(String(topPreview), "art_crop"),
-    };
-  }
-
-  return null;
-}
-
-function zoneCount(player, zone) {
-  switch (zone) {
-    case "hand":
-      return player?.hand_size ?? 0;
-    case "graveyard":
-      return player?.graveyard_size ?? 0;
-    case "library":
-      return player?.library_size ?? 0;
-    case "exile":
-      return Array.isArray(player?.exile_cards) ? player.exile_cards.length : 0;
-    default:
-      return 0;
-  }
 }
 
 function collectCardObjectIds(card) {
@@ -90,124 +59,36 @@ function collectCardObjectIds(card) {
 
 function collectActivatableActionsForCard(card, activatableMap) {
   if (!card || !activatableMap) return [];
-
   const actions = [];
-  const seenActionIndices = new Set();
-
+  const seen = new Set();
   for (const objectId of collectCardObjectIds(card)) {
     if (!activatableMap.has(objectId)) continue;
     for (const action of activatableMap.get(objectId) || []) {
-      const actionIndex = Number(action?.index);
-      if (Number.isFinite(actionIndex)) {
-        if (seenActionIndices.has(actionIndex)) continue;
-        seenActionIndices.add(actionIndex);
+      const idx = Number(action?.index);
+      if (Number.isFinite(idx)) {
+        if (seen.has(idx)) continue;
+        seen.add(idx);
       }
       actions.push(action);
     }
   }
-
   return actions;
 }
 
 function buildActivatableMap(decision) {
-  const activatableMap = new Map();
-  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
-    return activatableMap;
-  }
-
+  const map = new Map();
+  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) return map;
   for (const action of decision.actions) {
     if (
       (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
       && action.object_id != null
     ) {
       const objectId = Number(action.object_id);
-      if (!activatableMap.has(objectId)) activatableMap.set(objectId, []);
-      activatableMap.get(objectId).push(action);
+      if (!map.has(objectId)) map.set(objectId, []);
+      map.get(objectId).push(action);
     }
   }
-
-  return activatableMap;
-}
-
-function MobileStackTray({
-  objects = [],
-  previews = [],
-  onInspect,
-  visible = false,
-  inline = false,
-  embedded = false,
-}) {
-  const { state } = useGame();
-  const stackIds = useMemo(
-    () => objects.map((entry) => String(entry.id)),
-    [objects]
-  );
-  const { newIds } = useNewCards(stackIds);
-  const { alertEntryId, dismissAlert } = useStackStartAlert(
-    objects,
-    state?.perspective
-  );
-  const hasStackObjects = objects.length > 0;
-  const hasPreviewEntries = !hasStackObjects && previews.length > 0;
-  const stackCount = hasStackObjects ? objects.length : previews.length;
-
-  const handleInspect = useCallback((objectId, meta) => {
-    dismissAlert();
-    onInspect?.(objectId, meta);
-  }, [dismissAlert, onInspect]);
-
-  if (!visible || (!hasStackObjects && !hasPreviewEntries)) return null;
-
-  return (
-    <aside
-      className={cn(
-        "mobile-battle-stack-tray",
-        inline && "mobile-battle-stack-tray--inline",
-        embedded && "mobile-battle-stack-tray--embedded"
-      )}
-      style={{ "--mobile-stack-count": stackCount }}
-      aria-label={`Stack${stackCount > 0 ? ` (${stackCount})` : ""}`}
-    >
-      <div className="mobile-battle-stack-tray-header">
-        <span className="mobile-battle-stack-tray-label">Stack</span>
-        <span className="mobile-battle-stack-tray-count">{stackCount}</span>
-      </div>
-      <div className="mobile-battle-stack-tray-scroll">
-        <div className="mobile-battle-stack-tray-row">
-          {hasStackObjects
-            ? objects.map((entry, index) => (
-                <div
-                  key={entry.id}
-                  className="mobile-battle-stack-entry"
-                  style={{ zIndex: Math.max(1, objects.length - index) }}
-                >
-                  <StackCard
-                    entry={entry}
-                    isNew={newIds.has(String(entry.id))}
-                    showStackAlert={
-                      alertEntryId != null
-                      && String(entry.id) === String(alertEntryId)
-                    }
-                    className="mobile-battle-stack-card"
-                    entryMotion="mobile-stack"
-                    onClick={handleInspect}
-                  />
-                </div>
-              ))
-            : previews.map((name, index) => (
-                <div
-                  key={`${name}-${index}`}
-                  className="mobile-battle-stack-preview"
-                  style={{ zIndex: Math.max(1, previews.length - index) }}
-                >
-                  <span className="mobile-battle-stack-preview-label">Incoming</span>
-                  <span className="mobile-battle-stack-preview-name">{name}</span>
-                </div>
-              ))}
-        </div>
-      </div>
-    </aside>
-  );
+  return map;
 }
 
 function measureElementHeight(target, fallback, setHeight) {
@@ -215,65 +96,14 @@ function measureElementHeight(target, fallback, setHeight) {
     setHeight((current) => current || fallback);
     return null;
   }
-
   const update = () => {
-    const nextHeight = Math.max(fallback, Math.ceil(target.getBoundingClientRect().height || 0));
-    setHeight((current) => (Math.abs(current - nextHeight) < 1 ? current : nextHeight));
+    const next = Math.max(fallback, Math.ceil(target.getBoundingClientRect().height || 0));
+    setHeight((current) => (Math.abs(current - next) < 1 ? current : next));
   };
-
   update();
   const observer = new ResizeObserver(update);
   observer.observe(target);
   return observer;
-}
-
-function BattlefieldLane({
-  cards = [],
-  cardHeight = 48,
-  cardWidth = 62,
-  clippedHeight = null,
-  battlefieldSide,
-  selectedObjectId,
-  onCardClick,
-  onCardPointerDown,
-  onMobileCardActionMenu,
-  onMobileCardLongPress,
-  activatableMap,
-  legalTargetObjectIds,
-  className = "",
-}) {
-  const viewportHeight = clippedHeight ?? cardHeight;
-  return (
-    <div
-      className={cn("mobile-battle-lane", className)}
-      style={{ height: `${viewportHeight}px` }}
-    >
-      <div
-        className="mobile-battle-lane-track"
-        style={{ height: `${cardHeight}px` }}
-      >
-        <BattlefieldRow
-          cards={cards}
-          battlefieldSide={battlefieldSide}
-          paperLayoutMode="single-row"
-          layoutOverride={{
-            rows: 1,
-            cols: Math.max(1, cards.length),
-            cardWidth,
-            cardHeight,
-            overlapPx: 0,
-          }}
-          selectedObjectId={selectedObjectId}
-          onCardClick={onCardClick}
-          onCardPointerDown={onCardPointerDown}
-          onMobileCardActionMenu={onMobileCardActionMenu}
-          onMobileCardLongPress={onMobileCardLongPress}
-          activatableMap={activatableMap}
-          legalTargetObjectIds={legalTargetObjectIds}
-        />
-      </div>
-    </div>
-  );
 }
 
 export default function MobileBattleScene({
@@ -286,44 +116,30 @@ export default function MobileBattleScene({
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
   mobileOpponentIndex = 0,
+  setMobileOpponentIndex,
+  mobileViewMode = "battlefield",
+  setMobileViewMode,
+  mobilePhaseStops,
+  setMobilePhaseStops,
 }) {
-  const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const { state, dispatch } = useGame();
+  void legalTargetObjectIds; // legality already derived from decision; keep prop for parity
+  const { state, dispatch, setExternalAutoPassGate } = useGame();
   const { combatModeRef } = useCombatArrows();
-  const activeOpponent = opponents[Math.min(mobileOpponentIndex, Math.max(0, opponents.length - 1))] || opponents[0] || null;
-  const opponentAccent = getPlayerAccent(state?.players || [], activeOpponent?.id);
-  const visibleStackObjects = useMemo(
-    () => getVisibleStackObjects(state),
-    [state]
-  );
-  const stackPreviews = useMemo(
-    () => Array.isArray(state?.stack_preview) ? state.stack_preview : [],
-    [state?.stack_preview]
-  );
-  const showMobileStackTray = visibleStackObjects.length > 0 || stackPreviews.length > 0;
-  const inlineStackPreview = useMemo(
-    () => buildInlineStackPreview(visibleStackObjects, stackPreviews),
-    [stackPreviews, visibleStackObjects]
-  );
-  const activatableMap = useMemo(
-    () => buildActivatableMap(state?.decision),
-    [state?.decision]
-  );
-  const controlBandRef = useRef(null);
-  const [controlDockNode, setControlDockNode] = useState(null);
-  const bottomBandRef = useRef(null);
-  const [topbarHeight, setTopbarHeight] = useState(DEFAULT_TOPBAR_HEIGHT);
-  const [controlBandHeight, setControlBandHeight] = useState(DEFAULT_CONTROL_BAND_HEIGHT);
-  const [bottomBandHeight, setBottomBandHeight] = useState(DEFAULT_BOTTOM_BAND_HEIGHT);
-  const [handExpanded, setHandExpanded] = useState(false);
-  const [actionPopoverState, setActionPopoverState] = useState(null);
-  const opponentTapRef = useRef(null);
-  const stackPressTimerRef = useRef(null);
-  const stackLongPressTriggeredRef = useRef(false);
-  const inspectSuppressUntilRef = useRef(0);
-  const inspectOverlayRef = useRef(null);
-  const inspectLockReleaseTimerRef = useRef(null);
-  const [inspectInteractionLockActive, setInspectInteractionLockActive] = useState(false);
+  const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
+
+  const opponentCount = opponents?.length || 0;
+  const cycleEnabled = opponentCount >= 2;
+  const safeIndex = Math.min(mobileOpponentIndex, Math.max(0, opponentCount - 1));
+  const activeOpponent = opponentCount > 0 ? opponents[safeIndex] : null;
+  const previousOpponent = cycleEnabled
+    ? opponents[(safeIndex - 1 + opponentCount) % opponentCount]
+    : null;
+  const nextOpponent = cycleEnabled
+    ? opponents[(safeIndex + 1) % opponentCount]
+    : null;
+
+  const visibleStackObjects = useMemo(() => getVisibleStackObjects(state), [state]);
+  const stackVisible = visibleStackObjects.length > 0;
   const opponentRows = useMemo(
     () => partitionBattlefieldCards(activeOpponent?.battlefield || []),
     [activeOpponent?.battlefield]
@@ -333,24 +149,18 @@ export default function MobileBattleScene({
     [me?.battlefield]
   );
   const opponentCardById = useMemo(() => {
-    const index = new Map();
+    const idx = new Map();
     for (const card of activeOpponent?.battlefield || []) {
-      if (card?.id != null) {
-        index.set(String(card.id), card);
-      }
+      if (card?.id != null) idx.set(String(card.id), card);
     }
-    return index;
+    return idx;
   }, [activeOpponent?.battlefield]);
-  const opponentBandSelector = ".mobile-battle-opponent-band";
-  const layout = useMobileBattleLayout({
-    topBandHeight: topbarHeight,
-    controlBandHeight,
-    collapsedHandRailHeight: bottomBandHeight,
-    opponentFrontCount: opponentRows.frontCount,
-    opponentBackCount: opponentRows.backCount,
-    selfFrontCount: selfRows.frontCount,
-    selfBackCount: selfRows.backCount,
-  });
+
+  const opponentManaPool = activeOpponent?.mana_pool || null;
+  const selfManaPool = me?.mana_pool || null;
+
+  const activatableMap = useMemo(() => buildActivatableMap(state?.decision), [state?.decision]);
+
   const decisionIdentity = useMemo(() => {
     const decision = state?.decision || null;
     return [
@@ -362,31 +172,28 @@ export default function MobileBattleScene({
       decision?.description || "",
     ].join("|");
   }, [state?.decision]);
+
   const legalSelectableObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision || null;
     if (!decision) return ids;
-
     if (decision.kind === "targets") {
       for (const req of decision.requirements || []) {
         for (const target of req.legal_targets || []) {
-          if (target?.kind === "object" && target.object != null) {
-            ids.add(Number(target.object));
-          }
+          if (target?.kind === "object" && target.object != null) ids.add(Number(target.object));
         }
       }
       return ids;
     }
-
     if (decision.kind === "select_objects") {
       for (const candidate of decision.candidates || []) {
         if (candidate?.legal === false || candidate?.id == null) continue;
         ids.add(Number(candidate.id));
       }
     }
-
     return ids;
   }, [state?.decision]);
+
   const canPickTargets = state?.decision?.kind === "targets"
     && state?.decision?.player === state?.perspective;
   const canPickBattlefieldObjects = (
@@ -395,59 +202,77 @@ export default function MobileBattleScene({
   );
   const inspectorOpen = selectedObjectId != null;
 
-  useEffect(() => {
-    if (selectedObjectId != null) {
-      setActionPopoverState(null);
-      setHandExpanded(false);
-    }
-  }, [selectedObjectId]);
+  const opponentTargetable = activeOpponent != null && (
+    legalTargetPlayerIds.has(Number(activeOpponent.id))
+    || legalTargetPlayerIds.has(Number(activeOpponent.index))
+  );
+  const selfTargetable = me != null && (
+    legalTargetPlayerIds.has(Number(me.id))
+    || legalTargetPlayerIds.has(Number(me.index))
+  );
+
+  // --- Layout solver hookup -------------------------------------------------
+  const opponentHudRef = useRef(null);
+  const controlBandRef = useRef(null);
+  const selfHudRef = useRef(null);
+  const handFanRef = useRef(null);
+  const opponentManaRef = useRef(null);
+  const selfManaRef = useRef(null);
+  const [actionStackElement, setActionStackElement] = useState(null);
+
+  const [topbarHeight, setTopbarHeight] = useState(DEFAULT_TOPBAR_HEIGHT);
+  const [controlBandHeight, setControlBandHeight] = useState(DEFAULT_CONTROL_BAND_HEIGHT);
+  const [selfHudHeight, setSelfHudHeight] = useState(DEFAULT_SELF_HUD_HEIGHT);
+  const [opponentManaHeight, setOpponentManaHeight] = useState(DEFAULT_MANA_POOL_HEIGHT);
+  const [selfManaHeight, setSelfManaHeight] = useState(DEFAULT_MANA_POOL_HEIGHT);
+  const [handFanHeight, setHandFanHeight] = useState(DEFAULT_HAND_PEEK_HEIGHT);
+
+  const layout = useMobileBattleLayout({
+    topBandHeight: topbarHeight,
+    controlBandHeight,
+    collapsedHandRailHeight: 0,
+    opponentManaPoolHeight: opponentManaPool ? opponentManaHeight : 0,
+    selfManaPoolHeight: selfManaPool ? selfManaHeight : 0,
+    selfHudHeight: selfHudHeight,
+    handPeekHeight: handFanHeight,
+    stackVisible,
+    stackRailWidth: MOBILE_STACK_RAIL_WIDTH_PX,
+    opponentFrontCount: opponentRows.frontCount,
+    opponentBackCount: opponentRows.backCount,
+    selfFrontCount: selfRows.frontCount,
+    selfBackCount: selfRows.backCount,
+  });
 
   useEffect(() => {
-    const topbarEl = document.querySelector(".topbar-mobile-overlay");
-    const controlBandEl = controlBandRef.current;
-    const bottomBandEl = bottomBandRef.current;
     const observers = [
-      measureElementHeight(topbarEl, DEFAULT_TOPBAR_HEIGHT, setTopbarHeight),
-      measureElementHeight(controlBandEl, DEFAULT_CONTROL_BAND_HEIGHT, setControlBandHeight),
-      measureElementHeight(bottomBandEl, DEFAULT_BOTTOM_BAND_HEIGHT, setBottomBandHeight),
+      measureElementHeight(opponentHudRef.current, DEFAULT_TOPBAR_HEIGHT, setTopbarHeight),
+      measureElementHeight(controlBandRef.current, DEFAULT_CONTROL_BAND_HEIGHT, setControlBandHeight),
+      measureElementHeight(selfHudRef.current, DEFAULT_SELF_HUD_HEIGHT, setSelfHudHeight),
+      measureElementHeight(opponentManaRef.current, DEFAULT_MANA_POOL_HEIGHT, setOpponentManaHeight),
+      measureElementHeight(selfManaRef.current, DEFAULT_MANA_POOL_HEIGHT, setSelfManaHeight),
+      measureElementHeight(handFanRef.current, DEFAULT_HAND_PEEK_HEIGHT, setHandFanHeight),
     ].filter(Boolean);
-
     return () => {
       for (const observer of observers) observer.disconnect();
     };
-  }, [showMobileStackTray, handExpanded, state?.decision?.kind]);
+  }, [stackVisible, mobileViewMode]);
 
+  // --- Auto-pass gate driven by phase stops --------------------------------
   useEffect(() => {
-    setActionPopoverState((current) => {
-      if (!current) return current;
-      if (current.decisionIdentity !== decisionIdentity) return null;
-      if (state?.decision?.kind !== "priority") return null;
-      const currentIndices = new Set(
-        (state?.decision?.actions || []).map((action) => Number(action?.index))
-      );
-      const nextActions = (current.actions || []).filter((action) =>
-        currentIndices.has(Number(action?.index))
-      );
-      if (nextActions.length === 0) return null;
-      return { ...current, actions: nextActions };
+    if (typeof setExternalAutoPassGate !== "function") return undefined;
+    setExternalAutoPassGate((st) => {
+      const key = normalizePhaseStep(st?.phase, st?.step);
+      if (mobilePhaseStops?.has?.(key)) return `stopped at ${key}`;
+      return null;
     });
-  }, [decisionIdentity, state?.decision]);
+    return () => setExternalAutoPassGate(null);
+  }, [mobilePhaseStops, setExternalAutoPassGate]);
 
-  useEffect(() => {
-    if (!actionPopoverState) return;
-    setHandExpanded(false);
-  }, [actionPopoverState]);
-
-  useEffect(() => () => {
-    if (stackPressTimerRef.current) {
-      clearTimeout(stackPressTimerRef.current);
-      stackPressTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => () => {
-    opponentTapRef.current = null;
-  }, []);
+  // --- Inspector overlay machinery (salvaged) ------------------------------
+  const inspectSuppressUntilRef = useRef(0);
+  const inspectOverlayRef = useRef(null);
+  const inspectLockReleaseTimerRef = useRef(null);
+  const [inspectInteractionLockActive, setInspectInteractionLockActive] = useState(false);
 
   useEffect(() => () => {
     if (inspectLockReleaseTimerRef.current != null && typeof window !== "undefined") {
@@ -458,30 +283,24 @@ export default function MobileBattleScene({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-
     if (inspectLockReleaseTimerRef.current != null) {
       window.clearTimeout(inspectLockReleaseTimerRef.current);
       inspectLockReleaseTimerRef.current = null;
     }
-
     if (inspectorOpen) {
       setInspectInteractionLockActive(true);
       return undefined;
     }
-
     if (!inspectInteractionLockActive) return undefined;
-
-    const remainingLockMs = Math.max(0, inspectSuppressUntilRef.current - performance.now());
-    if (remainingLockMs <= 0) {
+    const remaining = Math.max(0, inspectSuppressUntilRef.current - performance.now());
+    if (remaining <= 0) {
       setInspectInteractionLockActive(false);
       return undefined;
     }
-
     inspectLockReleaseTimerRef.current = window.setTimeout(() => {
       inspectLockReleaseTimerRef.current = null;
       setInspectInteractionLockActive(false);
-    }, remainingLockMs);
-
+    }, remaining);
     return () => {
       if (inspectLockReleaseTimerRef.current != null) {
         window.clearTimeout(inspectLockReleaseTimerRef.current);
@@ -492,33 +311,19 @@ export default function MobileBattleScene({
 
   useEffect(() => {
     if (!inspectInteractionLockActive || typeof document === "undefined") return undefined;
-
-    const blockBackgroundInteraction = (event) => {
+    const blockBackground = (event) => {
       const overlayNode = inspectOverlayRef.current;
-      const eventTarget = event.target;
-      if (overlayNode && eventTarget instanceof Node && overlayNode.contains(eventTarget)) {
-        return;
-      }
-      if (typeof event.stopImmediatePropagation === "function") {
-        event.stopImmediatePropagation();
-      }
+      const target = event.target;
+      if (overlayNode && target instanceof Node && overlayNode.contains(target)) return;
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       event.stopPropagation();
-      if (event.cancelable) {
-        event.preventDefault();
-      }
+      if (event.cancelable) event.preventDefault();
     };
-
-    const listenerOptions = { capture: true, passive: false };
-    const eventTypes = ["pointerdown", "pointerup", "click", "touchstart", "touchend", "mousedown", "mouseup"];
-
-    for (const eventType of eventTypes) {
-      document.addEventListener(eventType, blockBackgroundInteraction, listenerOptions);
-    }
-
+    const opts = { capture: true, passive: false };
+    const types = ["pointerdown", "pointerup", "click", "touchstart", "touchend", "mousedown", "mouseup"];
+    for (const t of types) document.addEventListener(t, blockBackground, opts);
     return () => {
-      for (const eventType of eventTypes) {
-        document.removeEventListener(eventType, blockBackgroundInteraction, listenerOptions);
-      }
+      for (const t of types) document.removeEventListener(t, blockBackground, opts);
     };
   }, [inspectInteractionLockActive]);
 
@@ -539,45 +344,43 @@ export default function MobileBattleScene({
     return true;
   }, [onInspect, selectedObjectId]);
 
-  const closeActionPopover = useCallback(() => {
-    setActionPopoverState(null);
-  }, []);
+  // --- Per-card action popover (long-press a battlefield card) -------------
+  const [actionPopoverState, setActionPopoverState] = useState(null);
 
-  const setControlBandElement = useCallback((node) => {
-    controlBandRef.current = node;
-  }, []);
+  useEffect(() => {
+    setActionPopoverState((current) => {
+      if (!current) return current;
+      if (current.decisionIdentity !== decisionIdentity) return null;
+      if (state?.decision?.kind !== "priority") return null;
+      const indices = new Set((state?.decision?.actions || []).map((a) => Number(a?.index)));
+      const next = (current.actions || []).filter((a) => indices.has(Number(a?.index)));
+      if (next.length === 0) return null;
+      return { ...current, actions: next };
+    });
+  }, [decisionIdentity, state?.decision]);
 
-  const setControlDockElement = useCallback((node) => {
-    setControlDockNode(node);
-  }, []);
+  useEffect(() => {
+    if (selectedObjectId != null) setActionPopoverState(null);
+  }, [selectedObjectId]);
+
+  const closeActionPopover = useCallback(() => setActionPopoverState(null), []);
 
   const openObjectActions = useCallback(({ card, actions = null, anchorRect = null }) => {
     if (selectedObjectId != null) return false;
-    const resolvedActions = Array.isArray(actions)
+    const resolved = Array.isArray(actions)
       ? actions
       : collectActivatableActionsForCard(card, activatableMap);
-    if (resolvedActions.length === 0 || state?.decision?.kind !== "priority") {
-      return false;
-    }
-
-    const normalizedAnchorRect = anchorRect
-      ? {
-          left: anchorRect.left,
-          top: anchorRect.top,
-          right: anchorRect.right,
-          bottom: anchorRect.bottom,
-          width: anchorRect.width,
-          height: anchorRect.height,
-        }
+    if (resolved.length === 0 || state?.decision?.kind !== "priority") return false;
+    const normalizedAnchor = anchorRect
+      ? { left: anchorRect.left, top: anchorRect.top, right: anchorRect.right, bottom: anchorRect.bottom, width: anchorRect.width, height: anchorRect.height }
       : null;
-
     setActionPopoverState((current) => {
       if (current?.objectId === Number(card?.id)) return null;
       return {
         objectId: Number(card?.id),
         cardName: card?.name || "Actions",
-        anchorRect: normalizedAnchorRect,
-        actions: resolvedActions,
+        anchorRect: normalizedAnchor,
+        actions: resolved,
         decisionIdentity,
       };
     });
@@ -599,94 +402,55 @@ export default function MobileBattleScene({
     closeActionPopover();
   }, [closeActionPopover, dispatch]);
 
+  // --- Card click / target-pointer-down (salvaged) -------------------------
   const handleCardInspect = useCallback((event, card) => {
     if (canPickBattlefieldObjects && !shouldHandleClick(event)) return;
-    const candidateObjectIds = collectCardObjectIds(card);
+    const candidateIds = collectCardObjectIds(card);
     if (canPickBattlefieldObjects) {
-      const matchedTargetId = candidateObjectIds.find((id) => legalSelectableObjectIds.has(id));
-      if (matchedTargetId != null) {
+      const matched = candidateIds.find((id) => legalSelectableObjectIds.has(id));
+      if (matched != null) {
         const eventName = state?.decision?.kind === "select_objects"
           ? "ironsmith:select-object-choice"
           : "ironsmith:target-choice";
         const detail = state?.decision?.kind === "select_objects"
-          ? { objectId: matchedTargetId }
-          : { target: { kind: "object", object: matchedTargetId } };
+          ? { objectId: matched }
+          : { target: { kind: "object", object: matched } };
         window.dispatchEvent(new CustomEvent(eventName, { detail }));
         return;
       }
     }
     if (selectedObjectId != null) return;
-    requestInspectObject(card.id, { candidateObjectIds });
+    requestInspectObject(card.id, { candidateObjectIds: candidateIds });
   }, [canPickBattlefieldObjects, legalSelectableObjectIds, requestInspectObject, selectedObjectId, shouldHandleClick, state?.decision?.kind]);
 
+  const handleCardTargetPointerDown = useCallback((event, card) => {
+    if (!canPickBattlefieldObjects || !registerPointerDown(event)) return;
+    const candidateIds = collectCardObjectIds(card);
+    const matched = candidateIds.find((id) => legalSelectableObjectIds.has(id));
+    if (matched == null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const eventName = state?.decision?.kind === "select_objects"
+      ? "ironsmith:select-object-choice"
+      : "ironsmith:target-choice";
+    const detail = state?.decision?.kind === "select_objects"
+      ? { objectId: matched }
+      : { target: { kind: "object", object: matched } };
+    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+  }, [canPickBattlefieldObjects, legalSelectableObjectIds, registerPointerDown, state?.decision?.kind]);
+
+  // --- Opponent-band pointer / click capture (salvaged) --------------------
+  const opponentTapRef = useRef(null);
+  const opponentBandSelector = ".mobile-mtga-battlefield-band--opponent";
+
   const opponentCardFromPointerEvent = useCallback((event) => {
-    const withinExpandedRect = (rect, x, y) => (
+    const withinExpanded = (rect, x, y) => (
       x >= (rect.left - MOBILE_OPPONENT_CARD_HIT_SLOP_X)
       && x <= (rect.right + MOBILE_OPPONENT_CARD_HIT_SLOP_X)
       && y >= (rect.top - MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
       && y <= (rect.bottom + MOBILE_OPPONENT_CARD_HIT_SLOP_Y)
     );
 
-    const cardFromGeometry = () => {
-      if (typeof document === "undefined") return null;
-      if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
-      const cardNodes = document.querySelectorAll(
-        `${opponentBandSelector} .game-card[data-object-id]`
-      );
-      let bestMatch = null;
-      let bestDistanceSq = Infinity;
-
-      for (const node of cardNodes) {
-        const rect = node.getBoundingClientRect();
-        if (!withinExpandedRect(rect, event.clientX, event.clientY)) {
-          continue;
-        }
-        const objectId = node.dataset?.objectId;
-        if (!objectId) continue;
-        const card = opponentCardById.get(String(objectId));
-        if (!card) continue;
-        const centerX = rect.left + (rect.width / 2);
-        const centerY = rect.top + (rect.height / 2);
-        const distanceSq = ((event.clientX - centerX) ** 2) + ((event.clientY - centerY) ** 2);
-        if (distanceSq < bestDistanceSq) {
-          bestMatch = card;
-          bestDistanceSq = distanceSq;
-        }
-      }
-
-      return bestMatch;
-    };
-
-    const tryElementFromPointOffsets = () => {
-      if (typeof document === "undefined") return null;
-      if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
-
-      const sampleOffsets = [
-        [0, 0],
-        [-12, 0],
-        [12, 0],
-        [0, -12],
-        [0, 12],
-        [-10, -10],
-        [10, -10],
-        [-10, 10],
-        [10, 10],
-      ];
-
-      for (const [offsetX, offsetY] of sampleOffsets) {
-        const hitElement = document.elementFromPoint(event.clientX + offsetX, event.clientY + offsetY);
-        const hitCardEl = hitElement?.closest?.(".game-card[data-object-id]");
-        if (!hitCardEl) continue;
-        const id = hitCardEl.dataset?.objectId;
-        if (!id) continue;
-        const card = opponentCardById.get(String(id));
-        if (card) return card;
-      }
-
-      return null;
-    };
-
-    // Prefer the event composed path when available (handles Shadow DOM/layered elements)
     const tryFromPath = () => {
       const path = typeof event.composedPath === "function" ? event.composedPath() : (event.path || null);
       if (Array.isArray(path)) {
@@ -699,30 +463,61 @@ export default function MobileBattleScene({
       return null;
     };
 
-    const pathCardEl = tryFromPath();
-    if (pathCardEl) {
-      const id = pathCardEl.dataset?.objectId;
+    const pathEl = tryFromPath();
+    if (pathEl) {
+      const id = pathEl.dataset?.objectId;
       if (id) {
         const card = opponentCardById.get(String(id));
         if (card) return card;
       }
     }
 
-    const targetCardEl = event.target instanceof Element
+    const targetEl = event.target instanceof Element
       ? event.target.closest(".game-card[data-object-id]")
       : null;
-    if (targetCardEl) {
-      const id = targetCardEl.dataset?.objectId;
+    if (targetEl) {
+      const id = targetEl.dataset?.objectId;
       if (id) {
         const card = opponentCardById.get(String(id));
         if (card) return card;
       }
     }
 
-    const sampledCard = tryElementFromPointOffsets();
-    if (sampledCard) return sampledCard;
+    if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY) && typeof document !== "undefined") {
+      const offsets = [[0, 0], [-12, 0], [12, 0], [0, -12], [0, 12], [-10, -10], [10, -10], [-10, 10], [10, 10]];
+      for (const [ox, oy] of offsets) {
+        const hit = document.elementFromPoint(event.clientX + ox, event.clientY + oy);
+        const cardEl = hit?.closest?.(".game-card[data-object-id]");
+        if (!cardEl) continue;
+        const id = cardEl.dataset?.objectId;
+        if (!id) continue;
+        const card = opponentCardById.get(String(id));
+        if (card) return card;
+      }
 
-    return cardFromGeometry();
+      // Geometry fallback
+      const nodes = document.querySelectorAll(`${opponentBandSelector} .game-card[data-object-id]`);
+      let best = null;
+      let bestDistSq = Infinity;
+      for (const node of nodes) {
+        const rect = node.getBoundingClientRect();
+        if (!withinExpanded(rect, event.clientX, event.clientY)) continue;
+        const id = node.dataset?.objectId;
+        if (!id) continue;
+        const card = opponentCardById.get(String(id));
+        if (!card) continue;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const distSq = (event.clientX - cx) ** 2 + (event.clientY - cy) ** 2;
+        if (distSq < bestDistSq) {
+          best = card;
+          bestDistSq = distSq;
+        }
+      }
+      if (best) return best;
+    }
+
+    return null;
   }, [opponentBandSelector, opponentCardById]);
 
   const handleOpponentBandPointerDownCapture = useCallback((event) => {
@@ -734,13 +529,11 @@ export default function MobileBattleScene({
       opponentTapRef.current = null;
       return;
     }
-
     const card = opponentCardFromPointerEvent(event);
     if (!card) {
       opponentTapRef.current = null;
       return;
     }
-
     opponentTapRef.current = {
       pointerId: event.pointerId,
       cardId: String(card.id),
@@ -750,33 +543,24 @@ export default function MobileBattleScene({
   }, [canPickBattlefieldObjects, opponentCardFromPointerEvent]);
 
   const handleOpponentBandPointerUpCapture = useCallback((event) => {
-    const pendingTap = opponentTapRef.current;
+    const pending = opponentTapRef.current;
     opponentTapRef.current = null;
-
-    if (canPickBattlefieldObjects || !pendingTap) return;
-    if (pendingTap.pointerId != null && event.pointerId !== pendingTap.pointerId) return;
-
-    const deltaX = event.clientX - pendingTap.startX;
-    const deltaY = event.clientY - pendingTap.startY;
-    if (((deltaX * deltaX) + (deltaY * deltaY)) > MOBILE_CARD_TAP_MAX_DISTANCE_SQ) return;
-
-    const resolvedCard = (
-      pendingTap.cardId != null
-        ? opponentCardById.get(String(pendingTap.cardId)) || null
-        : null
-    ) || opponentCardFromPointerEvent(event);
-
-    if (!resolvedCard) {
-      return;
-    }
-
-    const didOpenMenu = openObjectActions({
-      card: resolvedCard,
+    if (canPickBattlefieldObjects || !pending) return;
+    if (pending.pointerId != null && event.pointerId !== pending.pointerId) return;
+    const dx = event.clientX - pending.startX;
+    const dy = event.clientY - pending.startY;
+    if ((dx * dx + dy * dy) > MOBILE_CARD_TAP_MAX_DISTANCE_SQ) return;
+    const resolved = (pending.cardId != null
+      ? opponentCardById.get(String(pending.cardId)) || null
+      : null) || opponentCardFromPointerEvent(event);
+    if (!resolved) return;
+    const opened = openObjectActions({
+      card: resolved,
       anchorRect: event.target instanceof Element
         ? event.target.closest(".game-card[data-object-id]")?.getBoundingClientRect?.() || null
         : null,
     });
-    if (didOpenMenu) {
+    if (opened) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -787,60 +571,12 @@ export default function MobileBattleScene({
   }, []);
 
   const handleOpponentBandPointerLeave = useCallback((event) => {
-    if (event.pointerType === "mouse") {
-      opponentTapRef.current = null;
-    }
+    if (event.pointerType === "mouse") opponentTapRef.current = null;
   }, []);
 
-  const handleCardTargetPointerDown = useCallback((event, card) => {
-    if (!canPickBattlefieldObjects || !registerPointerDown(event)) return;
-    const candidateObjectIds = collectCardObjectIds(card);
-    const matchedTargetId = candidateObjectIds.find((id) => legalSelectableObjectIds.has(id));
-    if (matchedTargetId == null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const eventName = state?.decision?.kind === "select_objects"
-      ? "ironsmith:select-object-choice"
-      : "ironsmith:target-choice";
-    const detail = state?.decision?.kind === "select_objects"
-      ? { objectId: matchedTargetId }
-      : { target: { kind: "object", object: matchedTargetId } };
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
-  }, [canPickBattlefieldObjects, legalSelectableObjectIds, registerPointerDown, state?.decision?.kind]);
-
-  const dispatchOpponentPlayerChoice = useCallback(() => {
-    if (!canPickTargets || !activeOpponent) return;
-    const targetPlayer = legalTargetPlayerIds.has(Number(activeOpponent.id))
-      ? Number(activeOpponent.id)
-      : Number(activeOpponent.index);
-    if (!Number.isFinite(targetPlayer)) return;
-    window.dispatchEvent(
-      new CustomEvent("ironsmith:target-choice", {
-        detail: { target: { kind: "player", player: targetPlayer } },
-      })
-    );
-  }, [activeOpponent, canPickTargets, legalTargetPlayerIds]);
-
-  const dispatchSelfPlayerChoice = useCallback(() => {
-    if (!canPickTargets || !me) return;
-    const targetPlayer = legalTargetPlayerIds.has(Number(me.id))
-      ? Number(me.id)
-      : Number(me.index);
-    if (!Number.isFinite(targetPlayer)) return;
-    window.dispatchEvent(
-      new CustomEvent("ironsmith:target-choice", {
-        detail: { target: { kind: "player", player: targetPlayer } },
-      })
-    );
-  }, [canPickTargets, legalTargetPlayerIds, me]);
-
   const handleOpponentBandClickCapture = useCallback((event) => {
-    const currentCombatMode = combatModeRef.current;
-    if (!activeOpponent || !currentCombatMode?.onTargetAreaClick || currentCombatMode.selectedAttacker == null) {
-      return;
-    }
-
-    // Prefer composed path when available (handles Shadow DOM/layered elements)
+    const cm = combatModeRef.current;
+    if (!activeOpponent || !cm?.onTargetAreaClick || cm.selectedAttacker == null) return;
     const tryFromPath = () => {
       const path = typeof event.composedPath === "function" ? event.composedPath() : (event.path || null);
       if (Array.isArray(path)) {
@@ -852,100 +588,66 @@ export default function MobileBattleScene({
       }
       return null;
     };
-
-    const pathCardEl = tryFromPath();
-    if (pathCardEl) return;
-
-    const targetCardEl = event.target instanceof Element
-      ? event.target.closest(".game-card[data-object-id]")
-      : null;
-    if (targetCardEl) {
-      return;
-    }
-
-    const hitElement = document.elementFromPoint(event.clientX, event.clientY);
-    const hitCardEl = hitElement?.closest(".game-card[data-object-id]");
-    if (hitCardEl) {
-      return;
-    }
-
+    if (tryFromPath()) return;
+    if (event.target instanceof Element && event.target.closest(".game-card[data-object-id]")) return;
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    if (hit?.closest(".game-card[data-object-id]")) return;
     event.preventDefault();
     event.stopPropagation();
-    const validTargets = currentCombatMode.validTargetPlayersByAttacker?.[Number(currentCombatMode.selectedAttacker)];
+    const validTargets = cm.validTargetPlayersByAttacker?.[Number(cm.selectedAttacker)];
     const directId = Number(activeOpponent.id);
     const fallbackId = Number(activeOpponent.index);
     const playerId = validTargets?.has?.(directId) ? directId : fallbackId;
-    currentCombatMode.onTargetAreaClick(playerId, null);
+    cm.onTargetAreaClick(playerId, null);
   }, [activeOpponent, combatModeRef]);
+
   const opponentBandCaptureEnabled = Boolean(
     activeOpponent
     && combatModeRef.current?.onTargetAreaClick
     && combatModeRef.current?.selectedAttacker != null
   );
 
-  const opponentTargetable = activeOpponent != null && (
-    legalTargetPlayerIds.has(Number(activeOpponent.id))
-    || legalTargetPlayerIds.has(Number(activeOpponent.index))
-  );
-  const selfTargetable = me != null && (
-    legalTargetPlayerIds.has(Number(me.id))
-    || legalTargetPlayerIds.has(Number(me.index))
-  );
-  const stackCount = visibleStackObjects.length > 0
-    ? visibleStackObjects.length
-    : stackPreviews.length;
-  const topStackObject = visibleStackObjects[0] || null;
-  const inlineStackIsActive = (
-    topStackObject != null
-    && focusedStackObjectId != null
-    && String(focusedStackObjectId) === String(topStackObject.id)
-  );
-  const clearPendingStackLongPress = useCallback(() => {
-    if (stackPressTimerRef.current) {
-      clearTimeout(stackPressTimerRef.current);
-      stackPressTimerRef.current = null;
-    }
-  }, []);
-  const handleStackPointerDown = useCallback((event) => {
-    if (!topStackObject) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    clearPendingStackLongPress();
-    stackLongPressTriggeredRef.current = false;
-    stackPressTimerRef.current = window.setTimeout(() => {
-      stackLongPressTriggeredRef.current = true;
-      stackPressTimerRef.current = null;
-      requestInspectObject(topStackObject.inspect_object_id ?? topStackObject.id, {
-        source: "stack",
-        stackEntry: topStackObject,
-      });
-    }, 380);
-  }, [clearPendingStackLongPress, requestInspectObject, topStackObject]);
-  const handleStackPointerUp = useCallback(() => {
-    clearPendingStackLongPress();
-  }, [clearPendingStackLongPress]);
-  const handleStackPointerCancel = useCallback(() => {
-    clearPendingStackLongPress();
-  }, [clearPendingStackLongPress]);
-  const handleInlineStackClick = useCallback((event) => {
-    if (inspectorOpen) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    if (stackLongPressTriggeredRef.current) {
-      stackLongPressTriggeredRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    if (!topStackObject) return;
-    setActionPopoverState(null);
-    onFocusStackObject?.(topStackObject);
-  }, [inspectorOpen, onFocusStackObject, topStackObject]);
+  // --- Player-target taps --------------------------------------------------
+  const dispatchPlayerChoice = useCallback((player) => {
+    if (!canPickTargets || !player) return;
+    const target = legalTargetPlayerIds.has(Number(player.id))
+      ? Number(player.id)
+      : Number(player.index);
+    if (!Number.isFinite(target)) return;
+    window.dispatchEvent(
+      new CustomEvent("ironsmith:target-choice", {
+        detail: { target: { kind: "player", player: target } },
+      })
+    );
+  }, [canPickTargets, legalTargetPlayerIds]);
+
+  // --- Cycling -------------------------------------------------------------
+  const cycleOpponent = useCallback((direction) => {
+    if (typeof setMobileOpponentIndex !== "function" || opponentCount <= 1) return;
+    setMobileOpponentIndex((current) => {
+      const next = Number(current || 0) + direction;
+      if (next < 0) return opponentCount - 1;
+      if (next >= opponentCount) return 0;
+      return next;
+    });
+  }, [opponentCount, setMobileOpponentIndex]);
+
+  // --- View toggle ---------------------------------------------------------
+  const handleToggleView = useCallback(() => {
+    if (typeof setMobileViewMode !== "function") return;
+    setMobileViewMode((current) => (current === "hand" ? "battlefield" : "hand"));
+  }, [setMobileViewMode]);
+
+  // --- Zone open ----------------------------------------------------------
+  const handleOpenZone = useCallback((zoneKey) => {
+    window.dispatchEvent(new CustomEvent("ironsmith:mobile-open-zone", {
+      detail: { zone: zoneKey, player: me?.id },
+    }));
+  }, [me?.id]);
 
   return (
     <main
-      className="mobile-battle-scene table-gradient table-shell relative h-full min-h-0 overflow-hidden"
+      className="mobile-battle-scene mobile-mtga-scene table-gradient table-shell relative h-full min-h-0 overflow-hidden"
       data-drop-zone
       data-mobile-battle-scene
       data-inspector-open={inspectInteractionLockActive ? "true" : "false"}
@@ -954,139 +656,52 @@ export default function MobileBattleScene({
         "--mobile-battle-card-height": `${layout.cardHeight}px`,
         "--mobile-battle-top-status-height": `${layout.topStatusHeight}px`,
         "--mobile-battle-control-height": `${layout.controlBandHeight}px`,
-        "--mobile-battle-bottom-band-height": `${layout.bottomBandHeight}px`,
         "--mobile-battle-opponent-band-height": `${layout.opponentBandHeight}px`,
         "--mobile-battle-self-back-visible-height": `${layout.selfBackVisibleHeight}px`,
         "--mobile-battle-scene-padding": `${layout.sidePadding}px`,
         "--mobile-battle-section-gap": `${layout.sectionGap}px`,
         "--mobile-battle-row-gap": `${layout.rowGap}px`,
+        "--mobile-mtga-self-hud-height": `${layout.selfHudHeight}px`,
+        "--mobile-mtga-mana-pool-height-opp": `${layout.opponentManaPoolHeight}px`,
+        "--mobile-mtga-mana-pool-height-self": `${layout.selfManaPoolHeight}px`,
+        "--mobile-mtga-hand-peek-height": `${layout.handPeekHeight}px`,
+        "--mobile-mtga-stack-rail-width": `${layout.stackRailWidth}px`,
       }}
     >
       <div className="mobile-battle-scene-vignette" aria-hidden="true" />
       <div className="mobile-battle-scene-runeband" aria-hidden="true" />
 
-      <div className="mobile-battle-scene-layout">
-        <div className="mobile-battle-top-spacer" aria-hidden="true" />
-
-        <section
-          className="mobile-battle-opponent-band"
-          onPointerDownCapture={handleOpponentBandPointerDownCapture}
-          onPointerUpCapture={handleOpponentBandPointerUpCapture}
-          onPointerCancelCapture={handleOpponentBandPointerCancelCapture}
-          onPointerLeave={handleOpponentBandPointerLeave}
-          onClickCapture={opponentBandCaptureEnabled ? handleOpponentBandClickCapture : undefined}
-        >
-          <BattlefieldLane
-            cards={opponentRows.backCards}
-            cardWidth={layout.cardWidth}
-            cardHeight={layout.cardHeight}
-            battlefieldSide="top"
-            selectedObjectId={selectedObjectId}
-            onCardClick={handleCardInspect}
-            onCardPointerDown={handleCardTargetPointerDown}
-            onMobileCardActionMenu={openObjectActions}
-            onMobileCardLongPress={inspectHeldObject}
-            activatableMap={activatableMap}
-            legalTargetObjectIds={legalSelectableObjectIds}
-            className="mobile-battle-lane--opponent"
-          />
-          <BattlefieldLane
-            cards={opponentRows.frontCards}
-            cardWidth={layout.cardWidth}
-            cardHeight={layout.cardHeight}
-            battlefieldSide="top"
-            selectedObjectId={selectedObjectId}
-            onCardClick={handleCardInspect}
-            onCardPointerDown={handleCardTargetPointerDown}
-            onMobileCardActionMenu={openObjectActions}
-            onMobileCardLongPress={inspectHeldObject}
-            activatableMap={activatableMap}
-            legalTargetObjectIds={legalSelectableObjectIds}
-            className="mobile-battle-lane--opponent"
-          />
-        </section>
-
-        <section ref={setControlBandElement} className="mobile-battle-control-band">
-          <div className="mobile-battle-control-band-inner">
-            {showMobileStackTray ? (
-              <button
-                type="button"
-                className={cn(
-                  "mobile-battle-stack-button",
-                  inlineStackIsActive && "is-active"
-                )}
-                data-arrow-anchor={topStackObject ? "stack" : undefined}
-                data-object-id={topStackObject?.id ?? undefined}
-                data-card-name={topStackObject?.name || inlineStackPreview?.name || "Stack"}
-                aria-label={
-                  inlineStackPreview
-                    ? `Focus stack object: ${inlineStackPreview.name}, ${inlineStackPreview.subtitle}. Hold to inspect. ${stackCount} item${stackCount === 1 ? "" : "s"} on stack`
-                    : `Focus stack. Hold to inspect. ${stackCount} item${stackCount === 1 ? "" : "s"} on stack`
-                }
-                onPointerDown={handleStackPointerDown}
-                onPointerUp={handleStackPointerUp}
-                onPointerCancel={handleStackPointerCancel}
-                onPointerLeave={handleStackPointerCancel}
-                onClick={handleInlineStackClick}
-              >
-                {inlineStackPreview?.artUrl ? (
-                  <span className="mobile-battle-stack-button-art" aria-hidden="true">
-                    <img
-                      src={inlineStackPreview.artUrl}
-                      alt=""
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  </span>
-                ) : null}
-                <span className="mobile-battle-stack-button-copy">
-                  <span className="mobile-battle-stack-button-title">
-                    {inlineStackPreview?.name || "Stack"}
-                  </span>
-                  <span className="mobile-battle-stack-button-subtitle">
-                    {inlineStackPreview?.subtitle || "Stack"}
-                  </span>
-                </span>
-                <span className="mobile-battle-stack-button-count">{stackCount}</span>
-              </button>
-            ) : (
-              <div className="mobile-battle-control-band-spacer" aria-hidden="true" />
-            )}
-            <div
-              ref={setControlDockElement}
-              className="mobile-battle-control-band-actions"
+      <MobileBattleProvider
+        viewMode={mobileViewMode}
+        setViewMode={setMobileViewMode}
+        phaseStops={mobilePhaseStops}
+        setPhaseStops={setMobilePhaseStops}
+      >
+        <div className="mobile-mtga-scene-layout">
+          <div ref={opponentHudRef} className="mobile-mtga-scene-row">
+            <MobileOpponentHud
+              opponent={activeOpponent}
+              cycleEnabled={cycleEnabled}
+              previousOpponent={previousOpponent}
+              nextOpponent={nextOpponent}
+              onCyclePrev={() => cycleOpponent(-1)}
+              onCycleNext={() => cycleOpponent(1)}
+              onTap={dispatchPlayerChoice}
+              targetable={opponentTargetable && canPickTargets}
             />
           </div>
 
-          {actionPopoverState ? (
-            <MobileDecisionSheet
-              eyebrow="Your Action"
-              title={actionPopoverState.cardName}
-              subtitle={`${actionPopoverState.actions.length} action${actionPopoverState.actions.length === 1 ? "" : "s"}`}
-              onClose={closeActionPopover}
-              closeLabel="Close action menu"
-              inline={false}
-              className="mobile-decision-sheet--action-list mobile-battle-action-menu-sheet"
-              bodyClassName="mobile-decision-sheet-body--action-list mobile-battle-action-menu-sheet-body"
-            >
-              <MobileDecisionActionList
-                items={actionPopoverState.actions.map((action) => ({
-                  key: String(action.index),
-                  label: stripActionPrefix(action.label || "Action"),
-                  onClick: () => handlePopoverAction(action),
-                }))}
-                emptyText="No available actions."
-              />
-            </MobileDecisionSheet>
+          {layout.opponentManaPoolHeight > 0 ? (
+            <div ref={opponentManaRef} className="mobile-mtga-scene-row">
+              <MobileManaPool pool={opponentManaPool} side="opponent" interactive={false} />
+            </div>
           ) : null}
-        </section>
 
-        <section className="mobile-battle-self-band">
-          <BattlefieldLane
-            cards={selfRows.frontCards}
+          <MobileBattlefieldBand
+            side="opponent"
+            rows={opponentRows}
             cardWidth={layout.cardWidth}
             cardHeight={layout.cardHeight}
-            battlefieldSide="bottom"
             selectedObjectId={selectedObjectId}
             onCardClick={handleCardInspect}
             onCardPointerDown={handleCardTargetPointerDown}
@@ -1094,198 +709,159 @@ export default function MobileBattleScene({
             onMobileCardLongPress={inspectHeldObject}
             activatableMap={activatableMap}
             legalTargetObjectIds={legalSelectableObjectIds}
-            className="mobile-battle-lane--self-front"
+            onPointerDownCapture={handleOpponentBandPointerDownCapture}
+            onPointerUpCapture={handleOpponentBandPointerUpCapture}
+            onPointerCancelCapture={handleOpponentBandPointerCancelCapture}
+            onPointerLeave={handleOpponentBandPointerLeave}
+            onClickCapture={opponentBandCaptureEnabled ? handleOpponentBandClickCapture : undefined}
           />
-          <BattlefieldLane
-            cards={selfRows.backCards}
-            cardWidth={layout.cardWidth}
-            cardHeight={layout.cardHeight}
-            clippedHeight={layout.selfBackVisibleHeight}
-            battlefieldSide="bottom"
-            selectedObjectId={selectedObjectId}
-            onCardClick={handleCardInspect}
-            onCardPointerDown={handleCardTargetPointerDown}
-            onMobileCardActionMenu={openObjectActions}
-            onMobileCardLongPress={inspectHeldObject}
-            activatableMap={activatableMap}
-            legalTargetObjectIds={legalSelectableObjectIds}
-            className="mobile-battle-lane--self-back"
-          />
-        </section>
 
-        <footer ref={bottomBandRef} className="mobile-battle-bottom-utility">
-          <button
-            type="button"
-            className={cn(
-              "mobile-battle-self-identity-bar",
-              selfTargetable && canPickTargets && "is-targetable"
-            )}
-            onPointerDown={(event) => {
-              if (!registerPointerDown(event)) return;
-              event.preventDefault();
-              event.stopPropagation();
-              dispatchSelfPlayerChoice();
-            }}
-            onClick={(event) => {
-              if (!shouldHandleClick(event)) return;
-              event.preventDefault();
-              event.stopPropagation();
-              dispatchSelfPlayerChoice();
-            }}
-          >
-            <span className="mobile-battle-self-identity-name">{me?.name || "You"}</span>
-            <span className="mobile-battle-self-identity-meta">
-              H {zoneCount(me, "hand")} G {zoneCount(me, "graveyard")} X {zoneCount(me, "exile")} D {zoneCount(me, "library")}
-            </span>
-            <span className="mobile-battle-inline-life">{me?.life ?? 0}</span>
-          </button>
-
-          {!actionPopoverState ? (
-            <div
-              className={cn("mobile-battle-hand-rail", handExpanded && "is-open")}
-              onClick={(event) => {
-                if (event.target.closest(".game-card.hand-card")) return;
-                setHandExpanded((current) => !current);
-              }}
-            >
-              <div className="mobile-battle-hand-rail-viewport">
-                <HandZone
-                  player={me}
-                  selectedObjectId={selectedObjectId}
-                  onInspect={requestInspectObject}
-                  isExpanded
-                  layout="mobile-fan"
-                />
-              </div>
-            </div>
-          ) : null}
-        </footer>
-      </div>
-
-      <DecisionPopupLayer
-        selectedObjectId={selectedObjectId}
-        mobileBattle
-        mobileBattlePortalTarget={controlDockNode}
-        mobileBattleDockInline
-        mobileBattleDockHidden={actionPopoverState != null}
-      />
-
-      {handExpanded ? (
-        <>
-          <button
-            type="button"
-            className="mobile-battle-hand-overlay-backdrop"
-            aria-label="Close hand"
-            onClick={() => setHandExpanded(false)}
-          />
-          <section className="mobile-battle-hand-overlay">
-            <button
-              type="button"
-              className="mobile-battle-hand-overlay-close"
-              aria-label="Close hand"
-              onClick={() => setHandExpanded(false)}
-            >
-              <X className="size-4" />
-            </button>
-            <div className="mobile-battle-hand-overlay-header">
-              <span className="mobile-battle-hand-overlay-title">Hand</span>
-              <span className="mobile-battle-hand-overlay-count">{zoneCount(me, "hand")} cards</span>
-            </div>
-            <div className="mobile-battle-hand-overlay-body">
-              <HandZone
-                player={me}
-                selectedObjectId={selectedObjectId}
-                onInspect={requestInspectObject}
-                isExpanded
-                layout="mobile-fan"
-              />
-            </div>
+          <section ref={controlBandRef} className="mobile-mtga-control-row">
+            <MobilePhaseStrip />
+            <MobileTurnActionStack ref={setActionStackElement} />
           </section>
-        </>
-      ) : null}
 
-      {inspectorOpen ? (
-        <div
-          ref={inspectOverlayRef}
-          className="mobile-battle-inspect-overlay"
-          data-mobile-hand-drop-target="inspector"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Card inspector"
-          onPointerDown={(event) => {
-            event.stopPropagation();
-          }}
-          onPointerUp={(event) => {
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (event.target === event.currentTarget) {
-              closeInspector();
-            }
-          }}
-        >
-          <div
-            className="mobile-battle-inspect-overlay-backdrop"
-            aria-hidden="true"
+          <MobileBattlefieldBand
+            side="self"
+            rows={selfRows}
+            cardWidth={layout.cardWidth}
+            cardHeight={layout.cardHeight}
+            selfBackVisibleHeight={layout.selfBackVisibleHeight}
+            selectedObjectId={selectedObjectId}
+            onCardClick={handleCardInspect}
+            onCardPointerDown={handleCardTargetPointerDown}
+            onMobileCardActionMenu={openObjectActions}
+            onMobileCardLongPress={inspectHeldObject}
+            activatableMap={activatableMap}
+            legalTargetObjectIds={legalSelectableObjectIds}
           />
-          <div
-            className="mobile-battle-inspect-overlay-shell"
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-            }}
-            onPointerUp={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <div className="mobile-battle-inspect-overlay-stage">
-              <HoverArtOverlay
-                objectId={selectedObjectId}
-                displayMode="inspector"
-                availableInspectorWidth={360}
-                availableInspectorHeight={228}
-                hideOwnershipMetadata
-                minInspectorTextScale={0.54}
-                minInspectorTitleScale={0.46}
-                onInspectorAccentChange={null}
-              />
+
+          {layout.selfManaPoolHeight > 0 ? (
+            <div ref={selfManaRef} className="mobile-mtga-scene-row">
+              <MobileManaPool pool={selfManaPool} side="self" interactive />
             </div>
+          ) : null}
+
+          <div ref={selfHudRef} className="mobile-mtga-scene-row">
+            <MobileSelfHud
+              me={me}
+              onTap={dispatchPlayerChoice}
+              onOpenZone={handleOpenZone}
+              targetable={selfTargetable && canPickTargets}
+            />
+          </div>
+
+          <div ref={handFanRef} className="mobile-mtga-scene-row mobile-mtga-scene-row--hand">
+            <MobileHandFan
+              me={me}
+              selectedObjectId={selectedObjectId}
+              onInspect={requestInspectObject}
+            />
           </div>
         </div>
-      ) : null}
 
-      {activeOpponent && canPickTargets ? (
-        <button
-          type="button"
-          className={cn(
-            "mobile-battle-opponent-target-chip",
-            opponentTargetable && canPickTargets && "is-targetable"
-          )}
-          data-player-target={activeOpponent.index ?? activeOpponent.id}
-          data-player-target-name={activeOpponent.id ?? activeOpponent.index}
-          style={opponentAccent ? { "--player-accent": opponentAccent.hex } : undefined}
-          onPointerDown={(event) => {
-            if (!registerPointerDown(event)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            dispatchOpponentPlayerChoice();
-          }}
-          onClick={(event) => {
-            if (!shouldHandleClick(event)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            dispatchOpponentPlayerChoice();
-          }}
-        >
-          <span className="mobile-battle-opponent-target-name">{activeOpponent.name}</span>
-          <span className="mobile-battle-opponent-target-meta">
-            H {zoneCount(activeOpponent, "hand")} G {zoneCount(activeOpponent, "graveyard")} D {zoneCount(activeOpponent, "library")}
-          </span>
-          <span className="mobile-battle-inline-life">{activeOpponent.life}</span>
-        </button>
-      ) : null}
+        <MobileViewToggle
+          mode={mobileViewMode}
+          onToggle={handleToggleView}
+          className="mobile-mtga-view-toggle--floating"
+        />
 
+        {stackVisible ? (
+          <MobileStackRail
+            objects={visibleStackObjects}
+            focusedStackObjectId={focusedStackObjectId}
+            onFocusStackObject={onFocusStackObject}
+            onInspect={requestInspectObject}
+          />
+        ) : null}
+
+        <DecisionPopupLayer
+          selectedObjectId={selectedObjectId}
+          mobileBattle
+          mobileBattlePortalTarget={actionStackElement}
+          mobileBattleDockInline
+          mobileBattleDockHidden={actionPopoverState != null}
+          mobileBattleDockOrientation="vertical"
+        />
+
+        {actionPopoverState ? (
+          <MobileDecisionSheet
+            eyebrow="Your Action"
+            title={actionPopoverState.cardName}
+            subtitle={`${actionPopoverState.actions.length} action${actionPopoverState.actions.length === 1 ? "" : "s"}`}
+            onClose={closeActionPopover}
+            closeLabel="Close action menu"
+            inline={false}
+            className="mobile-decision-sheet--action-list mobile-mtga-action-menu-sheet"
+            bodyClassName="mobile-decision-sheet-body--action-list"
+          >
+            <MobileDecisionActionList
+              items={actionPopoverState.actions.map((action) => ({
+                key: String(action.index),
+                label: stripActionPrefix(action.label || "Action"),
+                onClick: () => handlePopoverAction(action),
+              }))}
+              emptyText="No available actions."
+            />
+          </MobileDecisionSheet>
+        ) : null}
+
+        {mobileViewMode === "hand" ? (
+          <MobileHandFullscreen
+            me={me}
+            selectedObjectId={selectedObjectId}
+            onInspect={requestInspectObject}
+            onClose={() => setMobileViewMode?.("battlefield")}
+          />
+        ) : null}
+
+        {inspectorOpen ? (
+          <div
+            ref={inspectOverlayRef}
+            className="mobile-battle-inspect-overlay"
+            data-mobile-hand-drop-target="inspector"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Card inspector"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (e.target === e.currentTarget) closeInspector();
+            }}
+          >
+            <div className="mobile-battle-inspect-overlay-backdrop" aria-hidden="true" />
+            <div
+              className="mobile-battle-inspect-overlay-shell"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+            >
+              <div className="mobile-battle-inspect-overlay-stage">
+                <HoverArtOverlay
+                  objectId={selectedObjectId}
+                  displayMode="inspector"
+                  availableInspectorWidth={360}
+                  availableInspectorHeight={228}
+                  hideOwnershipMetadata
+                  minInspectorTextScale={0.54}
+                  minInspectorTitleScale={0.46}
+                  onInspectorAccentChange={null}
+                />
+              </div>
+              <button
+                type="button"
+                className="mobile-battle-inspect-overlay-close"
+                aria-label="Close inspector"
+                onClick={closeInspector}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </MobileBattleProvider>
     </main>
   );
 }
+

@@ -1248,9 +1248,10 @@ fn merge_animation_with_granted_trigger_line(animation: &str, granted: &str) -> 
         return None;
     }
 
-    let mut payload = animated_payload
-        .replace(" and have ", " and has ")
-        .replace(" and has indestructible and has haste", " and has indestructible, haste");
+    let mut payload = animated_payload.replace(" and have ", " and has ").replace(
+        " and has indestructible and has haste",
+        " and has indestructible, haste",
+    );
     let ability = granted_ability.trim_matches('"');
     payload.push_str(", and \"");
     payload.push_str(&capitalize_first(ability));
@@ -1277,7 +1278,10 @@ fn animation_subjects_equivalent(animated_subject: &str, granted_subject: &str) 
             .trim()
             .trim_start_matches("each ")
             .replace(" you control with mana value ", " with mana value ")
-            .replace(" with mana value 4 or greater you control", " with mana value 4 or greater")
+            .replace(
+                " with mana value 4 or greater you control",
+                " with mana value 4 or greater",
+            )
             .replace("artifacts", "artifact")
             .replace("enchantments", "enchantment")
             .replace(" and ", " or ")

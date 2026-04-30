@@ -898,69 +898,81 @@ pub(crate) fn parse_trigger_clause_lexed(
         if let Some(or_idx) =
             find_index(subject_tokens, |token: &OwnedLexToken| token.is_word("or"))
         {
-            let left_tokens = &subject_tokens[..or_idx];
-            let mut right_tokens = &subject_tokens[or_idx + 1..];
-            let left_word_view = ActivationRestrictionCompatWords::new(left_tokens);
-            let left_words: Vec<&str> = left_word_view
-                .to_word_refs()
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
-            if is_source_reference_words(&left_words) && !right_tokens.is_empty() {
-                let mut other = false;
-                if right_tokens
+            let or_is_one_or_more_quantifier = or_idx == 1
+                && subject_tokens
                     .first()
-                    .is_some_and(|token| token.is_word("another") || token.is_word("other"))
-                {
-                    other = true;
-                    right_tokens = &right_tokens[1..];
-                }
-                let parsed_filter =
-                    parse_object_filter_lexed(right_tokens, other)
+                    .is_some_and(|token| token.is_word("one"))
+                && subject_tokens
+                    .get(or_idx + 1)
+                    .is_some_and(|token| token.is_word("more"));
+            if or_is_one_or_more_quantifier {
+                // "one or more" is a quantifier for a single ETB trigger, not
+                // a source-or-other-subject disjunction like "this creature or a token".
+            } else {
+                let left_tokens = &subject_tokens[..or_idx];
+                let mut right_tokens = &subject_tokens[or_idx + 1..];
+                let left_word_view = ActivationRestrictionCompatWords::new(left_tokens);
+                let left_words: Vec<&str> = left_word_view
+                    .to_word_refs()
+                    .into_iter()
+                    .filter(|word| !is_article(word))
+                    .collect();
+                if is_source_reference_words(&left_words) && !right_tokens.is_empty() {
+                    let mut other = false;
+                    if right_tokens
+                        .first()
+                        .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+                    {
+                        other = true;
+                        right_tokens = &right_tokens[1..];
+                    }
+                    let parsed_filter = parse_object_filter_lexed(right_tokens, other)
                         .ok()
                         .or_else(|| {
                             parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other)
                         });
-                if let Some(mut filter) = parsed_filter {
-                    if slice_contains(&words, &"under")
-                        && slice_contains(&words, &"your")
-                        && slice_contains(&words, &"control")
-                    {
-                        filter.controller = Some(PlayerFilter::You);
-                    } else if slice_contains(&words, &"under")
-                        && (slice_contains(&words, &"opponent")
-                            || slice_contains(&words, &"opponents"))
-                        && slice_contains(&words, &"control")
-                    {
-                        filter.controller = Some(PlayerFilter::Opponent);
+                    if let Some(mut filter) = parsed_filter {
+                        if slice_contains(&words, &"under")
+                            && slice_contains(&words, &"your")
+                            && slice_contains(&words, &"control")
+                        {
+                            filter.controller = Some(PlayerFilter::You);
+                        } else if slice_contains(&words, &"under")
+                            && (slice_contains(&words, &"opponent")
+                                || slice_contains(&words, &"opponents"))
+                            && slice_contains(&words, &"control")
+                        {
+                            filter.controller = Some(PlayerFilter::Opponent);
+                        }
+                        let cause_filter =
+                            if contains_window(&words, &["without", "being", "played"]) {
+                                Some(crate::events::cause::CauseFilter::not_type(
+                                    crate::events::cause::CauseType::SpecialAction,
+                                ))
+                            } else {
+                                None
+                            };
+                        let right_trigger = if slice_contains(&words, &"untapped") {
+                            TriggerSpec::EntersBattlefieldUntapped {
+                                filter,
+                                cause_filter,
+                            }
+                        } else if slice_contains(&words, &"tapped") {
+                            TriggerSpec::EntersBattlefieldTapped {
+                                filter,
+                                cause_filter,
+                            }
+                        } else {
+                            TriggerSpec::EntersBattlefield {
+                                filter,
+                                cause_filter,
+                            }
+                        };
+                        return Ok(TriggerSpec::Either(
+                            Box::new(TriggerSpec::ThisEntersBattlefield),
+                            Box::new(right_trigger),
+                        ));
                     }
-                    let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
-                        Some(crate::events::cause::CauseFilter::not_type(
-                            crate::events::cause::CauseType::SpecialAction,
-                        ))
-                    } else {
-                        None
-                    };
-                    let right_trigger = if slice_contains(&words, &"untapped") {
-                        TriggerSpec::EntersBattlefieldUntapped {
-                            filter,
-                            cause_filter,
-                        }
-                    } else if slice_contains(&words, &"tapped") {
-                        TriggerSpec::EntersBattlefieldTapped {
-                            filter,
-                            cause_filter,
-                        }
-                    } else {
-                        TriggerSpec::EntersBattlefield {
-                            filter,
-                            cause_filter,
-                        }
-                    };
-                    return Ok(TriggerSpec::Either(
-                        Box::new(TriggerSpec::ThisEntersBattlefield),
-                        Box::new(right_trigger),
-                    ));
                 }
             }
         }

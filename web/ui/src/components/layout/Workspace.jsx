@@ -450,6 +450,12 @@ export default function Workspace({
   onDismissNotice,
   mobileOpponentIndex = 0,
   setMobileOpponentIndex,
+  mobileViewMode = "battlefield",
+  setMobileViewMode,
+  mobilePhaseStops,
+  setMobilePhaseStops,
+  middleTopbar = null,
+  middleAddCardBar = null,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
@@ -459,7 +465,6 @@ export default function Workspace({
   const [zoneActivityByPlayer, setZoneActivityByPlayer] = useState({});
   const [transientInspectorPreviews, setTransientInspectorPreviews] = useState([]);
   const [transientInspectorPreviewIndex, setTransientInspectorPreviewIndex] = useState(0);
-  const [opponentsInspectorDockTop, setOpponentsInspectorDockTop] = useState(null);
   const [opponentsZoneHostRect, setOpponentsZoneHostRect] = useState(null);
   const [myZoneHostRect, setMyZoneHostRect] = useState(null);
   const workspaceRef = useRef(null);
@@ -552,6 +557,12 @@ export default function Workspace({
     && !deckLoadingMode
     && topLeftInspectorHeight != null
     && topLeftInspectorHeight >= TOP_LEFT_INSPECTOR_MIN_HEIGHT
+  );
+  const showMiddleInspectorDock = (
+    !nonDesktopViewport
+    && !deckLoadingMode
+    && !puzzleSetupMode
+    && Boolean(middleTopbar || middleAddCardBar)
   );
 
   const clearTransientInspectorPreviews = useCallback(() => {
@@ -770,16 +781,11 @@ export default function Workspace({
       const opponentsEl = root.querySelector("[data-opponents-zones]");
       const myZoneEl = root.querySelector("[data-my-zone]");
       if (!opponentsEl) {
-        setOpponentsInspectorDockTop(null);
         setOpponentsZoneHostRect(null);
         return;
       }
 
       const opponentsRect = opponentsEl.getBoundingClientRect();
-      const nextTop = Math.max(0, Math.round(opponentsRect.bottom - HAND_PEEK_HEIGHT));
-      setOpponentsInspectorDockTop((currentTop) => (
-        currentTop == null || Math.abs(currentTop - nextTop) >= 1 ? nextTop : currentTop
-      ));
       const nextOpponentsRect = {
         top: Math.round(opponentsRect.top),
         height: Math.round(opponentsRect.height),
@@ -1249,9 +1255,32 @@ export default function Workspace({
           myZoneHeaderControls={mobileZoneHeaderControls}
           mobileOpponentIndex={mobileOpponentIndex}
           setMobileOpponentIndex={setMobileOpponentIndex}
+          mobileViewMode={mobileViewMode}
+          setMobileViewMode={setMobileViewMode}
+          mobilePhaseStops={mobilePhaseStops}
+          setMobilePhaseStops={setMobilePhaseStops}
+          middleTopbar={middleTopbar}
+          middleAddCardBar={middleAddCardBar}
+          middleInspectorDock={showMiddleInspectorDock ? (
+            <RightRail
+              pinnedObjectId={pinnedInspectorObjectId}
+              transientInspectorPreview={activeTransientInspectorPreview}
+              transientInspectorPreviewIndex={transientInspectorPreviewIndex}
+              transientInspectorPreviewCount={transientInspectorPreviews.length}
+              onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
+              onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
+              onInspectObject={handleInspectObject}
+              suppressFallback={suppressFallbackInspector}
+              inline
+              inlineDockPlacement="top"
+              inlineExpandedMaxHeight={232}
+              allowTopInlinePlacement
+              inlineExpanded={inlineInspectorExpanded}
+            />
+          ) : null}
         />
       </div>
-      {showTopLeftInspectorDock && (
+      {!showMiddleInspectorDock && showTopLeftInspectorDock && (
         <div
           className="pointer-events-none fixed left-[6px] top-[6px] z-[70] flex items-start justify-start overflow-visible"
           style={{
@@ -1281,7 +1310,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
+      {!showMiddleInspectorDock && showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{
@@ -1371,20 +1400,7 @@ export default function Workspace({
             </div>
           </div>
           <div className="pointer-events-none relative flex shrink-0 items-end gap-1.5 self-end overflow-visible">
-            <RightRail
-              pinnedObjectId={pinnedInspectorObjectId}
-              transientInspectorPreview={activeTransientInspectorPreview}
-              transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-              transientInspectorPreviewCount={transientInspectorPreviews.length}
-              onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-              onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-              onInspectObject={handleInspectObject}
-              suppressFallback={suppressFallbackInspector}
-              inline
-              allowTopInlinePlacement={opponentsInspectorDockTop != null}
-              inlineExpanded={inlineInspectorExpanded}
-            />
-            {inspectorDebug && (
+            {!showMiddleInspectorDock ? (
               <RightRail
                 pinnedObjectId={pinnedInspectorObjectId}
                 transientInspectorPreview={activeTransientInspectorPreview}
@@ -1395,7 +1411,22 @@ export default function Workspace({
                 onInspectObject={handleInspectObject}
                 suppressFallback={suppressFallbackInspector}
                 inline
-                allowTopInlinePlacement={opponentsInspectorDockTop != null}
+                allowTopInlinePlacement={showTopLeftInspectorDock}
+                inlineExpanded={inlineInspectorExpanded}
+              />
+            ) : null}
+            {!showMiddleInspectorDock && inspectorDebug && (
+              <RightRail
+                pinnedObjectId={pinnedInspectorObjectId}
+                transientInspectorPreview={activeTransientInspectorPreview}
+                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
+                transientInspectorPreviewCount={transientInspectorPreviews.length}
+                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
+                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
+                onInspectObject={handleInspectObject}
+                suppressFallback={suppressFallbackInspector}
+                inline
+                allowTopInlinePlacement={showTopLeftInspectorDock}
                 dockRole="opposite"
                 inspectorVariant="debug"
                 inlineExpanded={inlineInspectorExpanded}
@@ -1404,7 +1435,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {showSideDocks && !deckLoadingMode && myZoneHostRect != null && (
+      {!showMiddleInspectorDock && showSideDocks && !deckLoadingMode && myZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{
@@ -1425,7 +1456,7 @@ export default function Workspace({
               inline
               inlineHostSide="left"
               inlineExpandedSide="left"
-              allowTopInlinePlacement={opponentsInspectorDockTop != null}
+              allowTopInlinePlacement={showTopLeftInspectorDock}
               inlineExpanded={inlineInspectorExpanded}
             />
             {inspectorDebug && (
@@ -1441,7 +1472,7 @@ export default function Workspace({
                 inline
                 inlineHostSide="left"
                 inlineExpandedSide="left"
-                allowTopInlinePlacement={opponentsInspectorDockTop != null}
+                allowTopInlinePlacement={showTopLeftInspectorDock}
                 dockRole="opposite"
                 inspectorVariant="debug"
                 inlineExpanded={inlineInspectorExpanded}

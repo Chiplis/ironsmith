@@ -674,8 +674,9 @@ fn pre_rule_when_milled_this_way_followup(
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(sentence_tokens);
-    if !words.starts_with(&["when", "one", "or", "more", "cards", "are", "milled", "this", "way"])
-    {
+    if !words.starts_with(&[
+        "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
+    ]) {
         return Ok(None);
     }
     let Some((_before, after)) =

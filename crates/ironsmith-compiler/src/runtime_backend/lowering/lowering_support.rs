@@ -69,8 +69,10 @@ fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Object
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             ..
         } => Some(filter.clone()),
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => predicate_object_filter_antecedent(left)
-            .or_else(|| predicate_object_filter_antecedent(right)),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_object_filter_antecedent(left)
+                .or_else(|| predicate_object_filter_antecedent(right))
+        }
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
         _ => None,
     }

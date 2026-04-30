@@ -143,6 +143,38 @@ fn finalize_ast_surface_line(line: String) -> String {
         "tap each creature that was blocked by one of those creatures this turn. It doesn't untap during its controller's next untap step",
         "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
     );
+    line = line.replace(
+        "twice the number of cards in exile",
+        "twice the number of cards exiled this way",
+    );
+    line = line.replace(
+        "target creature an opponent controls or planeswalker",
+        "target creature or planeswalker an opponent controls",
+    );
+    line = line.replace(
+        "Target creature an opponent controls or planeswalker",
+        "Target creature or planeswalker an opponent controls",
+    );
+    line = line.replace(
+        "At the beginning of the next end step, you lose 1 life. Return this card to its owner's hand",
+        "At the beginning of the next end step, you lose 1 life and return this card to your hand",
+    );
+    line = line.replace(
+        "at the beginning of the next end step, you lose 1 life. return this card to its owner's hand",
+        "at the beginning of the next end step, you lose 1 life and return this card to your hand",
+    );
+    line = replace_ascii_case_insensitive_once(
+        line,
+        "tap each creature that was blocked by one of those creatures this turn. it doesn't untap during its controller's next untap step",
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+        "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
+    );
+    line = replace_ascii_case_insensitive_once(
+        line,
+        "at the beginning of the next end step, you lose 1 life. return this card to its owner's hand",
+        "At the beginning of the next end step, you lose 1 life and return this card to your hand",
+        "at the beginning of the next end step, you lose 1 life and return this card to your hand",
+    );
     line = line.replace("non-Auran enchantments", "non-Aura enchantments");
     line = line.replace("non-Auran enchantment", "non-Aura enchantment");
     line = line.replace(
@@ -188,22 +220,79 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
 }
 
+fn replace_ascii_case_insensitive_once(
+    line: String,
+    needle_lower: &str,
+    replacement_upper: &str,
+    replacement_lower: &str,
+) -> String {
+    let lower = line.to_ascii_lowercase();
+    let Some(idx) = lower.find(needle_lower) else {
+        return line;
+    };
+    let end = idx + needle_lower.len();
+    let replacement = if line[idx..end]
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+    {
+        replacement_upper
+    } else {
+        replacement_lower
+    };
+    format!("{}{}{}", &line[..idx], replacement, &line[end..])
+}
+
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged =
-            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
-                drop_redundant_spell_cost_lines(merge_lose_all_transform_lines(
+        let merged = merge_conditioned_spell_and_activation_tax_lines(
+            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
+                merge_specific_adjacent_surface_lines(merge_lose_all_transform_lines(
                     merge_blockability_lines(annotate_color_choice_exclusions(
                         merge_subject_predicate_surface_lines(previous.clone()),
                     )),
                 )),
-            ));
+            )),
+        );
         if merged == previous {
             return merged;
         }
         lines = merged;
     }
+}
+
+fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len() {
+            let left = lines[idx].trim().trim_end_matches('.');
+            let right = lines[idx + 1].trim().trim_end_matches('.');
+            let left_lower = left.to_ascii_lowercase();
+            let right_lower = right.to_ascii_lowercase();
+            if left_lower.ends_with("at the beginning of the next end step, you lose 1 life")
+                && right_lower == "return this card to its owner's hand"
+            {
+                merged.push(format!("{left} and return this card to your hand."));
+                idx += 2;
+                continue;
+            }
+            if left_lower
+                .ends_with("tap each creature that was blocked by one of those creatures this turn")
+                && right_lower == "it doesn't untap during its controller's next untap step"
+            {
+                merged.push(format!(
+                    "{left} and it doesn't untap during its controller's next untap step."
+                ));
+                idx += 2;
+                continue;
+            }
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
 }
 
 fn annotate_color_choice_exclusions(mut lines: Vec<String>) -> Vec<String> {

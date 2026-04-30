@@ -281,6 +281,9 @@ export default function RightRail({
   inlineDockPlacement = "bottom",
   inlineHostSide = "right",
   inlineExpandedSide = "right",
+  inlineExpandedAnchor = "bottom",
+  inlineExpandedMaxHeight = null,
+  expandSelectedInline = false,
   inlineFillWidth = false,
   disableInlineExpansion = false,
   allowTopInlinePlacement = false,
@@ -406,6 +409,7 @@ export default function RightRail({
     && String(validSelectedObjectId) === String(resolvingCastObjectId);
   const shouldShowInspector = hasTransientInspectorPreview
     || (validSelectedObjectId != null && !suppressDirectResolvingCastInspector);
+  const selectedCanExpandInline = expandSelectedInline && validSelectedObjectId != null;
   const shouldShowRail = shouldShowInspector && (
     !inline
     || (
@@ -417,10 +421,11 @@ export default function RightRail({
     inline
     && !disableInlineExpansion
     && shouldShowRail
-    && (inlineExpanded || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
+    && (inlineExpanded || selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
   const useExpandedInlineInspector =
     shouldRenderExpandedInlineInspector
-    && (hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
+    && (selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
+  const anchorExpandedInlineToTop = inlineExpandedAnchor === "top";
   const inlineWidth = useMemo(() => {
     const targetWidth = viewportInspectorTargetWidthPx();
     return `${targetWidth}px`;
@@ -482,7 +487,7 @@ export default function RightRail({
     expandedMotionRef.current = animate(expandedEl, {
       opacity: useExpandedInlineInspector ? 1 : 0,
       x: useExpandedInlineInspector ? 0 : 32,
-      y: useExpandedInlineInspector ? 0 : 10,
+      y: useExpandedInlineInspector ? 0 : (anchorExpandedInlineToTop ? -10 : 10),
       scale: useExpandedInlineInspector ? 1 : 0.965,
       rotateY: useExpandedInlineInspector ? 0 : -18,
       rotateZ: useExpandedInlineInspector ? 0 : 1.8,
@@ -494,7 +499,7 @@ export default function RightRail({
       cancelMotion(expandedMotionRef.current);
       expandedMotionRef.current = null;
     };
-  }, [useExpandedInlineInspector]);
+  }, [anchorExpandedInlineToTop, useExpandedInlineInspector]);
 
   useLayoutEffect(() => {
     if (!inline) return undefined;
@@ -513,22 +518,33 @@ export default function RightRail({
       const dockRect = dockEl?.getBoundingClientRect?.() || null;
       const stripRect = stripEl?.getBoundingClientRect?.() || null;
       const stackRect = stackEl?.getBoundingClientRect?.() || null;
-      const safeTop = inlineDockPlacement === "top"
-        ? hostRect.top + INLINE_EXPANDED_SAFE_GAP
-        : Math.max(
-          stripRect ? stripRect.bottom + INLINE_EXPANDED_SAFE_GAP : hostRect.top + INLINE_EXPANDED_SAFE_GAP,
-          stackRect && stackRect.height > 0
-            ? stackRect.bottom + INLINE_EXPANDED_SAFE_GAP
-            : hostRect.top + INLINE_EXPANDED_SAFE_GAP
+      const safeTop = anchorExpandedInlineToTop
+        ? ((dockRect || railEl.getBoundingClientRect()).top + INLINE_EXPANDED_SAFE_GAP)
+        : (
+          inlineDockPlacement === "top"
+            ? hostRect.top + INLINE_EXPANDED_SAFE_GAP
+            : Math.max(
+              stripRect ? stripRect.bottom + INLINE_EXPANDED_SAFE_GAP : hostRect.top + INLINE_EXPANDED_SAFE_GAP,
+              stackRect && stackRect.height > 0
+                ? stackRect.bottom + INLINE_EXPANDED_SAFE_GAP
+                : hostRect.top + INLINE_EXPANDED_SAFE_GAP
+            )
         );
-      const safeBottom = inlineDockPlacement === "top"
-        ? ((dockEl?.getBoundingClientRect?.() || railEl.getBoundingClientRect()).bottom - INLINE_EXPANDED_BOTTOM_GAP)
-        : hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP;
+      const safeBottom = anchorExpandedInlineToTop
+        ? hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
+        : (
+          inlineDockPlacement === "top"
+            ? ((dockRect || railEl.getBoundingClientRect()).bottom - INLINE_EXPANDED_BOTTOM_GAP)
+            : hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
+        );
       const availableHeight = Math.max(0, Math.floor(safeBottom - safeTop));
       const minimumHeight = Math.min(INLINE_EXPANDED_MIN_HEIGHT, availableHeight);
+      const defaultExpandedHeight = inlineExpandedMaxHeight == null
+        ? INLINE_EXPANDED_DEFAULT_HEIGHT
+        : Math.min(INLINE_EXPANDED_DEFAULT_HEIGHT, inlineExpandedMaxHeight);
       const nextHeight = Math.max(
         minimumHeight,
-        Math.min(INLINE_EXPANDED_DEFAULT_HEIGHT, availableHeight)
+        Math.min(defaultExpandedHeight, availableHeight)
       );
 
       setExpandedInlineHeight((currentHeight) => (
@@ -581,7 +597,15 @@ export default function RightRail({
       observer.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, [compactInlineWidthPx, inline, inlineDockPlacement, shouldRenderExpandedInlineInspector, shouldShowRail]);
+  }, [
+    anchorExpandedInlineToTop,
+    compactInlineWidthPx,
+    inline,
+    inlineDockPlacement,
+    inlineExpandedMaxHeight,
+    shouldRenderExpandedInlineInspector,
+    shouldShowRail,
+  ]);
 
   const containerStyle = useMemo(
     () => (inline
@@ -610,8 +634,20 @@ export default function RightRail({
     ]
   );
   const expandedInlineShellOffset = inlineExpandedSide === "left"
-    ? { left: `-${INLINE_EXPANDED_RIGHT_BLEED}px`, right: "auto", transformOrigin: "bottom left" }
-    : { left: "auto", right: `-${INLINE_EXPANDED_RIGHT_BLEED}px`, transformOrigin: "bottom right" };
+    ? {
+      left: `-${INLINE_EXPANDED_RIGHT_BLEED}px`,
+      right: "auto",
+      top: anchorExpandedInlineToTop ? "0" : "auto",
+      bottom: anchorExpandedInlineToTop ? "auto" : "0",
+      transformOrigin: anchorExpandedInlineToTop ? "top left" : "bottom left",
+    }
+    : {
+      left: "auto",
+      right: `-${INLINE_EXPANDED_RIGHT_BLEED}px`,
+      top: anchorExpandedInlineToTop ? "0" : "auto",
+      bottom: anchorExpandedInlineToTop ? "auto" : "0",
+      transformOrigin: anchorExpandedInlineToTop ? "top right" : "bottom right",
+    };
   return (
     <aside
       ref={railRef}
@@ -657,7 +693,7 @@ export default function RightRail({
           <div
             ref={expandedInspectorRef}
             className={cn(
-              "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute bottom-0 overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
+              "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
               useExpandedInlineInspector ? "is-open pointer-events-auto z-[60]" : "is-closed pointer-events-none z-0"
             )}
             style={{
