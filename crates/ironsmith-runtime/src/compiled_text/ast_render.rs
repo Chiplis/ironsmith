@@ -18,6 +18,11 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
 }
 
 fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {
+    if line.contains("Exile this card from your graveyard")
+        || line.contains("exile this card from your graveyard")
+    {
+        return line.to_string();
+    }
     let Some(primary_type) = def.card.card_types.first() else {
         return line.to_string();
     };
@@ -43,7 +48,10 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
                 consumed += 1;
             }
             if consumed > 1 {
-                out.push(format!("{prefix}{}", render_keyword_list(&keywords, true)));
+                out.push(format!(
+                    "{prefix}{}",
+                    render_intrinsic_keyword_list(&keywords, true)
+                ));
                 idx += consumed;
                 continue;
             }
@@ -60,7 +68,10 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
                 consumed += 1;
             }
             if consumed > 1 {
-                out.push(format!("{prefix}{}", render_keyword_list(&keywords, true)));
+                out.push(format!(
+                    "{prefix}{}",
+                    render_intrinsic_keyword_list(&keywords, true)
+                ));
                 idx += consumed;
                 continue;
             }
@@ -175,6 +186,24 @@ fn is_mergeable_keyword_surface(keyword: &str) -> bool {
 }
 
 fn render_keyword_list(keywords: &[String], capitalize: bool) -> String {
+    render_keyword_list_with_separator(keywords, capitalize, KeywordListSeparator::EnglishAnd)
+}
+
+#[derive(Clone, Copy)]
+enum KeywordListSeparator {
+    Comma,
+    EnglishAnd,
+}
+
+fn render_intrinsic_keyword_list(keywords: &[String], capitalize: bool) -> String {
+    render_keyword_list_with_separator(keywords, capitalize, KeywordListSeparator::Comma)
+}
+
+fn render_keyword_list_with_separator(
+    keywords: &[String],
+    capitalize: bool,
+    separator: KeywordListSeparator,
+) -> String {
     let mut items = Vec::new();
     let mut protections = Vec::new();
     for keyword in keywords {
@@ -208,7 +237,10 @@ fn render_keyword_list(keywords: &[String], capitalize: bool) -> String {
         };
         items.push(protection);
     }
-    let rendered = join_english_list(&items);
+    let rendered = match separator {
+        KeywordListSeparator::Comma => items.join(", "),
+        KeywordListSeparator::EnglishAnd => join_english_list(&items),
+    };
     if capitalize {
         capitalize_first(&rendered)
     } else {

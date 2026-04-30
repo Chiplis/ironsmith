@@ -29467,6 +29467,7 @@ pub(super) fn describe_ability(
             } else {
                 None
             };
+            cost_text = normalize_zone_bound_self_exile_cost(cost_text, ability);
             if ability.functional_zones.contains(&Zone::Hand)
                 && cost_text.as_deref().is_some_and(|cost| {
                     matches!(
@@ -29594,7 +29595,12 @@ pub(super) fn describe_ability(
             let mut line = format!("Activated ability {index}");
             let mut pre = Vec::new();
             if !activated.mana_cost.costs().is_empty() {
-                pre.push(describe_cost_list(activated.mana_cost.costs()));
+                if let Some(cost_text) = normalize_zone_bound_self_exile_cost(
+                    Some(describe_cost_list(activated.mana_cost.costs())),
+                    ability,
+                ) {
+                    pre.push(cost_text);
+                }
             }
             if !activated.choices.is_empty()
                 && !(!activated.effects.is_empty()
@@ -29645,6 +29651,27 @@ pub(super) fn describe_ability(
     }
 }
 
+fn normalize_zone_bound_self_exile_cost(
+    cost_text: Option<String>,
+    ability: &Ability,
+) -> Option<String> {
+    let cost = cost_text?;
+    if ability.functional_zones.contains(&Zone::Graveyard) {
+        let mut rewritten = cost;
+        if rewritten.contains("Exile this card from your graveyard") {
+            return Some(rewritten);
+        }
+        for subject in ["creature", "permanent", "source", "spell", "card"] {
+            rewritten = rewritten.replace(
+                &format!("Exile this {subject}"),
+                "Exile this card from your graveyard",
+            );
+        }
+        return Some(rewritten);
+    }
+    Some(cost)
+}
+
 pub(super) fn normalize_ability_self_reference_surface(line: &str, subject: &str) -> String {
     if subject.eq_ignore_ascii_case("this source") {
         return line.to_string();
@@ -29662,7 +29689,7 @@ fn normalize_graveyard_source_return_surface(line: &str, ability: &Ability) -> S
     }
     let normalize_battlefield_self_return = !line.contains(". Put ");
     let mut normalized = line.to_string();
-    for subject in ["creature", "spell", "permanent", "source"] {
+    for subject in ["Aura", "card", "creature", "spell", "permanent", "source"] {
         normalized = normalized.replace(
             &format!("Return this {subject} from a graveyard to its owner's hand"),
             "Return this card from your graveyard to your hand",

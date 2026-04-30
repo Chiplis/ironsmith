@@ -190,9 +190,19 @@ fn finalize_ast_surface_line(line: String) -> String {
         "number of other creatures and/or artifacts you control",
     );
     line = line.replace(
+        "number of another creature artifact you control",
+        "number of other creatures and/or artifacts you control",
+    );
+    line = line.replace(
         "number of other creature.",
         "number of other creatures on the battlefield.",
     );
+    line = line.replace(
+        "number of another creature.",
+        "number of other creatures on the battlefield.",
+    );
+    line = line.replace("This creature creature's", "This creature's");
+    line = line.replace("this creature creature's", "this creature's");
     if let Some(each) = line
         .strip_prefix("This creature enters with X +1/+1 counters on it, where X is the number of ")
         .filter(|each| each.contains("creatures and/or artifacts"))
@@ -204,6 +214,7 @@ fn finalize_ast_surface_line(line: String) -> String {
             .replace("artifacts ", "artifact ");
         return format!("This creature enters with a +1/+1 counter on it for each {each}");
     }
+    line = normalize_conditional_additional_x_counters(&line);
     if line
         .to_ascii_lowercase()
         .contains("a land is put into a graveyard from the battlefield")
@@ -211,6 +222,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         return line.replace("that object's controller", "that land's controller");
     }
+    line = normalize_conditional_followup_case(&line);
+    line = normalize_activation_colon_payload_case(&line);
     line = normalize_top_card_exile_imperative(&line);
     line = capitalize_sentence_boundaries(&line);
     if is_keyword_style_line(&line) {
@@ -218,6 +231,101 @@ fn finalize_ast_surface_line(line: String) -> String {
     } else {
         ensure_trailing_period(&line)
     }
+}
+
+fn normalize_conditional_additional_x_counters(line: &str) -> String {
+    let Some(rest) = line.strip_prefix(
+        "This creature enters with X +1/+1 counters on it. This creature enters with X +1/+1 counters on it if ",
+    ) else {
+        return line.to_string();
+    };
+    let condition = rest.trim().trim_end_matches('.').replace("x is", "X is");
+    if condition.is_empty() {
+        return line.to_string();
+    }
+    format!(
+        "This creature enters with X +1/+1 counters on it. If {condition}, it enters with an additional X +1/+1 counters on it"
+    )
+}
+
+fn normalize_conditional_followup_case(line: &str) -> String {
+    let mut normalized = line.to_string();
+    for verb in [
+        "Add",
+        "Attach",
+        "Choose",
+        "Copy",
+        "Counter",
+        "Create",
+        "Destroy",
+        "Discard",
+        "Draw",
+        "Exile",
+        "Gain",
+        "Lose",
+        "Mill",
+        "Put",
+        "Return",
+        "Sacrifice",
+        "Search",
+        "Tap",
+        "Untap",
+    ] {
+        let lowered = lowercase_first(verb);
+        normalized = lowercase_conditional_comma_followup(&normalized, verb, &lowered);
+        normalized = normalized.replace(
+            &format!("Otherwise, {verb} "),
+            &format!("Otherwise, {lowered} "),
+        );
+    }
+    normalized
+}
+
+fn lowercase_conditional_comma_followup(line: &str, verb: &str, lowered: &str) -> String {
+    let needle = format!(", {verb} ");
+    let mut normalized = line.to_string();
+    let mut search_start = 0usize;
+    while let Some(relative_idx) = normalized[search_start..].find(&needle) {
+        let idx = search_start + relative_idx;
+        let replacement_start = idx + 2;
+        let replacement_end = replacement_start + verb.len();
+        if comma_follows_conditional_marker(&normalized[..idx]) {
+            normalized.replace_range(replacement_start..replacement_end, lowered);
+        }
+        search_start = idx + needle.len();
+    }
+    normalized
+}
+
+fn comma_follows_conditional_marker(prefix: &str) -> bool {
+    let sentence_start = prefix
+        .rfind(|ch| matches!(ch, '.' | '\n' | ';'))
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    let segment = prefix[sentence_start..].trim_start().to_ascii_lowercase();
+    segment.starts_with("if ")
+        || segment.contains(", if ")
+        || segment.starts_with("for each ")
+        || segment.contains(", for each ")
+        || segment.starts_with("otherwise")
+}
+
+fn normalize_activation_colon_payload_case(line: &str) -> String {
+    let Some(idx) = line.rfind(": ") else {
+        return line.to_string();
+    };
+    let payload_start = idx + 2;
+    let Some(first) = line[payload_start..].chars().next() else {
+        return line.to_string();
+    };
+    if !first.is_ascii_lowercase() {
+        return line.to_string();
+    }
+    let mut normalized = String::with_capacity(line.len());
+    normalized.push_str(&line[..payload_start]);
+    normalized.push(first.to_ascii_uppercase());
+    normalized.push_str(&line[payload_start + first.len_utf8()..]);
+    normalized
 }
 
 fn replace_ascii_case_insensitive_once(
@@ -288,6 +396,17 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+            if left == "This creature enters with X +1/+1 counters on it"
+                && let Some(condition) = right_lower
+                    .strip_prefix("this creature enters with x +1/+1 counters on it if ")
+            {
+                merged.push(format!(
+                    "{left}. If {}, it enters with an additional X +1/+1 counters on it.",
+                    condition.replace("x is", "X is")
+                ));
+                idx += 2;
+                continue;
+            }
         }
         merged.push(lines[idx].clone());
         idx += 1;
@@ -350,6 +469,38 @@ mod tests {
         assert_eq!(
             lines[1],
             "As this land enters, choose a color other than blue"
+        );
+    }
+
+    #[test]
+    fn conditional_followup_case_does_not_lower_activation_costs() {
+        assert_eq!(
+            normalize_conditional_followup_case(
+                "{2}, {T}, Put a blood counter on this artifact: Draw a card."
+            ),
+            "{2}, {T}, Put a blood counter on this artifact: Draw a card."
+        );
+        assert_eq!(
+            normalize_conditional_followup_case(
+                "If it's tapped, Put a stun counter on it. Otherwise, Tap it."
+            ),
+            "If it's tapped, put a stun counter on it. Otherwise, tap it."
+        );
+    }
+
+    #[test]
+    fn adjacent_conditional_x_counter_lines_use_additional_counter_surface() {
+        let lines = merge_specific_adjacent_surface_lines(vec![
+            "This creature enters with X +1/+1 counters on it.".to_string(),
+            "This creature enters with X +1/+1 counters on it if x is 5 or more.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "This creature enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it."
+                    .to_string()
+            ]
         );
     }
 }
