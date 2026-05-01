@@ -11546,9 +11546,7 @@ pub(super) fn describe_inline_ability_with_self_subject(
                     line.push_str(&clause);
                 }
             }
-            for clause in
-                describe_mana_usage_restriction_clauses(&activated.mana_usage_restrictions)
-            {
+            for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
                 if !line.is_empty() {
                     line.push_str(". ");
                 }
@@ -12223,6 +12221,66 @@ mod tests {
         assert_eq!(
             describe_effect(&effect),
             "Add one mana of any color in your commander's color identity"
+        );
+    }
+
+    #[test]
+    fn mana_usage_restriction_special_spell_filters_render_oracle_surfaces() {
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default()
+                    .commander()
+                    .owned_by(PlayerFilter::You),
+                false,
+            ),
+            Some("your commander".to_string())
+        );
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+                false,
+            ),
+            Some("a spell from your graveyard".to_string())
+        );
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::You),
+                true,
+            ),
+            Some("spells from your graveyard".to_string())
+        );
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default().in_zone(Zone::Exile),
+                false,
+            ),
+            Some("spells from exile".to_string())
+        );
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default()
+                    .with_static_ability(crate::static_abilities::StaticAbilityId::MakeColorless),
+                false,
+            ),
+            Some("a spell with devoid".to_string())
+        );
+
+        let mut no_abilities = ObjectFilter::default().with_type(crate::types::CardType::Creature);
+        no_abilities.no_abilities = true;
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(&no_abilities, false),
+            Some("creature spells with no abilities".to_string())
+        );
+        assert_eq!(
+            describe_mana_usage_spell_filter_target_with_options(
+                &ObjectFilter::default().owned_by(PlayerFilter::NotYou),
+                false,
+            ),
+            Some("spells you don't own".to_string())
         );
     }
 
@@ -27195,17 +27253,19 @@ pub(super) fn normalize_activation_restriction_clause(raw: &str) -> String {
     clause
 }
 
-fn describe_mana_usage_restriction_clauses(
-    restrictions: &[crate::ability::ManaUsageRestriction],
+fn describe_mana_usage_restriction_clauses_for_activated(
+    activated: &crate::ability::ActivatedAbility,
 ) -> Vec<String> {
-    restrictions
+    activated
+        .mana_usage_restrictions
         .iter()
-        .filter_map(describe_mana_usage_restriction)
+        .filter_map(|restriction| describe_mana_usage_restriction(restriction, Some(activated)))
         .collect()
 }
 
 fn describe_mana_usage_restriction(
     restriction: &crate::ability::ManaUsageRestriction,
+    activated: Option<&crate::ability::ActivatedAbility>,
 ) -> Option<String> {
     match restriction {
         crate::ability::ManaUsageRestriction::CastSpell {
@@ -27252,7 +27312,13 @@ fn describe_mana_usage_restriction(
             grant_uncounterable,
             enters_with_counters,
         } => {
-            let spell_text = describe_mana_usage_spell_filter_target(filter)?;
+            let pluralize_origin_spell = activated
+                .and_then(activated_mana_output_amount)
+                .is_some_and(|amount| amount > 1);
+            let spell_text = describe_mana_usage_spell_filter_target_with_options(
+                filter,
+                pluralize_origin_spell,
+            )?;
             let mut line = if *restrict_to_matching_spell {
                 format!("Spend this mana only to cast {spell_text}")
             } else if !*grant_uncounterable && enters_with_counters.is_empty() {
@@ -27286,7 +27352,49 @@ fn describe_mana_usage_restriction(
     }
 }
 
-fn describe_mana_usage_spell_filter_target(filter: &ObjectFilter) -> Option<String> {
+fn activated_mana_output_amount(activated: &crate::ability::ActivatedAbility) -> Option<i32> {
+    if let Some(mana_output) = activated.mana_output.as_ref()
+        && !mana_output.is_empty()
+    {
+        return Some(mana_output.len() as i32);
+    }
+
+    let mut total = 0;
+    let mut found = false;
+    for effect in activated.effects.flattened_default_effects() {
+        if let Some(add_mana) = effect.downcast_ref::<crate::effects::AddManaEffect>() {
+            total += add_mana.mana.len() as i32;
+            found = true;
+        }
+        if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
+            && let Value::Fixed(amount) = &add_any.amount
+            && *amount > 0
+        {
+            total += *amount;
+            found = true;
+        }
+        if let Some(add_one) = effect.downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>()
+            && let Value::Fixed(amount) = &add_one.amount
+            && *amount > 0
+        {
+            total += *amount;
+            found = true;
+        }
+    }
+
+    found.then_some(total)
+}
+
+fn describe_mana_usage_spell_filter_target_with_options(
+    filter: &ObjectFilter,
+    pluralize_origin_spell: bool,
+) -> Option<String> {
+    if let Some(special) =
+        describe_special_mana_usage_spell_filter_target(filter, pluralize_origin_spell)
+    {
+        return Some(special);
+    }
+
     let mut described = describe_simple_mana_usage_spell_filter(filter)
         .unwrap_or_else(|| describe_cast_limit_spell_filter(filter));
     if described.is_empty() {
@@ -27314,6 +27422,51 @@ fn describe_mana_usage_spell_filter_target(filter: &ObjectFilter) -> Option<Stri
         "a"
     };
     Some(format!("{article} {described}"))
+}
+
+fn describe_special_mana_usage_spell_filter_target(
+    filter: &ObjectFilter,
+    pluralize_origin_spell: bool,
+) -> Option<String> {
+    if filter
+        == &ObjectFilter::default()
+            .commander()
+            .owned_by(PlayerFilter::You)
+    {
+        return Some("your commander".to_string());
+    }
+    if filter
+        == &ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+    {
+        if pluralize_origin_spell {
+            return Some("spells from your graveyard".to_string());
+        }
+        return Some("a spell from your graveyard".to_string());
+    }
+    if filter == &ObjectFilter::default().in_zone(Zone::Exile) {
+        return Some("spells from exile".to_string());
+    }
+    if filter
+        == &ObjectFilter::default()
+            .with_static_ability(crate::static_abilities::StaticAbilityId::MakeColorless)
+    {
+        return Some("a spell with devoid".to_string());
+    }
+
+    let mut creature_with_no_abilities =
+        ObjectFilter::default().with_type(crate::types::CardType::Creature);
+    creature_with_no_abilities.no_abilities = true;
+    if filter == &creature_with_no_abilities {
+        return Some("creature spells with no abilities".to_string());
+    }
+
+    if filter == &ObjectFilter::default().owned_by(PlayerFilter::NotYou) {
+        return Some("spells you don't own".to_string());
+    }
+
+    None
 }
 
 fn describe_simple_mana_usage_spell_filter(filter: &ObjectFilter) -> Option<String> {
@@ -29654,9 +29807,7 @@ pub(super) fn describe_ability(
                     line.push_str(&clause);
                 }
             }
-            for clause in
-                describe_mana_usage_restriction_clauses(&activated.mana_usage_restrictions)
-            {
+            for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
                 line.push_str(". ");
                 line.push_str(&clause);
             }

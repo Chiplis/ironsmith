@@ -6,6 +6,7 @@ use winnow::token::any;
 use crate::ConditionExpr;
 use crate::ability::{ActivationTiming, ManaUsageRestriction};
 use crate::object::CounterType;
+use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
@@ -694,35 +695,38 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
     if spec_words.is_empty() {
         return None;
     }
-    if spec_words.iter().any(|word| {
-        matches!(
-            *word,
-            "activate"
-                | "activates"
-                | "activated"
-                | "activation"
-                | "ability"
-                | "abilities"
-                | "pay"
-                | "foretell"
-                | "unlock"
-                | "turn"
-                | "cost"
-                | "costs"
-        )
-    }) {
+    let special_filter = parse_special_mana_usage_spell_filter_words(&spec_words);
+    if special_filter.is_none()
+        && spec_words.iter().any(|word| {
+            matches!(
+                *word,
+                "activate"
+                    | "activates"
+                    | "activated"
+                    | "activation"
+                    | "ability"
+                    | "abilities"
+                    | "pay"
+                    | "foretell"
+                    | "unlock"
+                    | "turn"
+                    | "cost"
+                    | "costs"
+            )
+        })
+    {
         return None;
     }
 
-    let spec_text = spec_words.join(" ");
-    let spec_tokens = super::super::lexer::lex_line(&spec_text, 0).ok()?;
-    let filter = parse_spell_filter_with_grammar_entrypoint(&spec_tokens);
     let is_plain_spell = spec_words
         .iter()
         .all(|word| matches!(*word, "a" | "an" | "the" | "spell" | "spells"));
-    if filter == ObjectFilter::default() && !is_plain_spell {
-        return None;
-    }
+    let filter = special_filter.or_else(|| {
+        let spec_text = spec_words.join(" ");
+        let spec_tokens = super::super::lexer::lex_line(&spec_text, 0).ok()?;
+        let filter = parse_spell_filter_with_grammar_entrypoint(&spec_tokens);
+        (filter != ObjectFilter::default() || is_plain_spell).then_some(filter)
+    })?;
 
     let grant_uncounterable =
         words
@@ -738,6 +742,62 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
         grant_uncounterable,
         enters_with_counters: vec![],
     })
+}
+
+fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let words = strip_optional_leading_article(words);
+    if words.is_empty() {
+        return None;
+    }
+
+    if matches!(
+        words,
+        ["your", "commander"] | ["your", "commander", "spell" | "spells"]
+    ) {
+        return Some(
+            ObjectFilter::default()
+                .commander()
+                .owned_by(PlayerFilter::You),
+        );
+    }
+
+    if matches!(words, ["spell" | "spells", "from", "your", "graveyard"]) {
+        return Some(
+            ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+        );
+    }
+
+    if matches!(words, ["spell" | "spells", "from", "exile"]) {
+        return Some(ObjectFilter::default().in_zone(Zone::Exile));
+    }
+
+    if matches!(words, ["spell" | "spells", "with", "devoid"]) {
+        return Some(ObjectFilter::default().with_static_ability(StaticAbilityId::MakeColorless));
+    }
+
+    if matches!(
+        words,
+        ["creature", "spell" | "spells", "with", "no", "abilities"]
+    ) {
+        let mut filter = ObjectFilter::default().with_type(crate::types::CardType::Creature);
+        filter.no_abilities = true;
+        return Some(filter);
+    }
+
+    if matches!(words, ["spell" | "spells", "you", "don't" | "dont", "own"]) {
+        return Some(ObjectFilter::default().owned_by(PlayerFilter::NotYou));
+    }
+
+    None
+}
+
+fn strip_optional_leading_article<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
+    match words {
+        ["a" | "an" | "the", rest @ ..] => rest,
+        _ => words,
+    }
 }
 
 pub(crate) fn parse_mana_spend_bonus_sentence_lexed(

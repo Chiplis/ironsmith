@@ -2347,6 +2347,71 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
 }
 
 #[test]
+fn rewrite_lexed_mana_restrictions_parse_supported_spell_filter_shapes() {
+    fn parse_filter(text: &str) -> crate::target::ObjectFilter {
+        let tokens = lex_line(text, 0).expect("rewrite lexer should classify mana restriction");
+        match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+            Some(crate::ability::ManaUsageRestriction::CastSpellMatching { filter, .. }) => filter,
+            other => panic!("expected CastSpellMatching restriction for {text:?}, got {other:?}"),
+        }
+    }
+
+    let commander = parse_filter("Spend this mana only to cast your commander.");
+    assert!(commander.is_commander);
+    assert_eq!(commander.owner, Some(crate::target::PlayerFilter::You));
+
+    let graveyard = parse_filter("Spend this mana only to cast a spell from your graveyard.");
+    assert_eq!(graveyard.zone, Some(crate::zone::Zone::Graveyard));
+    assert_eq!(graveyard.owner, Some(crate::target::PlayerFilter::You));
+
+    let exile = parse_filter("Spend this mana only to cast spells from exile.");
+    assert_eq!(exile.zone, Some(crate::zone::Zone::Exile));
+
+    let devoid = parse_filter("Spend this mana only to cast a spell with devoid.");
+    assert_eq!(
+        devoid.static_abilities,
+        vec![StaticAbilityId::MakeColorless]
+    );
+
+    let no_abilities =
+        parse_filter("Spend this mana only to cast creature spells with no abilities.");
+    assert_eq!(no_abilities.card_types, vec![CardType::Creature]);
+    assert!(no_abilities.no_abilities);
+
+    let unowned = parse_filter("Spend this mana only to cast spells you don't own.");
+    assert_eq!(unowned.owner, Some(crate::target::PlayerFilter::NotYou));
+}
+
+#[test]
+fn rewrite_activation_line_attaches_special_mana_restriction_filters() {
+    let tokens = lex_line(
+        "{T}, Sacrifice this artifact: Add three mana of any one color. Spend this mana only to cast your commander.",
+        0,
+    )
+    .expect("rewrite lexer should classify Jeweled Lotus-style activated line");
+
+    let parsed = super::parse_activated_line(&tokens)
+        .expect("activated line should parse")
+        .expect("activated line should produce an ability");
+
+    match parsed.kind() {
+        crate::ability::AbilityKind::Activated(activated) => {
+            let [crate::ability::ManaUsageRestriction::CastSpellMatching { filter, .. }] =
+                activated.mana_usage_restrictions.as_slice()
+            else {
+                panic!(
+                    "expected one commander mana usage restriction, got {:?}",
+                    activated.mana_usage_restrictions
+                );
+            };
+            assert!(filter.is_commander);
+            assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+        }
+        other => panic!("expected activated ability, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
     let mut attacked_ability = crate::ability::ActivatedAbility {
         mana_cost: crate::cost::TotalCost::default(),
