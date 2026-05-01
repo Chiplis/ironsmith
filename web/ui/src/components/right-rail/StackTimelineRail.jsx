@@ -199,7 +199,7 @@ export default function StackTimelineRail({
       >
         <div
           className={cn(
-            "pointer-events-auto overflow-hidden transition-[max-height] duration-320 ease-out",
+            "pointer-events-none overflow-hidden transition-[max-height] duration-320 ease-out",
             shouldShowRail ? "max-h-[90vh]" : "max-h-0",
           )}
           style={{
@@ -230,7 +230,7 @@ export default function StackTimelineRail({
   if (!shouldShowRail) return null;
 
   const horizontalTimeline = (
-    <div className="flex h-full w-full min-w-0 items-stretch justify-start pointer-events-auto pl-2">
+    <div className="flex h-full w-full min-w-0 items-stretch justify-start pointer-events-none pl-2">
       <div className="inline-flex h-full items-center justify-start">
         <InspectorStackTimeline
           embedded
@@ -258,7 +258,7 @@ export default function StackTimelineRail({
       {inlineRect && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-[96] flex items-stretch justify-start bg-[linear-gradient(180deg,rgba(56,49,42,0.98),rgba(49,44,39,0.98))]"
+              className="pointer-events-none fixed z-[96] flex items-stretch justify-start bg-transparent"
               style={{
                 left: `${inlineRect.left}px`,
                 top: `${inlineRect.top}px`,
