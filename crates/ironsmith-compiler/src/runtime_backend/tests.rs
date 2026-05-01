@@ -2341,8 +2341,10 @@ fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_mana_shapes() 
             restrict_to_matching_spell: true,
             grant_uncounterable: true,
             enters_with_counters,
+            granted_abilities,
         }) if card_types == vec![CardType::Artifact]
             && enters_with_counters.is_empty()
+            && granted_abilities.is_empty()
     ));
 }
 
@@ -5750,8 +5752,10 @@ fn rewrite_activation_line_collects_sentence_modifiers_via_activated_sentence_mo
                     restrict_to_matching_spell: true,
                     grant_uncounterable: true,
                     enters_with_counters,
+                    granted_abilities,
                 }] if card_types == &vec![CardType::Artifact]
                     && enters_with_counters.is_empty()
+                    && granted_abilities.is_empty()
             ));
             assert!(
                 activated.additional_restrictions.iter().any(|restriction| {
@@ -5791,9 +5795,43 @@ fn rewrite_activation_line_parses_biophagus_style_conditional_mana_bonus() {
                     restrict_to_matching_spell: false,
                     grant_uncounterable: false,
                     enters_with_counters,
+                    granted_abilities,
                 }] if card_types == &vec![CardType::Creature]
                     && enters_with_counters
                         == &vec![(crate::object::CounterType::PlusOnePlusOne, 1)]
+                    && granted_abilities.is_empty()
+            ));
+        }
+        other => panic!("expected activated ability, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_activation_line_parses_spent_on_spell_static_ability_bonus() {
+    let tokens = lex_line(
+        "{R}, {T}, Exert this land: Add {R}{R}. If that mana is spent on a creature spell, it gains haste until end of turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify Arena of Glory-style mana bonus");
+
+    let parsed = super::parse_activated_line(&tokens)
+        .expect("Arena of Glory-style line should parse")
+        .expect("Arena of Glory-style line should produce an ability");
+
+    match parsed.kind() {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert!(matches!(
+                activated.mana_usage_restrictions.as_slice(),
+                [crate::ability::ManaUsageRestriction::CastSpell {
+                    card_types,
+                    subtype_requirement: None,
+                    restrict_to_matching_spell: false,
+                    grant_uncounterable: false,
+                    enters_with_counters,
+                    granted_abilities,
+                }] if card_types == &vec![CardType::Creature]
+                    && enters_with_counters.is_empty()
+                    && granted_abilities == &vec![crate::static_abilities::StaticAbilityId::Haste]
             ));
         }
         other => panic!("expected activated ability, got {other:?}"),

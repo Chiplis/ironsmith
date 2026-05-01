@@ -3119,7 +3119,14 @@ fn render_begin_on_battlefield_pregame(
     if spec.require_not_starting_player {
         clause.push_str(" and you're not the starting player");
     }
-    clause.push_str(", you may begin the game with this on the battlefield");
+    let simple_begin_on_battlefield = !spec.require_not_starting_player
+        && spec.counters.is_empty()
+        && spec.exile_cards_from_hand == 0;
+    if simple_begin_on_battlefield {
+        clause.push_str(", you may begin the game with it on the battlefield");
+    } else {
+        clause.push_str(", you may begin the game with this on the battlefield");
+    }
     if !spec.counters.is_empty() {
         clause.push_str(" with ");
         let counter_phrases: Vec<String> = spec

@@ -618,13 +618,68 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
 }
 
 fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
-    text.replace("When this creature ", "When this token ")
-        .replace("Whenever this creature ", "Whenever this token ")
-        .replace(
-            "this creature is dealt damage",
-            "this token is dealt damage",
-        )
-        .replace("this creature becomes tapped", "this token becomes tapped")
+    let mut normalized = text.to_string();
+    for source_type in ["creature", "artifact", "enchantment", "land", "permanent"] {
+        normalized = normalized.replace(&format!("This {source_type}"), "This token");
+        normalized = normalized.replace(&format!("this {source_type}"), "this token");
+    }
+    normalized
+        .replace("Sacrifice this token, Add ", "Sacrifice this token: Add ")
+        .replace("Sacrifice this token, add ", "Sacrifice this token: Add ")
+        .replace(": add ", ": Add ")
+}
+
+fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.ends_with('.')
+        && !trimmed.ends_with('!')
+        && !trimmed.ends_with('?')
+        && (trimmed.contains("Sacrifice this token:")
+            || trimmed.starts_with("When this token ")
+            || trimmed.starts_with("Whenever this token "))
+}
+
+pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
+    if !line.contains(" token") || !line.contains('"') {
+        return line.to_string();
+    }
+
+    let mut out = String::new();
+    let mut in_quote = false;
+    let mut token_quote_list_active = false;
+    for part in line.split('"') {
+        if in_quote {
+            if token_quote_list_active {
+                let mut ability = normalize_token_self_reference_in_quoted_ability(part);
+                if token_quoted_ability_needs_terminal_period(&ability) {
+                    ability.push('.');
+                }
+                out.push('"');
+                out.push_str(&ability);
+                out.push('"');
+            } else {
+                out.push('"');
+                out.push_str(part);
+                out.push('"');
+            }
+        } else {
+            let lower = part.trim_end().to_ascii_lowercase();
+            let begins_token_quote_list = lower.ends_with("token. it has")
+                || lower.ends_with("tokens. they have")
+                || lower.ends_with("token with")
+                || lower.ends_with("tokens with")
+                || (lower.contains(" token") && (lower.ends_with(" and") || lower.ends_with(',')));
+            if begins_token_quote_list {
+                token_quote_list_active = true;
+            } else if token_quote_list_active {
+                let connector = part.trim().trim_end_matches('.');
+                token_quote_list_active = connector.eq_ignore_ascii_case("and") || connector == ",";
+            }
+            out.push_str(part);
+        }
+        in_quote = !in_quote;
+    }
+    out
 }
 
 pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String {
@@ -1519,6 +1574,7 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalized.replace("this way,.", "this way,");
     normalized = normalized.replace("card ins", "cards in");
     normalized = normalized.replace("one or more another ", "one or more other ");
@@ -1537,6 +1593,33 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         && rest.contains(" until end of turn")
     {
         normalized = format!("Target creature gains {rest}");
+    }
+    if let Some(rest) =
+        normalized.strip_prefix("Whenever this creature enters or attacks, this creature deals ")
+        && let Some((amount, gain_tail)) = rest.split_once(" damage to any target. You gain ")
+    {
+        let gain_tail = gain_tail.trim_end_matches('.');
+        if gain_tail == format!("{amount} life") {
+            normalized = format!(
+                "Whenever this creature enters or attacks, it deals {amount} damage to any target and you gain {amount} life"
+            );
+        }
+    }
+    for prefix in [
+        "When this creature enters or this creature attacks, this creature deals ",
+        "When this permanent enters or this creature attacks, this creature deals ",
+    ] {
+        if let Some(rest) = normalized.strip_prefix(prefix)
+            && let Some((amount, gain_tail)) = rest.split_once(" damage to any target. You gain ")
+        {
+            let gain_tail = gain_tail.trim_end_matches('.');
+            if gain_tail == format!("{amount} life") {
+                normalized = format!(
+                    "Whenever this creature enters or attacks, it deals {amount} damage to any target and you gain {amount} life"
+                );
+                break;
+            }
+        }
     }
     if let Some(compacted) = compact_repeated_process_once_surface(&normalized) {
         normalized = compacted;
@@ -6699,43 +6782,43 @@ pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> S
     match (min, max) {
         (Some(Value::Fixed(min_value)), Value::Fixed(max_value)) => {
             match (*min_value, *max_value) {
-                (0, 1) => "Choose up to one -".to_string(),
-                (1, 1) => "Choose one -".to_string(),
-                (1, 2) => "Choose one or both -".to_string(),
-                (1, n) if n > 2 => "Choose one or more -".to_string(),
+                (0, 1) => "Choose up to one —".to_string(),
+                (1, 1) => "Choose one —".to_string(),
+                (1, 2) => "Choose one or both —".to_string(),
+                (1, n) if n > 2 => "Choose one or more —".to_string(),
                 (0, n) => {
                     if let Some(word) = number_word(n) {
-                        format!("Choose up to {word} -")
+                        format!("Choose up to {word} —")
                     } else {
-                        format!("Choose up to {n} -")
+                        format!("Choose up to {n} —")
                     }
                 }
                 (n, m) if n == m => {
                     if let Some(word) = number_word(n) {
-                        format!("Choose {word} -")
+                        format!("Choose {word} —")
                     } else {
-                        format!("Choose {n} -")
+                        format!("Choose {n} —")
                     }
                 }
-                _ => format!("Choose between {min_value} and {max_value} mode(s) -"),
+                _ => format!("Choose between {min_value} and {max_value} mode(s) —"),
             }
         }
         (None, Value::Fixed(value)) if *value > 0 => {
             if let Some(word) = number_word(*value) {
-                format!("Choose {word} -")
+                format!("Choose {word} —")
             } else {
-                format!("Choose {value} mode(s) -")
+                format!("Choose {value} mode(s) —")
             }
         }
         (Some(Value::Fixed(0)), max) => {
-            format!("Choose up to {} -", describe_value(max))
+            format!("Choose up to {} —", describe_value(max))
         }
         (Some(min), max) => format!(
-            "Choose between {} and {} mode(s) -",
+            "Choose between {} and {} mode(s) —",
             describe_value(min),
             describe_value(max)
         ),
-        (None, max) => format!("Choose {} mode(s) -", describe_value(max)),
+        (None, max) => format!("Choose {} mode(s) —", describe_value(max)),
     }
 }
 
@@ -9869,6 +9952,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{object} was put into a graveyard from the battlefield this turn")
         }
         Condition::SourceWasCast => "you cast it".to_string(),
+        Condition::ThisSpellEscaped => "this spell escaped".to_string(),
         Condition::ThisSpellWasCastFromZone(zone) => {
             let zone_text = match zone {
                 Zone::Graveyard => "a graveyard".to_string(),
@@ -10798,6 +10882,30 @@ mod tests {
         assert_eq!(
             normalize_common_semantic_phrasing("Draw a card. Draw a card."),
             "Draw a card. Draw a card."
+        );
+    }
+
+    #[test]
+    fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
+        assert_eq!(
+            quote_token_granted_ability_text("Sacrifice this creature, add {c}"),
+            "\"Sacrifice this token: Add {C}\""
+        );
+        assert_eq!(
+            quote_token_granted_ability_text("{t}, Sacrifice this artifact, add {r} or {g}"),
+            "\"{T}, Sacrifice this token: Add {R} or {G}\""
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this creature, add {C}\""
+            ),
+            "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token: Add {C}.\""
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target creature gains \"When this creature dies, create a Wicked Role token attached to it.\" until end of turn."
+            ),
+            "Target creature gains \"When this creature dies, create a Wicked Role token attached to it.\" until end of turn."
         );
     }
 }

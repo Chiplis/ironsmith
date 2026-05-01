@@ -1,7 +1,7 @@
 use crate::cost_model::{CoreCostComponent, TotalCost};
 use crate::{
-    CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram, Subtype,
-    Zone,
+    CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram,
+    StaticAbilityId, Subtype, Zone,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,12 +29,14 @@ pub enum ManaUsageRestriction {
         restrict_to_matching_spell: bool,
         grant_uncounterable: bool,
         enters_with_counters: Vec<(crate::CounterType, u32)>,
+        granted_abilities: Vec<StaticAbilityId>,
     },
     CastSpellMatching {
         filter: ObjectFilter,
         restrict_to_matching_spell: bool,
         grant_uncounterable: bool,
         enters_with_counters: Vec<(crate::CounterType, u32)>,
+        granted_abilities: Vec<StaticAbilityId>,
     },
 }
 

@@ -385,6 +385,10 @@ pub struct FilterContext {
 
     /// Tagged players from prior effects in the same spell/ability.
     pub tagged_players: std::collections::HashMap<TagKey, Vec<PlayerId>>,
+
+    /// Outcomes from prior effects in the same spell/ability.
+    pub effect_outcomes:
+        std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
 }
 
 impl FilterContext {
@@ -471,6 +475,15 @@ impl FilterContext {
         tagged: &std::collections::HashMap<TagKey, Vec<PlayerId>>,
     ) -> Self {
         self.tagged_players.extend(tagged.clone());
+        self
+    }
+
+    /// Set prior effect outcomes from the execution context.
+    pub fn with_effect_outcomes(
+        mut self,
+        outcomes: &std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    ) -> Self {
+        self.effect_outcomes.extend(outcomes.clone());
         self
     }
 }
@@ -603,6 +616,15 @@ fn resolve_filter_comparison_rhs_value(
         Value::XTimes(multiplier) => {
             resolve_x_value(game, ctx, stack_entry).map(|value| value * multiplier)
         }
+        Value::EffectValue(effect_id) => ctx
+            .effect_outcomes
+            .get(effect_id)
+            .and_then(|outcome| outcome.as_count()),
+        Value::EffectValueOffset(effect_id, offset) => ctx
+            .effect_outcomes
+            .get(effect_id)
+            .and_then(|outcome| outcome.as_count())
+            .map(|value| value + offset),
         Value::Add(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?
                 + resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,

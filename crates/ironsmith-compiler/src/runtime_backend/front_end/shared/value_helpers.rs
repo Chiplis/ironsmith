@@ -358,6 +358,14 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
         return Some(value);
     }
+    if word_refs_have_prefix(&filter_words, &["basic", "land", "type", "among"])
+        || word_refs_have_prefix(&filter_words, &["basic", "land", "types", "among"])
+    {
+        let scope_start_token_idx = token_index_for_word_index(&filter_tokens, 4)?;
+        let scope_tokens = trim_edge_punctuation(&filter_tokens[scope_start_token_idx..]);
+        let filter = parse_object_filter(&scope_tokens, false).ok()?;
+        return Some(Value::BasicLandTypesAmong(filter));
+    }
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -667,8 +675,18 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     let filter_start_word_idx = number_word_idx + 2;
     let filter_start_token_idx = words_all.token_index_for_word_index(filter_start_word_idx)?;
     let filter_tokens = trim_lexed_edge_punctuation(&tokens[filter_start_token_idx..]);
+    let filter_words = ValueHelperCompatWords::new(filter_tokens).to_word_refs();
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens) {
         return Some(value);
+    }
+    if word_refs_have_prefix(&filter_words, &["basic", "land", "type", "among"])
+        || word_refs_have_prefix(&filter_words, &["basic", "land", "types", "among"])
+    {
+        let scope_start_token_idx =
+            ValueHelperCompatWords::new(filter_tokens).token_index_for_word_index(4)?;
+        let scope_tokens = trim_lexed_edge_punctuation(&filter_tokens[scope_start_token_idx..]);
+        let filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
+        return Some(Value::BasicLandTypesAmong(filter));
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))

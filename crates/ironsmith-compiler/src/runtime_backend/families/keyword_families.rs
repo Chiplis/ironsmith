@@ -38,6 +38,7 @@ pub(super) enum KeywordDispatchHint {
     Flashback,
     Harmonize,
     Multikicker,
+    Replicate,
     Entwine,
     Offspring,
     Madness,
@@ -177,6 +178,12 @@ mod spell_keywords {
             lower: registry::lower_multikicker,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Replicate,
+            hints: &[KeywordDispatchHint::Replicate],
+            matches: registry::matches_replicate,
+            lower: registry::lower_replicate,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Entwine,
             hints: &[KeywordDispatchHint::Entwine],
             matches: registry::matches_entwine,
@@ -260,6 +267,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("flashback").value(KeywordDispatchHint::Flashback),
                 grammar::kw("harmonize").value(KeywordDispatchHint::Harmonize),
                 grammar::kw("multikicker").value(KeywordDispatchHint::Multikicker),
+                grammar::kw("replicate").value(KeywordDispatchHint::Replicate),
                 grammar::kw("entwine").value(KeywordDispatchHint::Entwine),
                 grammar::kw("offspring").value(KeywordDispatchHint::Offspring),
             )),

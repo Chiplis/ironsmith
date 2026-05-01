@@ -622,6 +622,7 @@ pub enum Condition {
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     SourceWasCast,
+    ThisSpellEscaped,
     ThisSpellWasCastFromZone(Zone),
     PlayerTappedLandForManaThisTurn {
         player: PlayerFilter,

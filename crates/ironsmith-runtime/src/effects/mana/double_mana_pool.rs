@@ -144,6 +144,7 @@ mod tests {
                 restrict_to_matching_spell: true,
                 grant_uncounterable: true,
                 enters_with_counters: vec![],
+                granted_abilities: vec![],
             }],
         };
 

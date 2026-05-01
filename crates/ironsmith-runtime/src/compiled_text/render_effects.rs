@@ -2264,6 +2264,56 @@ fn describe_choose_then_put_counter_on_each(effects: &[&Effect]) -> Option<Strin
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let raw_effects = effects.iter().collect::<Vec<_>>();
+    fn unwrap_wrapped_effect(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_wrapped_effect(&tagged.effect);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return unwrap_wrapped_effect(&tag_all.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap_wrapped_effect(with_id.effect.as_ref());
+        }
+        effect
+    }
+
+    fn describe_energy_then_pay_any_then_destroy(effects: &[&Effect]) -> Option<String> {
+        let [energy_effect, may_effect, destroy_effect] = effects else {
+            return None;
+        };
+        let energy = unwrap_wrapped_effect(energy_effect)
+            .downcast_ref::<crate::effects::EnergyCountersEffect>()?;
+        if energy.player != PlayerFilter::You {
+            return None;
+        }
+        let may = unwrap_wrapped_effect(may_effect).downcast_ref::<crate::effects::MayEffect>()?;
+        if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
+            return None;
+        }
+        let pay_any = unwrap_wrapped_effect(&may.effects[0])
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()?;
+        if !matches!(pay_any.player, ChooseSpec::Player(PlayerFilter::You)) {
+            return None;
+        }
+        let destroy = describe_effect(destroy_effect);
+        if !destroy.contains("the amount of {E} paid this way") {
+            return None;
+        }
+        let may_text = describe_effect(may_effect);
+        let may_tail = may_text
+            .strip_prefix("You may ")
+            .or_else(|| may_text.strip_prefix("you may "))?;
+        Some(format!(
+            "{}, then you may {}. {destroy}",
+            describe_effect(energy_effect),
+            may_tail
+        ))
+    }
+
+    if let Some(compact) = describe_energy_then_pay_any_then_destroy(&raw_effects) {
+        return compact;
+    }
+
     fn describe_copy_then_may_cast_copy(effects: &[&Effect]) -> Option<String> {
         let [copy_effect, may_effect] = effects else {
             return None;
@@ -11152,6 +11202,14 @@ pub(super) fn describe_false_only_conditional(
         }
     }
 
+    if matches!(condition, crate::effect::Condition::ThisSpellEscaped) {
+        let branch = false_branch.trim().trim_end_matches('.');
+        if branch.is_empty() {
+            return "Unless it escaped".to_string();
+        }
+        return format!("{branch} unless it escaped");
+    }
+
     format!(
         "If it isn't true that {}, {}",
         lowercase_first(&describe_condition(condition)),
@@ -13000,6 +13058,41 @@ mod tests {
     }
 
     #[test]
+    fn describe_effect_list_compacts_energy_pay_any_destroy_threshold() {
+        let mut destroy_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        destroy_filter.card_types = vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+        ];
+        destroy_filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+            Value::EffectValue(crate::effect::EffectId(0)),
+        )));
+
+        let effects = vec![
+            Effect::new(crate::effects::EnergyCountersEffect::new(
+                Value::X,
+                PlayerFilter::You,
+            )),
+            Effect::with_id(
+                0,
+                Effect::new(crate::effects::MayEffect::new_for_player(
+                    vec![Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                        ChooseSpec::Player(PlayerFilter::You),
+                    ))],
+                    PlayerFilter::You,
+                )),
+            ),
+            Effect::new(crate::effects::DestroyEffect::all(destroy_filter)).tag("destroyed_0"),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "you get X {E}, then you may pay any amount of {E}. Destroy each artifact, creature, and enchantment with mana value less than or equal to the amount of {E} paid this way"
+        );
+    }
+
+    #[test]
     fn describe_effect_list_compacts_put_counter_then_goad_same_tagged_target() {
         let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
         let tagged_counters = Effect::new(crate::effects::PutCountersEffect::new(
@@ -13811,6 +13904,9 @@ pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
         return describe_dynamic_mana_cost(dynamic);
     }
     if let Some(effect) = cost.effect_ref() {
+        if let Some(cost_text) = effect.0.cost_description() {
+            return normalize_cost_phrase(&cost_text);
+        }
         if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
             && matches!(tap.target, ChooseSpec::Source)
         {
@@ -23353,6 +23449,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_counter_constraint(counter)
             );
         }
+        if let ChooseSpec::All(filter) = &destroy.spec
+            && filter.card_types.len() == 3
+            && filter.card_types.contains(&CardType::Artifact)
+            && filter.card_types.contains(&CardType::Creature)
+            && filter.card_types.contains(&CardType::Enchantment)
+            && matches!(
+                filter.mana_value,
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(ref value))
+                    if matches!(value.as_ref(), Value::EffectValue(_) | Value::EffectValueOffset(_, 0))
+            )
+        {
+            return "Destroy each artifact, creature, and enchantment with mana value less than or equal to the amount of {E} paid this way".to_string();
+        }
         return format!("Destroy {}", describe_choose_spec(&destroy.spec));
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
@@ -26261,6 +26370,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         return format!("{} gets {}", describe_player_filter(&poison.player), amount);
     }
+    if let Some(pay_any_energy) = effect.downcast_ref::<crate::effects::PayAnyEnergyEffect>() {
+        let payer = describe_choose_spec(&pay_any_energy.player);
+        if payer == "you" {
+            return "Pay any amount of {E}".to_string();
+        }
+        return format!(
+            "{payer} {} any amount of {{E}}",
+            player_verb(&payer, "pay", "pays")
+        );
+    }
     if let Some(pay_energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
         let payer = describe_choose_spec(&pay_energy.player);
         let amount = describe_energy_payment_amount(&pay_energy.amount);
@@ -26277,6 +26396,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "{player} {verb} {}",
                 repeated_energy_symbols(*amount as usize)
             ),
+            Value::X => format!("{player} {verb} X {{E}}"),
             Value::Count(filter) => format!(
                 "{player} {verb} {{E}} for each {}",
                 describe_for_each_count_filter(filter)
@@ -27874,12 +27994,23 @@ fn describe_mana_usage_restriction(
             restrict_to_matching_spell,
             grant_uncounterable,
             enters_with_counters,
+            granted_abilities,
         } => {
             let spell_text = describe_mana_usage_spell_target(card_types, *subtype_requirement)?;
+            let use_spent_on_wording = !granted_abilities.is_empty()
+                && activated
+                    .and_then(activated_mana_output_amount)
+                    .unwrap_or(1)
+                    > 1;
             let mut line = if *restrict_to_matching_spell {
                 format!("Spend this mana only to cast {spell_text}")
-            } else if !*grant_uncounterable && enters_with_counters.is_empty() {
+            } else if !*grant_uncounterable
+                && enters_with_counters.is_empty()
+                && granted_abilities.is_empty()
+            {
                 return None;
+            } else if use_spent_on_wording {
+                format!("If that mana is spent on {spell_text}")
             } else {
                 format!("If this mana is spent to cast {spell_text}")
             };
@@ -27892,6 +28023,11 @@ fn describe_mana_usage_restriction(
                 enters_with_counters.iter().map(|(counter_type, count)| {
                     describe_mana_usage_etb_bonus(*counter_type, *count)
                 }),
+            );
+            bonuses.extend(
+                granted_abilities
+                    .iter()
+                    .filter_map(|ability| describe_mana_usage_static_ability_bonus(*ability)),
             );
 
             if bonuses.is_empty() {
@@ -27911,6 +28047,7 @@ fn describe_mana_usage_restriction(
             restrict_to_matching_spell,
             grant_uncounterable,
             enters_with_counters,
+            granted_abilities,
         } => {
             let pluralize_origin_spell = activated
                 .and_then(activated_mana_output_amount)
@@ -27921,8 +28058,13 @@ fn describe_mana_usage_restriction(
             )?;
             let mut line = if *restrict_to_matching_spell {
                 format!("Spend this mana only to cast {spell_text}")
-            } else if !*grant_uncounterable && enters_with_counters.is_empty() {
+            } else if !*grant_uncounterable
+                && enters_with_counters.is_empty()
+                && granted_abilities.is_empty()
+            {
                 return None;
+            } else if !granted_abilities.is_empty() && pluralize_origin_spell {
+                format!("If that mana is spent on {spell_text}")
             } else {
                 format!("If this mana is spent to cast {spell_text}")
             };
@@ -27935,6 +28077,11 @@ fn describe_mana_usage_restriction(
                 enters_with_counters.iter().map(|(counter_type, count)| {
                     describe_mana_usage_etb_bonus(*counter_type, *count)
                 }),
+            );
+            bonuses.extend(
+                granted_abilities
+                    .iter()
+                    .filter_map(|ability| describe_mana_usage_static_ability_bonus(*ability)),
             );
 
             if bonuses.is_empty() {
@@ -28164,6 +28311,17 @@ fn describe_mana_usage_etb_bonus(counter_type: crate::object::CounterType, count
         .map(str::to_string)
         .unwrap_or_else(|| count.to_string());
     format!("that creature enters with {count_text} additional {counter_text} counters on it")
+}
+
+fn describe_mana_usage_static_ability_bonus(
+    ability: crate::static_abilities::StaticAbilityId,
+) -> Option<String> {
+    match ability {
+        crate::static_abilities::StaticAbilityId::Haste => {
+            Some("it gains haste until end of turn".to_string())
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn collect_activation_restriction_clauses(
@@ -30992,7 +31150,13 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         )
     } else {
         match label {
-            "Replicate" => format!("Replicate—{}.", cost_text.trim_end_matches('.')),
+            "Replicate" => {
+                if cost_text.trim().is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label} {cost_text}")
+                }
+            }
             // Most optional-cost keywords render with a space-separated payload.
             "Bargain" => label.to_string(),
             "Kicker" | "Multikicker" | "Buyback" | "Entwine" => {

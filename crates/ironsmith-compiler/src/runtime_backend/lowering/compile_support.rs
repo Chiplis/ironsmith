@@ -536,6 +536,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             )));
         }
         PredicateAst::SourceWasCast => Condition::SourceWasCast,
+        PredicateAst::ThisSpellEscaped => Condition::ThisSpellEscaped,
         PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
         PredicateAst::YouHaveFullParty => Condition::YouHaveFullParty,
         PredicateAst::ThisSpellWasKicked => Condition::ThisSpellWasKicked,

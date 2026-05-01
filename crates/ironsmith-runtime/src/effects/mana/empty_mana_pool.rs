@@ -58,6 +58,7 @@ mod tests {
                 restrict_to_matching_spell: false,
                 grant_uncounterable: false,
                 enters_with_counters: vec![],
+                granted_abilities: vec![],
             }],
         };
         let player = game.player_mut(alice).expect("alice exists");

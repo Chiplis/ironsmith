@@ -10,6 +10,7 @@ use crate::filter::PlayerFilterExt;
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::player::ManaPool;
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::target::FilterContext;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -193,6 +194,10 @@ pub struct Object {
     /// Mana actually spent to cast this object while it was a spell.
     /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
     pub mana_spent_to_cast: ManaPool,
+    /// Non-copiable static abilities granted until end of turn while this object is a spell or
+    /// permanent. Stack-to-battlefield movement preserves these grants for the permanent that
+    /// spell becomes; other zone changes clear them.
+    pub temporary_static_ability_grants: Vec<TemporaryStaticAbilityGrant>,
     /// X value chosen for this object when it was cast (if any).
     /// Used by ETB and other triggered abilities that reference X from the mana cost.
     pub x_value: Option<u32>,
@@ -218,6 +223,40 @@ pub struct Object {
     // - madness_exiled -> GameState::madness_exiled
     // - final_chapter_resolved -> GameState::saga_final_chapter_resolved
     // - is_commander -> GameState::commanders
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemporaryStaticAbilityGrant {
+    pub ability: StaticAbilityId,
+    pub expires_end_of_turn: u32,
+}
+
+impl TemporaryStaticAbilityGrant {
+    pub fn is_expired(&self, current_turn: u32) -> bool {
+        current_turn > self.expires_end_of_turn
+    }
+
+    pub fn materialize(&self) -> Option<StaticAbility> {
+        static_ability_from_id(self.ability)
+    }
+}
+
+fn static_ability_from_id(ability: StaticAbilityId) -> Option<StaticAbility> {
+    match ability {
+        StaticAbilityId::Deathtouch => Some(StaticAbility::deathtouch()),
+        StaticAbilityId::DoubleStrike => Some(StaticAbility::double_strike()),
+        StaticAbilityId::FirstStrike => Some(StaticAbility::first_strike()),
+        StaticAbilityId::Flying => Some(StaticAbility::flying()),
+        StaticAbilityId::Haste => Some(StaticAbility::haste()),
+        StaticAbilityId::Hexproof => Some(StaticAbility::hexproof()),
+        StaticAbilityId::Indestructible => Some(StaticAbility::indestructible()),
+        StaticAbilityId::Lifelink => Some(StaticAbility::lifelink()),
+        StaticAbilityId::Menace => Some(StaticAbility::menace()),
+        StaticAbilityId::Reach => Some(StaticAbility::reach()),
+        StaticAbilityId::Trample => Some(StaticAbility::trample()),
+        StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
+        _ => None,
+    }
 }
 
 impl Object {
@@ -280,6 +319,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
@@ -475,6 +515,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
@@ -528,6 +569,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             // Cost effects are copiable
@@ -586,6 +628,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
@@ -643,6 +686,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
@@ -1179,6 +1223,7 @@ impl Object {
             optional_costs: def.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: def.additional_cost.clone(),

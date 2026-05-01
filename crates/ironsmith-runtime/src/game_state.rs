@@ -2091,6 +2091,28 @@ impl GameState {
         );
     }
 
+    pub fn grant_temporary_static_ability_to_object_until_end_of_turn(
+        &mut self,
+        object_id: ObjectId,
+        ability: crate::static_abilities::StaticAbilityId,
+    ) {
+        let expires_end_of_turn = self.turn.turn_number;
+        let Some(object) = self.object_mut(object_id) else {
+            return;
+        };
+        if object.temporary_static_ability_grants.iter().any(|grant| {
+            grant.ability == ability && grant.expires_end_of_turn >= expires_end_of_turn
+        }) {
+            return;
+        }
+        object
+            .temporary_static_ability_grants
+            .push(crate::object::TemporaryStaticAbilityGrant {
+                ability,
+                expires_end_of_turn,
+            });
+    }
+
     pub fn temporary_granted_spell_abilities(
         &self,
         spell_id: ObjectId,
@@ -2216,6 +2238,18 @@ impl GameState {
         self.effect_store
             .temporary_spell_ability_grants
             .retain(|effect| !effect.is_expired(current_turn));
+    }
+
+    pub fn cleanup_temporary_object_static_ability_grants_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        let ids = self.objects.keys().copied().collect::<Vec<_>>();
+        for id in ids {
+            if let Some(object) = self.object_mut(id) {
+                object
+                    .temporary_static_ability_grants
+                    .retain(|grant| grant.expires_end_of_turn > current_turn);
+            }
+        }
     }
 
     /// Can the player draw any cards?
@@ -2952,11 +2986,16 @@ impl GameState {
             new_zone == Zone::Battlefield && new_object.face_down_cast_state.is_some();
         let preserve_bestow_overlay =
             new_zone == Zone::Battlefield && new_object.bestow_cast_state.is_some();
+        let preserve_temporary_static_ability_grants =
+            old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
             new_object.bestow_cast_state = None;
             new_object.face_down_cast_state = None;
+        }
+        if !preserve_temporary_static_ability_grants {
+            new_object.temporary_static_ability_grants.clear();
         }
 
         // Set battlefield state for new permanents
@@ -4263,6 +4302,13 @@ impl GameState {
                             _ => None,
                         })
                         .chain(object.level_granted_abilities().iter().cloned())
+                        .chain(
+                            object
+                                .temporary_static_ability_grants
+                                .iter()
+                                .filter(|grant| !grant.is_expired(self.turn.turn_number))
+                                .filter_map(|grant| grant.materialize()),
+                        )
                         .collect(),
                     controller: self.controller_of(object),
                 });
@@ -6290,6 +6336,7 @@ impl GameState {
             target_objects: Vec::new(),
             tagged_objects,
             tagged_players,
+            effect_outcomes: std::collections::HashMap::new(),
         }
     }
 

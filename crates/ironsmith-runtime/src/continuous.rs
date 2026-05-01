@@ -1070,6 +1070,7 @@ pub(crate) fn in_progress_characteristics(
 fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
     let mut chars = initial_text_box_characteristics(object);
     add_abilities_from_counters(object, &mut chars);
+    add_temporary_static_ability_grants(object, &mut chars);
     chars
 }
 
@@ -3551,6 +3552,7 @@ fn continuous_filter_context(
         target_objects: Vec::new(),
         tagged_objects: std::collections::HashMap::new(),
         tagged_players: std::collections::HashMap::new(),
+        effect_outcomes: std::collections::HashMap::new(),
     }
 }
 
@@ -4243,6 +4245,25 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
                 chars.static_abilities.push(sa);
             }
         }
+    }
+}
+
+fn add_temporary_static_ability_grants(object: &Object, chars: &mut CalculatedCharacteristics) {
+    for grant in &object.temporary_static_ability_grants {
+        let Some(ability) = grant.materialize() else {
+            continue;
+        };
+        if chars
+            .static_abilities
+            .iter()
+            .any(|existing| existing.id() == ability.id())
+        {
+            continue;
+        }
+        chars
+            .abilities
+            .push(Ability::static_ability(ability.clone()));
+        chars.static_abilities.push(ability);
     }
 }
 

@@ -7,7 +7,7 @@ import useStackStartAlert from "@/hooks/useStackStartAlert";
 import StackCard from "@/components/cards/StackCard";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
-import { ManaCostIcons } from "@/lib/mana-symbols";
+import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
@@ -257,7 +257,9 @@ function HorizontalStackEntry({
             "absolute inset-x-0 bottom-0 truncate font-bold uppercase leading-none tracking-[0.12em] text-[#ead9b6]",
             compact ? "text-[8px]" : "text-[9px]"
           )}>
-            {subtitle || kindLabel}
+            {subtitle ? (
+              <SymbolText text={subtitle} noWrap />
+            ) : kindLabel}
           </div>
         </div>
       </button>

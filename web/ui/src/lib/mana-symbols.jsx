@@ -1,4 +1,5 @@
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
+import { splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
 
 /**
  * Inline Scryfall mana symbol SVGs — extracted once, no external fetches.
@@ -243,6 +244,47 @@ export function ManaSymbol({ sym, size = 14 }) {
 
 const SYMBOL_RE = /\{([^}]+)\}/g;
 
+function KeywordHelperText({ text, rule }) {
+  if (!rule) return text;
+  const title = `${rule.title} (${rule.rule})`;
+
+  return (
+    <ComicTooltip
+      title={title}
+      description={rule.summary}
+      sideOffset={7}
+      contentClassName="max-w-[300px]"
+    >
+      <span
+        className="mtg-keyword-helper"
+        role="button"
+        tabIndex={0}
+        aria-label={`${rule.title} rules helper`}
+        data-keyword-helper={rule.id}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <span className="mtg-keyword-helper__text">{text}</span>
+        <span className="mtg-keyword-helper__icon" aria-hidden="true">?</span>
+      </span>
+    </ComicTooltip>
+  );
+}
+
+function keywordTextParts(text, nextKey) {
+  return splitTextWithMtgKeywordRules(text).map((segment) => {
+    if (segment.type !== "keyword") return segment.text;
+    return (
+      <KeywordHelperText
+        key={nextKey()}
+        text={segment.text}
+        rule={segment.rule}
+      />
+    );
+  });
+}
+
 export function ManaCostIcons({ cost, size = 12 }) {
   if (!cost) return null;
   const matches = cost.match(SYMBOL_RE);
@@ -268,12 +310,18 @@ export function SymbolText({
   const parts = [];
   let last = 0;
   let key = 0;
+  const nextKey = () => `keyword-${key++}`;
+  const appendText = (value) => {
+    if (!value) return;
+    parts.push(...keywordTextParts(value, nextKey));
+  };
+
   for (const match of text.matchAll(SYMBOL_RE)) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    parts.push(<ManaSymbol key={key++} sym={match[1]} size={symbolSize} />);
+    if (match.index > last) appendText(text.slice(last, match.index));
+    parts.push(<ManaSymbol key={`symbol-${key++}`} sym={match[1]} size={symbolSize} />);
     last = match.index + match[0].length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) appendText(text.slice(last));
   return (
     <span
       className={className}

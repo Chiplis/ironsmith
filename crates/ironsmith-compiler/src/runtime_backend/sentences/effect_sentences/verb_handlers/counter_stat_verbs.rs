@@ -248,6 +248,16 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
+        if word == "colorless"
+            && clause_tokens
+                .get(idx + 1)
+                .is_some_and(|token| token.is_word("spell"))
+        {
+            term_filters.push((ObjectFilter::spell().colorless(), CounterTargetTerm::Spell));
+            idx += 2;
+            continue;
+        }
+
         return Ok(None);
     }
 
@@ -650,9 +660,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     if words.get(idx).copied() == Some("the") {
         idx += 1;
     }
-    if words.get(idx).copied() != Some("number")
-        || words.get(idx + 1).copied() != Some("of")
-    {
+    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
         return None;
     }
 

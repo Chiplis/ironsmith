@@ -72,6 +72,7 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
     merge_ast_surface_lines(lines)
         .into_iter()
         .map(finalize_ast_surface_line)
+        .flat_map(expand_finalized_ast_surface_line)
         .collect()
 }
 
@@ -232,6 +233,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_top_card_exile_imperative(&line);
     line = normalize_exact_during_your_turn_predicate_surface(&line);
     line = normalize_sacrifice_enchantment_counter_spell_trigger(&line);
+    line = normalize_token_quoted_ability_surfaces(&line);
     line = line.replace(
         "Tap it. That permanent doesn't untap during its controller's next untap step",
         "Tap it. It doesn't untap during its controller's next untap step",
@@ -579,6 +581,15 @@ fn normalize_sacrifice_enchantment_counter_spell_trigger(line: &str) -> String {
     format!("When {body}, sacrifice this enchantment and counter that spell")
 }
 
+fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    match trimmed.to_ascii_lowercase().as_str() {
+        "skulk, lifelink" => vec!["Skulk".to_string(), "Lifelink".to_string()],
+        "skulk, deathtouch" => vec!["Skulk".to_string(), "Deathtouch".to_string()],
+        _ => vec![line],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -720,6 +731,29 @@ mod tests {
                     .to_string()
             ),
             "When an opponent casts a spell, sacrifice this enchantment and counter that spell."
+        );
+    }
+
+    #[test]
+    fn skulk_keyword_pairs_keep_oracle_line_breaks() {
+        assert_eq!(
+            expand_finalized_ast_surface_line("Skulk, lifelink".to_string()),
+            vec!["Skulk".to_string(), "Lifelink".to_string()]
+        );
+        assert_eq!(
+            expand_finalized_ast_surface_line("Skulk, deathtouch".to_string()),
+            vec!["Skulk".to_string(), "Deathtouch".to_string()]
+        );
+    }
+
+    #[test]
+    fn token_quote_activation_costs_keep_colon_surface() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token, add {C}.\""
+                    .to_string()
+            ),
+            "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token: Add {C}.\""
         );
     }
 

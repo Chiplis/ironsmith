@@ -1120,6 +1120,7 @@ export default function Workspace({
       if (target.closest("[data-object-id]")) return;
       if (target.closest(".zone-viewer")) return;
       if (target.closest(".priority-inline-panel")) return;
+      if (target.closest("[data-card-inspector], .ironsmith-inspector-shell")) return;
       if (target.closest("button, input, label, a, [role='button']")) return;
 
       const inDeadZone = (

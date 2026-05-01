@@ -1433,9 +1433,9 @@ pub struct ExertCostEffect {
 }
 
 impl ExertCostEffect {
-    pub fn new(display_text: impl std::fmt::Debug) -> Self {
+    pub fn new(display_text: impl Into<String>) -> Self {
         Self {
-            display_text: format!("{display_text:?}"),
+            display_text: display_text.into(),
         }
     }
 }
@@ -2872,6 +2872,17 @@ impl PayEnergyEffect {
             amount: amount.into(),
             player,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayAnyEnergyEffect {
+    pub player: ChooseSpec,
+}
+
+impl PayAnyEnergyEffect {
+    pub fn new(player: ChooseSpec) -> Self {
+        Self { player }
     }
 }
 

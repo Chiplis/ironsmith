@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
+import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { SymbolText } from "@/lib/mana-symbols";
 import { nextPriorityAdvanceLabel } from "@/lib/constants";
@@ -259,25 +260,33 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
 
           {isPriorityDecision && passAction && (
             <div className="pb-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-7 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
-                style={decisionButtonStyle}
-                data-local-action={localDecisionButton ? "true" : "false"}
-                aria-disabled={!canAct}
-                onClick={() => {
-                  if (!canAct) return;
-                  dispatch(
-                    { type: "priority_action", action_index: passAction.index },
-                    passAction.label
-                  );
-                }}
-              >
-                <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">
-                  {passLabel}
-                </span>
-              </Button>
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-7 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
+                  style={decisionButtonStyle}
+                  data-local-action={localDecisionButton ? "true" : "false"}
+                  aria-disabled={!canAct}
+                  onClick={() => {
+                    if (!canAct) return;
+                    dispatch(
+                      { type: "priority_action", action_index: passAction.index },
+                      passAction.label
+                    );
+                  }}
+                >
+                  <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">
+                    {passLabel}
+                  </span>
+                </Button>
+                <PhaseHelpPopover
+                  state={state}
+                  decision={decision}
+                  advanceLabel={passLabel}
+                  className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
+                />
+              </div>
             </div>
           )}
 

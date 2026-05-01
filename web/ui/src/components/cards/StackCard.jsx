@@ -4,7 +4,7 @@ import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { scryfallImageUrl } from "@/lib/scryfall";
-import { ManaCostIcons } from "@/lib/mana-symbols";
+import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -188,7 +188,7 @@ export default function StackCard({
             </div>
             {subtitle && (
               <div className="stack-card-effect mt-1 text-[11px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-[#91cdfc]">
-                {subtitle}
+                <SymbolText text={subtitle} style={{ whiteSpace: "inherit" }} />
               </div>
             )}
           </div>

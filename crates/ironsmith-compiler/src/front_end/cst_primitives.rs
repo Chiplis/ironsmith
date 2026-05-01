@@ -24,6 +24,7 @@ pub enum KeywordLineKindCst {
     Madness,
     Morph,
     Multikicker,
+    Replicate,
     Offspring,
     Reinforce,
     Squad,

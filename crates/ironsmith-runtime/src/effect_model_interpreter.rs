@@ -1406,6 +1406,7 @@ where
         crate::effects::MoveCountersEffect,
         crate::effects::MoveToLibraryNthFromTopEffect,
         crate::effects::MoveToZoneEffect,
+        crate::effects::PayAnyEnergyEffect,
         crate::effects::PayEnergyEffect,
         crate::effects::PayManaEffect,
         crate::effects::PopulateEffect,

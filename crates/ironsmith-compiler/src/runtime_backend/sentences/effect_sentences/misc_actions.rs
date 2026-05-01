@@ -395,6 +395,7 @@ pub(crate) fn parse_get(
         let count = parse_add_mana_equal_amount_value(tokens)
             .or(parse_equal_to_number_of_filter_value(tokens))
             .or(parse_dynamic_cost_modifier_value(tokens)?)
+            .or_else(|| parse_value(tokens).map(|(value, _)| value))
             .unwrap_or(Value::Fixed(energy_count as i32));
         return Ok(EffectAst::subject_verb_energy_counters(player, count));
     }
@@ -637,7 +638,7 @@ pub(crate) fn parse_pay(
     if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
-        return Ok(EffectAst::subject_verb_pay_energy(player, Value::Fixed(0)));
+        return Ok(EffectAst::subject_verb_pay_any_energy(player));
     }
     let has_for_each = clause_words
         .windows(2)

@@ -1426,6 +1426,7 @@ fn test_parse_cavern_of_souls_generic_mana_usage_restriction() {
             restrict_to_matching_spell: true,
             grant_uncounterable: true,
             enters_with_counters: vec![],
+            granted_abilities: vec![],
         }]
     );
 }
@@ -5122,6 +5123,37 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_replicate_keyword_line_compiles_to_repeatable_optional_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Replicate Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Replicate {1} (When you cast this spell, copy it for each time you paid its replicate cost. You may choose new targets for the copies.)\nDraw a card.",
+        )
+        .expect("replicate keyword line should parse");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    let replicate = &def.optional_costs[0];
+    assert_eq!(replicate.label, "Replicate");
+    assert!(replicate.repeatable, "replicate should be repeatable");
+    let mana = replicate
+        .cost
+        .mana_cost()
+        .expect("replicate should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{1}");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Replicate {1}"),
+        "expected replicate optional-cost line, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("UnsupportedParserLine"),
+        "replicate keyword line should not rely on unsupported parser fallback: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Squad Test")
         .card_types(vec![CardType::Creature])
@@ -6697,6 +6729,27 @@ fn test_parse_counter_target_ability_or_noncreature_spell_clause() {
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "counter activated/triggered ability or noncreature spell should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_counter_target_triggered_ability_or_colorless_spell_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Colorless Stifle Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target triggered ability or colorless spell.")
+        .expect("counter triggered ability or colorless spell clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("triggered ability") && rendered.contains("colorless spell"),
+        "expected triggered ability and colorless spell selector in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "counter triggered ability or colorless spell should not rely on unsupported fallback marker: {rendered}"
     );
 }
 
@@ -27813,6 +27866,49 @@ fn parse_oracle_encroaching_mycosynth_type_addition_regression() {
 }
 
 #[test]
+fn parse_oracle_leyline_of_the_guildpact_static_characteristics_regression() {
+    let def = parse_oracle_card_definition("Leyline of the Guildpact");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("setcolors")
+            && raw.contains("addsubtypes")
+            && raw.contains("plains")
+            && raw.contains("island")
+            && raw.contains("swamp")
+            && raw.contains("mountain")
+            && raw.contains("forest")
+            && !raw.contains("desert")
+            && !raw.contains("gate"),
+        "expected all-colors and exact basic land subtype static abilities, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "if this card is in your opening hand, you may begin the game with it on the battlefield"
+        ),
+        "expected simple pregame battlefield text to use pronoun surface, got {rendered}"
+    );
+    assert!(
+        rendered.contains("each nonland permanent you control is all colors"),
+        "expected all-colors static text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "lands you control are every basic land type in addition to their other types"
+        ),
+        "expected every-basic-land-type static text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Leyline of the Guildpact to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_dispossess_typed_card_name_regression() {
     let def = parse_oracle_card_definition("Dispossess");
 
@@ -28967,6 +29063,35 @@ fn parse_oracle_biophagus_conditional_mana_bonus_regression() {
             && rendered.contains("if this mana is spent to cast a creature spell")
             && rendered.contains("that creature enters with an additional +1/+1 counter on it"),
         "expected Biophagus to render both its mana ability and creature ETB bonus, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_arena_of_glory_spent_mana_haste_regression() {
+    let def = parse_oracle_card_definition("Arena of Glory");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("exertcosteffect")
+            && raw.contains("mana_usage_restrictions")
+            && raw.contains("granted_abilities")
+            && raw.contains("haste"),
+        "expected Arena of Glory to retain exert cost and spent-mana haste metadata, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("{r}, {t}, exert this land: add {r}{r}")
+            && rendered.contains(
+                "if that mana is spent on a creature spell, it gains haste until end of turn"
+            ),
+        "expected Arena of Glory to render its exert mana ability and haste bonus, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Arena of Glory to render without unsupported placeholders, got {rendered}"
     );
 }
 
@@ -30357,6 +30482,28 @@ fn parse_oracle_cabal_ritual_compiles_to_self_replacement_branch() {
             && debug.contains("GreaterThanOrEqual")
             && debug.contains("right: Fixed(7)"),
         "expected Cabal Ritual oracle text to lower into a threshold self-replacement, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_stubborn_denial_renders_base_effect_before_self_replacement() {
+    let def = parse_oracle_card_definition("Stubborn Denial");
+
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    assert_eq!(program.segments.len(), 1);
+    assert_eq!(program.segments[0].default_effects.len(), 1);
+    assert_eq!(program.segments[0].self_replacements.len(), 1);
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Counter target noncreature spell unless its controller pays {1}. If you control a creature with power 4 or greater, instead counter that spell"
+        ),
+        "expected Stubborn Denial to render the base counter-unless-pays effect before the ferocious self-replacement, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Otherwise, counter target noncreature spell"),
+        "expected Stubborn Denial rendering to avoid inverted otherwise phrasing, got {rendered}"
     );
 }
 
@@ -35843,5 +35990,79 @@ fn score_surface_normalizes_exiled_flashback_return() {
     assert!(
         rendered.contains("Return target exiled card with flashback you own to your hand"),
         "expected exiled flashback return surface, got {rendered}"
+    );
+}
+
+#[test]
+fn card_fixer_parse_sacrifice_unless_it_escaped_keeps_escape_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Escape Sacrifice Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, sacrifice it unless it escaped.\nEscape—{R}, Exile one other card from your graveyard.",
+        )
+        .expect("escape sacrifice condition should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ThisSpellEscaped"),
+        "expected sacrifice condition to lower through ThisSpellEscaped, got {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("sacrifice it unless it escaped"),
+        "expected escape sacrifice surface, got {rendered}"
+    );
+}
+
+#[test]
+fn card_fixer_parse_characteristic_defining_domain_counts_basic_land_types() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Domain Kavu Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::new(
+            crate::card::PtValue::Star,
+            crate::card::PtValue::Star,
+        ))
+        .parse_text(
+            "Domain — This creature's power and toughness are each equal to the number of basic land types among lands you control.",
+        )
+        .expect("domain characteristic-defining P/T should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("BasicLandTypesAmong"),
+        "expected domain CDA to count distinct basic land types, got {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("basic land types among lands you control"),
+        "expected domain CDA surface to mention basic land types, got {rendered}"
+    );
+}
+
+#[test]
+fn card_fixer_parse_color_conditional_keyword_grants_merge_to_oracle_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Color Conditional Grants Variant")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Each creature you control has vigilance if it's white, hexproof if it's blue, lifelink if it's black, first strike if it's red, and trample if it's green.",
+        )
+        .expect("color-conditional keyword grants should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Each creature you control has vigilance if it's white, hexproof if it's blue, lifelink if it's black, first strike if it's red, and trample if it's green"
+        ),
+        "expected merged color-conditional grant surface, got {rendered}"
     );
 }

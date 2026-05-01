@@ -1382,6 +1382,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::EventValue(EventValueSpec::Amount), 2));
     }
     if matches!(
+        words.get(..7),
+        Some(["the", "amount", "of", "e", "paid", "this", "way"])
+    ) {
+        return Some((Value::EventValue(EventValueSpec::Amount), 7));
+    }
+    if matches!(
+        words.get(..6),
+        Some(["amount", "of", "e", "paid", "this", "way"])
+    ) {
+        return Some((Value::EventValue(EventValueSpec::Amount), 6));
+    }
+    if matches!(
         words.get(..5),
         Some(["that", "amount", "of", "excess", "damage"])
     ) {
@@ -1658,6 +1670,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     let filter_words = &words[filter_start..filter_end];
+    if words_have_prefix(filter_words, &["basic", "land", "type", "among"])
+        || words_have_prefix(filter_words, &["basic", "land", "types", "among"])
+    {
+        let scope_start = filter_start + 4;
+        let filter_tokens = words[scope_start..filter_end]
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        return Some((Value::BasicLandTypesAmong(filter), filter_end));
+    }
     if matches!(
         filter_words.get(..3),
         Some(["different", "powers", "among"])
@@ -3718,6 +3741,57 @@ pub(crate) fn parse_multikicker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_multikicker_line(tokens)
+}
+
+pub(crate) fn parse_replicate_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_word("replicate"))
+    {
+        return Ok(None);
+    }
+
+    let mut tail = tokens.get(1..).unwrap_or_default();
+    if matches!(
+        tail.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
+        tail = tail.get(1..).unwrap_or_default();
+    }
+    if tail.is_empty() {
+        return Err(CardTextError::ParseError(
+            "replicate keyword missing cost".to_string(),
+        ));
+    }
+
+    let reminder_start = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| (token.kind == TokenKind::LParen).then_some(idx))
+        .unwrap_or(tail.len());
+    let sentence_end = tail
+        .iter()
+        .enumerate()
+        .find_map(|(idx, token)| token.is_period().then_some(idx))
+        .unwrap_or(tail.len());
+    let end = reminder_start.min(sentence_end);
+    let cost_tokens = trim_commas(&tail[..end]);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "replicate keyword missing cost".to_string(),
+        ));
+    }
+
+    let total_cost = parse_activation_cost(&cost_tokens)?;
+    Ok(Some(OptionalCost::replicate(total_cost)))
+}
+
+pub(crate) fn parse_replicate_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_replicate_line(tokens)
 }
 
 pub(crate) fn parse_squad_line(

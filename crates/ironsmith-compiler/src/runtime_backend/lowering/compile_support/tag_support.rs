@@ -448,6 +448,43 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
     }
 }
 
+fn comparison_references_event_derived_amount(comparison: &crate::filter::Comparison) -> bool {
+    match comparison {
+        crate::filter::Comparison::EqualExpr(value)
+        | crate::filter::Comparison::NotEqualExpr(value)
+        | crate::filter::Comparison::LessThanExpr(value)
+        | crate::filter::Comparison::LessThanOrEqualExpr(value)
+        | crate::filter::Comparison::GreaterThanExpr(value)
+        | crate::filter::Comparison::GreaterThanOrEqualExpr(value) => {
+            value_references_event_derived_amount(value)
+        }
+        _ => false,
+    }
+}
+
+fn filter_references_event_derived_amount(filter: &ObjectFilter) -> bool {
+    filter
+        .power
+        .as_ref()
+        .is_some_and(comparison_references_event_derived_amount)
+        || filter
+            .toughness
+            .as_ref()
+            .is_some_and(comparison_references_event_derived_amount)
+        || filter
+            .mana_value
+            .as_ref()
+            .is_some_and(comparison_references_event_derived_amount)
+        || filter
+            .color_count
+            .as_ref()
+            .is_some_and(comparison_references_event_derived_amount)
+        || filter
+            .any_of
+            .iter()
+            .any(filter_references_event_derived_amount)
+}
+
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
         SubjectVerbActionAst::Draw { count }
@@ -560,6 +597,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::CreateEmblem { .. }
         | SubjectVerbActionAst::LoseGame
         | SubjectVerbActionAst::WinGame
+        | SubjectVerbActionAst::PayAnyEnergy
         | SubjectVerbActionAst::PayMana { .. }
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }
@@ -726,6 +764,24 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                         count_value: Some(count_value),
                         ..
                     } => value_references_event_derived_amount(count_value),
+                    SubjectVerbActionAst::DestroyAll { filter, .. }
+                    | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
+                    | SubjectVerbActionAst::ExileAll { filter, .. }
+                    | SubjectVerbActionAst::ReturnAllToHand { filter }
+                    | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
+                    | SubjectVerbActionAst::TapAll { filter }
+                    | SubjectVerbActionAst::UntapAll { filter }
+                    | SubjectVerbActionAst::PhaseOutAll { filter }
+                    | SubjectVerbActionAst::PhaseInAll { filter }
+                    | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
+                    | SubjectVerbActionAst::SacrificeAll { filter }
+                    | SubjectVerbActionAst::RegenerateAll { filter }
+                    | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
+                    | SubjectVerbActionAst::TagMatchingObjects { filter, .. }
+                    | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
+                    | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. } => {
+                        filter_references_event_derived_amount(filter)
+                    }
                     SubjectVerbActionAst::CreateTokenWithMods {
                         dynamic_power_toughness: Some((power, toughness)),
                         ..

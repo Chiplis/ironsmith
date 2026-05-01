@@ -732,9 +732,13 @@ fn restriction_bonus_applies_to_payment_source(
             subtype_requirement,
             grant_uncounterable,
             enters_with_counters,
+            granted_abilities,
             ..
         } => {
-            if !*grant_uncounterable && enters_with_counters.is_empty() {
+            if !*grant_uncounterable
+                && enters_with_counters.is_empty()
+                && granted_abilities.is_empty()
+            {
                 return false;
             }
             cast_spell_mana_rule_matches_payment_source(
@@ -749,9 +753,13 @@ fn restriction_bonus_applies_to_payment_source(
             filter,
             grant_uncounterable,
             enters_with_counters,
+            granted_abilities,
             ..
         } => {
-            if !*grant_uncounterable && enters_with_counters.is_empty() {
+            if !*grant_uncounterable
+                && enters_with_counters.is_empty()
+                && granted_abilities.is_empty()
+            {
                 return false;
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
@@ -940,20 +948,31 @@ pub(super) fn apply_spent_mana_bonuses(
         if !restriction_bonus_applies_to_payment_source(game, &unit, restriction, payment_source) {
             continue;
         }
-        let Some(source_obj) = game.object_mut(source_id) else {
-            return;
-        };
-        match restriction {
+
+        let (grant_uncounterable, enters_with_counters, granted_abilities) = match restriction {
             crate::ability::ManaUsageRestriction::CastSpell {
-                grant_uncounterable: true,
+                grant_uncounterable,
                 enters_with_counters,
+                granted_abilities,
                 ..
             }
             | crate::ability::ManaUsageRestriction::CastSpellMatching {
-                grant_uncounterable: true,
+                grant_uncounterable,
                 enters_with_counters,
+                granted_abilities,
                 ..
-            } => {
+            } => (
+                *grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+            ),
+        };
+
+        if grant_uncounterable || !enters_with_counters.is_empty() {
+            let Some(source_obj) = game.object_mut(source_id) else {
+                return;
+            };
+            if grant_uncounterable {
                 let already_uncounterable = source_obj.abilities.iter().any(|ability| {
                     matches!(
                         &ability.kind,
@@ -968,38 +987,21 @@ pub(super) fn apply_spent_mana_bonuses(
                             crate::static_abilities::StaticAbility::uncounterable(),
                         ));
                 }
-                for (counter_type, count) in enters_with_counters {
-                    source_obj
-                        .abilities
-                        .push(crate::ability::Ability::static_ability(
-                            crate::static_abilities::StaticAbility::enters_with_counters(
-                                *counter_type,
-                                *count,
-                            ),
-                        ));
-                }
             }
-            crate::ability::ManaUsageRestriction::CastSpell {
-                grant_uncounterable: false,
-                enters_with_counters,
-                ..
+            for (counter_type, count) in enters_with_counters {
+                source_obj
+                    .abilities
+                    .push(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::enters_with_counters(
+                            *counter_type,
+                            *count,
+                        ),
+                    ));
             }
-            | crate::ability::ManaUsageRestriction::CastSpellMatching {
-                grant_uncounterable: false,
-                enters_with_counters,
-                ..
-            } => {
-                for (counter_type, count) in enters_with_counters {
-                    source_obj
-                        .abilities
-                        .push(crate::ability::Ability::static_ability(
-                            crate::static_abilities::StaticAbility::enters_with_counters(
-                                *counter_type,
-                                *count,
-                            ),
-                        ));
-                }
-            }
+        }
+
+        for ability in granted_abilities {
+            game.grant_temporary_static_ability_to_object_until_end_of_turn(source_id, *ability);
         }
     }
 }
@@ -3250,7 +3252,7 @@ pub(super) fn finalize_spell_cast(
     target_assignments: Vec<crate::game_state::TargetAssignment>,
     x_value: Option<u32>,
     casting_method: CastingMethod,
-    optional_costs_paid: OptionalCostsPaid,
+    mut optional_costs_paid: OptionalCostsPaid,
     chosen_modes: Option<Vec<usize>>,
     mut mana_spent_to_cast: ManaPool,
     keyword_payment_contributions: Vec<KeywordPaymentContribution>,
@@ -3431,6 +3433,18 @@ pub(super) fn finalize_spell_cast(
     if let Some(spell_obj) = game.object_mut(new_id) {
         spell_obj.mana_spent_to_cast = mana_spent_to_cast;
         spell_obj.x_value = x_value;
+    }
+    let escaped = game.object(new_id).is_some_and(|spell_obj| {
+        crate::decision::casting_method_matches_alternative_kind(
+            game,
+            caster,
+            spell_obj,
+            &casting_method,
+            crate::filter::AlternativeCastKind::Escape,
+        )
+    });
+    if escaped {
+        optional_costs_paid.mark_label_paid("Escape");
     }
 
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes
@@ -4029,6 +4043,7 @@ mod priority_mana_tests {
             restrict_to_matching_spell: true,
             grant_uncounterable: true,
             enters_with_counters: vec![],
+            granted_abilities: vec![],
         };
         game.object_mut(cavern_id)
             .expect("cavern test land should exist")
@@ -4123,6 +4138,7 @@ mod priority_mana_tests {
             restrict_to_matching_spell: false,
             grant_uncounterable: false,
             enters_with_counters: vec![(crate::object::CounterType::PlusOnePlusOne, 1)],
+            granted_abilities: vec![],
         };
 
         game.player_mut(alice)
@@ -4195,6 +4211,59 @@ mod priority_mana_tests {
                         if static_ability.id() == StaticAbilityId::EnterWithCounters
                 )),
             "bonus-bearing mana should not add ETB counter text to noncreature spells"
+        );
+    }
+
+    #[test]
+    fn test_bonus_mana_grants_temporary_static_ability_to_matching_spell() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_id = game.new_object_id();
+        let restriction = ManaUsageRestriction::CastSpell {
+            card_types: vec![CardType::Creature],
+            subtype_requirement: None,
+            restrict_to_matching_spell: false,
+            grant_uncounterable: false,
+            enters_with_counters: vec![],
+            granted_abilities: vec![StaticAbilityId::Haste],
+        };
+
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Red,
+                source: source_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction],
+            });
+
+        let creature_spell = CardDefinitionBuilder::new(CardId::new(), "Creature Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_spell_id =
+            game.create_object_from_definition(&creature_spell, alice, Zone::Stack);
+        let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Red, Some(creature_spell_id))
+            .expect("bonus-bearing mana should be spendable on creature spells");
+        apply_spent_mana_bonuses(&mut game, Some(creature_spell_id), &spent);
+
+        assert!(
+            game.current_has_static_ability_id(creature_spell_id, StaticAbilityId::Haste),
+            "matching spell should gain haste from spent mana"
+        );
+
+        let permanent_id = game
+            .move_object_by_effect(creature_spell_id, Zone::Battlefield)
+            .expect("creature spell should resolve to the battlefield");
+        assert!(
+            game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+            "stack-to-battlefield movement should preserve the temporary haste grant"
+        );
+
+        game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+        assert!(
+            !game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+            "temporary haste grant should expire at end of turn"
         );
     }
 

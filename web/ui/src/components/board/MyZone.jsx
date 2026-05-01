@@ -908,6 +908,7 @@ export default function MyZone({
         {mobileInspectorVisible ? (
           <aside
             className="my-zone-mobile-inspector-rail"
+            data-card-inspector="true"
             data-mobile-hand-drop-target="inspector"
           >
             <div className="my-zone-mobile-inline-inspector">

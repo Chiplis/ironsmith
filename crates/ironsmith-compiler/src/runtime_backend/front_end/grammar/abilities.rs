@@ -525,9 +525,11 @@ const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
     &["spend", "that", "mana", "only", "to", "cast"],
 ];
-const IF_MANA_SPENT_TO_CAST_PREFIXES: &[&[&str]] = &[
+const IF_MANA_SPENT_SPELL_PREFIXES: &[&[&str]] = &[
     &["if", "this", "mana", "is", "spent", "to", "cast"],
     &["if", "that", "mana", "is", "spent", "to", "cast"],
+    &["if", "this", "mana", "is", "spent", "on"],
+    &["if", "that", "mana", "is", "spent", "on"],
 ];
 const DURING_OPPONENTS_TURN_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "an", "opponents", "turn"],
@@ -665,6 +667,7 @@ fn parse_legacy_mana_usage_restriction_sentence_lexed(
         restrict_to_matching_spell: true,
         grant_uncounterable,
         enters_with_counters: vec![],
+        granted_abilities: vec![],
     })
 }
 
@@ -741,6 +744,7 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
         restrict_to_matching_spell: true,
         grant_uncounterable,
         enters_with_counters: vec![],
+        granted_abilities: vec![],
     })
 }
 
@@ -803,9 +807,7 @@ fn strip_optional_leading_article<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
 pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
-    if primitives::words_match_any_prefix(tokens, IF_MANA_SPENT_TO_CAST_PREFIXES).is_none() {
-        return None;
-    }
+    let (prefix, _) = primitives::words_match_any_prefix(tokens, IF_MANA_SPENT_SPELL_PREFIXES)?;
 
     let words = TokenWordView::new(tokens);
     let mut spell_idx = None;
@@ -817,23 +819,14 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     }
     let spell_idx = spell_idx?;
 
-    let spec_words = (7..spell_idx)
+    let spec_words = (prefix.len()..spell_idx)
         .filter_map(|idx| words.get(idx))
         .collect::<Vec<_>>();
     if spec_words.is_empty() {
         return None;
     }
 
-    let mut idx = 0usize;
-    if matches!(spec_words.first().copied(), Some("a" | "an")) {
-        idx += 1;
-    }
-
-    let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
-    idx += 1;
-    if idx != spec_words.len() {
-        return None;
-    }
+    let simple_card_type = parse_simple_mana_spend_bonus_card_type(&spec_words);
 
     let comma_idx = tokens.iter().position(OwnedLexToken::is_comma)?;
     let clause_tokens = trim_lexed_commas(&tokens[comma_idx + 1..]);
@@ -843,9 +836,53 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
 
     let clause_word_view = TokenWordView::new(&clause_tokens);
     let clause_words = clause_word_view.to_word_refs();
+
+    let grant_uncounterable = matches!(
+        clause_words.as_slice(),
+        ["that", "spell", "can't", "be", "countered"]
+            | ["that", "spell", "cant", "be", "countered"]
+    );
+    let granted_abilities = if matches!(
+        clause_words.as_slice(),
+        ["it", "gains", "haste", "until", "end", "of", "turn"]
+            | [
+                "that", "spell", "gains", "haste", "until", "end", "of", "turn"
+            ]
+            | [
+                "that", "creature", "gains", "haste", "until", "end", "of", "turn"
+            ]
+    ) {
+        vec![StaticAbilityId::Haste]
+    } else {
+        Vec::new()
+    };
+
+    if grant_uncounterable || !granted_abilities.is_empty() {
+        if let Some(card_type) = simple_card_type {
+            return Some(ManaUsageRestriction::CastSpell {
+                card_types: vec![card_type],
+                subtype_requirement: None,
+                restrict_to_matching_spell: false,
+                grant_uncounterable,
+                enters_with_counters: vec![],
+                granted_abilities,
+            });
+        }
+        let filter = parse_mana_spend_bonus_spell_filter(&spec_words)?;
+        return Some(ManaUsageRestriction::CastSpellMatching {
+            filter,
+            restrict_to_matching_spell: false,
+            grant_uncounterable,
+            enters_with_counters: vec![],
+            granted_abilities,
+        });
+    }
+
     if clause_words.len() < 6 || clause_words.first().copied() != Some("that") {
         return None;
     }
+
+    let card_type = simple_card_type?;
     if !matches!(
         clause_words.get(1).copied(),
         Some("creature" | "spell" | "permanent" | "card")
@@ -933,11 +970,29 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
         restrict_to_matching_spell: false,
         grant_uncounterable: false,
         enters_with_counters: vec![(counter_type, count)],
+        granted_abilities: vec![],
     })
 }
 
 pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::words_match_any_prefix(tokens, IF_MANA_SPENT_TO_CAST_PREFIXES).is_some()
+    primitives::words_match_any_prefix(tokens, IF_MANA_SPENT_SPELL_PREFIXES).is_some()
+}
+
+fn parse_simple_mana_spend_bonus_card_type(spec_words: &[&str]) -> Option<crate::types::CardType> {
+    let mut idx = 0usize;
+    if matches!(spec_words.first().copied(), Some("a" | "an")) {
+        idx += 1;
+    }
+    let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
+    idx += 1;
+    (idx == spec_words.len()).then_some(card_type)
+}
+
+fn parse_mana_spend_bonus_spell_filter(spec_words: &[&str]) -> Option<ObjectFilter> {
+    let spec_text = spec_words.join(" ");
+    let spec_tokens = super::super::lexer::lex_line(&spec_text, 0).ok()?;
+    let filter = parse_spell_filter_with_grammar_entrypoint(&spec_tokens);
+    (filter != ObjectFilter::default()).then_some(filter)
 }
 
 pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {

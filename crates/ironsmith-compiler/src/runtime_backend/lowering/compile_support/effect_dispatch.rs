@@ -4516,6 +4516,23 @@ fn compile_subject_verb_effect(
                 },
             )
         }
+        SubjectVerbActionAst::PayAnyEnergy => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            compile_player_effect_from_resolved_filter(
+                subject.into_player_filter(),
+                subject.into_choices(),
+                || {
+                    Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(
+                        PlayerFilter::You,
+                    )))
+                },
+                |filter| {
+                    Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(
+                        filter,
+                    )))
+                },
+            )
+        }
         SubjectVerbActionAst::PayMana { cost } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::new(crate::effects::PayManaEffect::new(

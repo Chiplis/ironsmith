@@ -819,6 +819,7 @@ export default function MobileBattleScene({
           <div
             ref={inspectOverlayRef}
             className="mobile-battle-inspect-overlay"
+            data-card-inspector="true"
             data-mobile-hand-drop-target="inspector"
             role="dialog"
             aria-modal="true"
@@ -833,6 +834,7 @@ export default function MobileBattleScene({
             <div className="mobile-battle-inspect-overlay-backdrop" aria-hidden="true" />
             <div
               className="mobile-battle-inspect-overlay-shell"
+              data-card-inspector="true"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onPointerUp={(e) => e.stopPropagation()}
@@ -864,4 +866,3 @@ export default function MobileBattleScene({
     </main>
   );
 }
-

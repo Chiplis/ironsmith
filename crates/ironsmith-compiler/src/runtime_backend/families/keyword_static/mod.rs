@@ -816,12 +816,54 @@ fn parse_static_ability_ast_line_lexed_single(
     if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
+    if looks_like_player_counter_gain_effect_tokens(tokens) {
+        return Ok(None);
+    }
 
     if let Some(abilities) = parse_static_ability_ast_line_early_lexed(tokens)? {
         return Ok(Some(abilities));
     }
 
     parse_static_ability_ast_line_lowered(tokens)
+}
+
+fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+    else {
+        return false;
+    };
+
+    let has_counter_resource = tokens.iter().any(|token| {
+        token.is_word("energy")
+            || token.is_word("poison")
+            || token.is_word("ticket")
+            || token.is_word("e")
+            || token.is_word("tk")
+            || (token.kind == TokenKind::ManaGroup
+                && matches!(
+                    token
+                        .slice
+                        .trim_start_matches('{')
+                        .trim_end_matches('}')
+                        .to_ascii_lowercase()
+                        .as_str(),
+                    "e" | "tk"
+                ))
+    });
+    if !has_counter_resource {
+        return false;
+    }
+
+    let tail = tokens.get(get_idx + 1..).unwrap_or_default();
+    if parse_value(tail).is_some() {
+        return true;
+    }
+
+    tail.iter()
+        .find_map(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "a" | "an" | "one" | "another"))
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line(
@@ -2945,6 +2987,17 @@ pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) ->
         return Some(value);
     }
 
+    let start_words = crate::runtime_backend::token_word_refs(start);
+    if slice_starts_with(&start_words, &["basic", "land", "type", "among"])
+        || slice_starts_with(&start_words, &["basic", "land", "types", "among"])
+    {
+        let lands_token_idx = token_index_for_word_index(start, 4)?;
+        let lands_tokens = trim_commas(&start[lands_token_idx..]);
+        if let Ok(filter) = parse_object_filter(&lands_tokens, false) {
+            return Some(Value::BasicLandTypesAmong(filter));
+        }
+    }
+
     let filter = parse_object_filter(start, false).ok()?;
     Some(Value::Count(filter))
 }
@@ -4903,23 +4956,21 @@ pub(crate) fn parse_all_creatures_are_color_line(
     if words.len() < 4 {
         return Ok(None);
     }
-    let are_idx = find_index(&words, |word| *word == "are");
-    let Some(are_idx) = are_idx else {
+    let Some(are_idx) = find_index(&words, |word| *word == "is" || *word == "are") else {
         return Ok(None);
     };
     if are_idx == 0 {
         return Ok(None);
     }
-    if words.len() != are_idx + 2 {
-        return Ok(None);
-    }
-
-    let color_word = words.get(are_idx + 1).copied();
-    let Some(color_word) = color_word else {
-        return Ok(None);
-    };
-    let Some(color) = parse_color(color_word) else {
-        return Ok(None);
+    let color = match &words[are_idx + 1..] {
+        ["all", "colors"] => crate::color::Color::ALL.into_iter().collect::<ColorSet>(),
+        [color_word] => {
+            let Some(color) = parse_color(color_word) else {
+                return Ok(None);
+            };
+            color
+        }
+        _ => return Ok(None),
     };
 
     let subject_tokens = &tokens[..are_idx];
@@ -4965,6 +5016,38 @@ pub(crate) fn parse_land_type_addition_line(
     };
     if be_idx == 0 || be_idx + 1 >= words.len() {
         return Ok(None);
+    }
+
+    if matches!(
+        &words[be_idx + 1..],
+        [
+            "every",
+            "basic",
+            "land",
+            "type" | "types",
+            "in",
+            "addition",
+            "to",
+            "its" | "their",
+            "other",
+            "type" | "types"
+        ]
+    ) {
+        let filter_tokens = &tokens[..be_idx];
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+        let filter = parse_object_filter(filter_tokens, false)?;
+        return Ok(Some(StaticAbility::add_subtypes(
+            filter,
+            vec![
+                Subtype::Plains,
+                Subtype::Island,
+                Subtype::Swamp,
+                Subtype::Mountain,
+                Subtype::Forest,
+            ],
+        )));
     }
 
     let mut subtype_word_idx = be_idx + 1;

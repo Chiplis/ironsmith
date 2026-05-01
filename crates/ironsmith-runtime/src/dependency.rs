@@ -552,6 +552,7 @@ fn evaluate_value(
                 target_objects: Vec::new(),
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
+                effect_outcomes: std::collections::HashMap::new(),
             };
             let mut total = 0i32;
             for player in game.players.iter().filter(|p| p.is_in_game()) {
@@ -583,6 +584,7 @@ fn evaluate_value(
                 target_objects: Vec::new(),
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
+                effect_outcomes: std::collections::HashMap::new(),
             };
             let mut total = 0i32;
             for player in game.players.iter().filter(|p| p.is_in_game()) {

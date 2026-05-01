@@ -72,6 +72,32 @@ fn color_list(colors: crate::color::ColorSet) -> Vec<String> {
     list
 }
 
+fn is_all_colors(colors: crate::color::ColorSet) -> bool {
+    let all_colors: crate::color::ColorSet = crate::color::Color::ALL.into_iter().collect();
+    colors == all_colors
+}
+
+fn is_exactly_basic_land_types(subtypes: &[Subtype]) -> bool {
+    subtypes.len() == 5
+        && [
+            Subtype::Plains,
+            Subtype::Island,
+            Subtype::Swamp,
+            Subtype::Mountain,
+            Subtype::Forest,
+        ]
+        .iter()
+        .all(|subtype| subtypes.contains(subtype))
+}
+
+fn lowercase_first_ascii(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+        None => String::new(),
+    }
+}
+
 fn subject_text(filter: &ObjectFilter) -> String {
     attached_subject(filter).unwrap_or_else(|| filter.description())
 }
@@ -2136,6 +2162,25 @@ impl StaticAbilityKind for SetColorsForFilter {
     fn display(&self) -> String {
         let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
+        if is_all_colors(self.colors) {
+            if verb == "are" {
+                let each_subject = lowercase_first_ascii(strip_plural_subject_article(
+                    &subject_text(&self.filter),
+                ));
+                let mut text = format!("Each {each_subject} is all colors");
+                if let Some(condition) = &self.condition {
+                    text.push(' ');
+                    text.push_str(&describe_static_condition(condition));
+                }
+                return text;
+            }
+            let mut text = format!("{subject} {verb} all colors");
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         let colors = join_with_and(&color_list(self.colors));
         let mut text = format!("{subject} {verb} {colors}");
         if let Some(condition) = &self.condition {
@@ -2525,6 +2570,16 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     fn display(&self) -> String {
         let subject = pluralized_subject_text(&self.filter);
         let (verb, possessive) = subject_verb_and_possessive(&subject);
+        if is_exactly_basic_land_types(&self.subtypes) {
+            let mut text = format!(
+                "{subject} {verb} every basic land type in addition to {possessive} other types"
+            );
+            if let Some(condition) = &self.condition {
+                text.push(' ');
+                text.push_str(&describe_static_condition(condition));
+            }
+            return text;
+        }
         let subtype_words = self
             .subtypes
             .iter()

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
+import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { ManaSymbol, SymbolText } from "@/lib/mana-symbols";
@@ -2469,17 +2470,25 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             ) : (
               <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
                 {showPriorityAdvanceButton && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                    aria-disabled={!canAct}
-                    onClick={() => triggerPriorityAction(passAction)}
-                  >
-                    {passLabel}
-                  </Button>
+                  <div className="relative h-full w-[176px] shrink-0 self-stretch">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
+                      style={decisionButtonStyle}
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      aria-disabled={!canAct}
+                      onClick={() => triggerPriorityAction(passAction)}
+                    >
+                      {passLabel}
+                    </Button>
+                    <PhaseHelpPopover
+                      state={state}
+                      decision={decision}
+                      advanceLabel={passLabel}
+                      className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
+                    />
+                  </div>
                 )}
                 <PriorityActionStrip
                   groups={visibleActionGroups}
@@ -2672,17 +2681,25 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             ) : (
               <>
                 {showPriorityAdvanceButton && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                    style={decisionButtonStyle}
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                    aria-disabled={!canAct}
-                    onClick={() => triggerPriorityAction(passAction)}
-                  >
-                    {passLabel}
-                  </Button>
+                  <div className="relative h-full w-[176px] shrink-0 self-stretch">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
+                      style={decisionButtonStyle}
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      aria-disabled={!canAct}
+                      onClick={() => triggerPriorityAction(passAction)}
+                    >
+                      {passLabel}
+                    </Button>
+                    <PhaseHelpPopover
+                      state={state}
+                      decision={decision}
+                      advanceLabel={passLabel}
+                      className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
+                    />
+                  </div>
                 )}
               </>
             )

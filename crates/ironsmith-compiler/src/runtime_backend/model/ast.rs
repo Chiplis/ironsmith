@@ -472,6 +472,7 @@ pub(crate) enum PredicateAst {
     YouHaveFullParty,
     YouAttackedThisTurn,
     SourceWasCast,
+    ThisSpellEscaped,
     NoSpellsWereCastLastTurn,
     ThisSpellWasKicked,
     ThisSpellPaidLabel(String),
@@ -521,6 +522,7 @@ impl PredicateAst {
             | PredicateAst::SourceAttackedOrBlockedThisTurn
             | PredicateAst::SourceIsInZone(_)
             | PredicateAst::SourceWasCast
+            | PredicateAst::ThisSpellEscaped
             | PredicateAst::ThisSpellWasKicked
             | PredicateAst::ThisSpellPaidLabel(_)
             | PredicateAst::ThisSpellWasCastFromZone(_) => {
@@ -1406,6 +1408,7 @@ pub(crate) enum SubjectVerbActionAst {
     PayEnergy {
         amount: Value,
     },
+    PayAnyEnergy,
     PayMana {
         cost: ManaCost,
     },
@@ -2684,6 +2687,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::EnergyCounters { count } => f.debug_tuple("EnergyCounters").field(count).finish(),
             Self::TicketCounters { count } => f.debug_tuple("TicketCounters").field(count).finish(),
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
+            Self::PayAnyEnergy => f.write_str("PayAnyEnergy"),
             Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
@@ -5295,6 +5299,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::PayEnergy { amount },
+        )
+    }
+
+    pub(crate) fn subject_verb_pay_any_energy(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::PayAnyEnergy,
         )
     }
 

@@ -527,6 +527,7 @@ mod tests {
             optional_costs: vec![],
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            temporary_static_ability_grants: vec![],
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             additional_cost: crate::cost::TotalCost::free(),

@@ -25,6 +25,18 @@ fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<Own
     trim_commas(tokens)
 }
 
+fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
+    if unless_escaped {
+        EffectAst::Conditional {
+            predicate: PredicateAst::ThisSpellEscaped,
+            if_true: Vec::new(),
+            if_false: vec![effect],
+        }
+    } else {
+        effect
+    }
+}
+
 pub(crate) fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -33,9 +45,11 @@ pub(crate) fn parse_sacrifice(
     let mut tokens = tokens;
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut normalized_words = clause_words.as_slice();
+    let mut unless_escaped = false;
     if let Some(unless_idx) = find_index(&normalized_words, |word| *word == "unless") {
         let tail = &normalized_words[unless_idx..];
         if tail == ["unless", "it", "escaped"] {
+            unless_escaped = true;
             let cut_idx = token_index_for_word_index(tokens, unless_idx).unwrap_or(tokens.len());
             tokens = &tokens[..cut_idx];
             normalized_words = &normalized_words[..unless_idx];
@@ -85,7 +99,10 @@ pub(crate) fn parse_sacrifice(
         if other {
             filter.other = true;
         }
-        return Ok(EffectAst::subject_verb_sacrifice_all(player, filter));
+        return Ok(wrap_unless_escaped(
+            EffectAst::subject_verb_sacrifice_all(player, filter),
+            unless_escaped,
+        ));
     }
 
     let mut idx = 0;
@@ -191,14 +208,15 @@ pub(crate) fn parse_sacrifice(
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
     // e.g. "sacrifices a land for each card in your hand".
-    if let Some(Value::Count(fe_filter)) = for_each_filter {
-        Ok(EffectAst::ForEachObject {
+    let effect = if let Some(Value::Count(fe_filter)) = for_each_filter {
+        EffectAst::ForEachObject {
             filter: fe_filter,
             effects: vec![sacrifice],
-        })
+        }
     } else {
-        Ok(sacrifice)
-    }
+        sacrifice
+    };
+    Ok(wrap_unless_escaped(effect, unless_escaped))
 }
 
 pub(crate) fn parse_discard(

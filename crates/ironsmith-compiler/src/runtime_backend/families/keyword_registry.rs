@@ -33,7 +33,7 @@ use super::util::{
     parse_flashback_line_lexed, parse_harmonize_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_madness_line_lexed, parse_morph_keyword_line_lexed, parse_multikicker_line_lexed,
-    parse_offspring_line_lexed, parse_reinforce_line_lexed,
+    parse_offspring_line_lexed, parse_reinforce_line_lexed, parse_replicate_line_lexed,
     parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
     parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
@@ -330,6 +330,15 @@ pub(super) fn lower_multikicker(
     ))
 }
 
+pub(super) fn lower_replicate(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::OptionalCost(
+        require_keyword_parse(line, "replicate", parse_replicate_line_lexed(tokens)?)?.into(),
+    ))
+}
+
 pub(super) fn lower_offspring(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -524,6 +533,13 @@ pub(super) fn matches_multikicker(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_multikicker_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_replicate(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_replicate_line_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_entwine(

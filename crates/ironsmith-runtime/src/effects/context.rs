@@ -964,7 +964,8 @@ impl<'a> ExecutionContext<'a> {
             .with_target_players(target_players)
             .with_target_objects(target_objects)
             .with_tagged_objects(&tagged_objects)
-            .with_tagged_players(&tagged_players);
+            .with_tagged_players(&tagged_players)
+            .with_effect_outcomes(&self.effect_outcomes);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
         }

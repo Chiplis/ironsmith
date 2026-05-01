@@ -666,6 +666,15 @@ impl<C> OptionalCost<C> {
         }
     }
 
+    pub fn replicate(cost: TotalCost<C>) -> Self {
+        Self {
+            label: "Replicate".to_string(),
+            cost,
+            repeatable: true,
+            returns_to_hand: false,
+        }
+    }
+
     pub fn buyback(cost: TotalCost<C>) -> Self {
         Self {
             label: "Buyback".to_string(),
@@ -805,6 +814,14 @@ impl OptionalCostsPaid {
     pub fn pay_label(&mut self, label: &str) {
         if let Some((_, times)) = self.costs.iter_mut().find(|(l, _)| *l == label) {
             *times += 1;
+        }
+    }
+
+    pub fn mark_label_paid(&mut self, label: &str) {
+        if let Some((_, times)) = self.costs.iter_mut().find(|(l, _)| *l == label) {
+            *times += 1;
+        } else {
+            self.costs.push((label.to_string(), 1));
         }
     }
 

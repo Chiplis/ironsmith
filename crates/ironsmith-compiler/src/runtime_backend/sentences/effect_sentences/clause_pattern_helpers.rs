@@ -783,6 +783,8 @@ fn parse_counter_ability_target_phrase(
                 f.stack_kind = Some(crate::filter::StackObjectKind::Spell);
                 vec![(f, CounterTargetTerm::Spell)]
             }),
+            grammar::phrase(&["colorless", "spell"])
+                .map(|_| vec![(ObjectFilter::spell().colorless(), CounterTargetTerm::Spell)]),
             grammar::kw("spell").map(|_| vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)]),
         ))
         .parse_next(input)

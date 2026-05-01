@@ -95,6 +95,34 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
         }
 
         if let Some((label, subject, keyword)) = split_static_granted_keyword_line(&lines[idx]) {
+            if let Some((label, color, base_subject, keyword)) =
+                split_color_static_granted_keyword_line(&lines[idx])
+            {
+                let mut clauses = vec![(keyword.to_string(), color)];
+                let mut consumed = 1usize;
+                while let Some(next) = lines.get(idx + consumed) {
+                    let Some((_, next_color, next_base_subject, next_keyword)) =
+                        split_color_static_granted_keyword_line(next)
+                    else {
+                        break;
+                    };
+                    if next_base_subject != base_subject {
+                        break;
+                    }
+                    clauses.push((next_keyword.to_string(), next_color));
+                    consumed += 1;
+                }
+                if consumed > 1 {
+                    out.push(render_color_conditional_keyword_grants(
+                        label,
+                        base_subject,
+                        &clauses,
+                    ));
+                    idx += consumed;
+                    continue;
+                }
+            }
+
             let mut keywords = vec![keyword.to_string()];
             let mut consumed = 1usize;
             while let Some(next) = lines.get(idx + consumed) {
@@ -159,6 +187,50 @@ fn split_static_granted_keyword_line(line: &str) -> Option<(&str, &str, &str)> {
         return None;
     }
     Some((&line[..label.len() + 2], subject, keyword))
+}
+
+fn split_color_static_granted_keyword_line(line: &str) -> Option<(&str, &'static str, &str, &str)> {
+    let (label, text) = line.split_once(": ")?;
+    if !label.starts_with("Static ability ") {
+        return None;
+    }
+    let text = text.trim_end_matches('.');
+    let (subject, keyword) = text.split_once(" have ")?;
+    if !is_mergeable_keyword_surface(keyword) {
+        return None;
+    }
+    let (color, base_subject) = subject.split_once(' ')?;
+    let color = match color.to_ascii_lowercase().as_str() {
+        "white" => "white",
+        "blue" => "blue",
+        "black" => "black",
+        "red" => "red",
+        "green" => "green",
+        _ => return None,
+    };
+    Some((&line[..label.len() + 2], color, base_subject, keyword))
+}
+
+fn render_color_conditional_keyword_grants(
+    label: &str,
+    base_subject: &str,
+    clauses: &[(String, &'static str)],
+) -> String {
+    let clauses = clauses
+        .iter()
+        .map(|(keyword, color)| {
+            format!(
+                "{} if it's {color}",
+                keyword.trim_end_matches('.').to_ascii_lowercase()
+            )
+        })
+        .collect::<Vec<_>>();
+    let subject = if base_subject.eq_ignore_ascii_case("creatures you control") {
+        "Each creature you control has".to_string()
+    } else {
+        format!("{base_subject} have")
+    };
+    format!("{label}{subject} {}", join_english_list(&clauses))
 }
 
 fn is_mergeable_keyword_surface(keyword: &str) -> bool {
@@ -277,12 +349,15 @@ pub(super) fn describe_resolution_program(
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {
         if segment.self_replacements.len() == 1 {
-            let branch = &segment.self_replacements[0];
-            rendered_segments.push(describe_effect_list(&[Effect::conditional(
-                branch.condition.clone(),
-                branch.replacement_effects.clone(),
-                segment.default_effects.clone(),
-            )]));
+            let rendered = describe_single_self_replacement_segment(segment).unwrap_or_else(|| {
+                let branch = &segment.self_replacements[0];
+                describe_effect_list(&[Effect::conditional(
+                    branch.condition.clone(),
+                    branch.replacement_effects.clone(),
+                    segment.default_effects.clone(),
+                )])
+            });
+            rendered_segments.push(rendered);
             continue;
         }
 

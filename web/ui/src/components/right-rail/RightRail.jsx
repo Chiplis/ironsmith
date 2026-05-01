@@ -677,6 +677,7 @@ export default function RightRail({
       <div className={cn("relative h-full min-h-0", inline ? "overflow-visible" : "overflow-hidden")}>
         <div
           ref={compactInspectorRef}
+          data-card-inspector="true"
           className={cn(
             "ironsmith-inspector-shell h-full overflow-hidden border border-[#2a3647]/70 bg-transparent shadow-[0_18px_42px_rgba(0,0,0,0.24)]",
             inline
@@ -707,6 +708,7 @@ export default function RightRail({
         {shouldRenderExpandedInlineInspector && (
           <div
             ref={expandedInspectorRef}
+            data-card-inspector="true"
             className={cn(
               "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
               useExpandedInlineInspector ? "is-open pointer-events-auto z-[60]" : "is-closed pointer-events-none z-0"

@@ -84,7 +84,7 @@ pub use grant_tagged_spell_free_cast_until_end_of_turn::GrantTaggedSpellFreeCast
 pub use grant_tagged_spell_life_cost_by_mana_value::GrantTaggedSpellLifeCostByManaValueEffect;
 pub use lose_the_game::LoseTheGameEffect;
 pub use may_cast_miracle::MayCastForMiracleCostEffect;
-pub use pay_energy::PayEnergyEffect;
+pub use pay_energy::{PayAnyEnergyEffect, PayEnergyEffect};
 pub use poison_counters::PoisonCountersEffect;
 pub use ring_tempts_you::RingTemptsYouEffect;
 pub use roll_die::RollDieEffect;

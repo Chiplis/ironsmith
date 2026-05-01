@@ -90,6 +90,32 @@ fn this_spell_was_cast_from_zone(
     }
 }
 
+fn this_spell_escaped(game: &GameState, source: ObjectId, ctx: &ExecutionContext) -> bool {
+    if ctx.optional_costs_paid.was_paid_label("Escape") || source_escaped(game, source) {
+        return true;
+    }
+
+    let Some(spell) = game.object(source) else {
+        return matches!(
+            ctx.casting_method,
+            crate::alternative_cast::CastingMethod::GrantedEscape { .. }
+        );
+    };
+
+    crate::decision::casting_method_matches_alternative_kind(
+        game,
+        ctx.controller,
+        spell,
+        &ctx.casting_method,
+        crate::filter::AlternativeCastKind::Escape,
+    )
+}
+
+fn source_escaped(game: &GameState, source: ObjectId) -> bool {
+    game.object(source)
+        .is_some_and(|obj| obj.optional_costs_paid.was_paid_label("Escape"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,6 +603,7 @@ fn evaluate_condition_shared_core(
         ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
         Condition::TaggedObjectWasCast(_) => None,
+        Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
         Condition::NoSpellsWereCastLastTurn => {
             Some(game.turn_store.spells_cast_last_turn_total == 0)
@@ -728,6 +755,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
         Condition::SourceWasCast => {}
+        Condition::ThisSpellEscaped => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
@@ -909,6 +937,7 @@ pub fn evaluate_condition_external(
 
     match condition {
         Condition::XValueAtLeast(_) => false, // X not available in static context
+        Condition::ThisSpellEscaped => source_escaped(game, ctx.source),
         Condition::ThisSpellWasKicked => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
@@ -1748,6 +1777,7 @@ fn evaluate_condition_simple(
         Condition::ThisSpellWasKicked => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
+        Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
@@ -2803,6 +2833,7 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::ThisSpellWasKicked => Ok(resolve_value(game, &Value::WasKicked, ctx)? != 0),
+        Condition::ThisSpellEscaped => Ok(this_spell_escaped(game, ctx.source, ctx)),
         Condition::ThisSpellWasCastFromZone(zone) => {
             Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
         }

@@ -717,6 +717,15 @@ pub(crate) fn parse_granted_keyword_static_line(
         }
     }
 
+    if let Some(compiled) = parse_color_filtered_keyword_grants(
+        &subject_tokens,
+        &keyword_tokens,
+        condition.clone(),
+        &clause_words.join(" "),
+    )? {
+        return Ok(Some(compiled));
+    }
+
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
         return Ok(None);
     };
@@ -3488,6 +3497,143 @@ fn grant_keyword_action_for_anthem_subject(
             condition: clause.condition.clone(),
         },
     }
+}
+
+fn split_keyword_if_color_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    for (idx, token) in tokens.iter().enumerate() {
+        if !token.is_comma() {
+            continue;
+        }
+        let mut segment = trim_edge_punctuation(&tokens[start..idx]);
+        while segment.first().is_some_and(|token| token.is_word("and")) {
+            segment = trim_edge_punctuation(&segment[1..]);
+        }
+        if !segment.is_empty() {
+            segments.push(segment);
+        }
+        start = idx + 1;
+    }
+    let mut segment = trim_edge_punctuation(&tokens[start..]);
+    while segment.first().is_some_and(|token| token.is_word("and")) {
+        segment = trim_edge_punctuation(&segment[1..]);
+    }
+    if !segment.is_empty() {
+        segments.push(segment);
+    }
+    segments
+}
+
+fn parse_if_its_color_tail(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    match words.as_slice() {
+        ["its", color]
+        | ["it's", color]
+        | ["it’s", color]
+        | ["it", "is", color]
+        | ["it", "s", color]
+        | ["this", "creature", "is", color]
+        | ["that", "creature", "is", color] => parse_color(color),
+        _ => None,
+    }
+}
+
+fn parse_keyword_if_color_segment(
+    segment: &[OwnedLexToken],
+    clause_text: &str,
+) -> Result<Option<(Vec<KeywordAction>, ColorSet)>, CardTextError> {
+    let Some(if_idx) = anthem_token_offset(segment, |token| token.is_word("if")) else {
+        return Ok(None);
+    };
+    let keyword_tokens = trim_edge_punctuation(&segment[..if_idx]);
+    if keyword_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Some(color) = parse_if_its_color_tail(&segment[if_idx + 1..]) else {
+        return Ok(None);
+    };
+    let Some(actions) = parse_ability_line(&keyword_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, clause_text)?;
+    let actions = actions
+        .into_iter()
+        .filter(|action| action.lowers_to_static_ability())
+        .collect::<Vec<_>>();
+    if actions.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some((actions, color)))
+}
+
+fn color_filtered_grant_filter(mut filter: ObjectFilter, color: ColorSet) -> ObjectFilter {
+    let existing = filter.colors.unwrap_or(ColorSet::new());
+    filter.colors = Some(existing.union(color));
+    filter
+}
+
+fn source_color_condition(color: ColorSet) -> crate::ConditionExpr {
+    let mut filter = ObjectFilter::source();
+    filter.colors = Some(color);
+    crate::ConditionExpr::SourceMatches(filter)
+}
+
+fn append_condition(
+    condition: Option<crate::ConditionExpr>,
+    next: crate::ConditionExpr,
+) -> crate::ConditionExpr {
+    match condition {
+        Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(next)),
+        None => next,
+    }
+}
+
+fn parse_color_filtered_keyword_grants(
+    subject_tokens: &[OwnedLexToken],
+    keyword_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+    clause_text: &str,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if !crate::runtime_backend::token_word_refs(keyword_tokens)
+        .iter()
+        .any(|word| *word == "if")
+    {
+        return Ok(None);
+    }
+
+    let mut parsed_segments = Vec::new();
+    for segment in split_keyword_if_color_segments(keyword_tokens) {
+        let Some(parsed) = parse_keyword_if_color_segment(&segment, clause_text)? else {
+            return Ok(None);
+        };
+        parsed_segments.push(parsed);
+    }
+    if parsed_segments.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let mut compiled = Vec::new();
+    for (actions, color) in parsed_segments {
+        for action in actions {
+            match &subject {
+                AnthemSubjectAst::Source => compiled.push(StaticAbilityAst::ConditionalKeywordAction {
+                    action,
+                    condition: append_condition(condition.clone(), source_color_condition(color)),
+                }),
+                AnthemSubjectAst::Filter(filter) => {
+                    compiled.push(StaticAbilityAst::GrantKeywordAction {
+                        filter: color_filtered_grant_filter(filter.clone(), color),
+                        action,
+                        condition: condition.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(Some(compiled))
 }
 
 fn anthem_subject_filter(subject: &AnthemSubjectAst) -> ObjectFilter {
