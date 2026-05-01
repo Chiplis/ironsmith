@@ -220,16 +220,24 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
         return None;
     }
 
-    if let Some((condition, body)) = trimmed.split_once(", ")
-        && condition.to_ascii_lowercase().starts_with("as long as ")
-    {
-        let (subject, verb, predicate) = split_subject_predicate_clause(body)?;
-        return Some(ConditionalSubjectPredicate {
-            condition: condition.trim().to_string(),
-            subject: subject.trim().to_string(),
-            verb: verb.trim().to_string(),
-            predicate: predicate.trim().to_string(),
-        });
+    if let Some((condition, body)) = trimmed.split_once(", ") {
+        let condition = condition.trim();
+        let normalized_condition = if condition.eq_ignore_ascii_case("During your turn") {
+            "As long as it's your turn".to_string()
+        } else if condition.to_ascii_lowercase().starts_with("as long as ") {
+            condition.to_string()
+        } else {
+            String::new()
+        };
+        if !normalized_condition.is_empty() {
+            let (subject, verb, predicate) = split_subject_predicate_clause(body)?;
+            return Some(ConditionalSubjectPredicate {
+                condition: normalized_condition,
+                subject: subject.trim().to_string(),
+                verb: verb.trim().to_string(),
+                predicate: predicate.trim().to_string(),
+            });
+        }
     }
 
     let (subject, verb, predicate_with_condition) = split_subject_predicate_clause(trimmed)?;
@@ -431,8 +439,20 @@ fn can_merge_conditional_state_bundle(
 ) -> bool {
     matches!(left.verb.as_str(), "is" | "are")
         && matches!(right.verb.as_str(), "is" | "are")
-        && left.subject.eq_ignore_ascii_case(&right.subject)
+        && conditioned_subjects_equivalent(&left.subject, &right.subject)
         && left.condition.eq_ignore_ascii_case(&right.condition)
+}
+
+fn conditioned_subjects_equivalent(left: &str, right: &str) -> bool {
+    conditioned_subject_key(left) == conditioned_subject_key(right)
+}
+
+fn conditioned_subject_key(subject: &str) -> String {
+    let lower = subject.trim().to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("each creature ") {
+        return format!("creatures {rest}");
+    }
+    lower
 }
 
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
@@ -446,6 +466,51 @@ pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) ->
         || ((left_verb == "gets" && right_verb == "is")
             || (left_verb == "is" && right_verb == "gets"))
         || (is_state(left_verb) && is_state(right_verb))
+}
+
+fn format_conditioned_subject_predicate_merge(
+    left: &ConditionalSubjectPredicate,
+    left_predicate: &str,
+    right_verb: &str,
+    right_predicate: &str,
+) -> String {
+    if left
+        .condition
+        .eq_ignore_ascii_case("As long as it's your turn")
+    {
+        let (subject, left_verb) = during_your_turn_subject_and_verb(&left.subject, &left.verb);
+        let (_, right_verb) = during_your_turn_subject_and_verb(&left.subject, right_verb);
+        return format!(
+            "During your turn, {} {} {} and {} {}",
+            subject, left_verb, left_predicate, right_verb, right_predicate
+        );
+    }
+
+    let condition = left
+        .condition
+        .trim_start_matches("As long as ")
+        .trim_start_matches("as long as ")
+        .trim();
+    format!(
+        "{} {} {} and {} {} as long as {}",
+        left.subject, left.verb, left_predicate, right_verb, right_predicate, condition
+    )
+}
+
+pub(super) fn during_your_turn_subject_and_verb(subject: &str, verb: &str) -> (String, String) {
+    let mut subject = lowercase_first(subject);
+    let mut verb = verb.to_string();
+
+    if let Some(rest) = subject.strip_prefix("each creature ") {
+        subject = format!("creatures {rest}");
+        if verb == "gets" {
+            verb = "get".to_string();
+        } else if verb == "has" {
+            verb = "have".to_string();
+        }
+    }
+
+    (subject, verb)
 }
 
 pub(super) fn normalize_keyword_predicate_case(predicate: &str) -> String {
@@ -463,6 +528,11 @@ pub(super) fn normalize_keyword_predicate_case(predicate: &str) -> String {
         && is_keyword_phrase(keyword)
     {
         return format!("{} until end of turn", keyword.to_ascii_lowercase());
+    }
+    if let Some(keyword) = trimmed.strip_suffix(" as long as it's your turn")
+        && is_keyword_phrase(keyword)
+    {
+        return format!("{} as long as it's your turn", keyword.to_ascii_lowercase());
     }
     if let Some(keywords) = trimmed.strip_suffix(" until end of turn")
         && let Some(joined) = normalize_keyword_list_phrase(keywords)
@@ -588,7 +658,7 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 split_subject_predicate_clause(&lines[idx])
             && let Some((right_subject, right_verb, right_rest)) =
                 split_subject_predicate_clause(&lines[idx + 1])
-            && left_subject.eq_ignore_ascii_case(right_subject)
+            && conditioned_subjects_equivalent(left_subject, right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
             if lines[idx].contains(", if ") && lines[idx + 1].contains(", if ") {
@@ -600,12 +670,12 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 parse_conditional_subject_predicate(&lines[idx]),
                 parse_conditional_subject_predicate(&lines[idx + 1]),
             ) {
-                if left_conditional
-                    .subject
-                    .eq_ignore_ascii_case(&right_conditional.subject)
-                    && left_conditional
-                        .condition
-                        .eq_ignore_ascii_case(&right_conditional.condition)
+                if conditioned_subjects_equivalent(
+                    &left_conditional.subject,
+                    &right_conditional.subject,
+                ) && left_conditional
+                    .condition
+                    .eq_ignore_ascii_case(&right_conditional.condition)
                     && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
                 {
                     let left_predicate =
@@ -620,20 +690,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                     } else {
                         right_conditional.verb.clone()
                     };
-                    let condition = left_conditional
-                        .condition
-                        .trim_start_matches("As long as ")
-                        .trim_start_matches("as long as ")
-                        .trim()
-                        .to_string();
-                    merged.push(format!(
-                        "{} {} {} and {} {} as long as {}",
-                        left_conditional.subject,
-                        left_conditional.verb,
-                        left_predicate,
-                        right_verb,
-                        right_predicate,
-                        condition
+                    merged.push(format_conditioned_subject_predicate_merge(
+                        &left_conditional,
+                        &left_predicate,
+                        &right_verb,
+                        &right_predicate,
                     ));
                     idx += 2;
                     continue;
@@ -937,12 +998,12 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
             if let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(left),
                 parse_conditional_subject_predicate(right),
+            ) && conditioned_subjects_equivalent(
+                &left_conditional.subject,
+                &right_conditional.subject,
             ) && left_conditional
-                .subject
-                .eq_ignore_ascii_case(&right_conditional.subject)
-                && left_conditional
-                    .condition
-                    .eq_ignore_ascii_case(&right_conditional.condition)
+                .condition
+                .eq_ignore_ascii_case(&right_conditional.condition)
                 && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
             {
                 let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
@@ -956,20 +1017,11 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                 } else {
                     right_conditional.verb.clone()
                 };
-                let condition = left_conditional
-                    .condition
-                    .trim_start_matches("As long as ")
-                    .trim_start_matches("as long as ")
-                    .trim()
-                    .to_string();
-                merged.push(format!(
-                    "{} {} {} and {} {} as long as {}",
-                    left_conditional.subject,
-                    left_conditional.verb,
-                    left_predicate,
-                    right_verb,
-                    right_predicate,
-                    condition
+                merged.push(format_conditioned_subject_predicate_merge(
+                    &left_conditional,
+                    &left_predicate,
+                    &right_verb,
+                    &right_predicate,
                 ));
                 idx += 2;
                 continue;
@@ -1520,6 +1572,8 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "ward--",
         "ward—",
         "kicker ",
+        "bloodthirst ",
+        "foretell ",
         "flashback ",
         "cycling ",
         "landcycling ",

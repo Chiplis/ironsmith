@@ -1525,8 +1525,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("One or more another ", "One or more other ");
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
-    normalized = normalized.replace("this creature has flying", "Kain has flying");
-    normalized = normalized.replace("This creature has flying", "Kain has flying");
     normalized = normalized.replace(
         "If an opponent has cast a blue or black spell this turn, draw a card.",
         "Draw a card if an opponent has cast a blue or black spell this turn.",
@@ -5890,6 +5888,10 @@ pub(super) fn describe_for_each_spells_cast_this_turn(
 pub(super) fn describe_demonstrative_tagged_object_filter(
     filter: &crate::filter::ObjectFilter,
 ) -> Option<String> {
+    if let Some(attached) = describe_attached_tagged_object_filter(filter) {
+        return Some(attached);
+    }
+
     let implicit_constraints = filter
         .tagged_constraints
         .iter()
@@ -5921,6 +5923,46 @@ pub(super) fn describe_demonstrative_tagged_object_filter(
     } else {
         Some(format!("that {base_desc}"))
     }
+}
+
+fn describe_attached_tagged_object_filter(filter: &crate::filter::ObjectFilter) -> Option<String> {
+    let attached_constraints = filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "equipped"
+        })
+        .collect::<Vec<_>>();
+    if attached_constraints.len() != 1 {
+        return None;
+    }
+    let attached_tag = attached_constraints[0].tag.as_str();
+    let mut base = filter.clone();
+    base.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == attached_tag)
+    });
+
+    let mut surface_base = base;
+    surface_base.zone = None;
+
+    if surface_base == crate::filter::ObjectFilter::default() {
+        return Some(describe_attached_object_for_tag(attached_tag, None));
+    }
+    if surface_base.card_types.len() == 1
+        && surface_base.all_card_types.is_empty()
+        && surface_base.subtypes.is_empty()
+        && surface_base
+            == crate::filter::ObjectFilter::default().with_type(surface_base.card_types[0])
+    {
+        return Some(format!(
+            "{} {}",
+            attached_tag,
+            describe_card_type_word_local(surface_base.card_types[0])
+        ));
+    }
+    None
 }
 
 pub(super) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Option<String> {
@@ -6521,6 +6563,12 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     }
     if let Some(name) = selection.strip_prefix("permanent named ") {
         return format!("a card named {name}");
+    }
+    if let Some(subtype) = selection.strip_prefix("a basic land card ") {
+        return format!("a basic {} card", subtype.trim());
+    }
+    if let Some(subtype) = selection.strip_prefix("basic land card ") {
+        return format!("a basic {} card", subtype.trim());
     }
     if selection == "permanent" || selection == "permanent card" {
         return "a card".to_string();
@@ -8703,6 +8751,25 @@ fn is_aura_only_filter(filter: &ObjectFilter) -> bool {
     bare == ObjectFilter::default()
 }
 
+fn describe_attached_object_color_condition(tag: &TagKey, filter: &ObjectFilter) -> Option<String> {
+    let subject = match tag.as_str() {
+        "enchanted" => "enchanted creature",
+        "equipped" => "equipped creature",
+        _ => return None,
+    };
+    let colors = filter.colors?;
+    let mut bare = filter.clone();
+    bare.colors = None;
+    if bare != ObjectFilter::default() {
+        return None;
+    }
+    let color_text = describe_token_color_words(colors, false);
+    if color_text.is_empty() {
+        return None;
+    }
+    Some(format!("{subject} is {color_text}"))
+}
+
 pub(super) fn describe_until(until: &Until) -> String {
     match until {
         Until::Forever => "forever".to_string(),
@@ -9967,6 +10034,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             {
                 return "any of those cards remain exiled".to_string();
             }
+            if let Some(condition) = describe_attached_object_color_condition(tag, filter) {
+                return condition;
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
@@ -10627,6 +10697,16 @@ mod tests {
             describe_value(&Value::TotalPower(filter)),
             "the total power of the sacrificed creatures"
         );
+    }
+
+    #[test]
+    fn describe_condition_uses_attached_object_for_equipped_color_checks() {
+        let condition = Condition::TaggedObjectMatches(
+            TagKey::from("equipped"),
+            ObjectFilter::default().with_colors(crate::color::ColorSet::GREEN),
+        );
+
+        assert_eq!(describe_condition(&condition), "equipped creature is green");
     }
 
     #[test]

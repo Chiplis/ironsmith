@@ -283,6 +283,7 @@ export default function RightRail({
   inlineExpandedSide = "right",
   inlineExpandedAnchor = "bottom",
   inlineExpandedMaxHeight = null,
+  expandInlineToZoneViewer = false,
   expandSelectedInline = false,
   inlineFillWidth = false,
   disableInlineExpansion = false,
@@ -435,13 +436,13 @@ export default function RightRail({
   }, []);
   const expandedInlineWidth = useMemo(() => {
     const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
-    const targetWidth = Math.min(
-      Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH),
-      Math.round(maxExpandedInlineWidth || effectiveMaxWidth),
-      viewportInspectorTargetWidthPx()
-    );
-    return targetWidth;
-  }, [compactInlineWidthPx, maxExpandedInlineWidth]);
+    const baseWidth = Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
+    const measuredMaxWidth = Math.round(maxExpandedInlineWidth || effectiveMaxWidth);
+    const viewportCap = expandInlineToZoneViewer
+      ? effectiveMaxWidth
+      : viewportInspectorTargetWidthPx();
+    return Math.max(baseWidth, Math.min(measuredMaxWidth, viewportCap));
+  }, [compactInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;
@@ -511,6 +512,9 @@ export default function RightRail({
     const handDockEl = dockEl?.querySelector("[data-hand-dock-lane]");
     const stripEl = workspaceEl?.querySelector(".priority-inline-panel");
     const stackEl = workspaceEl?.querySelector("[data-my-zone] [data-inspector-stack-timeline]");
+    const zoneViewerEl = expandInlineToZoneViewer
+      ? workspaceEl?.querySelector('[data-zone-viewer="embedded"]')
+      : null;
     let rafId = null;
 
     const measureExpandedLayout = () => {
@@ -518,6 +522,7 @@ export default function RightRail({
       const dockRect = dockEl?.getBoundingClientRect?.() || null;
       const stripRect = stripEl?.getBoundingClientRect?.() || null;
       const stackRect = stackEl?.getBoundingClientRect?.() || null;
+      const zoneViewerRect = zoneViewerEl?.getBoundingClientRect?.() || null;
       const safeTop = anchorExpandedInlineToTop
         ? ((dockRect || railEl.getBoundingClientRect()).top + INLINE_EXPANDED_SAFE_GAP)
         : (
@@ -559,9 +564,17 @@ export default function RightRail({
         : 0;
       const availableWidth = dockRect
         ? (
-          inlineDockPlacement === "top"
-            ? dockRect.width
-            : dockRect.width - effectiveMinHandWidth - dockGap
+          (() => {
+            const dockAvailableWidth = inlineDockPlacement === "top"
+              ? dockRect.width
+              : dockRect.width - effectiveMinHandWidth - dockGap;
+            if (!expandInlineToZoneViewer || !zoneViewerRect || zoneViewerRect.right >= dockRect.right) {
+              return dockAvailableWidth;
+            }
+
+            const zoneViewerBoundedWidth = dockRect.right - zoneViewerRect.right - INLINE_EXPANDED_SAFE_GAP;
+            return Math.max(dockAvailableWidth, zoneViewerBoundedWidth);
+          })()
         )
         : effectiveExpandedMaxWidth;
       const nextMaxWidth = Math.max(
@@ -590,6 +603,7 @@ export default function RightRail({
     if (handDockEl) observer.observe(handDockEl);
     if (stripEl) observer.observe(stripEl);
     if (stackEl) observer.observe(stackEl);
+    if (zoneViewerEl) observer.observe(zoneViewerEl);
     window.addEventListener("resize", scheduleMeasure);
 
     return () => {
@@ -603,6 +617,7 @@ export default function RightRail({
     inline,
     inlineDockPlacement,
     inlineExpandedMaxHeight,
+    expandInlineToZoneViewer,
     shouldRenderExpandedInlineInspector,
     shouldShowRail,
   ]);

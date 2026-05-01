@@ -466,8 +466,9 @@ function InspectorArtImageLayers({
       <div ref={ref} className={cn("hover-art-media absolute inset-0", layerClassName)}>
         <img
           src={src}
-          alt={objectName || "Card art"}
-          className="hover-art-pan h-full w-full object-cover"
+          alt=""
+          aria-hidden="true"
+          className="hover-art-backdrop-image"
           loading="eager"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -477,6 +478,33 @@ function InspectorArtImageLayers({
             }
           }}
         />
+        <div className="hover-art-foreground-wrap">
+          <div className="hover-art-foreground-crop">
+            <img
+              src={src}
+              alt=""
+              aria-hidden="true"
+              className="hover-art-foreground-edge-blur"
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+            />
+            <img
+              src={src}
+              alt={objectName || "Card art"}
+              className="hover-art-foreground-image"
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => {
+                if (typeof onError === "function") {
+                  onError(src);
+                }
+              }}
+            />
+          </div>
+        </div>
+        <div className="hover-art-diffusion-overlay" />
       </div>
     );
   };

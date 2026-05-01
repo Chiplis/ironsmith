@@ -1275,7 +1275,9 @@ export default function Workspace({
               suppressFallback={suppressFallbackInspector}
               inline
               inlineDockPlacement="top"
+              inlineExpandedAnchor="top"
               inlineExpandedMaxHeight={232}
+              expandInlineToZoneViewer
               allowTopInlinePlacement
               inlineExpanded={inlineInspectorExpanded}
             />

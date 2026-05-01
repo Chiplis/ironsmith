@@ -87,16 +87,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("one or more another ", "one or more other ")
         .replace("One or more another ", "One or more other ")
         .replace("This creature ability costs ", "This ability costs ")
-        .replace(
-            "This creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-        )
-        .replace(
-            "this creature has flying as long as it's your turn.",
-            "Kain has flying during your turn.",
-        )
-        .replace("this creature has flying", "Kain has flying")
-        .replace("This creature has flying", "Kain has flying")
         .replace("Return all other permanent card in exile", "return all other permanent cards exiled with this artifact")
         .replace("Return all other permanent cards exiled with this artifact", "return all other permanent cards exiled with this artifact")
         .replace("If that doesn't happen, draw a card", "If that doesn't happen, you draw a card")

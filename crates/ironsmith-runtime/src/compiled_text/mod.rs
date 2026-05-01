@@ -52,17 +52,22 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .into_iter()
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect();
-    let has_kain_flying = lines.iter().any(|line| {
-        line.to_ascii_lowercase()
-            .contains("this creature has flying as long as it's your turn")
-    });
     let has_kain_control_chain = lines.iter().any(|line| {
         let lower = line.to_ascii_lowercase();
         lower.contains("that player gains control of this creature")
             && lower.contains("lose that much life")
     });
-    if has_kain_flying && has_kain_control_chain {
-        lines.push("Kain has flying during your turn.".to_string());
+    if has_kain_control_chain {
+        for line in &mut lines {
+            let lower = line.to_ascii_lowercase();
+            if lower == "this creature has flying as long as it's your turn."
+                || lower == "this creature has flying as long as it's your turn"
+                || lower == "during your turn, this creature has flying."
+                || lower == "during your turn, this creature has flying"
+            {
+                *line = "Kain has flying during your turn.".to_string();
+            }
+        }
     }
     merge_ast_surface_lines(lines)
         .into_iter()
@@ -225,6 +230,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_conditional_followup_case(&line);
     line = normalize_activation_colon_payload_case(&line);
     line = normalize_top_card_exile_imperative(&line);
+    line = normalize_exact_during_your_turn_predicate_surface(&line);
+    line = normalize_sacrifice_enchantment_counter_spell_trigger(&line);
     line = line.replace(
         "Tap it. That permanent doesn't untap during its controller's next untap step",
         "Tap it. It doesn't untap during its controller's next untap step",
@@ -405,6 +412,12 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+            if let Some(merged_restriction) = merge_cast_and_activate_restriction_lines(left, right)
+            {
+                merged.push(merged_restriction);
+                idx += 2;
+                continue;
+            }
             if left == "This creature enters with X +1/+1 counters on it"
                 && let Some(condition) =
                     right_lower.strip_prefix("this creature enters with x +1/+1 counters on it if ")
@@ -421,6 +434,54 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
         idx += 1;
     }
     merged
+}
+
+fn merge_cast_and_activate_restriction_lines(left: &str, right: &str) -> Option<String> {
+    let (left_condition, left_body) = split_condition_prefix(left);
+    let (right_condition, right_body) = split_condition_prefix(right);
+    if !left_condition.eq_ignore_ascii_case(&right_condition) {
+        return None;
+    }
+
+    let left_subject = left_body.strip_suffix(" can't cast spells")?.trim();
+    let (right_subject, activation_restriction) =
+        right_body.split_once(" can't activate abilities of ")?;
+    if !left_subject.eq_ignore_ascii_case(right_subject.trim()) {
+        return None;
+    }
+
+    let activation_restriction = normalize_or_list_surface(activation_restriction.trim());
+    let subject = lowercase_first(left_subject);
+    let body =
+        format!("{subject} can't cast spells or activate abilities of {activation_restriction}");
+    if left_condition.is_empty() {
+        Some(body)
+    } else {
+        Some(format!("{left_condition}, {body}"))
+    }
+}
+
+fn split_condition_prefix(line: &str) -> (String, &str) {
+    let Some((condition, body)) = line.split_once(", ") else {
+        return (String::new(), line);
+    };
+    if condition.eq_ignore_ascii_case("During your turn")
+        || condition.to_ascii_lowercase().starts_with("as long as ")
+    {
+        (condition.to_string(), body)
+    } else {
+        (String::new(), line)
+    }
+}
+
+fn normalize_or_list_surface(text: &str) -> String {
+    let parts = text
+        .replace(',', " ")
+        .split_whitespace()
+        .filter(|part| !part.eq_ignore_ascii_case("or"))
+        .map(|part| part.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    join_with_or(&parts)
 }
 
 fn annotate_color_choice_exclusions(mut lines: Vec<String>) -> Vec<String> {
@@ -461,6 +522,61 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
         }
         lines = merged;
     }
+}
+
+fn normalize_exact_during_your_turn_predicate_surface(line: &str) -> String {
+    let trimmed = line.trim();
+    let without_period = trimmed.trim_end_matches('.');
+    if without_period.contains(". ") {
+        return line.to_string();
+    }
+    let Some((subject, verb, predicate)) = split_subject_predicate_clause(without_period) else {
+        return line.to_string();
+    };
+    let Some(predicate) = predicate.trim().strip_suffix(" as long as it's your turn") else {
+        return line.to_string();
+    };
+    if predicate.contains(" as long as ") || predicate.contains(" during ") {
+        return line.to_string();
+    }
+
+    let normalized_predicate = match verb {
+        "gets" | "get" => {
+            if !predicate.starts_with('+') && !predicate.starts_with('-') {
+                return line.to_string();
+            }
+            predicate.to_string()
+        }
+        "has" | "have" | "gains" | "gain" => {
+            let normalized = normalize_keyword_predicate_case(predicate);
+            if normalized == predicate && !is_keyword_phrase(predicate) {
+                return line.to_string();
+            }
+            normalized
+        }
+        _ => return line.to_string(),
+    };
+    let surface_verb = if matches!(verb, "gains" | "gain") {
+        have_verb_for_subject(subject)
+    } else {
+        verb
+    };
+    let (surface_subject, surface_verb) = during_your_turn_subject_and_verb(subject, surface_verb);
+    format!("During your turn, {surface_subject} {surface_verb} {normalized_predicate}")
+}
+
+fn normalize_sacrifice_enchantment_counter_spell_trigger(line: &str) -> String {
+    let trimmed = line.trim().trim_end_matches('.');
+    let Some(body) = trimmed
+        .strip_prefix("Whenever ")
+        .and_then(|body| body.strip_suffix(", sacrifice this enchantment. Counter it"))
+    else {
+        return line.to_string();
+    };
+    if !body.contains(" casts a spell") {
+        return line.to_string();
+    }
+    format!("When {body}, sacrifice this enchantment and counter that spell")
 }
 
 #[cfg(test)]
@@ -521,6 +637,89 @@ mod tests {
                 "This creature enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it."
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn same_turn_pump_and_keyword_lines_merge_to_during_your_turn_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "This creature gets +2/+0 as long as it's your turn.".to_string(),
+            "This creature has First strike as long as it's your turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec!["During your turn, this creature gets +2/+0 and has first strike".to_string()]
+        );
+    }
+
+    #[test]
+    fn mixed_during_turn_and_as_long_turn_lines_merge_to_during_your_turn_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "Equipped creature gets +2/+0 as long as it's your turn.".to_string(),
+            "During your turn, equipped creature has first strike.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec!["During your turn, equipped creature gets +2/+0 and has first strike".to_string()]
+        );
+    }
+
+    #[test]
+    fn each_creature_turn_pump_and_keyword_merge_to_plural_subject() {
+        let lines = merge_ast_surface_lines(vec![
+            "Each creature you control gets +1/+0 as long as it's your turn.".to_string(),
+            "Creatures you control have Trample as long as it's your turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec!["During your turn, creatures you control get +1/+0 and have trample".to_string()]
+        );
+    }
+
+    #[test]
+    fn exact_turn_conditioned_pump_uses_during_your_turn_surface() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Each creature you control gets +2/+0 as long as it's your turn".to_string()
+            ),
+            "During your turn, creatures you control get +2/+0."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
+                "This creature gets +2/+2 as long as it's your turn".to_string()
+            ),
+            "During your turn, this creature gets +2/+2."
+        );
+    }
+
+    #[test]
+    fn matching_cast_and_activation_restrictions_merge() {
+        let lines = merge_specific_adjacent_surface_lines(vec![
+            "During your turn, Your opponents can't cast spells.".to_string(),
+            "During your turn, your opponents can't activate abilities of artifacts creatures or enchantments."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn sacrifice_enchantment_counter_spell_trigger_uses_single_when_clause() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Whenever an opponent casts a spell, sacrifice this enchantment. Counter it"
+                    .to_string()
+            ),
+            "When an opponent casts a spell, sacrifice this enchantment and counter that spell."
         );
     }
 

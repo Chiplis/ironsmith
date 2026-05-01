@@ -2893,7 +2893,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
 
   const innerClass = cn(
-    "priority-inline-panel pointer-events-auto flex w-full items-center gap-2 px-2 py-1.5",
+    "priority-inline-panel pointer-events-auto flex w-full items-stretch gap-2 px-2 py-0",
     compactPortraitViewport && "flex-col items-stretch",
     !inline && anchoredStyle ? "fixed" : ""
   );
@@ -2902,12 +2902,12 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     <div className={panelClass}>
       <div className={innerClass} style={anchoredStyle || undefined}>
         <div className={cn("min-w-0 flex-1", compactPortraitViewport && "w-full")}>
-          <div className={cn("flex min-h-[46px] items-stretch gap-2", compactPortraitViewport && "flex-col")}>
+          <div className={cn("action-strip-layout flex min-h-[46px] items-stretch gap-2", compactPortraitViewport && "flex-col")}>
             <Button
               variant="ghost"
               size="sm"
               className={cn(
-                "decision-neon-button decision-main-button decision-submit-button h-full w-[176px] min-w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
+                "pass-priority-btn decision-main-button action-strip-advance-button h-full w-[224px] min-w-[224px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase",
                 compactPortraitViewport && "w-full min-w-0"
               )}
               style={decisionButtonStyle}

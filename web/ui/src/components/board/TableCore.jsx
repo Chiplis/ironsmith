@@ -217,7 +217,8 @@ export default function TableCore({
       </div>
       {middleInspectorDock ? (
         <div
-          className="table-shared-inspector-dock pointer-events-none absolute inset-y-0 right-2 z-[110] flex items-end justify-end overflow-visible"
+          className="table-shared-inspector-dock pointer-events-none absolute bottom-0 right-2 z-[110] flex items-start justify-end overflow-visible"
+          style={{ top: `${actionBarHeight}px` }}
           data-inspector-dock="middle"
         >
           {middleInspectorDock}

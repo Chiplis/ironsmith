@@ -83,7 +83,7 @@ export default function ZoneViewer({
 
   if (embedded) {
     return (
-      <div className="zone-viewer zone-viewer--embedded flex items-center shrink-0">
+      <div className="zone-viewer zone-viewer--embedded flex items-center shrink-0" data-zone-viewer="embedded">
         {zonesContent}
       </div>
     );

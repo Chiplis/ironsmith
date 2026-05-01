@@ -4,6 +4,7 @@ import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { ArrowLeft, Clipboard, Download, Eraser, Link2, Play, UserMinus, UserPlus, Users } from "lucide-react";
 import {
   PUZZLE_ZONE_ORDER,
   buildPuzzlePayload,
@@ -20,9 +21,9 @@ import {
 } from "@/lib/puzzles";
 
 const fieldClass =
-  "w-full rounded-md border border-[#344a61] bg-[#0b1118] px-3 py-2 text-[13px] text-foreground outline-none focus:border-primary/60";
+  "puzzle-setup-field";
 const zoneLabelClass =
-  "grid gap-1 text-[10px] uppercase tracking-[0.18em] text-[#8fb1d6]";
+  "puzzle-setup-label";
 const MAX_PLAYERS = 8;
 
 function zoneTitle(zone) {
@@ -159,32 +160,32 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
 
   return (
     <main
-      className="table-gradient rounded grid h-full gap-3 overflow-y-auto overflow-x-hidden p-3"
-      style={{ gridTemplateRows: "auto auto auto" }}
+      className="puzzle-setup-shell table-gradient"
     >
-      <div className="grid gap-3 rounded border border-[#2b3e55] bg-[#09111a] p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="grid gap-3">
+      <section className="puzzle-setup-hero">
+        <div className="puzzle-setup-copy">
           <div className="grid gap-2">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">
+            <div className="puzzle-setup-kicker">
               Puzzle Setup
             </div>
-            <div className="text-[22px] font-bold uppercase tracking-[0.16em] text-foreground">
+            <h1 className="puzzle-setup-title">
               Share A Board Position
-            </div>
-            <p className="m-0 max-w-[64ch] text-[13px] leading-5 text-muted-foreground">
+            </h1>
+            <p className="puzzle-setup-description">
               Fill any zone for each player, then copy the generated `?puzzle=` link. Loading that
               link resets the table and places the listed cards directly
               into those zones without triggering ETBs.
             </p>
-            <p className="m-0 max-w-[64ch] text-[12px] leading-5 text-[#8fb1d6]">
+            <p className="puzzle-setup-note">
               Importing from the current table includes visible zones only. Libraries and hidden
               opponent hands stay blank unless you type them in here.
             </p>
           </div>
 
-          <div className="grid gap-3 rounded border border-[#2b3e55] bg-[#0b1118] p-3">
+          <div className="puzzle-setup-control-strip">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="stone-pill px-3 uppercase">
+                <Users className="size-3.5" />
                 {players.length} player{players.length === 1 ? "" : "s"}
               </Badge>
               <Badge variant="secondary" className="stone-pill px-3 uppercase">
@@ -199,6 +200,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                 disabled={players.length <= 1}
                 onClick={() => adjustPlayerCount(players.length - 1)}
               >
+                <UserMinus className="size-4" />
                 Remove Player
               </Button>
               <Button
@@ -208,50 +210,58 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                 disabled={players.length >= MAX_PLAYERS}
                 onClick={() => adjustPlayerCount(players.length + 1)}
               >
+                <UserPlus className="size-4" />
                 Add Player
               </Button>
               <Button type="button" variant="secondary" className="stone-pill" onClick={handleImportCurrentTable}>
+                <Download className="size-4" />
                 Import Current Table
               </Button>
               <Button type="button" variant="secondary" className="stone-pill" onClick={handleClearDraft}>
+                <Eraser className="size-4" />
                 Clear Draft
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-3 rounded border border-[#2b3e55] bg-[#0b1118] p-3">
+        <aside className="puzzle-share-panel">
           <label className={zoneLabelClass}>
-            Share Link
+            <span className="inline-flex items-center gap-2">
+              <Link2 className="size-3.5" />
+              Share Link
+            </span>
             <textarea
-              className="min-h-[120px] w-full rounded-md border border-[#344a61] bg-[#081018] px-3 py-2 font-mono text-[12px] text-foreground outline-none"
+              className="puzzle-setup-field puzzle-share-link"
               readOnly
               value={shareUrl}
             />
           </label>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button type="button" variant="secondary" className="stone-pill" onClick={handleCopyLink}>
+              <Clipboard className="size-4" />
               Copy Link
             </Button>
             <Button type="button" variant="secondary" className="stone-pill" onClick={handleLoadHere}>
+              <Play className="size-4" />
               Load Here
             </Button>
           </div>
-        </div>
-      </div>
+        </aside>
+      </section>
 
       <div
-        className="grid gap-3 overflow-x-auto overflow-y-visible"
-        style={{ gridTemplateColumns: `repeat(${Math.max(players.length, 1)}, minmax(280px, 1fr))` }}
+        className="puzzle-player-grid"
+        style={{ gridTemplateColumns: `repeat(${Math.max(players.length, 1)}, minmax(620px, 1fr))` }}
       >
         {players.map((player, playerIndex) => {
           const playerPayload = payload.players[playerIndex];
           return (
             <section
               key={player.id}
-              className="grid gap-3 min-h-0 rounded border border-[#2b3e55] bg-gradient-to-b from-[#101826] to-[#0a121d] p-3"
+              className="puzzle-player-panel"
             >
-              <div className="grid gap-2">
+              <div className="puzzle-player-header">
                 <label className={zoneLabelClass}>
                   Player Name
                   <input
@@ -270,7 +280,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                     onChange={(event) => updatePlayerLife(playerIndex, event.target.value)}
                   />
                 </label>
-                <div className="text-[12px] text-muted-foreground">
+                <div className="puzzle-player-summary">
                   Life {playerPayload?.life ?? 20} - {" "}
                   {PUZZLE_ZONE_ORDER.reduce(
                     (count, zone) => count + (playerPayload?.zones?.[zone]?.length || 0),
@@ -279,17 +289,17 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                 </div>
               </div>
 
-              <div className="grid gap-3">
+              <div className="puzzle-zone-grid">
                 {PUZZLE_ZONE_ORDER.map((zone) => (
-                  <label key={`${player.id}:${zone}`} className={zoneLabelClass}>
-                    <span className="flex items-center justify-between gap-2">
+                  <label key={`${player.id}:${zone}`} className="puzzle-zone-editor">
+                    <span className="puzzle-zone-header">
                       <span>{zoneTitle(zone)}</span>
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="puzzle-zone-count">
                         {parsePuzzleCardList(zoneTexts[playerIndex]?.[zone]).length}
                       </span>
                     </span>
                     <textarea
-                      className={`${fieldClass} min-h-[92px] resize-y font-mono`}
+                      className={`${fieldClass} puzzle-zone-textarea`}
                       placeholder={`1 ${player.name || `Player ${playerIndex + 1}`} card per line`}
                       value={zoneTexts[playerIndex]?.[zone] || ""}
                       onChange={(event) => updateZoneText(playerIndex, zone, event.target.value)}
@@ -302,11 +312,12 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
         })}
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <footer className="puzzle-setup-footer">
         <Button type="button" variant="secondary" className="stone-pill" onClick={onCancel}>
+          <ArrowLeft className="size-4" />
           Back To Table
         </Button>
-      </div>
+      </footer>
     </main>
   );
 }
