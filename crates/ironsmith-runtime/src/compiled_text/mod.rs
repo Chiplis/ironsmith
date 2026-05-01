@@ -225,6 +225,14 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_conditional_followup_case(&line);
     line = normalize_activation_colon_payload_case(&line);
     line = normalize_top_card_exile_imperative(&line);
+    line = line.replace(
+        "Tap it. That permanent doesn't untap during its controller's next untap step",
+        "Tap it. It doesn't untap during its controller's next untap step",
+    );
+    line = line.replace(
+        "tap it. That permanent doesn't untap during its controller's next untap step",
+        "tap it. It doesn't untap during its controller's next untap step",
+    );
     line = capitalize_sentence_boundaries(&line);
     if is_keyword_style_line(&line) {
         line
@@ -486,6 +494,17 @@ mod tests {
                 "If it's tapped, Put a stun counter on it. Otherwise, Tap it."
             ),
             "If it's tapped, put a stun counter on it. Otherwise, tap it."
+        );
+    }
+
+    #[test]
+    fn final_surface_keeps_it_reference_for_tap_freeze_text() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "If you roll 10-20, tap it. That permanent doesn't untap during its controller's next untap step"
+                    .to_string()
+            ),
+            "If you roll 10-20, tap it. It doesn't untap during its controller's next untap step."
         );
     }
 

@@ -2672,6 +2672,81 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn exchange_uses_selected_targets(exchange: &crate::effects::ExchangeControlEffect) -> bool {
+        if exchange.permanent1 != exchange.permanent2 {
+            return false;
+        }
+        let ChooseSpec::WithCount(inner, count) = &exchange.permanent1 else {
+            return false;
+        };
+        if *count != ChoiceCount::exactly(2) || !inner.is_target() {
+            return false;
+        }
+        let ChooseSpec::Object(filter) = inner.base() else {
+            return false;
+        };
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && is_implicit_reference_tag(constraint.tag.as_str())
+        })
+    }
+
+    fn choose_spec_shares_card_type_with_reference(spec: &ChooseSpec) -> bool {
+        let ChooseSpec::Object(filter) = spec.base() else {
+            return false;
+        };
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+                && (is_implicit_reference_tag(constraint.tag.as_str())
+                    || constraint.tag.as_str() == "triggering")
+        })
+    }
+
+    fn describe_exchange_target_choice(spec: &ChooseSpec) -> String {
+        let mut text = describe_choose_spec(spec);
+        if choose_spec_shares_card_type_with_reference(spec) {
+            text = text.replace(
+                "shares a permanent type with that object",
+                "shares a card type with it",
+            );
+            text = text.replace(
+                "shares a card type with that object",
+                "shares a card type with it",
+            );
+        }
+        text
+    }
+
+    fn describe_target_only_then_exchange_control(effects: &[&Effect]) -> Option<String> {
+        let effects = if effects.first().is_some_and(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+        }) {
+            &effects[1..]
+        } else {
+            effects
+        };
+        let [target_effect, exchange_effect] = effects else {
+            return None;
+        };
+        let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let exchange = unwrap_render_wrappers(exchange_effect)
+            .downcast_ref::<crate::effects::ExchangeControlEffect>()?;
+        if !exchange_uses_selected_targets(exchange) {
+            return None;
+        }
+
+        Some(format!(
+            "Choose {}. Exchange control of those permanents",
+            describe_exchange_target_choice(&target_only.target)
+        ))
+    }
+
+    if let Some(compact) = describe_target_only_then_exchange_control(&raw_effects) {
+        return compact;
+    }
+
     if let [draw_effect, target_effect, lose_effect] = raw_effects.as_slice()
         && let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()
         && let Some(target_only) = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
@@ -6153,8 +6228,37 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                     .to_string(),
             );
         }
+        if target_text == "it" {
+            return Some(
+                "Tap it. It doesn't untap during its controller's next untap step".to_string(),
+            );
+        }
         Some(format!(
             "Tap {target_text}. That permanent doesn't untap during its controller's next untap step"
+        ))
+    }
+
+    fn describe_target_freeze_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [target_effect, cant_effect] = filtered else {
+            return None;
+        };
+        let tagged = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let target_only = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+        let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
+            return None;
+        };
+        if cant.duration != Until::ControllersNextUntapStep
+            || !filter_is_tagged_as(filter, tagged.tag.as_str())
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{} doesn't untap during its controller's next untap step",
+            capitalize_first(&describe_choose_spec(&target_only.target))
         ))
     }
 
@@ -6657,6 +6761,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_tap_freeze_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_target_freeze_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_reveal_top_to_hand_bundle(&filtered) {
@@ -9286,6 +9393,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(rendered) = describe_tap_freeze_bundle(&filtered[idx..idx + 2])
+        {
+            parts.push(rendered);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(rendered) = describe_target_freeze_bundle(&filtered[idx..idx + 2])
         {
             parts.push(rendered);
             idx += 2;
@@ -12424,6 +12538,84 @@ mod tests {
         assert_eq!(
             describe_effect_list(&target_effects),
             "Target player draws a card and loses 1 life"
+        );
+    }
+
+    #[test]
+    fn target_only_exchange_control_renders_selected_permanents() {
+        let mut target_filter = ObjectFilter::permanent();
+        target_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("triggering"),
+                relation: TaggedOpbjectRelation::SharesCardType,
+            });
+        let target = ChooseSpec::target(ChooseSpec::Object(target_filter));
+
+        let mut selected_filter = ObjectFilter::permanent();
+        selected_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from("__it__"),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let selected = ChooseSpec::target(ChooseSpec::Object(selected_filter))
+            .with_count(ChoiceCount::exactly(2));
+        let exchange = crate::effects::ExchangeControlEffect::new(selected.clone(), selected);
+
+        let effects = vec![
+            Effect::new(crate::effects::TagTriggeringObjectEffect::new("triggering")),
+            Effect::new(crate::effects::TargetOnlyEffect::new(target)),
+            Effect::new(exchange).tag("exchanged_0"),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Choose target permanent that shares a card type with it. Exchange control of those permanents"
+        );
+    }
+
+    #[test]
+    fn target_then_cant_untap_renders_single_target_sentence() {
+        let target_tag = TagKey::from("targeted_0");
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(ObjectFilter::permanent()),
+        )))
+        .tag(target_tag.clone());
+
+        let mut filter = ObjectFilter::permanent();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: target_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::cant_until(
+            crate::effect::Restriction::Untap(filter),
+            Until::ControllersNextUntapStep,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[target, cant]),
+            "Target permanent doesn't untap during its controller's next untap step"
+        );
+    }
+
+    #[test]
+    fn tap_it_then_cant_untap_keeps_it_reference() {
+        let tag = TagKey::from("__it__");
+        let tap = Effect::tap(ChooseSpec::Tagged(tag.clone()));
+        let mut filter = ObjectFilter::permanent();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::cant_until(
+            crate::effect::Restriction::Untap(filter),
+            Until::ControllersNextUntapStep,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[tap, cant]),
+            "Tap it. It doesn't untap during its controller's next untap step"
         );
     }
 

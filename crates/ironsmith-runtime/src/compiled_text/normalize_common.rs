@@ -1951,6 +1951,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step",
     );
     normalized = normalized.replace(
+        "Tap it. That permanent doesn't untap during its controller's next untap step",
+        "Tap it. It doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
+        "tap it. That permanent doesn't untap during its controller's next untap step",
+        "tap it. It doesn't untap during its controller's next untap step",
+    );
+    normalized = normalized.replace(
         "target creature an opponent controls or planeswalker",
         "target creature or planeswalker an opponent controls",
     );
@@ -2429,6 +2437,26 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     normalized = normalized
         .replace("target another ", "other target ")
+        .replace("Target that player ", "That player ")
+        .replace("Target that permanent ", "That permanent ")
+        .replace("Target that creature ", "That creature ")
+        .replace("Target that object ", "That object ")
+        .replace(
+            "another target that player's creature",
+            "another target creature that player controls",
+        )
+        .replace(
+            "Another target that player's creature",
+            "Another target creature that player controls",
+        )
+        .replace(
+            "target that player's creature",
+            "target creature that player controls",
+        )
+        .replace(
+            "Target that player's creature",
+            "Target creature that player controls",
+        )
         .replace("a another ", "another ")
         .replace("Creatures token", "Creature tokens")
         .replace("creatures token", "creature tokens")
@@ -10640,6 +10668,36 @@ mod tests {
                 "Whenever another creature you control enters, you gain 1 life."
             ),
             "Whenever another creature enters under your control, you gain 1 life"
+        );
+    }
+
+    #[test]
+    fn normalize_demotes_sentence_leading_target_that_references() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Choose target permanent. Target that permanent doesn't untap during its controller's next untap step."
+            ),
+            "Choose target permanent. That permanent doesn't untap during its controller's next untap step."
+        );
+    }
+
+    #[test]
+    fn normalize_keeps_it_reference_for_tap_freeze_text() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "If you roll 10-20, tap it. That permanent doesn't untap during its controller's next untap step."
+            ),
+            "If you roll 10-20, tap it. It doesn't untap during its controller's next untap step."
+        );
+    }
+
+    #[test]
+    fn normalize_target_that_player_creature_possessive() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Strax fights another target that player's creature."
+            ),
+            "Strax fights another target creature that player controls."
         );
     }
 

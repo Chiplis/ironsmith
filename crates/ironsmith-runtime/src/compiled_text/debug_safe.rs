@@ -131,6 +131,10 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace(" in the battlefield", " on the battlefield")
         .replace(" In the battlefield", " On the battlefield")
         .replace("Cascade and Cascade", "Cascade, cascade")
+        .replace("Target that player ", "That player ")
+        .replace("Target that permanent ", "That permanent ")
+        .replace("Target that creature ", "That creature ")
+        .replace("Target that object ", "That object ")
         .replace("Add 1 mana of any color", "Add one mana of any color")
         .replace("add 1 mana of any color", "add one mana of any color")
         .replace(
@@ -400,6 +404,16 @@ mod tests {
                 "You choose a creature you control in the battlefield."
             ),
             "You choose a creature you control on the battlefield."
+        );
+    }
+
+    #[test]
+    fn cleanup_demotes_target_that_references() {
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "Target that player discards that card. Target that permanent doesn't untap."
+            ),
+            "That player discards that card. That permanent doesn't untap."
         );
     }
 }
