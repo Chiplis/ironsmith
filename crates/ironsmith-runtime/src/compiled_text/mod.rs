@@ -354,15 +354,16 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_conditioned_spell_and_activation_tax_lines(
-            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
-                merge_specific_adjacent_surface_lines(merge_lose_all_transform_lines(
-                    merge_blockability_lines(annotate_color_choice_exclusions(
-                        merge_subject_predicate_surface_lines(previous.clone()),
+        let merged =
+            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
+                drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
+                    merge_lose_all_transform_lines(merge_blockability_lines(
+                        annotate_color_choice_exclusions(merge_same_true_keyword_grant_lines(
+                            merge_subject_predicate_surface_lines(previous.clone()),
+                        )),
                     )),
                 )),
-            )),
-        );
+            ));
         if merged == previous {
             return merged;
         }
@@ -397,8 +398,8 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 continue;
             }
             if left == "This creature enters with X +1/+1 counters on it"
-                && let Some(condition) = right_lower
-                    .strip_prefix("this creature enters with x +1/+1 counters on it if ")
+                && let Some(condition) =
+                    right_lower.strip_prefix("this creature enters with x +1/+1 counters on it if ")
             {
                 merged.push(format!(
                     "{left}. If {}, it enters with an additional X +1/+1 counters on it.",
@@ -499,6 +500,23 @@ mod tests {
             lines,
             vec![
                 "This creature enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn repeated_conditional_keyword_grants_use_same_is_true_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "At the beginning of each combat, if you control a creature with first strike, creatures you control gain first strike until end of turn.".to_string(),
+            "At the beginning of each combat, if you control a creature with flying, creatures you control gain flying until end of turn.".to_string(),
+            "At the beginning of each combat, if you control a creature with vigilance, creatures you control gain vigilance until end of turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "At the beginning of each combat, creatures you control gain first strike until end of turn if a creature you control has first strike. The same is true for flying and vigilance."
                     .to_string()
             ]
         );

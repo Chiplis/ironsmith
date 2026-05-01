@@ -16,6 +16,7 @@ use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas,
 };
 use super::super::token_primitives::{slice_contains, slice_starts_with, str_strip_suffix};
+use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
 use crate::runtime_backend::util::{
     parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word, parse_number_word_u32,
@@ -592,6 +593,13 @@ pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken])
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
+    parse_legacy_mana_usage_restriction_sentence_lexed(tokens)
+        .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
+}
+
+fn parse_legacy_mana_usage_restriction_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
     let words = TokenWordView::new(tokens);
     if primitives::words_match_any_prefix(tokens, SPEND_MANA_CAST_PREFIXES).is_none() {
         return None;
@@ -653,6 +661,79 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     Some(ManaUsageRestriction::CastSpell {
         card_types: vec![card_type],
         subtype_requirement,
+        restrict_to_matching_spell: true,
+        grant_uncounterable,
+        enters_with_counters: vec![],
+    })
+}
+
+fn parse_filter_mana_usage_restriction_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    let words = TokenWordView::new(tokens);
+    if primitives::words_match_any_prefix(tokens, SPEND_MANA_CAST_PREFIXES).is_none() {
+        return None;
+    }
+
+    let mut word_refs = words.to_word_refs();
+    let cast_idx = word_refs.iter().position(|word| *word == "cast")?;
+    if word_refs.len() >= 6 {
+        let tail = &word_refs[word_refs.len() - 6..];
+        if tail == ["and", "that", "spell", "can't", "be", "countered"]
+            || tail == ["and", "that", "spell", "cant", "be", "countered"]
+        {
+            word_refs.truncate(word_refs.len() - 6);
+        }
+    }
+
+    let spec_words = word_refs
+        .get(cast_idx + 1..)?
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+    if spec_words.is_empty() {
+        return None;
+    }
+    if spec_words.iter().any(|word| {
+        matches!(
+            *word,
+            "activate"
+                | "activates"
+                | "activated"
+                | "activation"
+                | "ability"
+                | "abilities"
+                | "pay"
+                | "foretell"
+                | "unlock"
+                | "turn"
+                | "cost"
+                | "costs"
+        )
+    }) {
+        return None;
+    }
+
+    let spec_text = spec_words.join(" ");
+    let spec_tokens = super::super::lexer::lex_line(&spec_text, 0).ok()?;
+    let filter = parse_spell_filter_with_grammar_entrypoint(&spec_tokens);
+    let is_plain_spell = spec_words
+        .iter()
+        .all(|word| matches!(*word, "a" | "an" | "the" | "spell" | "spells"));
+    if filter == ObjectFilter::default() && !is_plain_spell {
+        return None;
+    }
+
+    let grant_uncounterable =
+        words
+            .to_word_refs()
+            .ends_with(&["and", "that", "spell", "can't", "be", "countered"])
+            || words
+                .to_word_refs()
+                .ends_with(&["and", "that", "spell", "cant", "be", "countered"]);
+
+    Some(ManaUsageRestriction::CastSpellMatching {
+        filter,
         restrict_to_matching_spell: true,
         grant_uncounterable,
         enters_with_counters: vec![],

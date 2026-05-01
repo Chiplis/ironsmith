@@ -421,8 +421,17 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if let Some(card_type) = parse_non_type(word) {
             push_unique_filter_value(&mut filter.excluded_card_types, card_type);
         }
+        if let Some(supertype) = parse_supertype_word(word) {
+            push_unique_filter_value(&mut filter.supertypes, supertype);
+        }
         if let Some(subtype) = parse_subtype_flexible(word) {
             push_unique_filter_value(&mut filter.subtypes, subtype);
+        }
+        if word == "colorless" {
+            filter.colorless = true;
+        }
+        if word == "multicolored" {
+            filter.multicolored = true;
         }
         if let Some(color) = parse_color(word) {
             let existing = filter.colors.unwrap_or(ColorSet::new());

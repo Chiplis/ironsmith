@@ -27246,7 +27246,127 @@ fn describe_mana_usage_restriction(
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
+        crate::ability::ManaUsageRestriction::CastSpellMatching {
+            filter,
+            restrict_to_matching_spell,
+            grant_uncounterable,
+            enters_with_counters,
+        } => {
+            let spell_text = describe_mana_usage_spell_filter_target(filter)?;
+            let mut line = if *restrict_to_matching_spell {
+                format!("Spend this mana only to cast {spell_text}")
+            } else if !*grant_uncounterable && enters_with_counters.is_empty() {
+                return None;
+            } else {
+                format!("If this mana is spent to cast {spell_text}")
+            };
+
+            let mut bonuses = Vec::new();
+            if *grant_uncounterable {
+                bonuses.push("that spell can't be countered".to_string());
+            }
+            bonuses.extend(
+                enters_with_counters.iter().map(|(counter_type, count)| {
+                    describe_mana_usage_etb_bonus(*counter_type, *count)
+                }),
+            );
+
+            if bonuses.is_empty() {
+                return Some(line);
+            }
+
+            if *restrict_to_matching_spell {
+                line.push_str(", and ");
+            } else {
+                line.push_str(", ");
+            }
+            line.push_str(&bonuses.join(" and "));
+            Some(line)
+        }
     }
+}
+
+fn describe_mana_usage_spell_filter_target(filter: &ObjectFilter) -> Option<String> {
+    let mut described = describe_simple_mana_usage_spell_filter(filter)
+        .unwrap_or_else(|| describe_cast_limit_spell_filter(filter));
+    if described.is_empty() {
+        return None;
+    }
+    if described == "spell" {
+        return Some("a spell".to_string());
+    }
+    if let Some(singular) = described.strip_suffix(" spells") {
+        described = format!("{singular} spell");
+    }
+    if described.starts_with("a ")
+        || described.starts_with("an ")
+        || described.starts_with("the ")
+        || described.starts_with("your ")
+    {
+        return Some(described);
+    }
+    let article = if matches!(
+        described.chars().next().map(|ch| ch.to_ascii_lowercase()),
+        Some('a' | 'e' | 'i' | 'o' | 'u')
+    ) {
+        "an"
+    } else {
+        "a"
+    };
+    Some(format!("{article} {described}"))
+}
+
+fn describe_simple_mana_usage_spell_filter(filter: &ObjectFilter) -> Option<String> {
+    let mut remainder = filter.clone();
+    remainder.card_types.clear();
+    remainder.excluded_card_types.clear();
+    remainder.subtypes.clear();
+    remainder.supertypes.clear();
+    remainder.colors = None;
+    remainder.colorless = false;
+    remainder.multicolored = false;
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut descriptors = Vec::new();
+    descriptors.extend(
+        filter
+            .supertypes
+            .iter()
+            .map(|supertype| supertype.to_string()),
+    );
+    if filter.colorless {
+        descriptors.push("colorless".to_string());
+    }
+    if filter.multicolored {
+        descriptors.push("multicolored".to_string());
+    }
+    if let Some(colors) = filter.colors {
+        for color in crate::color::Color::ALL {
+            if colors.contains(color) {
+                descriptors.push(color.name().to_string());
+            }
+        }
+    }
+    descriptors.extend(
+        filter
+            .excluded_card_types
+            .iter()
+            .map(|card_type| format!("non{}", card_type.name())),
+    );
+    descriptors.extend(
+        filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string()),
+    );
+    descriptors.extend(filter.subtypes.iter().map(|subtype| subtype.to_string()));
+
+    if descriptors.is_empty() {
+        return Some("spell".to_string());
+    }
+    Some(format!("{} spell", join_with_or(&descriptors)))
 }
 
 fn describe_mana_usage_spell_target(

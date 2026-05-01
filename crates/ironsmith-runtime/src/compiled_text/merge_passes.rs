@@ -55,6 +55,7 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
             | "lifelink"
             | "menace"
             | "reach"
+            | "skulk"
             | "shroud"
             | "trample"
             | "devoid"
@@ -1337,6 +1338,134 @@ pub(super) fn merge_conditioned_spell_and_activation_tax_lines(lines: Vec<String
         idx += 1;
     }
     merged
+}
+
+#[derive(Debug, Clone)]
+struct SameTrueKeywordGrant {
+    event: String,
+    condition: String,
+    condition_signature: String,
+    subject: String,
+    verb: String,
+    keyword: String,
+}
+
+pub(super) fn merge_same_true_keyword_grant_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let Some(first) = parse_same_true_keyword_grant_line(&lines[idx]) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut grants = vec![first];
+        let mut consumed = 1usize;
+        while idx + consumed < lines.len() {
+            let Some(next) = parse_same_true_keyword_grant_line(&lines[idx + consumed]) else {
+                break;
+            };
+            let start = &grants[0];
+            if !start.event.eq_ignore_ascii_case(&next.event)
+                || !start.subject.eq_ignore_ascii_case(&next.subject)
+                || !start.verb.eq_ignore_ascii_case(&next.verb)
+                || !start
+                    .condition_signature
+                    .eq_ignore_ascii_case(&next.condition_signature)
+            {
+                break;
+            }
+            grants.push(next);
+            consumed += 1;
+        }
+
+        if grants.len() < 3 {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let first = &grants[0];
+        let first_condition = render_same_true_keyword_grant_condition(
+            &first.condition,
+            &first.keyword,
+            &first.subject,
+        );
+        let remaining_keywords = grants[1..]
+            .iter()
+            .map(|grant| grant.keyword.clone())
+            .collect::<Vec<_>>();
+        merged.push(format!(
+            "{}, {} {} {} until end of turn if {}. The same is true for {}.",
+            first.event,
+            first.subject,
+            first.verb,
+            first.keyword,
+            first_condition,
+            join_with_and(&remaining_keywords)
+        ));
+        idx += consumed;
+    }
+
+    merged
+}
+
+fn parse_same_true_keyword_grant_line(line: &str) -> Option<SameTrueKeywordGrant> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (event, rest) = trimmed.split_once(", if ")?;
+    let (condition, effect) = rest.split_once(", ")?;
+    let (subject, verb, predicate) = split_subject_predicate_clause(effect)?;
+    if !matches!(verb, "gains" | "gain") {
+        return None;
+    }
+    let keyword = predicate
+        .trim()
+        .strip_suffix(" until end of turn")?
+        .trim()
+        .to_ascii_lowercase();
+    if !is_keyword_phrase(&keyword) || !condition_mentions_keyword(condition, &keyword) {
+        return None;
+    }
+    let condition_signature = condition
+        .to_ascii_lowercase()
+        .replace(&keyword, "{keyword}");
+    Some(SameTrueKeywordGrant {
+        event: event.trim().to_string(),
+        condition: condition.trim().to_string(),
+        condition_signature,
+        subject: subject.trim().to_string(),
+        verb: verb.trim().to_string(),
+        keyword,
+    })
+}
+
+fn condition_mentions_keyword(condition: &str, keyword: &str) -> bool {
+    let condition = condition.to_ascii_lowercase();
+    condition.contains(&format!(" with {keyword}"))
+        || condition.contains(&format!(" has {keyword}"))
+}
+
+fn render_same_true_keyword_grant_condition(
+    condition: &str,
+    keyword: &str,
+    grant_subject: &str,
+) -> String {
+    let condition = condition.trim();
+    if grant_subject.eq_ignore_ascii_case("creatures you control") {
+        let control_pattern = format!("you control a creature with {keyword}");
+        if condition.eq_ignore_ascii_case(&control_pattern) {
+            return format!("a creature you control has {keyword}");
+        }
+
+        let graveyard_pattern =
+            format!("you have a creature card with {keyword} in your graveyard");
+        if condition.eq_ignore_ascii_case(&graveyard_pattern) {
+            return format!("a creature card in your graveyard has {keyword}");
+        }
+    }
+    condition.to_string()
 }
 
 fn merge_conditioned_spell_and_activation_tax_pair(first: &str, second: &str) -> Option<String> {

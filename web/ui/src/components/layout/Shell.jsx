@@ -8,6 +8,7 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 import Topbar from "./Topbar";
 import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
+import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
 import LogDrawer from "@/components/overlays/LogDrawer";
 
@@ -453,8 +454,13 @@ export default function Shell() {
       compact={smallDesktopViewport}
       zoneViews={zoneViews}
       setZoneViews={setZoneViews}
-      onAddCardNotice={pushNotice}
       onChangePerspective={handleChangePerspective}
+    />
+  );
+  const zoneActionControlsElement = (
+    <TableActionControls
+      compact={smallDesktopViewport}
+      onAddCardNotice={pushNotice}
       onEnterDeckLoading={() => {
         setPuzzleSetupMode(false);
         setDeckLoadingMode((mode) => !mode);
@@ -509,6 +515,7 @@ export default function Shell() {
         setMobilePhaseStops={setMobilePhaseStops}
         middleTopbar={dockToolbarsInTable ? topbarElement : null}
         middleAddCardBar={dockToolbarsInTable ? addCardBarElement : null}
+        zoneActionControls={zoneActionControlsElement}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (

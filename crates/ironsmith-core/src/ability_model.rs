@@ -21,7 +21,7 @@ pub enum ManaUsageSubtypeRequirement {
     ChosenTypeOfSource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ManaUsageRestriction {
     CastSpell {
         card_types: Vec<CardType>,
@@ -30,15 +30,25 @@ pub enum ManaUsageRestriction {
         grant_uncounterable: bool,
         enters_with_counters: Vec<(crate::CounterType, u32)>,
     },
+    CastSpellMatching {
+        filter: ObjectFilter,
+        restrict_to_matching_spell: bool,
+        grant_uncounterable: bool,
+        enters_with_counters: Vec<(crate::CounterType, u32)>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Eq for ManaUsageRestriction {}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RestrictedManaUnit {
     pub symbol: ManaSymbol,
     pub source: ObjectId,
     pub source_chosen_creature_type: Option<Subtype>,
     pub restrictions: Vec<ManaUsageRestriction>,
 }
+
+impl Eq for RestrictedManaUnit {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ability<SA, T, E, C> {

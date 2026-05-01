@@ -213,6 +213,7 @@ export default function MyZone({
   headerControls = null,
   headerInspectorDock = null,
   embeddedActionBar = null,
+  zoneActionControls = null,
   hideHeader = false,
   mobileBattleScene = false,
   playerAccent: explicitPlayerAccent = null,
@@ -741,10 +742,16 @@ export default function MyZone({
           className={cn(
             mobileHandRailVisible
               ? "my-zone-mobile-board-shell min-h-0 h-full"
-              : "min-h-0 h-full"
+              : "my-zone-board-shell min-h-0 h-full",
+            zoneActionControls && "my-zone-board-shell--with-actions"
           )}
           data-mobile-hand-drop-target={mobileHandRailVisible ? "board" : undefined}
         >
+        {zoneActionControls ? (
+          <aside className="my-zone-action-rail min-h-0">
+            {zoneActionControls}
+          </aside>
+        ) : null}
         <div
           className={cn(
             "battlefield-zone-strip min-h-0 h-full overflow-visible",

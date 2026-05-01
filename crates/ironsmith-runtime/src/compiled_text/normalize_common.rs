@@ -1540,6 +1540,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         normalized = format!("Target creature gains {rest}");
     }
+    if let Some(compacted) = compact_repeated_process_once_surface(&normalized) {
+        normalized = compacted;
+    }
     let lower_compact = normalized
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -10497,6 +10500,31 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
     }
 }
 
+fn compact_repeated_process_once_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let without_period = trimmed.trim_end_matches('.');
+    let sentences = without_period
+        .split(". ")
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() < 2 || sentences.len() % 2 != 0 {
+        return None;
+    }
+
+    let half = sentences.len() / 2;
+    if sentences[..half] != sentences[half..] {
+        return None;
+    }
+
+    let first_pass = sentences[..half].join(". ");
+    if half == 1 && !first_pass.to_ascii_lowercase().contains(" unless ") {
+        return None;
+    }
+
+    Some(format!("{first_pass}. Repeat this process once."))
+}
+
 fn describe_source_neither_attacked_nor_entered_condition(
     left: &Condition,
     right: &Condition,
@@ -10612,6 +10640,26 @@ mod tests {
                 "Whenever another creature you control enters, you gain 1 life."
             ),
             "Whenever another creature enters under your control, you gain 1 life"
+        );
+    }
+
+    #[test]
+    fn normalize_repeated_process_once_surface_compacts_structural_duplicate_halves() {
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "Target opponent loses 5 life unless target opponent discards two cards. Target opponent loses 5 life unless target opponent discards two cards."
+            ),
+            "Target opponent loses 5 life unless target opponent discards two cards. Repeat this process once."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing(
+                "You choose a nonlegendary creature. Create a token that's a copy of that object. You choose a nonlegendary creature. Create a token that's a copy of that object."
+            ),
+            "You choose a nonlegendary creature. Create a token that's a copy of that object. Repeat this process once."
+        );
+        assert_eq!(
+            normalize_common_semantic_phrasing("Draw a card. Draw a card."),
+            "Draw a card. Draw a card."
         );
     }
 }

@@ -1,27 +1,15 @@
-import { useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
-import { copyTextToClipboard } from "@/lib/clipboard";
-import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
-import CreateCardForgeSheet from "./CreateCardForgeSheet";
-import AddCardSheet from "./AddCardSheet";
 
-const triggerPill = "stone-pill inline-flex items-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
 export default function AddCardBar({
   compact = false,
   zoneViews = ["battlefield"],
   setZoneViews,
-  onAddCardNotice,
   onChangePerspective,
-  onEnterDeckLoading,
-  onOpenPuzzleSetup,
-  onOpenLobby,
-  deckLoadingMode = false,
-  puzzleSetupMode = false,
 }) {
   const {
     state,
@@ -33,89 +21,15 @@ export default function AddCardBar({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
-    setStatus,
   } = useGame();
-  const [zone, setZone] = useState("hand");
-  const [playerIndex, setPlayerIndex] = useState(null);
-  const [skipTriggers, setSkipTriggers] = useState(false);
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
-  const selectedPlayer = playerIndex ?? perspective;
-  const addLocked = multiplayer.mode !== "idle";
   const matchLocked = multiplayer.matchStarted;
-  const lobbyBusy = multiplayer.mode !== "idle";
-
-  const handleShareCurrentTable = async () => {
-    const shareUrl = buildPuzzleUrlFromGameState(state);
-    if (!shareUrl) {
-      setStatus("Could not build a puzzle link from the current table", true);
-      return;
-    }
-
-    const copied = await copyTextToClipboard(shareUrl);
-    setStatus(copied ? "Copied current table puzzle link" : "Could not copy puzzle link", !copied);
-  };
 
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
       <div className="add-card-toolbar-left">
-        <AddCardSheet
-          onAddCardNotice={onAddCardNotice}
-          trigger={(
-            <button
-              type="button"
-              className={triggerPill}
-              disabled={addLocked}
-            >
-              Add Card
-            </button>
-          )}
-        />
-        <CreateCardForgeSheet
-          disabled={addLocked}
-          players={players}
-          selectedPlayer={selectedPlayer}
-          onSelectPlayer={setPlayerIndex}
-          zone={zone}
-          onZoneChange={setZone}
-          skipTriggers={skipTriggers}
-          onSkipTriggersChange={(checked) => setSkipTriggers(checked === true)}
-        />
-        <button
-          type="button"
-          className={triggerPill}
-          disabled={lobbyBusy}
-          onClick={onEnterDeckLoading}
-        >
-          {deckLoadingMode ? "Cancel Deck Load" : "Load Decks"}
-        </button>
-        {!compact ? (
-          <button
-            type="button"
-            className={triggerPill}
-            disabled={lobbyBusy}
-            onClick={onOpenPuzzleSetup}
-          >
-            {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
-          </button>
-        ) : null}
-        {!compact ? (
-          <button
-            type="button"
-            className={triggerPill}
-            onClick={handleShareCurrentTable}
-          >
-            Share Table
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={triggerPill}
-          onClick={onOpenLobby}
-        >
-          {lobbyBusy ? "Open Lobby" : "Create Lobby"}
-        </button>
         {!compact ? (
           <>
             <span className="add-card-toolbar-separator" aria-hidden="true" />

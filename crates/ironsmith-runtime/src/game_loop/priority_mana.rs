@@ -684,9 +684,36 @@ fn cast_spell_mana_rule_matches_payment_source(
     required_subtype.is_none_or(|subtype| game.current_has_subtype(source_obj.id, subtype))
 }
 
+fn cast_spell_filter_matches_payment_source(
+    game: &GameState,
+    unit: &crate::ability::RestrictedManaUnit,
+    filter: &crate::target::ObjectFilter,
+    payment_source: Option<ObjectId>,
+) -> bool {
+    let Some(source_id) = payment_source else {
+        return false;
+    };
+    let Some(source_obj) = game.object(source_id) else {
+        return false;
+    };
+    if source_obj.zone != Zone::Stack {
+        return false;
+    }
+
+    let Some(mana_source) = game.object(unit.source) else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
+    filter.matches(source_obj, &filter_ctx, game)
+}
+
 fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRestriction) -> bool {
     match restriction {
         crate::ability::ManaUsageRestriction::CastSpell {
+            restrict_to_matching_spell,
+            ..
+        }
+        | crate::ability::ManaUsageRestriction::CastSpellMatching {
             restrict_to_matching_spell,
             ..
         } => *restrict_to_matching_spell,
@@ -717,6 +744,17 @@ fn restriction_bonus_applies_to_payment_source(
                 subtype_requirement,
                 payment_source,
             )
+        }
+        crate::ability::ManaUsageRestriction::CastSpellMatching {
+            filter,
+            grant_uncounterable,
+            enters_with_counters,
+            ..
+        } => {
+            if !*grant_uncounterable && enters_with_counters.is_empty() {
+                return false;
+            }
+            cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
     }
 }
@@ -771,6 +809,16 @@ pub(super) fn payment_source_matches_restriction(
                 subtype_requirement,
                 Some(source_obj.id),
             )
+        }
+        crate::ability::ManaUsageRestriction::CastSpellMatching {
+            filter,
+            restrict_to_matching_spell,
+            ..
+        } => {
+            if !*restrict_to_matching_spell {
+                return true;
+            }
+            cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
         }
     }
 }
@@ -900,6 +948,11 @@ pub(super) fn apply_spent_mana_bonuses(
                 grant_uncounterable: true,
                 enters_with_counters,
                 ..
+            }
+            | crate::ability::ManaUsageRestriction::CastSpellMatching {
+                grant_uncounterable: true,
+                enters_with_counters,
+                ..
             } => {
                 let already_uncounterable = source_obj.abilities.iter().any(|ability| {
                     matches!(
@@ -927,6 +980,11 @@ pub(super) fn apply_spent_mana_bonuses(
                 }
             }
             crate::ability::ManaUsageRestriction::CastSpell {
+                grant_uncounterable: false,
+                enters_with_counters,
+                ..
+            }
+            | crate::ability::ManaUsageRestriction::CastSpellMatching {
                 grant_uncounterable: false,
                 enters_with_counters,
                 ..

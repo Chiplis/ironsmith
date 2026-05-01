@@ -45,6 +45,7 @@ export default function TableCore({
   setMobilePhaseStops,
   middleTopbar = null,
   middleAddCardBar = null,
+  zoneActionControls = null,
   middleInspectorDock = null,
 }) {
   const { state } = useGame();
@@ -288,6 +289,7 @@ export default function TableCore({
         headerControls={myZoneHeaderControls}
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
+        zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
         hideHeader={Boolean(sharedMiddleElement)}
       />
     </main>

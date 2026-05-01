@@ -456,6 +456,7 @@ export default function Workspace({
   setMobilePhaseStops,
   middleTopbar = null,
   middleAddCardBar = null,
+  zoneActionControls = null,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
@@ -1261,6 +1262,7 @@ export default function Workspace({
           setMobilePhaseStops={setMobilePhaseStops}
           middleTopbar={middleTopbar}
           middleAddCardBar={middleAddCardBar}
+          zoneActionControls={zoneActionControls}
           middleInspectorDock={showMiddleInspectorDock ? (
             <RightRail
               pinnedObjectId={pinnedInspectorObjectId}
