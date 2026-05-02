@@ -1646,6 +1646,9 @@ impl ObjectFilter {
         let creature_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
             && self.card_types[0] == CardType::Creature;
+        let planeswalker_only = self.all_card_types.is_empty()
+            && self.card_types.len() == 1
+            && self.card_types[0] == CardType::Planeswalker;
         let land_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
             && self.card_types[0] == CardType::Land
@@ -1661,7 +1664,9 @@ impl ObjectFilter {
             }
         } else {
             match (type_phrase, subtype_phrase) {
-                (Some((_, type_phrase)), Some(subtype_phrase)) if creature_only => {
+                (Some((_, type_phrase)), Some(subtype_phrase))
+                    if creature_only || planeswalker_only =>
+                {
                     parts.push(subtype_phrase);
                     parts.push(type_phrase);
                 }

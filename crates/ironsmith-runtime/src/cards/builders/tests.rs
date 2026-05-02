@@ -10668,14 +10668,16 @@ fn render_granted_activated_ability_keeps_tap_symbol() {
         .expect("grant-tap-ability clause should parse");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered.contains("{T}")
-            && rendered
+            && rendered_lower
                 .contains("this creature deals damage equal to its power to target creature"),
         "expected granted tap ability to preserve tap symbol, got {rendered}"
     );
     assert!(
-        !rendered.contains("gain t this creature deals"),
+        !rendered_lower.contains("gain t this creature deals")
+            && !rendered_lower.contains(", choose target creature:"),
         "granted tap ability should not lose the tap symbol: {rendered}"
     );
 }
@@ -12447,6 +12449,138 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
                 && rendered.contains("put this card onto the battlefield tapped and attacking")),
         "expected compiled output to include ninjutsu effect pipeline, got {rendered}"
     );
+    assert!(
+        rendered.contains("return an unblocked attacker you control to its owner's hand"),
+        "ninjutsu cost should keep owner-hand wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn source_cost_compiled_text_does_not_leak_placeholder_surfaces() {
+    let memory_jar = CardDefinitionBuilder::new(CardId::new(), "Memory Jar Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{T}, Sacrifice this artifact: Each player exiles all cards from their hand face down and draws seven cards. At the beginning of the next end step, each player discards their hand and returns to their hand each card they exiled this way.",
+        )
+        .expect("Memory Jar text should parse");
+    let memory_jar_text = crate::compiled_text::compiled_text_lines(&memory_jar).join(" ");
+    assert!(
+        memory_jar_text.contains("Sacrifice this artifact"),
+        "source sacrifice cost should render with card subject, got {memory_jar_text}"
+    );
+    assert!(
+        memory_jar_text.contains("returns to their hand each card they exiled this way"),
+        "Memory Jar should keep compact oracle-shaped text, got {memory_jar_text}"
+    );
+
+    let spirit_guide = CardDefinitionBuilder::new(CardId::new(), "Spirit Guide Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Exile this card from your hand: Add {R}.")
+        .expect("Spirit Guide text should parse");
+    let spirit_guide_text = crate::compiled_text::compiled_text_lines(&spirit_guide).join(" ");
+    assert!(
+        spirit_guide_text.contains("Exile this card from your hand: Add {R}"),
+        "source exile hand cost should render as a card-from-hand cost, got {spirit_guide_text}"
+    );
+
+    let awakening_zone = CardDefinitionBuilder::new(CardId::new(), "Awakening Zone Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, you may create a 0/1 colorless Eldrazi Spawn creature token. It has \"Sacrifice this token: Add {C}.\"",
+        )
+        .expect("Awakening Zone text should parse");
+    let awakening_zone_text = crate::compiled_text::compiled_text_lines(&awakening_zone).join(" ");
+    assert!(
+        awakening_zone_text.contains("\"Sacrifice this token: Add {C}.\""),
+        "token-granted source sacrifice cost should render as this token, got {awakening_zone_text}"
+    );
+
+    let fixed_counter_cost = CardDefinitionBuilder::new(CardId::new(), "Counter Cost Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{2}, {T}, Put a blood counter on this artifact: Draw a card.")
+        .expect("source put-counter cost should parse");
+    let fixed_counter_cost_text =
+        crate::compiled_text::compiled_text_lines(&fixed_counter_cost).join(" ");
+    assert!(
+        fixed_counter_cost_text.contains("Put a blood counter on this artifact"),
+        "source put-counter cost should render with card subject, got {fixed_counter_cost_text}"
+    );
+
+    let variable_counter_cost = CardDefinitionBuilder::new(CardId::new(), "Mana Battery Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{2}, {T}: Put a charge counter on this artifact.\n{T}, Remove any number of charge counters from this artifact: Add {R}.",
+        )
+        .expect("source variable remove-counter cost should parse");
+    let variable_counter_cost_text =
+        crate::compiled_text::compiled_text_lines(&variable_counter_cost).join(" ");
+    assert!(
+        variable_counter_cost_text
+            .contains("Remove any number of charge counters from this artifact"),
+        "source variable remove-counter cost should render with card subject, got {variable_counter_cost_text}"
+    );
+
+    for rendered in [
+        memory_jar_text,
+        spirit_guide_text,
+        awakening_zone_text,
+        fixed_counter_cost_text,
+        variable_counter_cost_text,
+    ] {
+        assert!(
+            !rendered.contains('~'),
+            "source placeholder should not leak into compiled text, got {rendered}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn source_counter_removal_and_sacrifice_cost_renders_as_one_source_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ior Ruin Expedition Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Landfall — Whenever a land you control enters, you may put a quest counter on this enchantment.\nRemove three quest counters from this enchantment and sacrifice it: Draw two cards.",
+        )
+        .expect("Ior Ruin Expedition text should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Remove three quest counters from this enchantment and sacrifice it"),
+        "source counter-removal/sacrifice cost should stay oracle-shaped, got {rendered}"
+    );
+    assert!(
+        !rendered.contains('~'),
+        "source placeholder should not leak into compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn source_hinted_loyalty_costs_render_as_loyalty_prefixes() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Loyalty Variant")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text("+1: Add {R}.\n−2: Draw a card.\n−X: Draw X cards.")
+        .expect("loyalty abilities should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("+1: Add {R}"),
+        "source-hinted put-loyalty cost should render as +1, got {rendered}"
+    );
+    assert!(
+        rendered.contains("−2: You draw a card") || rendered.contains("−2: Draw a card"),
+        "source-hinted remove-loyalty cost should render as −2, got {rendered}"
+    );
+    assert!(
+        rendered.contains("−X: You draw X cards") || rendered.contains("−X: Draw X cards"),
+        "source-hinted X remove-loyalty cost should render as −X, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("loyalty counter") && !rendered.contains('~'),
+        "loyalty costs should not render as counter-removal text, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -12572,9 +12706,8 @@ fn parse_instead_if_control_keeps_prior_damage_target() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Deal 4 damage to target attacking or blocking creature")
-            && rendered
-                .contains("Otherwise, Deal 2 damage to target attacking or blocking creature"),
+        rendered.contains("Deal 2 damage to target attacking or blocking creature")
+            && rendered.contains("It deals 4 damage instead if you control a Mount"),
         "expected instead-if render with the original creature target, got {rendered}"
     );
 }
@@ -12590,8 +12723,8 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Deal 5 damage to target creature")
-            && rendered.contains("Otherwise, Deal 3 damage to target creature"),
+        rendered.contains("Deal 3 damage to target creature")
+            && rendered.contains("It deals 5 damage instead if you control a Spacecraft"),
         "expected conditional to preserve the original creature target, got {rendered}"
     );
 }
@@ -12609,10 +12742,9 @@ fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_fi
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower
-            .contains("deal 5 damage to target creature or planeswalker an opponent controls")
-            && rendered_lower.contains(
-                "otherwise, deal 3 damage to target creature or planeswalker an opponent controls"
-            ),
+            .contains("deal 3 damage to target creature or planeswalker an opponent controls")
+            && rendered_lower
+                .contains("it deals 5 damage instead if you control a chandra planeswalker"),
         "expected conditional to preserve the original creature-or-planeswalker target, got {rendered}"
     );
 }
@@ -12704,9 +12836,8 @@ fn parse_triggered_instead_followup_preserves_default_branch() {
         rendered_lower.contains("if you gained 7 or more life this turn")
             && rendered_lower
                 .contains("return target creature card from your graveyard to the battlefield")
-            && rendered_lower.contains(
-                "otherwise, return target creature card from your graveyard to your hand"
-            ),
+            && rendered_lower
+                .contains("return target creature card from your graveyard to your hand"),
         "expected rendered trigger to keep both default and replacement branches, got {rendered}"
     );
 }
@@ -15921,7 +16052,7 @@ fn render_draw_for_each_subtype_uses_oracle_like_wording() {
     let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
     let joined = lines.join("\n");
     assert!(
-        joined.contains("draw a card for each Ally you control"),
+        joined.contains("Draw a card for each Ally you control"),
         "expected subtype draw-for-each wording, got {joined}"
     );
 }
@@ -19464,6 +19595,26 @@ fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn leyline_binding_compiled_text_keeps_domain_and_opponent_controlled_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Leyline Binding Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Flash\nDomain — This spell costs {1} less to cast for each basic land type among lands you control.\nWhen this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield.",
+        )
+        .expect("Leyline Binding text should parse");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Flash".to_string(),
+            "Domain — This spell costs {1} less to cast for each basic land type among lands you control.".to_string(),
+            "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield.".to_string(),
+        ],
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
     let clauses = [
         "This spell costs {X} less to cast, where X is the total power of creatures you control.",
@@ -20993,7 +21144,8 @@ fn parse_counter_unless_then_counter_that_spell_clause() {
     );
     assert!(
         rendered.contains("if you control a creature with power 4 or greater")
-            && rendered.contains("otherwise, counter target noncreature spell unless"),
+            && rendered.contains("instead counter target noncreature spell")
+            && rendered.contains("unless its controller pays"),
         "expected conditional replacement to keep shared target semantics, got {rendered}"
     );
 }

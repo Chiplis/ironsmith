@@ -619,7 +619,14 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
 
 fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
     let mut normalized = text.to_string();
-    for source_type in ["creature", "artifact", "enchantment", "land", "permanent"] {
+    for source_type in [
+        "creature",
+        "artifact",
+        "enchantment",
+        "land",
+        "permanent",
+        "source",
+    ] {
         normalized = normalized.replace(&format!("This {source_type}"), "This token");
         normalized = normalized.replace(&format!("this {source_type}"), "this token");
     }
@@ -1582,6 +1589,14 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized.replace("This creature ability costs ", "This ability costs ");
     normalized = normalized.replace("This land ability costs ", "This ability costs ");
     normalized = normalized.replace(
+        "target opponent's nonland permanent",
+        "target nonland permanent an opponent controls",
+    );
+    normalized = normalized.replace(
+        "Target opponent's nonland permanent",
+        "Target nonland permanent an opponent controls",
+    );
+    normalized = normalized.replace(
         "If an opponent has cast a blue or black spell this turn, draw a card.",
         "Draw a card if an opponent has cast a blue or black spell this turn.",
     );
@@ -1690,6 +1705,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact
         == "at the beginning of your upkeep, if you have the city's blessing, draw a card. otherwise, each player draws a card."
+        || lower_compact
+            == "at the beginning of your upkeep, each player draws a card. if you have the city's blessing, instead draw a card."
     {
         return "At the beginning of your upkeep, each player draws a card. If you have the city's blessing, instead only you draw a card.".to_string();
     }

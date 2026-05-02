@@ -11771,7 +11771,10 @@ pub(super) fn describe_inline_ability_with_self_subject(
             if !activated.mana_cost.costs().is_empty() {
                 pre.push(describe_cost_list(activated.mana_cost.costs()));
             }
-            if !activated.choices.is_empty() {
+            if !activated.choices.is_empty()
+                && !(!activated.effects.is_empty()
+                    && choices_are_simple_targets(&activated.choices))
+            {
                 pre.push(format!(
                     "choose {}",
                     activated
@@ -13955,17 +13958,17 @@ fn describe_loyalty_activation_prefix(costs: &[crate::costs::Cost]) -> Option<St
             if let Some(effect) = cost.effect_ref() {
                 if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
                     && put.counter_type == CounterType::Loyalty
-                    && matches!(put.target, ChooseSpec::Source)
-                    && let Value::Fixed(amount) = put.amount
+                    && matches!(put.target.base(), ChooseSpec::Source)
+                    && let Some(amount) = loyalty_prefix_amount(&put.amount)
                 {
-                    return Some(format!("+{}", amount.max(0)));
+                    return Some(format!("+{amount}"));
                 }
                 if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
                     && remove.counter_type == CounterType::Loyalty
-                    && matches!(remove.target, ChooseSpec::Source)
-                    && let Value::Fixed(amount) = remove.count
+                    && matches!(remove.target.base(), ChooseSpec::Source)
+                    && let Some(amount) = loyalty_prefix_amount(&remove.count)
                 {
-                    return Some(format!("−{}", amount.max(0)));
+                    return Some(format!("−{amount}"));
                 }
             }
             loyalty_prefix_from_cost_text(&describe_cost_component(cost))
@@ -13974,29 +13977,64 @@ fn describe_loyalty_activation_prefix(costs: &[crate::costs::Cost]) -> Option<St
     }
 }
 
+fn loyalty_prefix_amount(value: &Value) -> Option<String> {
+    match value.unhinted() {
+        Value::Fixed(amount) => Some((*amount).max(0).to_string()),
+        Value::X => Some("X".to_string()),
+        _ => None,
+    }
+}
+
 fn loyalty_prefix_from_cost_text(text: &str) -> Option<String> {
     let lower = text.trim().trim_end_matches('.').to_ascii_lowercase();
-    if lower == "put a loyalty counter on this planeswalker" {
+    if lower == "put a loyalty counter on this planeswalker"
+        || lower == "put a loyalty counter on this source"
+    {
         return Some("+1".to_string());
     }
-    if let Some(rest) = lower
-        .strip_prefix("put ")
-        .and_then(|rest| rest.strip_suffix(" loyalty counters on this planeswalker"))
-        && let Some(amount) = loyalty_cost_amount_word(rest)
-    {
-        return Some(format!("+{amount}"));
+    for suffix in [
+        " loyalty counter on this planeswalker",
+        " loyalty counters on this planeswalker",
+        " loyalty counter on this source",
+        " loyalty counters on this source",
+    ] {
+        if let Some(rest) = lower
+            .strip_prefix("put ")
+            .and_then(|rest| rest.strip_suffix(suffix))
+            && let Some(amount) = loyalty_cost_amount_text(rest)
+        {
+            return Some(format!("+{amount}"));
+        }
     }
-    if let Some(rest) = lower
-        .strip_prefix("remove ")
-        .and_then(|rest| rest.strip_suffix(" loyalty counters from it"))
-        && let Some(amount) = loyalty_cost_amount_word(rest)
-    {
-        return Some(format!("−{amount}"));
+    for suffix in [
+        " loyalty counter from it",
+        " loyalty counters from it",
+        " loyalty counter from this planeswalker",
+        " loyalty counters from this planeswalker",
+        " loyalty counter from this source",
+        " loyalty counters from this source",
+    ] {
+        if let Some(rest) = lower
+            .strip_prefix("remove ")
+            .and_then(|rest| rest.strip_suffix(suffix))
+            && let Some(amount) = loyalty_cost_amount_text(rest)
+        {
+            return Some(format!("−{amount}"));
+        }
     }
     None
 }
 
+fn loyalty_cost_amount_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.eq_ignore_ascii_case("x") {
+        return Some("X".to_string());
+    }
+    loyalty_cost_amount_word(trimmed).map(|amount| amount.to_string())
+}
+
 fn loyalty_cost_amount_word(text: &str) -> Option<i32> {
+    let text = text.trim();
     match text.trim() {
         "a" | "one" | "1" => Some(1),
         "two" | "2" => Some(2),
@@ -14162,6 +14200,20 @@ fn describe_cost_component_parts(costs: &[crate::costs::Cost]) -> Vec<String> {
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < costs.len() {
+        if idx + 1 < costs.len()
+            && let Some(remove) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::RemoveCountersEffect>())
+            && matches!(remove.target, ChooseSpec::Source)
+            && costs[idx + 1].is_sacrifice_self()
+        {
+            parts.push(format!(
+                "Remove {} from this source and sacrifice it",
+                describe_put_counter_phrase(&remove.count, remove.counter_type)
+            ));
+            idx += 2;
+            continue;
+        }
         if let Some((compact, consumed)) =
             describe_exile_source_and_named_artifact_costs(&costs[idx..])
         {
@@ -30512,6 +30564,7 @@ pub(super) fn describe_ability(
             {
                 cost_text = Some("Exile this card from your hand".to_string());
             }
+            let loyalty_prefix = describe_loyalty_activation_prefix(activated.mana_cost.costs());
             let mana_symbols = activated.mana_symbols();
             let add_text = if !mana_symbols.is_empty() {
                 Some(format!(
@@ -30526,20 +30579,33 @@ pub(super) fn describe_ability(
             } else {
                 None
             };
-            if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
-                line.push_str(": ");
-                line.push_str(cost);
-                line.push_str(": ");
-                line.push_str(add);
-            } else if let Some(cost) = &cost_text {
-                line.push_str(": ");
-                line.push_str(cost);
-            } else if let Some(add) = &add_text {
-                line.push_str(": ");
-                line.push_str(add);
+            let is_loyalty_ability = loyalty_prefix.is_some();
+            if let Some(prefix) = loyalty_prefix {
+                line = format!("{prefix}:");
+                if let Some(add) = &add_text {
+                    line.push(' ');
+                    line.push_str(add);
+                }
+            } else {
+                if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
+                    line.push_str(": ");
+                    line.push_str(cost);
+                    line.push_str(": ");
+                    line.push_str(add);
+                } else if let Some(cost) = &cost_text {
+                    line.push_str(": ");
+                    line.push_str(cost);
+                } else if let Some(add) = &add_text {
+                    line.push_str(": ");
+                    line.push_str(add);
+                }
             }
             if !activated.effects.is_empty() {
-                line.push_str(": ");
+                if is_loyalty_ability && add_text.is_none() {
+                    line.push(' ');
+                } else {
+                    line.push_str(": ");
+                }
                 let effects =
                     super::ast_render::describe_mana_ability_resolution_program(&activated.effects)
                         .unwrap_or_else(|| {
@@ -30688,7 +30754,10 @@ fn normalize_zone_bound_self_exile_cost(
     if ability.functional_zones.contains(&Zone::Graveyard) {
         let mut rewritten = cost;
         if rewritten.contains("Exile this card from your graveyard") {
-            return Some(rewritten);
+            return Some(rewritten.replace(
+                "from your graveyard from your graveyard",
+                "from your graveyard",
+            ));
         }
         for subject in ["creature", "permanent", "source", "spell", "card"] {
             rewritten = rewritten.replace(
@@ -30696,7 +30765,10 @@ fn normalize_zone_bound_self_exile_cost(
                 "Exile this card from your graveyard",
             );
         }
-        return Some(rewritten);
+        return Some(rewritten.replace(
+            "from your graveyard from your graveyard",
+            "from your graveyard",
+        ));
     }
     Some(cost)
 }

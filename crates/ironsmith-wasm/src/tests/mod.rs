@@ -487,6 +487,34 @@ fn object_details_debug_compiled_text_keeps_spell_effects_when_oracle_fallback_w
 }
 
 #[test]
+fn object_details_compiled_text_uses_normalized_surface_for_possessive_self_reference() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let definition = compile_to_runtime_definition(
+        "Territorial Kavu",
+        "Type: Creature — Kavu\nPower/Toughness: */*\nDomain — This creature's power and toughness are each equal to the number of basic land types among lands you control.",
+        false,
+    )
+    .expect("Territorial Kavu-style domain CDA should parse");
+    let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
+    let compiled_text = details.compiled_text.join("\n");
+
+    assert!(
+        compiled_text.contains("This creature's power and toughness"),
+        "expected normalized possessive self-reference, got {:?}",
+        details.compiled_text
+    );
+    assert!(
+        !compiled_text.contains("creature creature's"),
+        "frontend compiled text should use normalized compiled_text_lines surface, got {:?}",
+        details.compiled_text
+    );
+}
+
+#[test]
 fn object_details_include_convoke_for_builtin_cards() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -1430,6 +1458,33 @@ fn snapshot_surfaces_undo_land_stable_id_for_reversible_land_tap() {
     assert!(
         swamp.tapped,
         "tracked undo land should be tapped in the snapshot"
+    );
+
+    let snapshot_value =
+        serde_json::to_value(&snapshot).expect("snapshot should serialize to JSON");
+    let actions = snapshot_value
+        .get("decision")
+        .and_then(|decision| decision.get("actions"))
+        .and_then(|actions| actions.as_array())
+        .expect("priority decision should expose actions");
+    let untap_action = actions
+        .iter()
+        .find(|action| action.get("kind").and_then(|kind| kind.as_str()) == Some("untap_land"))
+        .expect("reversible land tap should be exposed as an untap action");
+    assert_eq!(
+        untap_action
+            .get("object_id")
+            .and_then(|object_id| object_id.as_u64()),
+        Some(swamp_id.0),
+        "untap action should point at the tapped land object"
+    );
+    assert_eq!(
+        untap_action
+            .get("action_ref")
+            .and_then(|action_ref| action_ref.get("kind"))
+            .and_then(|kind| kind.as_str()),
+        Some("untap_land"),
+        "untap action should remain identifiable without relying on its index"
     );
 }
 

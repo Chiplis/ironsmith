@@ -8305,6 +8305,49 @@ fn test_generated_summoners_pact_upkeep_trigger_survives_fail_to_find() {
     assert_pact_upkeep_trigger_survives_fail_to_find(pact_def, "Summoner's Pact");
 }
 
+#[cfg(feature = "generated-registry")]
+#[test]
+fn test_generated_phlage_is_castable_with_pool_mana_for_generic_component() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut registry = crate::cards::CardRegistry::new();
+    registry.ensure_cards_loaded(["Phlage, Titan of Fire's Fury"]);
+
+    let phlage_def = registry
+        .get("Phlage, Titan of Fire's Fury")
+        .expect("generated registry should load Phlage");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let phlage_id =
+        game.create_object_from_catalog_definition(phlage_def, &registry, alice, Zone::Hand);
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::White, 1);
+        player.mana_pool.add(ManaSymbol::Black, 1);
+        player.mana_pool.add(ManaSymbol::Red, 1);
+    }
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            } if *spell_id == phlage_id
+        )),
+        "Phlage should be castable from hand with white, red, and one generic mana; actions: {actions:#?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_fatal_push_without_revolt_does_not_destroy_four_mana_target() {

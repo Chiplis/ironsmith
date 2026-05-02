@@ -9,6 +9,12 @@ import {
 } from "@/lib/priority-automation";
 import { createWasmInteractionGate } from "@/lib/wasmInteractionGate";
 import {
+  describeDecisionCommandMismatch,
+  findPriorityActionForCommand,
+  isDecisionCommandCompatible,
+  priorityCommandForAction,
+} from "@/lib/sync-commands";
+import {
   buildTriggerOrderingKey,
   defaultTriggerOrderingOrder,
   isTriggerOrderingDecision,
@@ -198,14 +204,16 @@ function normalizeBlockerDeclaration(declaration) {
 function serializeMultiplayerCommand(command, _currentState) {
   if (!command || typeof command !== "object") return command;
 
+  if (!isDecisionCommandCompatible(_currentState?.decision || null, command)) {
+    throw new Error(
+      describeDecisionCommandMismatch(_currentState?.decision || null, command),
+    );
+  }
+
   if (command.type === "priority_action") {
-    const actions = Array.isArray(_currentState?.decision?.actions)
-      ? _currentState.decision.actions
-      : [];
-    const normalizedIndex = Number(command.action_index);
-    const action = actions.find((candidate) => Number(candidate?.index) === normalizedIndex);
+    const action = findPriorityActionForCommand(_currentState?.decision || null, command);
     if (!action?.action_ref) {
-      throw new Error(`Missing priority action ref for action index ${normalizedIndex}`);
+      throw new Error("Priority action is no longer available");
     }
     return {
       type: "priority_action",
@@ -405,36 +413,6 @@ function summarizeCommand(command) {
   }
 
   return summary;
-}
-
-function isDecisionCommandCompatible(decision, command) {
-  if (!decision || !command) return false;
-  if (command.type === "cancel_decision") {
-    return true;
-  }
-
-  switch (decision.kind) {
-    case "priority":
-      return command.type === "priority_action";
-    case "targets":
-      return command.type === "select_targets";
-    case "select_options":
-    case "modes":
-    case "hybrid_choice":
-      return command.type === "select_options";
-    case "select_objects":
-      return command.type === "select_objects";
-    case "number":
-      return command.type === "number_choice";
-    case "text_input":
-      return command.type === "text_choice";
-    case "attackers":
-      return command.type === "declare_attackers";
-    case "blockers":
-      return command.type === "declare_blockers";
-    default:
-      return false;
-  }
 }
 
 function currentOrderForDecision(triggerOrderingState, decision, key = buildTriggerOrderingKey(decision)) {
@@ -744,7 +722,7 @@ export function GameProvider({ children }) {
 
         const stepStartedAt = performance.now();
         const decisionBefore = summarizeDecision(st?.decision || null);
-        st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
+        st = await currentGame.dispatch(priorityCommandForAction(passAction));
         autoPasses += 1;
         const elapsedMs = performance.now() - stepStartedAt;
         const workerPerf = readDispatchPerf(st);
@@ -816,7 +794,7 @@ export function GameProvider({ children }) {
               if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
               const stepStartedAt = performance.now();
               const decisionBefore = summarizeDecision(st?.decision || null);
-              st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
+              st = await currentGame.dispatch(priorityCommandForAction(passAction));
               autoPasses += 1;
               const elapsedMs = performance.now() - stepStartedAt;
               const workerPerf = readDispatchPerf(st);
@@ -842,7 +820,7 @@ export function GameProvider({ children }) {
             if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
+            st = await currentGame.dispatch(priorityCommandForAction(passAction));
             autoPasses += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1128,18 +1106,39 @@ export function GameProvider({ children }) {
         throw new Error("WASM game is not ready");
       }
 
-      const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
-      const resolvedCommand = resolveSyncedCommand(command, stateRef.current);
+      let liveStateBefore = null;
+      try {
+        liveStateBefore = await currentGame.uiState();
+      } catch {
+        liveStateBefore = stateRef.current;
+      }
+
+      const currentStateBefore = liveStateBefore || stateRef.current;
+      const currentDecisionBefore = currentStateBefore?.decision || null;
+      const decisionBefore = summarizeDecision(currentDecisionBefore);
+      const resolvedCommand = resolveSyncedCommand(command, currentStateBefore);
       const commandSummary = summarizeCommand(resolvedCommand);
+      const compatibleBefore = isDecisionCommandCompatible(
+        currentDecisionBefore,
+        resolvedCommand,
+      );
       const dispatchStartedAt = performance.now();
       console.debug("[ironsmith] synced dispatch:start", {
         command: commandSummary,
         decision: decisionBefore,
         sync_context: syncContext,
-        compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, resolvedCommand),
+        compatible: compatibleBefore,
       });
 
       try {
+        if (!compatibleBefore) {
+          const err = new Error(
+            describeDecisionCommandMismatch(currentDecisionBefore, resolvedCommand),
+          );
+          err.syncedNeedsResync = true;
+          throw err;
+        }
+
         const st = resolvedCommand?.type === "cancel_decision"
           ? await currentGame.cancelDecision()
           : await currentGame.dispatch(resolvedCommand);
@@ -1207,7 +1206,7 @@ export function GameProvider({ children }) {
           decision_before: decisionBefore,
           decision_after_error: decisionAfterError,
           sync_context: syncContext,
-          compatible_before: isDecisionCommandCompatible(decisionBefore, commandSummary),
+          compatible_before: compatibleBefore,
           compatible_after_error: isDecisionCommandCompatible(
             decisionAfterError,
             commandSummary
@@ -1215,16 +1214,18 @@ export function GameProvider({ children }) {
         });
 
         let rollbackApplied = false;
-        try {
-          const rollbackState = await currentGame.cancelDecision();
-          await finalizeState(currentGame, rollbackState, {
-            allowOpponentAutomation: false,
-            allowTrivialAutomation: false,
-            clearViewedCards: true,
-          });
-          rollbackApplied = true;
-        } catch {
-          // Keep the original sync failure.
+        if (!err?.syncedNeedsResync && compatibleBefore) {
+          try {
+            const rollbackState = await currentGame.cancelDecision();
+            await finalizeState(currentGame, rollbackState, {
+              allowOpponentAutomation: false,
+              allowTrivialAutomation: false,
+              clearViewedCards: true,
+            });
+            rollbackApplied = true;
+          } catch {
+            // Keep the original sync failure.
+          }
         }
 
         const errorToThrow = err && typeof err === "object"
@@ -1235,6 +1236,25 @@ export function GameProvider({ children }) {
       }
     },
     [finalizeState]
+  );
+
+  const applyAuthoritativeState = useCallback(
+    async (
+      nextState,
+      {
+        message = "",
+        clearViewedCards = false,
+      } = {}
+    ) => {
+      const visibleState = applyStickyViewedCards(nextState, { clear: clearViewedCards });
+      setState(visibleState);
+      stateRef.current = visibleState;
+      if (message) {
+        setStatus(message);
+      }
+      return visibleState;
+    },
+    [applyStickyViewedCards, setStatus]
   );
 
   const {
@@ -1251,6 +1271,7 @@ export function GameProvider({ children }) {
     setState,
     setStatus,
     applySyncedCommand,
+    applyAuthoritativeState,
   });
 
   const startHostedMatch = useCallback(
@@ -1366,6 +1387,13 @@ export function GameProvider({ children }) {
     async (message) => {
       if (!game) return;
       try {
+        if (multiplayer.matchStarted && multiplayer.role === "client") {
+          const visibleState = applyStickyViewedCards(stateRef.current);
+          setState(visibleState);
+          stateRef.current = visibleState;
+          if (message) setStatus(message);
+          return;
+        }
         let st = await game.uiState();
         if (multiplayer.matchStarted) {
           const visibleState = applyStickyViewedCards(st);
@@ -1383,7 +1411,14 @@ export function GameProvider({ children }) {
         setStatus(`Refresh failed: ${err}`, true);
       }
     },
-    [applyStickyViewedCards, finalizeState, game, multiplayer.matchStarted, setStatus]
+    [
+      applyStickyViewedCards,
+      finalizeState,
+      game,
+      multiplayer.matchStarted,
+      multiplayer.role,
+      setStatus,
+    ]
   );
 
   const dispatch = useCallback(
@@ -1397,13 +1432,37 @@ export function GameProvider({ children }) {
           && isTriggerOrderingDecision(currentDecision)
         );
         if (multiplayer.matchStarted) {
-          const currentState = stateRef.current;
+          let currentState = stateRef.current;
+          if (multiplayer.role !== "client") {
+            try {
+              const liveState = await game.uiState();
+              currentState = applyStickyViewedCards(liveState, { clear: true });
+              setState(currentState);
+              stateRef.current = currentState;
+            } catch {
+              // Fall back to the last rendered state; compatibility checks below still guard submission.
+            }
+          }
           if (!currentState?.decision) {
             setStatus("No pending decision to submit", true);
             return;
           }
           if (currentState.decision.player !== currentState.perspective) {
             setStatus("Waiting for the active player");
+            return;
+          }
+          if (!isDecisionCommandCompatible(currentState.decision, command)) {
+            setStatus(describeDecisionCommandMismatch(currentState.decision, command), true);
+            try {
+              if (multiplayer.role !== "client") {
+                const liveState = await game.uiState();
+                const visibleState = applyStickyViewedCards(liveState, { clear: true });
+                setState(visibleState);
+                stateRef.current = visibleState;
+              }
+            } catch {
+              // Keep the stale-command status; the next normal sync/resync will refresh state.
+            }
             return;
           }
           try {
@@ -1529,10 +1588,12 @@ export function GameProvider({ children }) {
     },
     [
       armTargetSubmitDebounce,
+      applyStickyViewedCards,
       clearTargetSubmitDebounce,
       finalizeState,
       game,
       multiplayer.matchStarted,
+      multiplayer.role,
       runWasmInteraction,
       setStatus,
       settleTargetSubmitDebounce,

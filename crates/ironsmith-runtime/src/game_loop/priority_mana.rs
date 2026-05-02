@@ -2252,27 +2252,41 @@ pub(super) fn apply_pip_payment_response_cast(
             "No remaining pips to pay".to_string(),
         ));
     }
+    let mut perf = super::priority_apply::ManaPipPaymentPerfMetrics {
+        pending_kind: "cast".to_string(),
+        remaining_pips_before: pending.remaining_mana_pips.len(),
+        ..super::priority_apply::ManaPipPaymentPerfMetrics::default()
+    };
 
     let pip = pending.remaining_mana_pips[0].clone();
     let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
-    // Rebuild the options to get the action for this choice
     let allow_any_color = game.can_spend_mana_as_any_color(pending.caster, Some(pending.spell_id));
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(
         pending.caster,
         Some(pending.spell_id),
         crate::costs::PaymentReason::CastSpell,
     );
-    let options = build_pip_payment_options(
-        game,
-        pending.caster,
-        &pip,
-        display_pip,
-        allow_any_color,
-        allow_black_life,
-        Some(pending.spell_id),
-        &mut *decision_maker,
-    );
+    let cached_options = std::mem::take(&mut pending.current_pip_payment_options);
+    perf.cached_option_count = cached_options.len();
+    perf.used_cached_options = !cached_options.is_empty();
+    let build_options_started_at = crate::perf::PerfTimer::start();
+    let options = if cached_options.is_empty() {
+        build_pip_payment_options(
+            game,
+            pending.caster,
+            &pip,
+            display_pip,
+            allow_any_color,
+            allow_black_life,
+            Some(pending.spell_id),
+            &mut *decision_maker,
+        )
+    } else {
+        cached_options
+    };
+    perf.build_options_ms = build_options_started_at.elapsed_ms();
+    perf.built_option_count = options.len();
 
     if choice >= options.len() {
         return Err(GameLoopError::InvalidState(format!(
@@ -2285,6 +2299,7 @@ pub(super) fn apply_pip_payment_response_cast(
     let action = &options[choice].action;
 
     // Execute the payment action
+    let execute_started_at = crate::perf::PerfTimer::start();
     let pip_paid = execute_pip_payment_action(
         game,
         trigger_queue,
@@ -2297,6 +2312,8 @@ pub(super) fn apply_pip_payment_response_cast(
         &mut pending.payment_trace,
         Some(&mut pending.mana_spent_to_cast),
     )?;
+    perf.execute_payment_ms = execute_started_at.elapsed_ms();
+    let queue_event_started_at = crate::perf::PerfTimer::start();
     queue_mana_ability_event_for_action(
         game,
         trigger_queue,
@@ -2304,7 +2321,10 @@ pub(super) fn apply_pip_payment_response_cast(
         action,
         pending.caster,
     );
+    perf.queue_mana_event_ms = queue_event_started_at.elapsed_ms();
+    let drain_started_at = crate::perf::PerfTimer::start();
     drain_pending_trigger_events(game, trigger_queue);
+    perf.drain_triggers_ms = drain_started_at.elapsed_ms();
 
     if let ManaPipPaymentAction::ActivateManaAbility {
         source_id,
@@ -2319,9 +2339,23 @@ pub(super) fn apply_pip_payment_response_cast(
         record_keyword_payment_contribution(&mut pending.keyword_payment_contributions, action);
         pending.remaining_mana_pips.remove(0);
     }
+    perf.pip_paid = pip_paid;
+    perf.remaining_pips_after = pending.remaining_mana_pips.len();
 
     // Continue spell cast mana payment (will process next pip or finalize)
-    continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker)
+    let continue_started_at = crate::perf::PerfTimer::start();
+    let result =
+        continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker);
+    perf.continue_cast_ms = continue_started_at.elapsed_ms();
+    perf.result_kind = match &result {
+        Ok(GameProgress::NeedsDecisionCtx(ctx)) => decision_context_name(ctx).to_string(),
+        Ok(GameProgress::Continue) => "continue".to_string(),
+        Ok(GameProgress::StackResolved) => "stack_resolved".to_string(),
+        Ok(GameProgress::GameOver(_)) => "game_over".to_string(),
+        Err(_) => "error".to_string(),
+    };
+    super::priority_apply::store_mana_pip_payment_perf(perf);
+    result
 }
 
 pub(super) fn apply_next_cost_choice_response(
@@ -4003,8 +4037,9 @@ mod priority_mana_tests {
     use crate::color::Color;
     use crate::cost::TotalCost;
     use crate::decision::DecisionMaker;
+    use crate::game_state::Phase;
     use crate::ids::CardId;
-    use crate::mana::ManaSymbol;
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
@@ -4024,6 +4059,163 @@ mod priority_mana_tests {
         assert!(
             mana_ability_can_pay_pip(&game, treasure_id, 0, None, &[ManaSymbol::Black], false),
             "Treasure should be considered able to pay a colored pip"
+        );
+    }
+
+    #[test]
+    fn test_single_flexible_mana_source_cannot_pay_two_colored_pips() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+        let two_color_spell = CardDefinitionBuilder::new(CardId::new(), "Two Color Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::White],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_definition(&two_color_spell, alice, Zone::Hand);
+
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )),
+            "one any-color mana source should not make a two-colored-pip spell legal"
+        );
+    }
+
+    #[test]
+    fn test_single_flexible_mana_source_can_pay_one_colored_pip() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+        let one_color_spell = CardDefinitionBuilder::new(CardId::new(), "One Color Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_definition(&one_color_spell, alice, Zone::Hand);
+
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )),
+            "one any-color mana source should still make a one-colored-pip spell legal"
+        );
+    }
+
+    #[test]
+    fn test_tapped_lands_do_not_make_spell_castable() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let plains_one = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+        let plains_two = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.tap(plains_one);
+        game.tap(plains_two);
+
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Two Mana White Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )),
+            "two tapped Plains should not make a {{1}}{{W}} creature legal to cast"
+        );
+    }
+
+    #[test]
+    fn test_tapped_lands_plus_one_floating_mana_do_not_make_two_mana_spell_castable() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let plains_one = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+        let plains_two = game.create_object_from_definition(
+            &crate::cards::definitions::basic_plains(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.tap(plains_one);
+        game.tap(plains_two);
+        game.player_mut(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .add(ManaSymbol::White, 1);
+
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Two Mana White Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let spell_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )),
+            "one floating white and tapped lands should not make a {{1}}{{W}} creature legal"
         );
     }
 

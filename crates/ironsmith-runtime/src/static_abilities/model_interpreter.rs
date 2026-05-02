@@ -29,6 +29,7 @@ type CompiledGrantSpec = ironsmith_core::GrantSpec<
 #[derive(Clone)]
 pub struct StaticAbilityModelInterpreter {
     model: CompiledStaticAbility,
+    leaf_static_ability: Option<StaticAbility>,
     granted_inline_ability: Option<crate::ability::Ability>,
     enter_as_copy_spec: Option<super::EnterAsCopyAsEntersSpec>,
     level_abilities: Option<Vec<crate::ability::LevelAbility>>,
@@ -114,6 +115,7 @@ impl StaticAbilityModelInterpreter {
     }
 
     pub fn new(model: CompiledStaticAbility) -> Self {
+        let leaf_static_ability = Self::cached_leaf_static_ability(&model);
         let granted_inline_ability = Self::cached_granted_inline_ability(&model);
         let enter_as_copy_spec = Self::cached_enter_as_copy_spec(&model);
         let level_abilities = Self::cached_level_abilities(&model);
@@ -133,6 +135,7 @@ impl StaticAbilityModelInterpreter {
             Self::cached_this_spell_cost_reduction_mana_cost(&model);
         Self {
             model,
+            leaf_static_ability,
             granted_inline_ability,
             enter_as_copy_spec,
             level_abilities,
@@ -746,14 +749,18 @@ impl StaticAbilityModelInterpreter {
     }
 
     fn leaf_static_ability(&self) -> Option<StaticAbility> {
-        if matches!(self.payload(), ironsmith_core::StaticAbilityPayload::None)
+        self.leaf_static_ability.clone()
+    }
+
+    fn cached_leaf_static_ability(model: &CompiledStaticAbility) -> Option<StaticAbility> {
+        if matches!(&model.payload, ironsmith_core::StaticAbilityPayload::None)
             && let Ok(ability) =
-                StaticAbility::from_compiler_model_parts(self.model.id, self.model.label.clone())
+                StaticAbility::from_compiler_model_parts(model.id, model.label.clone())
         {
             return Some(ability);
         }
 
-        Some(match self.payload() {
+        Some(match &model.payload {
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
                     Some(filter) => crate::static_abilities::Anthem::new(filter.clone(), 0, 0)

@@ -1,7 +1,15 @@
 
 impl WasmGame {
-    pub(super) fn initialize_empty_match(&mut self, player_names: Vec<String>, starting_life: i32, seed: u64) {
-        self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
+    pub(super) fn initialize_empty_match(
+        &mut self,
+        player_names: Vec<String>,
+        starting_life: i32,
+        seed: u64,
+    ) {
+        self.game = CowGameState::new(GameState::new_with_runtime_id_reset(
+            player_names,
+            starting_life,
+        ));
         self.registry = CardRegistry::new();
         self.game.set_random_seed(seed);
         self.match_format = MatchFormatInput::Normal;

@@ -56,15 +56,36 @@ pub struct PriorityActionPerfMetrics {
     pub action_kind: String,
     pub priority_result: String,
     pub pass_priority_ms: f64,
+    pub response_apply_ms: f64,
     pub advance_priority_ms: f64,
     pub resolve_stack_entry_ms: f64,
     pub reset_priority_ms: f64,
     pub total_ms: f64,
+    pub mana_pip_payment: Option<ManaPipPaymentPerfMetrics>,
     pub nested_priority_advance: Option<crate::game_loop::PriorityAdvancePerfMetrics>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ManaPipPaymentPerfMetrics {
+    pub pending_kind: String,
+    pub remaining_pips_before: usize,
+    pub remaining_pips_after: usize,
+    pub cached_option_count: usize,
+    pub built_option_count: usize,
+    pub used_cached_options: bool,
+    pub build_options_ms: f64,
+    pub execute_payment_ms: f64,
+    pub queue_mana_event_ms: f64,
+    pub drain_triggers_ms: f64,
+    pub continue_cast_ms: f64,
+    pub continue_activation_ms: f64,
+    pub pip_paid: bool,
+    pub result_kind: String,
 }
 
 thread_local! {
     static LAST_PRIORITY_ACTION_PERF: RefCell<Option<PriorityActionPerfMetrics>> = const { RefCell::new(None) };
+    static LAST_MANA_PIP_PAYMENT_PERF: RefCell<Option<ManaPipPaymentPerfMetrics>> = const { RefCell::new(None) };
 }
 
 fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
@@ -75,6 +96,42 @@ fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
 
 pub fn last_priority_action_perf() -> Option<PriorityActionPerfMetrics> {
     LAST_PRIORITY_ACTION_PERF.with(|slot| slot.borrow().clone())
+}
+
+pub(super) fn clear_mana_pip_payment_perf() {
+    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| {
+        *slot.borrow_mut() = None;
+    });
+}
+
+pub(super) fn store_mana_pip_payment_perf(metrics: ManaPipPaymentPerfMetrics) {
+    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| {
+        *slot.borrow_mut() = Some(metrics);
+    });
+}
+
+fn last_mana_pip_payment_perf() -> Option<ManaPipPaymentPerfMetrics> {
+    LAST_MANA_PIP_PAYMENT_PERF.with(|slot| slot.borrow().clone())
+}
+
+fn progress_perf_kind(result: &Result<GameProgress, GameLoopError>) -> &'static str {
+    match result {
+        Ok(GameProgress::NeedsDecisionCtx(ctx)) => decision_context_name(ctx),
+        Ok(GameProgress::Continue) => "continue",
+        Ok(GameProgress::StackResolved) => "stack_resolved",
+        Ok(GameProgress::GameOver(_)) => "game_over",
+        Err(_) => "error",
+    }
+}
+
+fn result_has_nested_priority_advance(result: &Result<GameProgress, GameLoopError>) -> bool {
+    matches!(
+        result,
+        Ok(GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Priority(_)
+        )) | Ok(GameProgress::Continue)
+            | Ok(GameProgress::GameOver(_))
+    )
 }
 
 pub fn apply_priority_response_with_dm(
@@ -196,27 +253,56 @@ pub fn apply_priority_response_with_dm(
 
     // Handle pip-by-pip mana payment for a pending activation or cast
     if let PriorityResponse::ManaPipPayment(choice) = response {
-        if state.pending_activation.is_some() {
-            return apply_pip_payment_response_activation(
+        let total_started_at = PerfTimer::start();
+        clear_mana_pip_payment_perf();
+        let action_kind = if state.pending_activation.is_some() {
+            "mana_pip_payment_activation"
+        } else if state.pending_cast.is_some() {
+            "mana_pip_payment_cast"
+        } else {
+            "mana_pip_payment"
+        };
+        let apply_started_at = PerfTimer::start();
+        let result = if state.pending_activation.is_some() {
+            apply_pip_payment_response_activation(
                 game,
                 trigger_queue,
                 state,
                 *choice,
                 &mut *decision_maker,
-            );
-        }
-        if state.pending_cast.is_some() {
-            return apply_pip_payment_response_cast(
+            )
+        } else if state.pending_cast.is_some() {
+            apply_pip_payment_response_cast(
                 game,
                 trigger_queue,
                 state,
                 *choice,
                 &mut *decision_maker,
-            );
-        }
-        return Err(GameLoopError::InvalidState(
-            "ManaPipPayment response but no pending activation or cast".to_string(),
-        ));
+            )
+        } else {
+            Err(GameLoopError::InvalidState(
+                "ManaPipPayment response but no pending activation or cast".to_string(),
+            ))
+        };
+        let response_apply_ms = apply_started_at.elapsed_ms();
+        let nested_priority_advance = result_has_nested_priority_advance(&result)
+            .then(crate::game_loop::last_priority_advance_perf)
+            .flatten();
+        let advance_priority_ms = nested_priority_advance
+            .as_ref()
+            .map(|perf| perf.total_ms)
+            .unwrap_or_default();
+        store_priority_action_perf(PriorityActionPerfMetrics {
+            action_kind: action_kind.to_string(),
+            priority_result: progress_perf_kind(&result).to_string(),
+            response_apply_ms,
+            advance_priority_ms,
+            total_ms: total_started_at.elapsed_ms(),
+            mana_pip_payment: last_mana_pip_payment_perf(),
+            nested_priority_advance,
+            ..PriorityActionPerfMetrics::default()
+        });
+        return result;
     }
 
     if let PriorityResponse::NextCostChoice(choice) = response {
@@ -446,7 +532,9 @@ pub fn apply_priority_response_with_dm(
 
             // Check if there are multiple available casting methods for this spell
             // and prompt for selection if the action uses the Normal method (i.e., user selected the spell generally)
-            if matches!(casting_method, CastingMethod::Normal) {
+            if matches!(casting_method, CastingMethod::Normal)
+                && may_have_multiple_casting_methods(game, player, *spell_id, *from_zone)
+            {
                 let available_methods =
                     collect_available_casting_methods(game, player, *spell_id, *from_zone);
                 if available_methods.len() > 1 {

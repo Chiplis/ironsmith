@@ -23,7 +23,6 @@ const INSPECTOR_STATS_FONT_SIZE = 20;
 const INSPECTOR_METADATA_FONT_SIZE = 13;
 const INSPECTOR_RULES_FONT_SIZE = 17;
 const INSPECTOR_RULES_LINE_HEIGHT = INSPECTOR_RULES_FONT_SIZE * 1.34;
-const INSPECTOR_RULES_ROW_GAP = 2;
 const INSPECTOR_DEFAULT_HEIGHT = 248;
 const INSPECTOR_RULES_MIN_WIDTH = 220;
 const INSPECTOR_RULES_MAX_LINE_WIDTH = 920;
@@ -35,22 +34,6 @@ const INSPECTOR_MEASURE_FONT = `"Optima", "Avenir Next", "Segoe UI", "Candara", 
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
-}
-
-function estimateInspectorRulesHeight(lineWidths, innerWidth) {
-  const width = Math.max(1, Number(innerWidth) || 0);
-  let totalHeight = 0;
-
-  for (const lineWidth of lineWidths) {
-    const wraps = Math.max(1, Math.ceil(lineWidth / width));
-    totalHeight += wraps * INSPECTOR_RULES_LINE_HEIGHT;
-  }
-
-  if (lineWidths.length > 1) {
-    totalHeight += (lineWidths.length - 1) * INSPECTOR_RULES_ROW_GAP;
-  }
-
-  return totalHeight;
 }
 
 function stripInspectorAbilityPrefixes(text = "") {
@@ -704,7 +687,7 @@ export default function HoverArtOverlay({
       ?? previewCard?.controller
       ?? hoveredStackObject?.controller
       ?? null;
-    return ownerId == null ? null : getPlayerAccent(state?.players || [], ownerId);
+    return ownerId == null ? null : getPlayerAccent(state?.players || [], ownerId, state?.perspective);
   }, [
     details?.controller,
     details?.owner,
@@ -713,6 +696,7 @@ export default function HoverArtOverlay({
     hoveredStackObject?.source_owner,
     previewCard?.controller,
     previewCard?.owner,
+    state?.perspective,
     state?.players,
   ]);
   const artObjectName = stableLinkedObjectName || objectName;
@@ -793,14 +777,14 @@ export default function HoverArtOverlay({
     if (shouldPreferStackAbilityRules) {
       return compiledRulesLines;
     }
-    if (debugInspector && compiledRulesLines.length > 0) {
+    if (compiledRulesLines.length > 0) {
       return compiledRulesLines;
     }
     if (oracleRulesLines.length > 0) {
       return oracleRulesLines;
     }
     return compiledRulesLines;
-  }, [compiledRulesLines, debugInspector, oracleRulesLines, shouldPreferStackAbilityRules]);
+  }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules]);
   const displayRulesText = displayRulesLines.join("\n");
   const displayObjectName = debugInspector ? null : objectName;
   const displayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -873,10 +857,32 @@ export default function HoverArtOverlay({
     ),
     [compact, displayMode, displayObjectName, groupedCardCount, objectIdKey]
   );
+  const ruleLineWidths = useMemo(() => {
+    if (displayRulesLines.length === 0 || typeof document === "undefined") return [];
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return [];
+
+    ctx.font = `${INSPECTOR_RULES_FONT_SIZE}px ${INSPECTOR_MEASURE_FONT}`;
+    return displayRulesLines.map((line) => measureInspectorTextWidth(ctx, line));
+  }, [displayRulesLines]);
+  const measuredPreferredRulesWidth = useMemo(() => {
+    if (ruleLineWidths.length === 0) return null;
+
+    const widestLine = Math.max(...ruleLineWidths, INSPECTOR_RULES_MIN_WIDTH);
+    return Math.ceil(clampNumber(
+      widestLine + (INSPECTOR_ORACLE_HORIZONTAL_PADDING * 2),
+      INSPECTOR_RULES_MIN_WIDTH,
+      INSPECTOR_RULES_MAX_LINE_WIDTH
+    ));
+  }, [ruleLineWidths]);
   const preferredInlineWidth = null;
-  const preferredInspectorWidth = null;
-  const activeMeasuredPreferredInspectorWidth = null;
-  const resolvedPreferredInspectorWidth = null;
+  const preferredInspectorWidth = compact || displayMode !== "inspector" || measuredPreferredRulesWidth == null
+    ? null
+    : Math.ceil(measuredPreferredRulesWidth + INSPECTOR_HEADER_HORIZONTAL_PADDING);
+  const activeMeasuredPreferredInspectorWidth = preferredInspectorWidth;
+  const resolvedPreferredInspectorWidth = activeMeasuredPreferredInspectorWidth;
   const activeInspectorTextScale = compact || displayMode !== "inspector"
     ? 1
     : (inspectorScaleSession.key === inspectorScaleSessionKey ? inspectorScaleSession.scale : 1);
@@ -1388,9 +1394,6 @@ export default function HoverArtOverlay({
   const topMetadataTextClassName = compact
     ? "text-[11px] leading-snug text-[#d1e2f6] text-left"
     : "leading-snug text-[#d1e2f6] text-left";
-  const bottomMetadataTextClassName = compact
-    ? "text-[11px] leading-snug text-[#d1e2f6] text-center"
-    : "leading-snug text-[#d1e2f6] text-center";
   const rulesTextClassName = compact
     ? (compactTopbarLayout
       ? "text-[12px] leading-[1.22] text-white font-semibold text-left"
@@ -1427,6 +1430,17 @@ export default function HoverArtOverlay({
   const resolvedOracleContainerStyle = compact
     ? { paddingTop: `${compactOraclePaddingTop}px`, paddingBottom: `${compactOraclePaddingBottom}px` }
     : inspectorOracleContainerStyle;
+  const inspectorRulesBodyMaxWidth = compact
+    ? null
+    : Math.max(
+      44 * 16,
+      measuredPreferredRulesWidth || 0
+    );
+  const oracleBodyStyle = compact || inspectorRulesBodyMaxWidth == null
+    ? undefined
+    : {
+      maxWidth: `min(96%, ${Math.ceil(inspectorRulesBodyMaxWidth)}px)`,
+    };
   const rulesTextStyle = compact ? ORACLE_TEXT_STYLE : {
     ...ORACLE_TEXT_STYLE,
     fontSize: `${INSPECTOR_RULES_FONT_SIZE * inspectorScale}px`,
@@ -1812,7 +1826,11 @@ export default function HoverArtOverlay({
             style={{ bottom: `${Math.max(0, stackTimelineHeight - 4)}px` }}
           >
             <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
-              <div ref={oracleBodyRef} className="space-y-1 w-full max-w-[min(92%,44rem)] self-center text-left">
+              <div
+                ref={oracleBodyRef}
+                className="space-y-1 w-full max-w-[min(92%,44rem)] self-center text-left"
+                style={oracleBodyStyle}
+              >
                 {displayRulesLines.length > 0 && (
                   <div className="space-y-0.5">
                     {displayRulesLines.map((line, lineIndex) => (

@@ -12,7 +12,6 @@ import useMobileBattleLayout from "@/hooks/useMobileBattleLayout";
 import {
   MOBILE_OPPONENT_HUD_HEIGHT_PX,
   MOBILE_SELF_HUD_HEIGHT_PX,
-  MOBILE_MANA_POOL_HEIGHT_PX,
   MOBILE_HAND_PEEK_HEIGHT_PX,
   MOBILE_STACK_RAIL_WIDTH_PX,
 } from "@/lib/mobile-battle-layout";
@@ -35,7 +34,6 @@ import MobileStackRail from "@/components/board/mobile/MobileStackRail";
 const DEFAULT_TOPBAR_HEIGHT = MOBILE_OPPONENT_HUD_HEIGHT_PX;
 const DEFAULT_CONTROL_BAND_HEIGHT = 30;
 const DEFAULT_SELF_HUD_HEIGHT = MOBILE_SELF_HUD_HEIGHT_PX;
-const DEFAULT_MANA_POOL_HEIGHT = MOBILE_MANA_POOL_HEIGHT_PX;
 const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
@@ -80,7 +78,9 @@ function buildActivatableMap(decision) {
   if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) return map;
   for (const action of decision.actions) {
     if (
-      (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
+      (action.kind === "activate_ability"
+        || action.kind === "activate_mana_ability"
+        || action.kind === "untap_land")
       && action.object_id != null
     ) {
       const objectId = Number(action.object_id);
@@ -123,7 +123,7 @@ export default function MobileBattleScene({
   setMobilePhaseStops,
 }) {
   void legalTargetObjectIds; // legality already derived from decision; keep prop for parity
-  const { state, dispatch, setExternalAutoPassGate } = useGame();
+  const { state, dispatch, cancelDecision, setExternalAutoPassGate } = useGame();
   const { combatModeRef } = useCombatArrows();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
 
@@ -216,23 +216,19 @@ export default function MobileBattleScene({
   const controlBandRef = useRef(null);
   const selfHudRef = useRef(null);
   const handFanRef = useRef(null);
-  const opponentManaRef = useRef(null);
-  const selfManaRef = useRef(null);
   const [actionStackElement, setActionStackElement] = useState(null);
 
   const [topbarHeight, setTopbarHeight] = useState(DEFAULT_TOPBAR_HEIGHT);
   const [controlBandHeight, setControlBandHeight] = useState(DEFAULT_CONTROL_BAND_HEIGHT);
   const [selfHudHeight, setSelfHudHeight] = useState(DEFAULT_SELF_HUD_HEIGHT);
-  const [opponentManaHeight, setOpponentManaHeight] = useState(DEFAULT_MANA_POOL_HEIGHT);
-  const [selfManaHeight, setSelfManaHeight] = useState(DEFAULT_MANA_POOL_HEIGHT);
   const [handFanHeight, setHandFanHeight] = useState(DEFAULT_HAND_PEEK_HEIGHT);
 
   const layout = useMobileBattleLayout({
     topBandHeight: topbarHeight,
     controlBandHeight,
     collapsedHandRailHeight: 0,
-    opponentManaPoolHeight: opponentManaPool ? opponentManaHeight : 0,
-    selfManaPoolHeight: selfManaPool ? selfManaHeight : 0,
+    opponentManaPoolHeight: 0,
+    selfManaPoolHeight: 0,
     selfHudHeight: selfHudHeight,
     handPeekHeight: handFanHeight,
     stackVisible,
@@ -248,8 +244,6 @@ export default function MobileBattleScene({
       measureElementHeight(opponentHudRef.current, DEFAULT_TOPBAR_HEIGHT, setTopbarHeight),
       measureElementHeight(controlBandRef.current, DEFAULT_CONTROL_BAND_HEIGHT, setControlBandHeight),
       measureElementHeight(selfHudRef.current, DEFAULT_SELF_HUD_HEIGHT, setSelfHudHeight),
-      measureElementHeight(opponentManaRef.current, DEFAULT_MANA_POOL_HEIGHT, setOpponentManaHeight),
-      measureElementHeight(selfManaRef.current, DEFAULT_MANA_POOL_HEIGHT, setSelfManaHeight),
       measureElementHeight(handFanRef.current, DEFAULT_HAND_PEEK_HEIGHT, setHandFanHeight),
     ].filter(Boolean);
     return () => {
@@ -395,12 +389,17 @@ export default function MobileBattleScene({
 
   const handlePopoverAction = useCallback((action) => {
     if (!action) return;
+    if (action.kind === "untap_land") {
+      cancelDecision();
+      closeActionPopover();
+      return;
+    }
     dispatch(
-      { type: "priority_action", action_index: action.index },
+      { type: "priority_action", action_index: action.index, action_ref: action.action_ref },
       action.label
     );
     closeActionPopover();
-  }, [closeActionPopover, dispatch]);
+  }, [cancelDecision, closeActionPopover, dispatch]);
 
   // --- Card click / target-pointer-down (salvaged) -------------------------
   const handleCardInspect = useCallback((event, card) => {
@@ -662,8 +661,6 @@ export default function MobileBattleScene({
         "--mobile-battle-section-gap": `${layout.sectionGap}px`,
         "--mobile-battle-row-gap": `${layout.rowGap}px`,
         "--mobile-mtga-self-hud-height": `${layout.selfHudHeight}px`,
-        "--mobile-mtga-mana-pool-height-opp": `${layout.opponentManaPoolHeight}px`,
-        "--mobile-mtga-mana-pool-height-self": `${layout.selfManaPoolHeight}px`,
         "--mobile-mtga-hand-peek-height": `${layout.handPeekHeight}px`,
         "--mobile-mtga-stack-rail-width": `${layout.stackRailWidth}px`,
       }}
@@ -688,14 +685,16 @@ export default function MobileBattleScene({
               onCycleNext={() => cycleOpponent(1)}
               onTap={dispatchPlayerChoice}
               targetable={opponentTargetable && canPickTargets}
+              manaPool={activeOpponent ? (
+                <MobileManaPool
+                  pool={opponentManaPool}
+                  side="opponent"
+                  interactive={false}
+                  className="mobile-mtga-mana-pool--hud"
+                />
+              ) : null}
             />
           </div>
-
-          {layout.opponentManaPoolHeight > 0 ? (
-            <div ref={opponentManaRef} className="mobile-mtga-scene-row">
-              <MobileManaPool pool={opponentManaPool} side="opponent" interactive={false} />
-            </div>
-          ) : null}
 
           <MobileBattlefieldBand
             side="opponent"
@@ -736,18 +735,20 @@ export default function MobileBattleScene({
             legalTargetObjectIds={legalSelectableObjectIds}
           />
 
-          {layout.selfManaPoolHeight > 0 ? (
-            <div ref={selfManaRef} className="mobile-mtga-scene-row">
-              <MobileManaPool pool={selfManaPool} side="self" interactive />
-            </div>
-          ) : null}
-
           <div ref={selfHudRef} className="mobile-mtga-scene-row">
             <MobileSelfHud
               me={me}
               onTap={dispatchPlayerChoice}
               onOpenZone={handleOpenZone}
               targetable={selfTargetable && canPickTargets}
+              manaPool={me ? (
+                <MobileManaPool
+                  pool={selfManaPool}
+                  side="self"
+                  interactive
+                  className="mobile-mtga-mana-pool--hud"
+                />
+              ) : null}
             />
           </div>
 

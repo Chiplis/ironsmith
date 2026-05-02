@@ -179,6 +179,11 @@ export default function Topbar({
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
           Ironsmith
         </h1>
+        {showCenterLane ? (
+          <div className="topbar-phase-shell">
+            <PhaseTrack compact={middleDocked} />
+          </div>
+        ) : null}
         {showCompactPhase ? (
           <div className="topbar-mobile-status">
             <div className="topbar-phase-chip" aria-label={phaseSummary}>
@@ -256,14 +261,6 @@ export default function Topbar({
           ) : null}
         </div>
       </div>
-
-      {showCenterLane ? (
-        <div className="topbar-center-lane min-w-0">
-          <div className="topbar-phase-shell">
-            <PhaseTrack compact={middleDocked} />
-          </div>
-        </div>
-      ) : null}
 
       <div className="topbar-side-cluster topbar-side-cluster--right">
         <div className="topbar-minor-controls topbar-minor-controls--utility">

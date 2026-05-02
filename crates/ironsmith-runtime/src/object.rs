@@ -261,7 +261,7 @@ fn static_ability_from_id(ability: StaticAbilityId) -> Option<StaticAbility> {
 
 impl Object {
     fn compiled_display_text(def: &crate::cards::CardDefinition) -> String {
-        crate::compiled_text::debug_compiled_lines(def).join("\n")
+        crate::compiled_text::compiled_text_lines(def).join("\n")
     }
 
     fn extend_unique<T: PartialEq + Clone>(base: &mut Vec<T>, extra: &[T]) {
@@ -1266,6 +1266,43 @@ mod tests {
         assert_eq!(obj.toughness(), Some(2));
         assert!(obj.is_creature());
         assert!(obj.colors().contains(Color::Green));
+    }
+
+    #[test]
+    fn compiled_card_text_uses_normalized_surface_for_possessive_self_reference() {
+        let domain_value =
+            crate::effect::Value::BasicLandTypesAmong(ObjectFilter::land().you_control());
+        let definition =
+            crate::cards::CardDefinitionBuilder::new(CardId::from_raw(99), "Territorial Kavu")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Bear])
+                .power_toughness(crate::card::PowerToughness::new(
+                    PtValue::Star,
+                    PtValue::Star,
+                ))
+                .with_ability(Ability::static_ability(
+                    StaticAbility::characteristic_defining_pt(domain_value.clone(), domain_value),
+                ))
+                .build();
+
+        let obj = Object::from_card_definition(
+            ObjectId::from_raw(1),
+            &definition,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        assert!(
+            obj.compiled_card_text
+                .contains("This creature's power and toughness are each equal"),
+            "expected normalized possessive wording, got {}",
+            obj.compiled_card_text
+        );
+        assert!(
+            !obj.compiled_card_text.contains("creature creature's"),
+            "object display text should not use debug-safe duplicated subject wording, got {}",
+            obj.compiled_card_text
+        );
     }
 
     #[test]

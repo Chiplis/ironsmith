@@ -105,7 +105,7 @@ export function buildStackTargetPresentation(state, zoneViews = [], selectedObje
     };
   }
 
-  const accent = getPlayerAccent(state?.players || [], activeStackObject.controller);
+  const accent = getPlayerAccent(state?.players || [], activeStackObject.controller, state?.perspective);
   const arrowColor = accent?.hex || "#ff3b30";
   const activeZones = new Set(normalizeZoneViews(zoneViews));
   const renderableObjectIndex = buildRenderableObjectIndex(state);

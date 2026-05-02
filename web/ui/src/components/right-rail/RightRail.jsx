@@ -50,10 +50,6 @@ function inspectorBorderStyle(accent) {
   };
 }
 
-function clampNumber(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
 function viewportInspectorTargetWidthPx() {
   if (typeof window === "undefined" || !Number.isFinite(window.innerWidth)) {
     return 300;
@@ -256,7 +252,13 @@ function decisionReferencesObject(decision, objectId) {
   }
 
   if (decision.kind === "select_options") {
-    return (decision.options || []).some((opt) => String(opt?.object_id) === needle);
+    return (decision.options || []).some((opt) => (
+      String(opt?.object_id) === needle
+      || (
+        Array.isArray(opt?.related_object_ids)
+        && opt.related_object_ids.some((id) => String(id) === needle)
+      )
+    ));
   }
 
   return false;
@@ -292,8 +294,9 @@ export default function RightRail({
   inspectorVariant = "normal",
 }) {
   const { state } = useGame();
-  const [preferredInlineWidth, setPreferredInlineWidth] = useState(null);
+  const [, setPreferredInlineWidth] = useState(null);
   const [preferredExpandedInlineWidth, setPreferredExpandedInlineWidth] = useState(null);
+  const [preferredExpandedInlineHeight, setPreferredExpandedInlineHeight] = useState(null);
   const [maxExpandedInlineWidth, setMaxExpandedInlineWidth] = useState(INLINE_EXPANDED_MAX_WIDTH_PX);
   const railRef = useRef(null);
   const compactInspectorRef = useRef(null);
@@ -358,8 +361,11 @@ export default function RightRail({
   const validSelectedObjectId = objectInspectableInCurrentContext(state, decision, selectedObjectId)
     ? selectedObjectId
     : null;
+  const transientPreviewSuppressedByHover = relevantHoveredObjectId != null;
+  const hasActiveTransientInspectorPreview =
+    hasTransientInspectorPreview && !transientPreviewSuppressedByHover;
   const selectedObjectLocation = useMemo(() => {
-    if (hasTransientInspectorPreview) {
+    if (hasActiveTransientInspectorPreview) {
       return locateObjectInState(state, transientPreviewObjectId);
     }
     const isCastingSpellFocus = (
@@ -379,7 +385,7 @@ export default function RightRail({
   }, [
     decision?.player,
     focusedDecision,
-    hasTransientInspectorPreview,
+    hasActiveTransientInspectorPreview,
     resolvingCastObjectId,
     state,
     transientPreviewObjectId,
@@ -408,8 +414,15 @@ export default function RightRail({
     validSelectedObjectId != null
     && resolvingCastObjectId != null
     && String(validSelectedObjectId) === String(resolvingCastObjectId);
-  const shouldShowInspector = hasTransientInspectorPreview
+  const shouldShowInspector =
+    hasActiveTransientInspectorPreview
     || (validSelectedObjectId != null && !suppressDirectResolvingCastInspector);
+  const renderedInspectorObjectId = hasActiveTransientInspectorPreview
+    ? transientPreviewObjectId
+    : validSelectedObjectId;
+  const renderedTransientInspectorPreview = hasActiveTransientInspectorPreview
+    ? transientInspectorPreview
+    : null;
   const selectedCanExpandInline = expandSelectedInline && validSelectedObjectId != null;
   const shouldShowRail = shouldShowInspector && (
     !inline
@@ -422,10 +435,10 @@ export default function RightRail({
     inline
     && !disableInlineExpansion
     && shouldShowRail
-    && (inlineExpanded || selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
+    && (inlineExpanded || selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasActiveTransientInspectorPreview);
   const useExpandedInlineInspector =
     shouldRenderExpandedInlineInspector
-    && (selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasTransientInspectorPreview);
+    && (selectedCanExpandInline || hoveredObjectId != null || pinnedInspectorObjectId != null || hasActiveTransientInspectorPreview);
   const anchorExpandedInlineToTop = inlineExpandedAnchor === "top";
   const inlineWidth = useMemo(() => {
     const targetWidth = viewportInspectorTargetWidthPx();
@@ -437,12 +450,28 @@ export default function RightRail({
   const expandedInlineWidth = useMemo(() => {
     const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
     const baseWidth = Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
+    const contentPreferredWidth = Number(preferredExpandedInlineWidth);
+    const preferredWidth = Number.isFinite(contentPreferredWidth) && contentPreferredWidth > 0
+      ? Math.ceil(contentPreferredWidth)
+      : baseWidth;
     const measuredMaxWidth = Math.round(maxExpandedInlineWidth || effectiveMaxWidth);
-    const viewportCap = expandInlineToZoneViewer
-      ? effectiveMaxWidth
-      : viewportInspectorTargetWidthPx();
-    return Math.max(baseWidth, Math.min(measuredMaxWidth, viewportCap));
-  }, [compactInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth]);
+    const viewportTargetWidth = viewportInspectorTargetWidthPx();
+    const defaultWidthCap = Math.min(
+      measuredMaxWidth,
+      expandInlineToZoneViewer
+        ? effectiveMaxWidth
+        : viewportTargetWidth
+    );
+    const preferredWidthCap = Math.min(
+      measuredMaxWidth,
+      effectiveMaxWidth,
+      expandInlineToZoneViewer
+        ? effectiveMaxWidth
+        : Math.max(viewportTargetWidth, preferredWidth)
+    );
+    const defaultWidth = Math.max(baseWidth, defaultWidthCap);
+    return Math.max(defaultWidth, Math.min(preferredWidth, preferredWidthCap));
+  }, [compactInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;
@@ -544,9 +573,13 @@ export default function RightRail({
         );
       const availableHeight = Math.max(0, Math.floor(safeBottom - safeTop));
       const minimumHeight = Math.min(INLINE_EXPANDED_MIN_HEIGHT, availableHeight);
+      const contentPreferredHeight = Number(preferredExpandedInlineHeight);
+      const targetExpandedHeight = Number.isFinite(contentPreferredHeight) && contentPreferredHeight > 0
+        ? Math.max(INLINE_EXPANDED_DEFAULT_HEIGHT, Math.ceil(contentPreferredHeight))
+        : INLINE_EXPANDED_DEFAULT_HEIGHT;
       const defaultExpandedHeight = inlineExpandedMaxHeight == null
-        ? INLINE_EXPANDED_DEFAULT_HEIGHT
-        : Math.min(INLINE_EXPANDED_DEFAULT_HEIGHT, inlineExpandedMaxHeight);
+        ? targetExpandedHeight
+        : Math.min(targetExpandedHeight, inlineExpandedMaxHeight);
       const nextHeight = Math.max(
         minimumHeight,
         Math.min(defaultExpandedHeight, availableHeight)
@@ -618,6 +651,7 @@ export default function RightRail({
     inlineDockPlacement,
     inlineExpandedMaxHeight,
     expandInlineToZoneViewer,
+    preferredExpandedInlineHeight,
     shouldRenderExpandedInlineInspector,
     shouldShowRail,
   ]);
@@ -690,8 +724,8 @@ export default function RightRail({
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             <div className="relative min-h-0 flex-1 overflow-hidden">
               <HoverArtOverlay
-                objectId={shouldShowRail ? (hasTransientInspectorPreview ? transientPreviewObjectId : validSelectedObjectId) : null}
-                transientPreview={hasTransientInspectorPreview ? transientInspectorPreview : null}
+                objectId={shouldShowRail ? renderedInspectorObjectId : null}
+                transientPreview={renderedTransientInspectorPreview}
                 transientPreviewIndex={transientInspectorPreviewIndex}
                 transientPreviewCount={transientInspectorPreviewCount}
                 onShowPreviousTransientPreview={onShowPreviousTransientInspectorPreview}
@@ -723,8 +757,8 @@ export default function RightRail({
             <div className="flex h-full min-h-0 flex-col overflow-hidden">
               <div className="min-h-0 flex-1 overflow-hidden">
                 <HoverArtOverlay
-                  objectId={shouldShowRail ? (hasTransientInspectorPreview ? transientPreviewObjectId : validSelectedObjectId) : null}
-                  transientPreview={hasTransientInspectorPreview ? transientInspectorPreview : null}
+                  objectId={shouldShowRail ? renderedInspectorObjectId : null}
+                  transientPreview={renderedTransientInspectorPreview}
                   transientPreviewIndex={transientInspectorPreviewIndex}
                   transientPreviewCount={transientInspectorPreviewCount}
                   onShowPreviousTransientPreview={onShowPreviousTransientInspectorPreview}
@@ -733,6 +767,7 @@ export default function RightRail({
                   inspectorVariant={inspectorVariant}
                   availableInspectorWidth={expandedInlineWidth}
                   availableInspectorHeight={expandedInlineHeight}
+                  onOracleTextHeightChange={setPreferredExpandedInlineHeight}
                   onPreferredInspectorWidthChange={setPreferredExpandedInlineWidth}
                   onInspectorAccentChange={useExpandedInlineInspector ? setInspectorAccent : null}
                 />

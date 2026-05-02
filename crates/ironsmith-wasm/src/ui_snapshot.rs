@@ -519,6 +519,10 @@ fn pseudo_hand_glow_kind_for_zone_card(
         return Some("extra");
     }
 
+    if object.owner != perspective {
+        return None;
+    }
+
     object
         .alternative_casts
         .iter()
@@ -829,6 +833,14 @@ impl GameSnapshot {
         let stack_viewed_cards = super::stack_revealed_view(game);
         let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
         let protected_ids = protected_object_ids_for_decision(decision);
+        let mut characteristic_ids = game.battlefield.clone();
+        characteristic_ids.extend(game.stack.iter().map(|entry| entry.object_id));
+        if let Some(stack_id) = pending_cast_stack_id {
+            characteristic_ids.push(stack_id);
+        }
+        characteristic_ids.sort_unstable();
+        characteristic_ids.dedup();
+        game.prewarm_calculated_characteristics(&characteristic_ids);
         let players = game
             .players
             .iter()
@@ -997,8 +1009,12 @@ impl GameSnapshot {
         {
             stack_preview.insert(0, obj.name.clone());
             let pending_effect_text = {
-                let lines =
-                    ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition());
+                let lines: Vec<_> = obj
+                    .compiled_card_text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .collect();
                 if lines.is_empty() {
                     None
                 } else {
@@ -1065,8 +1081,15 @@ impl GameSnapshot {
                     source: view.source.map(|id| id.0),
                     description: view.description.clone(),
                 }),
-            decision: decision
-                .map(|ctx| DecisionView::from_context(game, ctx, perspective, viewed_cards)),
+            decision: decision.map(|ctx| {
+                DecisionView::from_context(
+                    game,
+                    ctx,
+                    perspective,
+                    viewed_cards,
+                    undo_land_stable_id,
+                )
+            }),
             mana_payment,
             game_over: game_over.map(|r| GameOverView::from_result(game, r)),
             cancelable,
@@ -1100,7 +1123,7 @@ pub(super) fn build_object_details_snapshot(
         (obj.power(), obj.toughness())
     };
     let counters = counter_snapshots_for_object(obj);
-    let compiled_text = ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition());
+    let compiled_text = ironsmith::compiled_text::compiled_text_lines(&obj.to_card_definition());
 
     let type_line =
         format_type_line_parts(&current_supertypes, &current_card_types, &current_subtypes);
@@ -1130,7 +1153,7 @@ pub(super) fn build_object_details_snapshot(
         tapped: game.is_tapped(obj.id),
         counters,
         compiled_text,
-        abilities: ironsmith::compiled_text::debug_compiled_lines(&obj.to_card_definition()),
+        abilities: ironsmith::compiled_text::compiled_text_lines(&obj.to_card_definition()),
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
         semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })
@@ -1234,10 +1257,12 @@ fn zone_label(zone: Zone) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
     use ironsmith::cards::tokens::cursed_role_token_definition;
     use ironsmith::game_state::GameState;
     use ironsmith::ids::{CardId, PlayerId};
+    use ironsmith::mana::{ManaCost, ManaSymbol};
     use ironsmith::object::AttachmentTarget;
     use ironsmith::types::Subtype;
 
@@ -1247,6 +1272,115 @@ mod tests {
             .subtypes(vec![Subtype::Bear])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build()
+    }
+
+    fn add_native_escape_to_object(game: &mut GameState, id: ironsmith::ids::ObjectId) {
+        game.object_mut(id)
+            .expect("escape object should exist")
+            .alternative_casts
+            .push(AlternativeCastingMethod::Escape {
+                cost: Some(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Red],
+                    vec![ManaSymbol::Red],
+                ])),
+                exile_count: 2,
+            });
+    }
+
+    #[test]
+    fn pseudo_hand_hides_opponent_native_escape_card() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let escape_card = CardBuilder::new(CardId::from_raw(90_010), "Escape Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let escape_id = game.create_object_from_card(&escape_card, bob, Zone::Graveyard);
+        add_native_escape_to_object(&mut game, escape_id);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("opponent snapshot should exist");
+        let graveyard_card = bob_snapshot
+            .graveyard_cards
+            .iter()
+            .find(|card| card.id == escape_id.0)
+            .expect("opponent graveyard card should be visible");
+
+        assert!(
+            !graveyard_card.show_in_pseudo_hand,
+            "an opponent-owned native escape card should not be surfaced in Alice's pseudo-hand"
+        );
+        assert_eq!(graveyard_card.pseudo_hand_glow_kind, None);
+    }
+
+    #[test]
+    fn pseudo_hand_keeps_own_native_escape_card() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let escape_card = CardBuilder::new(CardId::from_raw(90_011), "Own Escape Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let escape_id = game.create_object_from_card(&escape_card, alice, Zone::Graveyard);
+        add_native_escape_to_object(&mut game, escape_id);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let alice_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist");
+        let graveyard_card = alice_snapshot
+            .graveyard_cards
+            .iter()
+            .find(|card| card.id == escape_id.0)
+            .expect("own graveyard card should be visible");
+
+        assert!(
+            graveyard_card.show_in_pseudo_hand,
+            "an owned native escape card should still be surfaced in Alice's pseudo-hand"
+        );
+        assert_eq!(
+            graveyard_card.pseudo_hand_glow_kind.as_deref(),
+            Some("extra")
+        );
     }
 
     #[test]

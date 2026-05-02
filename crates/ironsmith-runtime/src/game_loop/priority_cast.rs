@@ -151,6 +151,46 @@ pub(super) fn collect_available_casting_methods(
     methods
 }
 
+pub(super) fn may_have_multiple_casting_methods(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+    from_zone: Zone,
+) -> bool {
+    if from_zone != Zone::Hand {
+        return false;
+    }
+
+    let Some(spell) = game.object(spell_id) else {
+        return false;
+    };
+
+    if crate::decision::spell_can_be_cast_face_down(spell)
+        || spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
+        || spell.has_fuse
+        || spell
+            .alternative_casts
+            .iter()
+            .any(|method| method.cast_from_zone() == Zone::Hand)
+    {
+        return true;
+    }
+
+    game.effect_store
+        .grant_registry
+        .active_grants(game)
+        .into_iter()
+        .any(|grant| {
+            grant.player == player
+                && grant.zone == Zone::Hand
+                && matches!(
+                    grant.grantable,
+                    crate::grant::Grantable::AlternativeCast(_)
+                        | crate::grant::Grantable::DerivedAlternativeCast(_)
+                )
+        })
+}
+
 /// Format a mana cost in simple text form (e.g., "{3}{U}{U}").
 pub(super) fn format_mana_cost_simple(cost: &crate::mana::ManaCost) -> String {
     use crate::mana::ManaSymbol;
@@ -1451,6 +1491,7 @@ pub(super) fn continue_spell_cast_mana_payment(
 
     // If no remaining pips, return to next-cost selection or finalize the spell.
     if pending.remaining_mana_pips.is_empty() {
+        pending.current_pip_payment_options.clear();
         return continue_spell_next_cost_or_finalize(
             game,
             trigger_queue,
@@ -1538,13 +1579,14 @@ pub(super) fn continue_spell_cast_mana_payment(
 
     let pip_description = format_pip(&pip);
 
-    state.pending_cast = Some(pending);
-
     // Convert ManaPipPaymentOption to SelectableOption
     let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
         .iter()
         .map(|opt| crate::decisions::context::SelectableOption::new(opt.index, &opt.description))
         .collect();
+
+    pending.current_pip_payment_options = options;
+    state.pending_cast = Some(pending);
 
     let ctx = crate::decisions::context::SelectOptionsContext::mana_pip_payment(
         player_id,
@@ -1714,36 +1756,43 @@ pub(super) fn get_available_mana_abilities(
     player: PlayerId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<(ObjectId, usize, String)> {
-    use crate::special_actions::{SpecialAction, can_perform};
+    use crate::special_actions::can_activate_mana_ability_check_with_view;
 
     let mut abilities = Vec::new();
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let simple_mana_analysis = view.simple_battlefield_mana_analysis(player);
 
-    for &perm_id in &game.battlefield {
+    for &perm_id in simple_mana_analysis.mana_source_ids() {
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
+        let cached_abilities = view.abilities_rc(perm_id);
+        let current_abilities = cached_abilities.as_deref().unwrap_or(&perm.abilities);
 
-        if game.controller_of(perm) != player {
-            continue;
-        }
-
-        let current_abilities = game
-            .current_abilities(perm_id)
-            .unwrap_or_else(|| perm.abilities.clone());
-        for (i, ability) in current_abilities.iter().enumerate() {
-            if ability.is_mana_ability() {
-                let action = SpecialAction::ActivateManaAbility {
-                    permanent_id: perm_id,
-                    ability_index: i,
-                };
-
-                if can_perform(&action, game, player, &mut *decision_maker).is_ok() {
-                    let desc = describe_mana_ability(&ability.kind);
-                    abilities.push((perm_id, i, desc));
-                }
+        for &ability_index in simple_mana_analysis.mana_ability_indices_for(perm_id) {
+            let Some(ability) = current_abilities.get(ability_index) else {
+                continue;
+            };
+            if simple_mana_analysis
+                .activatable_indices_for(perm_id)
+                .contains(&ability_index)
+                || can_activate_mana_ability_check_with_view(
+                    game,
+                    player,
+                    perm_id,
+                    ability_index,
+                    ability,
+                    &view,
+                    None,
+                )
+                .is_ok()
+            {
+                let desc = describe_mana_ability(&ability.kind);
+                abilities.push((perm_id, ability_index, desc));
             }
         }
     }
+    let _ = decision_maker;
 
     abilities
 }

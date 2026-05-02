@@ -107,9 +107,11 @@ struct MetadataStateStore {
 }
 
 /// Storage and denormalized zone indexes for live objects in the game.
+pub(crate) type ObjectMap = HashMap<ObjectId, Object>;
+
 #[derive(Debug, Clone, Default)]
 pub struct ObjectStore {
-    objects: HashMap<ObjectId, Object>,
+    objects: ObjectMap,
     /// Fast index: stable id -> current object id.
     stable_id_index: HashMap<StableId, ObjectId>,
     /// Game-local cache for linked-face definitions so transform/split/disturb
@@ -134,7 +136,7 @@ impl ObjectStore {
         self.objects.get_mut(&id)
     }
 
-    fn objects_map(&self) -> &HashMap<ObjectId, Object> {
+    fn objects_map(&self) -> &ObjectMap {
         &self.objects
     }
 }
@@ -243,7 +245,7 @@ pub struct ChoiceStore {
     pub chosen_named_options: HashMap<ObjectId, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
@@ -255,6 +257,25 @@ struct RuntimeCacheState {
     continuous_state_step: Cell<Option<Step>>,
     calculated_characteristics_cache: RefCell<HashMap<ObjectId, Option<CalculatedCharacteristics>>>,
     calculated_characteristics_cache_revision: Cell<u64>,
+}
+
+impl Clone for RuntimeCacheState {
+    fn clone(&self) -> Self {
+        Self {
+            random_state: Cell::new(self.random_state.get()),
+            irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
+            continuous_state_dirty: Cell::new(self.continuous_state_dirty.get()),
+            continuous_state_revision: Cell::new(self.continuous_state_revision.get()),
+            continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
+            continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
+            continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
+            continuous_state_step: Cell::new(self.continuous_state_step.get()),
+            calculated_characteristics_cache: RefCell::new(HashMap::new()),
+            calculated_characteristics_cache_revision: Cell::new(
+                self.calculated_characteristics_cache_revision.get(),
+            ),
+        }
+    }
 }
 
 impl RuntimeCacheState {
@@ -3799,7 +3820,7 @@ impl GameState {
         self.object_store.object_mut(id)
     }
 
-    pub(crate) fn objects_map(&self) -> &HashMap<ObjectId, Object> {
+    pub(crate) fn objects_map(&self) -> &ObjectMap {
         self.object_store.objects_map()
     }
 
@@ -4185,7 +4206,13 @@ impl GameState {
         )
     }
 
-    pub(crate) fn prewarm_calculated_characteristics(&self, ids: &[ObjectId]) {
+    /// Precompute calculated characteristics for a set of objects in one batch.
+    ///
+    /// This is useful for external snapshot builders that are about to inspect
+    /// many battlefield objects and want to avoid repeated one-object layer
+    /// calculations. The cache is transient and automatically invalidated by
+    /// continuous-effect revision changes.
+    pub fn prewarm_calculated_characteristics(&self, ids: &[ObjectId]) {
         if !self.continuous_state_is_clean() {
             return;
         }

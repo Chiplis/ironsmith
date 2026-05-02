@@ -188,7 +188,7 @@ export default function SelectObjectsDecision({
                 : objectControllerById.get(String(c.id));
               const accent = controllerId == null
                 ? null
-                : getPlayerAccent(state?.players || [], controllerId);
+                : getPlayerAccent(state?.players || [], controllerId, state?.perspective);
               return (
                 <Button
                   key={c.id}

@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { splitTextWithMtgKeywordRules } from "@/lib/mtg-keywords";
 
@@ -243,6 +244,15 @@ export function ManaSymbol({ sym, size = 14 }) {
 }
 
 const SYMBOL_RE = /\{([^}]+)\}/g;
+const KeywordHelpersEnabledContext = createContext(true);
+
+export function KeywordHelpersProvider({ enabled = true, children }) {
+  return (
+    <KeywordHelpersEnabledContext.Provider value={enabled}>
+      {children}
+    </KeywordHelpersEnabledContext.Provider>
+  );
+}
 
 function KeywordHelperText({ text, rule }) {
   if (!rule) return text;
@@ -272,7 +282,9 @@ function KeywordHelperText({ text, rule }) {
   );
 }
 
-function keywordTextParts(text, nextKey) {
+function keywordTextParts(text, nextKey, keywordHelpersEnabled) {
+  if (!keywordHelpersEnabled) return [text];
+
   return splitTextWithMtgKeywordRules(text).map((segment) => {
     if (segment.type !== "keyword") return segment.text;
     return (
@@ -305,15 +317,18 @@ export function SymbolText({
   style,
   symbolSize = 14,
   noWrap = false,
+  keywordHelpers = null,
 }) {
+  const contextKeywordHelpersEnabled = useContext(KeywordHelpersEnabledContext);
   if (!text) return null;
+  const keywordHelpersEnabled = keywordHelpers ?? contextKeywordHelpersEnabled;
   const parts = [];
   let last = 0;
   let key = 0;
   const nextKey = () => `keyword-${key++}`;
   const appendText = (value) => {
     if (!value) return;
-    parts.push(...keywordTextParts(value, nextKey));
+    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled));
   };
 
   for (const match of text.matchAll(SYMBOL_RE)) {

@@ -55,11 +55,11 @@ impl RemoveAnyCountersFromSourceEffect {
         let amount_text = if self.display_x { "X" } else { "any number of" };
         match self.counter_type {
             Some(counter_type) => format!(
-                "Remove {amount_text} {} counter{} from ~",
+                "Remove {amount_text} {} counter{} from this source",
                 counter_type.description(),
                 if self.display_x { "" } else { "s" }
             ),
-            None => format!("Remove {amount_text} counters from ~"),
+            None => format!("Remove {amount_text} counters from this source"),
         }
     }
 }
@@ -199,11 +199,11 @@ mod tests {
     fn display_text() {
         assert_eq!(
             RemoveAnyCountersFromSourceEffect::any_number(Some(CounterType::Charge)).cost_display(),
-            "Remove any number of charge counters from ~"
+            "Remove any number of charge counters from this source"
         );
         assert_eq!(
             RemoveAnyCountersFromSourceEffect::x(Some(CounterType::Storage)).cost_display(),
-            "Remove X storage counter from ~"
+            "Remove X storage counter from this source"
         );
     }
 

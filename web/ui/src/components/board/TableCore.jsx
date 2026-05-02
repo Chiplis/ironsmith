@@ -66,7 +66,7 @@ export default function TableCore({
   const meIndex = me ? players.findIndex((p) => p.id === me.id) : -1;
   const ordered = me && meIndex >= 0 ? [...players.slice(meIndex), ...players.slice(0, meIndex)] : players;
   const opponents = me ? ordered.filter((p) => p.id !== me.id) : [];
-  const playerAccent = me ? getPlayerAccent(players, me?.id) : null;
+  const playerAccent = me ? getPlayerAccent(players, me?.id, perspective) : null;
   const decision = state?.decision || null;
   const expandedActionBar = Boolean(
     decision
@@ -86,6 +86,7 @@ export default function TableCore({
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
     : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
   const mergeActionBarIntoMyZone = nonDesktopViewport || tabletCompactViewport;
+  const dockStackRailInBoard = !mergeActionBarIntoMyZone && Boolean(zoneActionControls);
   const sharedMiddleControls = !mergeActionBarIntoMyZone && Boolean(middleTopbar || middleAddCardBar);
   const isActivePlayer = Number(state?.active_player) === Number(me?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(me?.id);
@@ -187,16 +188,23 @@ export default function TableCore({
             {me.name}
           </span>
         </span>
+        <ManaPool
+          pool={me.mana_pool}
+          alwaysVisible
+          compact
+          className="player-name-mana battlefield-header-mana"
+        />
         <div className="ml-auto flex min-w-0 items-center gap-2">
           <ZoneCountInline player={me} />
-          <ManaPool pool={me.mana_pool} />
         </div>
       </div>
-      <StackTimelineRail
-        selectedObjectId={selectedObjectId}
-        onInspectObject={onInspect}
-        className="h-full flex-1 self-stretch pl-2"
-      />
+      {!dockStackRailInBoard ? (
+        <StackTimelineRail
+          selectedObjectId={selectedObjectId}
+          onInspectObject={onInspect}
+          className="h-full flex-1 self-stretch pl-2"
+        />
+      ) : null}
     </div>
   ) : null;
   const sharedMiddleElement = sharedMiddleControls ? (

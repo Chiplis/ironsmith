@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,7 +19,6 @@ import {
   isTriggerOrderingDecision,
 } from "@/lib/trigger-ordering";
 
-const STACK_LEAVE_ANIMATION_MS = 360;
 const HORIZONTAL_STACK_ENTRY_WIDTH = "clamp(180px, 17vw, 230px)";
 const HORIZONTAL_STACK_ENTRY_MIN_HEIGHT = 50;
 const HORIZONTAL_STACK_BADGE_TOP = 27;
@@ -59,54 +58,6 @@ function horizontalStackKindLabel(entry) {
   if (normalized === "triggered") return "Trigger";
   if (normalized === "activated") return "Activation";
   return `${abilityKind} ability`;
-}
-
-function mergeTimelineLeavingEntries(liveEntries = [], leavingEntries = []) {
-  if (!Array.isArray(leavingEntries) || leavingEntries.length === 0) {
-    return liveEntries.map((entry) => ({
-      ...entry,
-      __timeline_key: `live-${entry.id}`,
-      __leaving: false,
-    }));
-  }
-
-  const mergedEntries = [];
-  const sortedLeavingEntries = [...leavingEntries].sort((left, right) => (
-    (left.previousIndex ?? Number.MAX_SAFE_INTEGER)
-    - (right.previousIndex ?? Number.MAX_SAFE_INTEGER)
-  ));
-  let liveIndex = 0;
-
-  for (const leavingItem of sortedLeavingEntries) {
-    const targetIndex = Math.max(0, Number(leavingItem.previousIndex ?? mergedEntries.length));
-    while (mergedEntries.length < targetIndex && liveIndex < liveEntries.length) {
-      const liveEntry = liveEntries[liveIndex];
-      mergedEntries.push({
-        ...liveEntry,
-        __timeline_key: `live-${liveEntry.id}`,
-        __leaving: false,
-      });
-      liveIndex += 1;
-    }
-
-    mergedEntries.push({
-      ...leavingItem.entry,
-      __timeline_key: leavingItem.key,
-      __leaving: true,
-    });
-  }
-
-  while (liveIndex < liveEntries.length) {
-    const liveEntry = liveEntries[liveIndex];
-    mergedEntries.push({
-      ...liveEntry,
-      __timeline_key: `live-${liveEntry.id}`,
-      __leaving: false,
-    });
-    liveIndex += 1;
-  }
-
-  return mergedEntries;
 }
 
 function HorizontalStackEntry({
@@ -290,15 +241,12 @@ export default function InspectorStackTimeline({
     moveTriggerOrderingItem,
   } = useGame();
   const players = state?.players || [];
-  const [leavingEntries, setLeavingEntries] = useState([]);
-  const previousStackRef = useRef([]);
-  const leaveTimeoutsRef = useRef(new Map());
   const bodyRef = useRef(null);
   const horizontalScrollRef = useRef(null);
   const focusedDecision = isFocusedDecision(decision) && canAct;
   const triggerOrderingActive = isTriggerOrderingDecision(decision);
   const triggerOrderingKey = buildTriggerOrderingKey(decision);
-  const hasStackEntries = stackObjects.length > 0 || leavingEntries.length > 0 || stackPreview.length > 0;
+  const hasStackEntries = stackObjects.length > 0 || stackPreview.length > 0;
   const stackIds = useMemo(() => stackObjects.map((entry) => entry.id), [stackObjects]);
   const { newIds } = useNewCards(stackIds);
   const activeStackInspectId = useMemo(
@@ -317,8 +265,12 @@ export default function InspectorStackTimeline({
     return stackObjects;
   }, [stackObjects]);
   const visibleTimelineEntries = useMemo(
-    () => mergeTimelineLeavingEntries(visibleLiveStackObjects, leavingEntries),
-    [leavingEntries, visibleLiveStackObjects]
+    () => visibleLiveStackObjects.map((entry) => ({
+      ...entry,
+      __timeline_key: `live-${entry.id}`,
+      __leaving: false,
+    })),
+    [visibleLiveStackObjects]
   );
   const { alertEntryId: stackStartAlertId, dismissAlert: dismissStackStartAlert } = useStackStartAlert(
     visibleLiveStackObjects,
@@ -367,46 +319,6 @@ export default function InspectorStackTimeline({
     dismissStackStartAlert();
     onInspectObject?.(objectId, meta);
   }, [dismissStackStartAlert, onInspectObject]);
-
-  useEffect(() => {
-    const previousStack = previousStackRef.current || [];
-    const nextIds = new Set(stackObjects.map((entry) => String(entry.id)));
-    const previousIndexById = new Map(previousStack.map((entry, index) => [String(entry.id), index]));
-    const removed = previousStack.filter((entry) => !nextIds.has(String(entry.id)));
-
-    if (removed.length > 0) {
-      const additions = removed.map((entry) => ({
-        key: `live-${entry.id}`,
-        entry,
-        previousIndex: previousIndexById.get(String(entry.id)) ?? previousStack.length,
-      }));
-      queueMicrotask(() => {
-        setLeavingEntries((prev) => {
-          const existing = new Set(prev.map((item) => String(item.entry.id)));
-          const deduped = additions.filter((item) => !existing.has(String(item.entry.id)));
-          if (deduped.length === 0) return prev;
-          return [...prev, ...deduped];
-        });
-      });
-
-      for (const addition of additions) {
-        const timeout = setTimeout(() => {
-          leaveTimeoutsRef.current.delete(addition.key);
-          setLeavingEntries((prev) => prev.filter((item) => item.key !== addition.key));
-        }, STACK_LEAVE_ANIMATION_MS);
-        leaveTimeoutsRef.current.set(addition.key, timeout);
-      }
-    }
-
-    previousStackRef.current = stackObjects;
-  }, [stackObjects]);
-
-  useEffect(() => () => {
-    for (const timeout of leaveTimeoutsRef.current.values()) {
-      clearTimeout(timeout);
-    }
-    leaveTimeoutsRef.current.clear();
-  }, []);
 
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
@@ -502,7 +414,7 @@ export default function InspectorStackTimeline({
                       && String(activeStackInspectId) === String(stackInspectObjectId(entry))
                     }
                     accent={
-                      !entry.__leaving ? getPlayerAccent(players, entry.controller) : null
+                      !entry.__leaving ? getPlayerAccent(players, entry.controller, state?.perspective) : null
                     }
                     onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                     reorderControls={entry.__trigger_ordering
@@ -543,8 +455,9 @@ export default function InspectorStackTimeline({
     <section
       className={cn(
         embedded
-          ? "pointer-events-none w-full min-h-0 overflow-hidden rounded-l rounded-r-sm border border-[#35506c] bg-transparent shadow-none flex flex-col"
-          : "pointer-events-none absolute inset-x-0 bottom-0 z-[36] overflow-hidden border-t border-[#35506c] bg-transparent shadow-none"
+          ? "pointer-events-auto w-full min-h-0 overflow-hidden rounded-l rounded-r-sm border border-[#35506c] bg-transparent shadow-none flex flex-col"
+          : "pointer-events-none absolute inset-x-0 bottom-0 z-[36] overflow-hidden border-t border-[#35506c] bg-transparent shadow-none",
+        compact && !isHorizontal && "stack-timeline-compact"
       )}
       style={embedded ? undefined : { height: `${Math.max(0, timelineHeight)}px` }}
       data-inspector-stack-timeline
@@ -574,13 +487,13 @@ export default function InspectorStackTimeline({
         <div
           ref={bodyRef}
           className={cn(
-            "pointer-events-none overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
+            "pointer-events-auto overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
             collapsed ? "opacity-0" : "opacity-100"
           )}
           style={{ maxHeight: collapsed ? "0px" : `${embeddedExpandedMaxHeight}px` }}
         >
           <div
-            className="stack-timeline-scroll pointer-events-none grid gap-1.5 overflow-y-auto overscroll-contain p-1.5"
+            className="stack-timeline-scroll pointer-events-auto grid gap-1.5 overflow-y-auto overscroll-contain p-1.5"
             style={{ maxHeight: `${embeddedExpandedMaxHeight}px` }}
           >
             {timelineEntries.length > 0
@@ -608,7 +521,9 @@ export default function InspectorStackTimeline({
                         && activeStackInspectId != null
                         && String(activeStackInspectId) === String(stackInspectObjectId(entry))
                       }
-                      className="pt-4"
+                      className={cn(
+                        compact ? "pt-3 stack-card--compact-timeline" : "pt-4"
+                      )}
                       onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                       reorderControls={entry.__trigger_ordering
                         ? {

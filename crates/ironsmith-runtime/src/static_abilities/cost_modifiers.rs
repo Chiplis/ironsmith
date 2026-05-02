@@ -107,6 +107,27 @@ fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
     }
 }
 
+fn basic_land_type_count_filter(value: &Value) -> Option<&ObjectFilter> {
+    match value {
+        Value::BasicLandTypesAmong(filter) => Some(filter),
+        Value::Add(_, _) => scaled_basic_land_type_count(value).map(|(_, filter)| filter),
+        Value::Min(value, _) => basic_land_type_count_filter(value),
+        _ => None,
+    }
+}
+
+fn is_domain_cost_reduction(value: &Value, condition: &ThisSpellCostCondition) -> bool {
+    if !matches!(condition, ThisSpellCostCondition::Always) {
+        return false;
+    }
+
+    let Some(filter) = basic_land_type_count_filter(value) else {
+        return false;
+    };
+
+    *filter == ObjectFilter::land().you_control()
+}
+
 fn describe_types_among_scope(filter: &ObjectFilter) -> String {
     let description = filter.description();
     for (singular, plural) in [("a creature", "creatures"), ("a land", "lands")] {
@@ -1448,6 +1469,9 @@ impl StaticAbilityKind for ThisSpellCostReduction {
             line.push(' ');
             line.push_str(&tail);
         }
+        if is_domain_cost_reduction(&self.reduction, &self.condition) {
+            line = format!("Domain — {line}");
+        }
         let Some(condition_text) = describe_this_spell_cost_condition(&self.condition) else {
             return line;
         };
@@ -1811,6 +1835,19 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "This spell costs {1} less to cast for each card type among cards in your graveyard"
+        );
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_display_preserves_domain_ability_word() {
+        let reduction = ThisSpellCostReduction::new(
+            Value::BasicLandTypesAmong(ObjectFilter::land().you_control()),
+            Always,
+        );
+
+        assert_eq!(
+            reduction.display(),
+            "Domain — This spell costs {1} less to cast for each basic land type among lands you control"
         );
     }
 }

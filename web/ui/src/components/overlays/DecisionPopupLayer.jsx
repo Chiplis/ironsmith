@@ -7,10 +7,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
+import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
-import { ManaSymbol, SymbolText } from "@/lib/mana-symbols";
-import { nextPriorityAdvanceLabel } from "@/lib/constants";
+import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
+import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
@@ -414,7 +415,7 @@ function resolveObjectAccent(players, perspective, controllerById, objectId, exp
   if (controllerId == null || Number(controllerId) === Number(perspective)) {
     return null;
   }
-  return getPlayerAccent(players || [], controllerId);
+  return getPlayerAccent(players || [], controllerId, perspective);
 }
 
 function PriorityActionPillLabel({
@@ -1294,6 +1295,7 @@ export function MobileDecisionCloseButton({
 function MobileDecisionDock({
   subtitle = "",
   primaryLabel = "Continue",
+  primaryAdvanceLabel = "",
   primaryDisabled = false,
   onPrimary,
   secondaryLabel = "",
@@ -1348,7 +1350,11 @@ function MobileDecisionDock({
           <span className="mobile-decision-primary-label">
             {primaryLabel}
           </span>
-          {subtitle ? (
+          {primaryAdvanceLabel ? (
+            <span className="mobile-decision-primary-subtitle">
+              {primaryAdvanceLabel}
+            </span>
+          ) : subtitle ? (
             <span className="mobile-decision-primary-subtitle">
               <SymbolText text={normalizeDecisionText(subtitle)} noWrap />
             </span>
@@ -1622,13 +1628,16 @@ function MobileBattleDecisionLayer({
   }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId]);
   const showPriorityAdvanceButton = !!passAction;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
-  const passLabel = showPriorityAdvanceButton
+  const passAdvanceLabel = showPriorityAdvanceButton
     ? (
       hasCustomPassLabel
         ? passAction.label
-        : nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)
+        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
     )
     : (visibleActionGroups[0]?.label || "Continue");
+  const passCurrentLabel = showPriorityAdvanceButton
+    ? currentPriorityPhaseLabel(state?.phase, state?.step)
+    : passAdvanceLabel;
   const objectNameById = useMemo(
     () => buildObjectNameById(state),
     [state]
@@ -1683,13 +1692,18 @@ function MobileBattleDecisionLayer({
       if (!canAct || !action) return;
       clearHoverLinkedObjects();
       clearHover();
+      if (action.kind === "untap_land") {
+        cancelDecision();
+        setActionsSheetState({ key: decisionIdentity, open: false });
+        return;
+      }
       dispatch(
-        { type: "priority_action", action_index: action.index },
+        { type: "priority_action", action_index: action.index, action_ref: action.action_ref },
         action.label
       );
       setActionsSheetState({ key: decisionIdentity, open: false });
     },
-    [canAct, clearHover, clearHoverLinkedObjects, decisionIdentity, dispatch]
+    [canAct, cancelDecision, clearHover, clearHoverLinkedObjects, decisionIdentity, dispatch]
   );
   const handleActionHoverStart = useCallback(
     (group) => {
@@ -1834,7 +1848,7 @@ function MobileBattleDecisionLayer({
           }
           : null));
     const primaryDisabled = !canAct || (!showPriorityAdvanceButton && visibleActionGroups.length === 0);
-    const resolvedDockSubtitle = decisionTextMatches(mobileDockSubtitle, passLabel)
+    const resolvedDockSubtitle = decisionTextMatches(mobileDockSubtitle, passAdvanceLabel)
       ? ""
       : mobileDockSubtitle;
     const handlePrimary = () => {
@@ -1852,7 +1866,8 @@ function MobileBattleDecisionLayer({
         {renderMobileBattlePortal(
           <MobileDecisionDock
             subtitle={resolvedDockSubtitle}
-            primaryLabel={passLabel}
+            primaryLabel={passCurrentLabel}
+            primaryAdvanceLabel={showPriorityAdvanceButton ? passAdvanceLabel : ""}
             primaryDisabled={primaryDisabled}
             onPrimary={handlePrimary}
             secondaryLabel={secondaryAction?.label || ""}
@@ -2188,9 +2203,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const showPriorityAdvanceButton = !!passAction;
   const canCancelDecision = canAct && !!state?.cancelable;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
-  const passLabel = holdRule === "always" || hasCustomPassLabel
+  const passAdvanceLabel = holdRule === "always" || hasCustomPassLabel
     ? (passAction?.label || "Pass priority")
     : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`;
+  const passCurrentLabel = currentPriorityPhaseLabel(state?.phase, state?.step);
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
     [state?.players]
@@ -2291,12 +2307,16 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     (action) => {
       if (!canAct || !action) return;
       clearHover();
+      if (action.kind === "untap_land") {
+        cancelDecision();
+        return;
+      }
       dispatch(
-        { type: "priority_action", action_index: action.index },
+        { type: "priority_action", action_index: action.index, action_ref: action.action_ref },
         action.label
       );
     },
-    [canAct, clearHover, dispatch]
+    [canAct, cancelDecision, clearHover, dispatch]
   );
   const handleActionHoverStart = useCallback(
     (group) => {
@@ -2480,12 +2500,15 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       aria-disabled={!canAct}
                       onClick={() => triggerPriorityAction(passAction)}
                     >
-                      {passLabel}
+                      <PriorityPassButtonLabel
+                        currentLabel={passCurrentLabel}
+                        advanceLabel={passAdvanceLabel}
+                      />
                     </Button>
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
-                      advanceLabel={passLabel}
+                      advanceLabel={passAdvanceLabel}
                       className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                     />
                   </div>
@@ -2691,12 +2714,15 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       aria-disabled={!canAct}
                       onClick={() => triggerPriorityAction(passAction)}
                     >
-                      {passLabel}
+                      <PriorityPassButtonLabel
+                        currentLabel={passCurrentLabel}
+                        advanceLabel={passAdvanceLabel}
+                      />
                     </Button>
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
-                      advanceLabel={passLabel}
+                      advanceLabel={passAdvanceLabel}
                       className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                     />
                   </div>
@@ -2992,8 +3018,9 @@ export default function DecisionPopupLayer({
   const canAct = !!decision && state?.perspective === decision.player;
 
   if (!decision) return null;
+  let content = null;
   if (mobileBattle) {
-    return (
+    content = (
       <MobileBattleDecisionLayer
         selectedObjectId={selectedObjectId}
         portalTarget={mobileBattlePortalTarget}
@@ -3002,12 +3029,17 @@ export default function DecisionPopupLayer({
         dockOrientation={mobileBattleDockOrientation}
       />
     );
+  } else if (decision?.kind === "priority") {
+    content = <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
+  } else if (decision?.kind === "attackers" || decision?.kind === "blockers") {
+    content = <CombatBar anchor={anchor} inline={priorityInline} decision={decision} canAct={canAct} />;
+  } else {
+    content = <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
   }
-  if (decision?.kind === "priority") {
-    return <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
-  }
-  if (decision?.kind === "attackers" || decision?.kind === "blockers") {
-    return <CombatBar anchor={anchor} inline={priorityInline} decision={decision} canAct={canAct} />;
-  }
-  return <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
+
+  return (
+    <KeywordHelpersProvider enabled={false}>
+      {content}
+    </KeywordHelpersProvider>
+  );
 }

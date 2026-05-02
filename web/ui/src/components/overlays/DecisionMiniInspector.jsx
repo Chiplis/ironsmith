@@ -69,7 +69,7 @@ function pickRelevantOracleLines(oracleText, compiledAbilities, needleText, abil
       .map((line) => normalizeDecisionText(String(line || "").trim()))
       .filter(Boolean)
     : [];
-  const lines = oracleLines.length > 0 ? oracleLines : compiledLines;
+  const lines = compiledLines.length > 0 ? compiledLines : oracleLines;
   if (lines.length === 0) return [];
 
   let bestScore = 0;
@@ -109,7 +109,7 @@ function pickDefaultOracleLines(oracleText, compiledAbilities, abilityKind = "")
       .map((line) => normalizeDecisionText(String(line || "").trim()))
       .filter(Boolean)
     : [];
-  const lines = oracleLines.length > 0 ? oracleLines : compiledLines;
+  const lines = compiledLines.length > 0 ? compiledLines : oracleLines;
   if (lines.length === 0) return [];
 
   const normalizedKind = String(abilityKind || "").toLowerCase();

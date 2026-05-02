@@ -28,11 +28,12 @@ export default function MobileSelfHud({
   onLongPress,
   onOpenZone,
   targetable = false,
+  manaPool = null,
   className,
 }) {
   const { state } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const accent = getPlayerAccent(state?.players || [], me?.id);
+  const accent = getPlayerAccent(state?.players || [], me?.id, state?.perspective);
   const isActiveTurn = me?.id === state?.active_player;
 
   const handleLongPress = useCallback(() => {
@@ -82,6 +83,12 @@ export default function MobileSelfHud({
           </span>
         </span>
       </button>
+
+      {manaPool ? (
+        <div className="mobile-mtga-hud-mana">
+          {manaPool}
+        </div>
+      ) : null}
 
       <MobileZoneTray player={me} onOpenZone={onOpenZone} />
     </footer>

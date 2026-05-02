@@ -248,7 +248,7 @@ impl EffectExecutor for ReturnToHandEffect {
 
     fn cost_description(&self) -> Option<String> {
         match self.spec.base() {
-            ChooseSpec::Source => Some("Return ~ to its owner's hand".to_string()),
+            ChooseSpec::Source => Some("Return this source to its owner's hand".to_string()),
             ChooseSpec::Object(filter) => Some(format!(
                 "Return a {} you control to its owner's hand",
                 filter.description()

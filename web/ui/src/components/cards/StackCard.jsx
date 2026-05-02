@@ -34,7 +34,7 @@ export default function StackCard({
     || (entry.power != null && entry.toughness != null
       ? `${entry.power}/${entry.toughness}`
       : null);
-  const stackAccent = getPlayerAccent(state?.players || [], entry?.controller);
+  const stackAccent = getPlayerAccent(state?.players || [], entry?.controller, state?.perspective);
   const stackAccentStyle = stackAccent
     ? {
       ...playerAccentVars(stackAccent),

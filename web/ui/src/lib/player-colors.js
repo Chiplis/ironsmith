@@ -19,10 +19,17 @@ export function getPlayerSeatIndex(players, playerId) {
   return 0;
 }
 
-export function getPlayerAccent(players, playerId) {
+export function getPlayerAccent(players, playerId, perspectivePlayerId = null) {
   if (PLAYER_ACCENT_PALETTE.length === 0) return null;
   const seatIndex = getPlayerSeatIndex(players, playerId);
-  const paletteIndex = modulo(seatIndex, PLAYER_ACCENT_PALETTE.length);
+  const perspectiveSeatIndex = perspectivePlayerId == null
+    ? 0
+    : getPlayerSeatIndex(players, perspectivePlayerId);
+  const playerCount = Array.isArray(players) && players.length > 0
+    ? players.length
+    : PLAYER_ACCENT_PALETTE.length;
+  const relativeSeatIndex = modulo(seatIndex - perspectiveSeatIndex, playerCount);
+  const paletteIndex = modulo(relativeSeatIndex, PLAYER_ACCENT_PALETTE.length);
   return {
     ...PLAYER_ACCENT_PALETTE[paletteIndex],
     seatIndex,

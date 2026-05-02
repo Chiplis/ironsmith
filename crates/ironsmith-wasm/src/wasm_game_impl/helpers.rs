@@ -32,6 +32,38 @@ pub(super) fn build_action_view(
     }
 }
 
+pub(super) fn build_untap_land_action_view(
+    game: &GameState,
+    perspective: PlayerId,
+    viewed_cards: Option<&ActiveViewedCards>,
+    index: usize,
+    stable_id: u64,
+) -> Option<ActionView> {
+    let object = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| (*id, obj)))
+        .find(|(_, obj)| obj.stable_id.0.0 == stable_id)?;
+    let (object_id, object) = object;
+    if !object.has_card_type(CardType::Land) || !game.is_tapped(object_id) {
+        return None;
+    }
+    if !object_visible_to_perspective(game, perspective, viewed_cards, object_id) {
+        return None;
+    }
+
+    Some(ActionView {
+        index,
+        label: format!("Untap {}", object.name),
+        kind: "untap_land".to_string(),
+        object_id: Some(object_id.0),
+        ability_index: None,
+        from_zone: Some(zone_name(Zone::Battlefield)),
+        to_zone: Some(zone_name(Zone::Battlefield)),
+        action_ref: PriorityActionRef::UntapLand { stable_id },
+    })
+}
+
 pub(super) fn action_drag_metadata(
     action: &LegalAction,
 ) -> (

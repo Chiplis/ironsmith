@@ -1092,9 +1092,8 @@ pub(crate) fn can_cast_spell_with_context(
         let affordability_started_at = PerfTimer::start();
         let potential = view.potential_mana(player);
         let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell.id));
-        let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+        let allow_black_life = view.player_can_pay_black_with_life_for_reason(
             player,
-            Some(spell.id),
             crate::costs::PaymentReason::CastSpell,
         );
         if mana_cost_is_obviously_unpayable(
@@ -1107,12 +1106,16 @@ pub(crate) fn can_cast_spell_with_context(
             ctx.add_total_ms(total_started_at.elapsed_ms());
             return false;
         }
-        if !view.can_potentially_pay_with_reason(
+        if !can_pay_mana_cost_with_available_sources(
+            game,
             player,
             Some(spell.id),
             &effective_cost,
             0,
             crate::costs::PaymentReason::CastSpell,
+            allow_any_color,
+            allow_black_life,
+            view,
         ) {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             ctx.add_total_ms(total_started_at.elapsed_ms());
@@ -1321,9 +1324,8 @@ pub(crate) fn can_cast_with_cost_with_context(
         let affordability_started_at = PerfTimer::start();
         let potential = view.potential_mana(player);
         let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
-        let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+        let allow_black_life = view.player_can_pay_black_with_life_for_reason(
             player,
-            Some(spell_id),
             crate::costs::PaymentReason::CastSpell,
         );
         if mana_cost_is_obviously_unpayable(
@@ -1335,12 +1337,16 @@ pub(crate) fn can_cast_with_cost_with_context(
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
         }
-        if !view.can_potentially_pay_with_reason(
+        if !can_pay_mana_cost_with_available_sources(
+            game,
             player,
             Some(spell_id),
             &adjusted,
             0,
             crate::costs::PaymentReason::CastSpell,
+            allow_any_color,
+            allow_black_life,
+            view,
         ) {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
@@ -2774,6 +2780,647 @@ pub fn count_cards_in_graveyard(game: &GameState, player: PlayerId) -> u32 {
 pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::player::ManaPool {
     let view = DerivedGameView::new(game);
     compute_potential_mana_with_view(game, player, &view)
+}
+
+#[derive(Clone)]
+struct AvailableManaSource {
+    outputs: Vec<Vec<ManaSymbol>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ManaPaymentSearchKey {
+    pip_index: usize,
+    white: u32,
+    blue: u32,
+    black: u32,
+    red: u32,
+    green: u32,
+    colorless: u32,
+    life_to_pay: u32,
+    used_sources_mask: u128,
+}
+
+impl ManaPaymentSearchKey {
+    fn new(
+        pip_index: usize,
+        pool: &crate::player::ManaPool,
+        life_to_pay: u32,
+        used_sources_mask: u128,
+    ) -> Self {
+        Self {
+            pip_index,
+            white: pool.white,
+            blue: pool.blue,
+            black: pool.black,
+            red: pool.red,
+            green: pool.green,
+            colorless: pool.colorless,
+            life_to_pay,
+            used_sources_mask,
+        }
+    }
+}
+
+fn can_pay_mana_cost_with_available_sources(
+    game: &GameState,
+    player: PlayerId,
+    source: Option<ObjectId>,
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
+    reason: crate::costs::PaymentReason,
+    allow_any_color: bool,
+    allow_black_life: bool,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let Some(player_obj) = game.player(player) else {
+        return false;
+    };
+
+    let mut pips = expand_mana_cost_to_unit_pips(cost, x_value, allow_black_life);
+    pips.sort_by_key(|pip| pip_payment_sort_key(pip));
+
+    let sources = available_mana_sources_for_payment(game, player, view);
+    if sources.len() > 128 {
+        return can_pay_expanded_pips_large_source_count(
+            game,
+            player,
+            reason,
+            &pips,
+            0,
+            player_obj.mana_pool.clone(),
+            &sources,
+            &mut vec![false; sources.len()],
+            0,
+            allow_any_color,
+            source,
+        );
+    }
+
+    let mut failed_states = std::collections::HashSet::new();
+    can_pay_expanded_pips(
+        game,
+        player,
+        reason,
+        &pips,
+        0,
+        player_obj.mana_pool.clone(),
+        &sources,
+        0,
+        0,
+        allow_any_color,
+        source,
+        &mut failed_states,
+    )
+}
+
+fn expand_mana_cost_to_unit_pips(
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
+    allow_black_life: bool,
+) -> Vec<Vec<ManaSymbol>> {
+    let mut pips = Vec::new();
+    for pip in cost.pips() {
+        if pip.len() == 1 {
+            match pip[0] {
+                ManaSymbol::Generic(n) => {
+                    pips.extend((0..n).map(|_| vec![ManaSymbol::Generic(1)]));
+                    continue;
+                }
+                ManaSymbol::X => {
+                    pips.extend((0..x_value).map(|_| vec![ManaSymbol::Generic(1)]));
+                    continue;
+                }
+                ManaSymbol::Black if allow_black_life => {
+                    pips.push(vec![ManaSymbol::Black, ManaSymbol::Life(2)]);
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        pips.push(pip.clone());
+    }
+    pips
+}
+
+fn pip_payment_sort_key(pip: &[ManaSymbol]) -> (u8, usize) {
+    let has_generic = pip
+        .iter()
+        .any(|symbol| matches!(symbol, ManaSymbol::Generic(_) | ManaSymbol::X));
+    let has_life_only = pip
+        .iter()
+        .all(|symbol| matches!(symbol, ManaSymbol::Life(_)));
+    let has_colored = pip.iter().any(|symbol| {
+        matches!(
+            symbol,
+            ManaSymbol::White
+                | ManaSymbol::Blue
+                | ManaSymbol::Black
+                | ManaSymbol::Red
+                | ManaSymbol::Green
+        )
+    });
+    let has_colorless_or_snow = pip
+        .iter()
+        .any(|symbol| matches!(symbol, ManaSymbol::Colorless | ManaSymbol::Snow));
+
+    let class = if has_colored && !has_generic {
+        0
+    } else if has_colorless_or_snow && !has_generic {
+        1
+    } else if has_colored {
+        2
+    } else if has_generic {
+        3
+    } else if has_life_only {
+        4
+    } else {
+        5
+    };
+    (class, pip.len())
+}
+
+fn available_mana_sources_for_payment(
+    game: &GameState,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> Vec<AvailableManaSource> {
+    use crate::ability::AbilityKind;
+
+    let mut sources = Vec::new();
+    let analysis = view.simple_battlefield_mana_analysis(player);
+
+    for &perm_id in analysis.mana_source_ids() {
+        let Some(object) = game.object(perm_id) else {
+            continue;
+        };
+        let abilities = view
+            .abilities_rc(perm_id)
+            .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+        for &ability_index in analysis.mana_ability_indices_for(perm_id) {
+            let Some(ability) = abilities.get(ability_index) else {
+                continue;
+            };
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            if analysis
+                .activatable_indices_for(perm_id)
+                .contains(&ability_index)
+                || crate::special_actions::can_activate_mana_ability_check_with_view(
+                    game,
+                    player,
+                    perm_id,
+                    ability_index,
+                    ability,
+                    view,
+                    None,
+                )
+                .is_ok()
+            {
+                let outputs = mana_ability_output_options(game, player, perm_id, mana_ability);
+                if !outputs.is_empty() {
+                    sources.push(AvailableManaSource { outputs });
+                }
+            }
+        }
+    }
+
+    sources
+}
+
+fn mana_ability_output_options(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    mana_ability: &crate::ability::ActivatedAbility,
+) -> Vec<Vec<ManaSymbol>> {
+    use crate::effects::{
+        AddColorlessManaEffect, AddManaEffect, AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect,
+        AddScaledManaEffect,
+    };
+
+    if let Some(output) = mana_ability.mana_output.as_ref()
+        && !output.is_empty()
+    {
+        return vec![output.clone()];
+    }
+
+    let resolve_amount = |value: &crate::effect::Value| -> usize {
+        let mut dm = SelectFirstDecisionMaker;
+        let ctx = ExecutionContext::new(source, player, &mut dm);
+        resolve_value(game, value, &ctx).unwrap_or(0).max(0) as usize
+    };
+
+    let mut outputs = vec![Vec::new()];
+    for effect in mana_ability.effects.flattened_default_effects() {
+        let effect_outputs = if let Some(add_mana) = effect.downcast_ref::<AddManaEffect>() {
+            vec![add_mana.mana.clone()]
+        } else if let Some(add_colorless) = effect.downcast_ref::<AddColorlessManaEffect>() {
+            vec![vec![
+                ManaSymbol::Colorless;
+                resolve_amount(&add_colorless.amount)
+            ]]
+        } else if let Some(add_scaled) = effect.downcast_ref::<AddScaledManaEffect>() {
+            let repeats = resolve_amount(&add_scaled.amount);
+            let mut output = Vec::new();
+            for _ in 0..repeats {
+                output.extend(add_scaled.mana.iter().copied());
+            }
+            vec![output]
+        } else if let Some(add_any_color) = effect.downcast_ref::<AddManaOfAnyColorEffect>() {
+            let colors = add_any_color.available_colors.as_deref().unwrap_or(&[
+                crate::color::Color::White,
+                crate::color::Color::Blue,
+                crate::color::Color::Black,
+                crate::color::Color::Red,
+                crate::color::Color::Green,
+            ]);
+            any_color_output_options(colors, resolve_amount(&add_any_color.amount), false)
+        } else if let Some(add_any_one_color) = effect.downcast_ref::<AddManaOfAnyOneColorEffect>()
+        {
+            any_color_output_options(
+                &[
+                    crate::color::Color::White,
+                    crate::color::Color::Blue,
+                    crate::color::Color::Black,
+                    crate::color::Color::Red,
+                    crate::color::Color::Green,
+                ],
+                resolve_amount(&add_any_one_color.amount),
+                true,
+            )
+        } else if let Some(symbols) = effect.producible_mana_symbols(game, source, player) {
+            symbols
+                .into_iter()
+                .filter(|symbol| is_payable_mana_symbol(*symbol))
+                .map(|symbol| vec![symbol])
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        if effect_outputs.is_empty() {
+            continue;
+        }
+        outputs = combine_mana_output_options(&outputs, &effect_outputs);
+    }
+
+    outputs
+        .into_iter()
+        .filter(|output| !output.is_empty())
+        .collect()
+}
+
+fn any_color_output_options(
+    colors: &[crate::color::Color],
+    amount: usize,
+    same_color: bool,
+) -> Vec<Vec<ManaSymbol>> {
+    if amount == 0 {
+        return vec![Vec::new()];
+    }
+    if same_color {
+        return colors
+            .iter()
+            .map(|color| vec![ManaSymbol::from_color(*color); amount])
+            .collect();
+    }
+
+    let mut outputs = vec![Vec::new()];
+    for _ in 0..amount {
+        let mut next = Vec::new();
+        for output in &outputs {
+            for color in colors {
+                let mut candidate = output.clone();
+                candidate.push(ManaSymbol::from_color(*color));
+                next.push(candidate);
+                if next.len() >= 128 {
+                    return next;
+                }
+            }
+        }
+        outputs = next;
+    }
+    outputs
+}
+
+fn combine_mana_output_options(
+    base: &[Vec<ManaSymbol>],
+    next: &[Vec<ManaSymbol>],
+) -> Vec<Vec<ManaSymbol>> {
+    let mut combined = Vec::new();
+    for left in base {
+        for right in next {
+            let mut output = left.clone();
+            output.extend(right.iter().copied());
+            combined.push(output);
+            if combined.len() >= 128 {
+                return combined;
+            }
+        }
+    }
+    combined
+}
+
+#[allow(clippy::too_many_arguments)]
+fn can_pay_expanded_pips(
+    game: &GameState,
+    player: PlayerId,
+    reason: crate::costs::PaymentReason,
+    pips: &[Vec<ManaSymbol>],
+    pip_index: usize,
+    pool: crate::player::ManaPool,
+    sources: &[AvailableManaSource],
+    used_sources_mask: u128,
+    life_to_pay: u32,
+    allow_any_color: bool,
+    payment_source: Option<ObjectId>,
+    failed_states: &mut std::collections::HashSet<ManaPaymentSearchKey>,
+) -> bool {
+    if pip_index >= pips.len() {
+        return game.can_pay_life_with_reason(player, life_to_pay, reason);
+    }
+
+    let key = ManaPaymentSearchKey::new(pip_index, &pool, life_to_pay, used_sources_mask);
+    if failed_states.contains(&key) {
+        return false;
+    }
+
+    let pip = &pips[pip_index];
+    for &symbol in pip {
+        if let ManaSymbol::Life(amount) = symbol {
+            let next_life = life_to_pay.saturating_add(amount as u32);
+            if game.can_pay_life_with_reason(player, next_life, reason)
+                && can_pay_expanded_pips(
+                    game,
+                    player,
+                    reason,
+                    pips,
+                    pip_index + 1,
+                    pool.clone(),
+                    sources,
+                    used_sources_mask,
+                    next_life,
+                    allow_any_color,
+                    payment_source,
+                    failed_states,
+                )
+            {
+                return true;
+            }
+            continue;
+        }
+
+        let mut pool_after = pool.clone();
+        if remove_mana_for_pip(&mut pool_after, symbol, allow_any_color)
+            && can_pay_expanded_pips(
+                game,
+                player,
+                reason,
+                pips,
+                pip_index + 1,
+                pool_after,
+                sources,
+                used_sources_mask,
+                life_to_pay,
+                allow_any_color,
+                payment_source,
+                failed_states,
+            )
+        {
+            return true;
+        }
+
+        for (source_index, source) in sources.iter().enumerate() {
+            let source_mask = 1u128 << source_index;
+            if used_sources_mask & source_mask != 0 {
+                continue;
+            }
+            for output in &source.outputs {
+                if let Some(pool_from_output) =
+                    consume_output_for_pip(output, symbol, allow_any_color)
+                {
+                    let mut combined_pool = pool.clone();
+                    add_pool(&mut combined_pool, &pool_from_output);
+                    let can_pay_rest = can_pay_expanded_pips(
+                        game,
+                        player,
+                        reason,
+                        pips,
+                        pip_index + 1,
+                        combined_pool,
+                        sources,
+                        used_sources_mask | source_mask,
+                        life_to_pay,
+                        allow_any_color,
+                        payment_source,
+                        failed_states,
+                    );
+                    if can_pay_rest {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = payment_source;
+    failed_states.insert(key);
+    false
+}
+
+#[allow(clippy::too_many_arguments)]
+fn can_pay_expanded_pips_large_source_count(
+    game: &GameState,
+    player: PlayerId,
+    reason: crate::costs::PaymentReason,
+    pips: &[Vec<ManaSymbol>],
+    pip_index: usize,
+    pool: crate::player::ManaPool,
+    sources: &[AvailableManaSource],
+    used_sources: &mut [bool],
+    life_to_pay: u32,
+    allow_any_color: bool,
+    payment_source: Option<ObjectId>,
+) -> bool {
+    if pip_index >= pips.len() {
+        return game.can_pay_life_with_reason(player, life_to_pay, reason);
+    }
+
+    let pip = &pips[pip_index];
+    for &symbol in pip {
+        if let ManaSymbol::Life(amount) = symbol {
+            let next_life = life_to_pay.saturating_add(amount as u32);
+            if game.can_pay_life_with_reason(player, next_life, reason)
+                && can_pay_expanded_pips_large_source_count(
+                    game,
+                    player,
+                    reason,
+                    pips,
+                    pip_index + 1,
+                    pool.clone(),
+                    sources,
+                    used_sources,
+                    next_life,
+                    allow_any_color,
+                    payment_source,
+                )
+            {
+                return true;
+            }
+            continue;
+        }
+
+        let mut pool_after = pool.clone();
+        if remove_mana_for_pip(&mut pool_after, symbol, allow_any_color)
+            && can_pay_expanded_pips_large_source_count(
+                game,
+                player,
+                reason,
+                pips,
+                pip_index + 1,
+                pool_after,
+                sources,
+                used_sources,
+                life_to_pay,
+                allow_any_color,
+                payment_source,
+            )
+        {
+            return true;
+        }
+
+        for (source_index, source) in sources.iter().enumerate() {
+            if used_sources[source_index] {
+                continue;
+            }
+            for output in &source.outputs {
+                if let Some(pool_from_output) =
+                    consume_output_for_pip(output, symbol, allow_any_color)
+                {
+                    let mut combined_pool = pool.clone();
+                    add_pool(&mut combined_pool, &pool_from_output);
+                    used_sources[source_index] = true;
+                    let can_pay_rest = can_pay_expanded_pips_large_source_count(
+                        game,
+                        player,
+                        reason,
+                        pips,
+                        pip_index + 1,
+                        combined_pool,
+                        sources,
+                        used_sources,
+                        life_to_pay,
+                        allow_any_color,
+                        payment_source,
+                    );
+                    used_sources[source_index] = false;
+                    if can_pay_rest {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = payment_source;
+    false
+}
+
+fn consume_output_for_pip(
+    output: &[ManaSymbol],
+    pip: ManaSymbol,
+    allow_any_color: bool,
+) -> Option<crate::player::ManaPool> {
+    for (idx, &produced) in output.iter().enumerate() {
+        if mana_symbol_can_pay_pip(produced, pip, allow_any_color) {
+            let mut remainder = crate::player::ManaPool::default();
+            for (other_idx, &symbol) in output.iter().enumerate() {
+                if other_idx != idx && is_payable_mana_symbol(symbol) {
+                    remainder.add(symbol, 1);
+                }
+            }
+            return Some(remainder);
+        }
+    }
+    None
+}
+
+fn add_pool(pool: &mut crate::player::ManaPool, addition: &crate::player::ManaPool) {
+    for symbol in PAYABLE_MANA_SYMBOLS {
+        let amount = addition.amount(symbol);
+        if amount > 0 {
+            pool.add(symbol, amount);
+        }
+    }
+}
+
+const PAYABLE_MANA_SYMBOLS: [ManaSymbol; 6] = [
+    ManaSymbol::White,
+    ManaSymbol::Blue,
+    ManaSymbol::Black,
+    ManaSymbol::Red,
+    ManaSymbol::Green,
+    ManaSymbol::Colorless,
+];
+
+fn remove_mana_for_pip(
+    pool: &mut crate::player::ManaPool,
+    pip: ManaSymbol,
+    allow_any_color: bool,
+) -> bool {
+    match pip {
+        ManaSymbol::White
+        | ManaSymbol::Blue
+        | ManaSymbol::Black
+        | ManaSymbol::Red
+        | ManaSymbol::Green => {
+            if !allow_any_color {
+                return pool.remove(pip, 1);
+            }
+            remove_any_payable_mana(pool)
+        }
+        ManaSymbol::Colorless => pool.remove(ManaSymbol::Colorless, 1),
+        ManaSymbol::Generic(_) => remove_any_payable_mana(pool),
+        ManaSymbol::Snow => false,
+        ManaSymbol::Life(_) | ManaSymbol::X => false,
+    }
+}
+
+fn remove_any_payable_mana(pool: &mut crate::player::ManaPool) -> bool {
+    for symbol in PAYABLE_MANA_SYMBOLS {
+        if pool.remove(symbol, 1) {
+            return true;
+        }
+    }
+    false
+}
+
+fn mana_symbol_can_pay_pip(produced: ManaSymbol, pip: ManaSymbol, allow_any_color: bool) -> bool {
+    match pip {
+        ManaSymbol::Generic(_) => is_payable_mana_symbol(produced),
+        ManaSymbol::White
+        | ManaSymbol::Blue
+        | ManaSymbol::Black
+        | ManaSymbol::Red
+        | ManaSymbol::Green => {
+            produced == pip || (allow_any_color && is_payable_mana_symbol(produced))
+        }
+        ManaSymbol::Colorless => produced == ManaSymbol::Colorless,
+        ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => false,
+    }
+}
+
+fn is_payable_mana_symbol(symbol: ManaSymbol) -> bool {
+    matches!(
+        symbol,
+        ManaSymbol::White
+            | ManaSymbol::Blue
+            | ManaSymbol::Black
+            | ManaSymbol::Red
+            | ManaSymbol::Green
+            | ManaSymbol::Colorless
+    )
 }
 
 pub(crate) fn compute_potential_mana_with_view(

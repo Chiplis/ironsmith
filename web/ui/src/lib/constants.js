@@ -137,6 +137,16 @@ export function nextPriorityAdvanceLabel(phase, step, stackSize) {
   }
 }
 
+export function currentPriorityPhaseLabel(phase, step) {
+  const normalizedStep = normalizeStepKey(step);
+  if (normalizedStep) return STEP_LABELS[normalizedStep];
+
+  const normalizedPhase = normalizePhaseKey(phase);
+  if (normalizedPhase) return PHASE_LABELS[normalizedPhase];
+
+  return phase ? String(phase).replace(/([a-z])([A-Z])/g, "$1 $2") : "Priority";
+}
+
 export function priorityPassButtonColor(phase, step, stackSize) {
   if (stackSize > 0) return "yellow";
   if (normalizePhaseKey(phase) === "FirstMain" && !normalizeStepKey(step)) return "red";

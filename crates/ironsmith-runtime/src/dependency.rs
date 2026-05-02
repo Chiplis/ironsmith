@@ -23,7 +23,7 @@ use crate::continuous::{
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
-use crate::game_state::GameState;
+use crate::game_state::{GameState, ObjectMap};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
 
@@ -66,7 +66,7 @@ fn effect_depends_on_with_baseline_and_started_groups(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
     started_groups: &HashSet<ContinuousEffectGroupId>,
 ) -> bool {
@@ -295,7 +295,7 @@ fn effect_applicability_changed(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> bool {
     for (&id, obj) in objects {
@@ -320,7 +320,7 @@ fn source_ability_presence_changed(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> bool {
     let Some(originating_static_ability) = &a.originating_static_ability else {
@@ -357,7 +357,7 @@ fn effect_output_changed(
     a: &ContinuousEffect,
     b: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> bool {
     if let Modification::CopyActivatedAbilities {
@@ -452,7 +452,7 @@ fn evaluate_value(
     source: ObjectId,
     effect_controller: PlayerId,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> ValueEval {
     let source_chars = baseline.get(&source);
@@ -954,7 +954,7 @@ fn collect_activated_ability_signatures(
     exclude_source_id: bool,
     effect: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> HashSet<String> {
     use crate::ability::AbilityKind;
@@ -1000,7 +1000,7 @@ fn collect_activated_ability_signatures(
 fn apply_effect_to_baseline(
     effect: &ContinuousEffect,
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
     let mut after = baseline.clone();
@@ -1618,7 +1618,7 @@ fn filter_has_no_pt_constraints_for_fast_path(filter: &ObjectFilter) -> bool {
 pub fn sort_layer_effects_with_baseline<'a>(
     effects: &[&'a ContinuousEffect],
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
 ) -> Vec<&'a ContinuousEffect> {
     sort_layer_effects_with_baseline_and_started_groups(
@@ -1633,7 +1633,7 @@ pub fn sort_layer_effects_with_baseline<'a>(
 pub fn sort_layer_effects_with_baseline_and_started_groups<'a>(
     effects: &[&'a ContinuousEffect],
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
     started_groups: &HashSet<ContinuousEffectGroupId>,
 ) -> Vec<&'a ContinuousEffect> {
@@ -1683,7 +1683,7 @@ pub fn sort_layer_effects_with_baseline_and_started_groups<'a>(
 fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     effects: &[&'a ContinuousEffect],
     baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
-    objects: &HashMap<ObjectId, crate::object::Object>,
+    objects: &ObjectMap,
     game: &GameState,
     started_groups: &HashSet<ContinuousEffectGroupId>,
 ) -> Vec<&'a ContinuousEffect> {

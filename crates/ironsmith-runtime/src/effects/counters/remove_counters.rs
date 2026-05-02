@@ -76,9 +76,9 @@ impl EffectExecutor for RemoveCountersEffect {
         {
             let label = self.counter_type.description();
             return Some(if count == 1 {
-                format!("Remove a {label} counter from ~")
+                format!("Remove a {label} counter from this source")
             } else {
-                format!("Remove {} {label} counters from ~", count)
+                format!("Remove {} {label} counters from this source", count)
             });
         }
         None

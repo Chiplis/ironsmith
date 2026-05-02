@@ -130,6 +130,8 @@ pub struct PendingCast {
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    /// Payment options already computed for the current pip prompt.
+    pub current_pip_payment_options: Vec<ManaPipPaymentOption>,
     /// Remaining non-mana spell costs to pay, in player-chosen order.
     pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying spell costs.
@@ -186,6 +188,7 @@ impl PendingCast {
             mana_cost_to_pay: None,
             display_mana_pips: Vec::new(),
             remaining_mana_pips: Vec::new(),
+            current_pip_payment_options: Vec::new(),
             remaining_cost_steps: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
             next_sacrifice_cost_tag_index: 0,

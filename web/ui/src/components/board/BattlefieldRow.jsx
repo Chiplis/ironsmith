@@ -1175,6 +1175,13 @@ export default function BattlefieldRow({
     }
     const isLegalTargetCard = cardObjectIds.some((id) => legalTargetObjectIds.has(id));
     const cardActions = collectActivatableActionsForCard(card, activatableMap);
+    const untapLandAction = cardActions.find((action) => action?.kind === "untap_land");
+    if (untapLandAction) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelDecision();
+      return;
+    }
 
     if (mobileObjectGesturesEnabled && isLegalTargetCard && onCardClick) {
       onCardClick(event, card);
@@ -1208,6 +1215,7 @@ export default function BattlefieldRow({
     onInspect?.(card.id);
   }, [
     activatableMap,
+    cancelDecision,
     clearMobileCardPress,
     combatModeRef,
     mobileObjectGesturesEnabled,

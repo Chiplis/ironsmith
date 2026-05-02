@@ -137,10 +137,13 @@ impl EffectExecutor for PutCountersEffect {
             && let Value::Fixed(count) = self.amount
         {
             return Some(if count == 1 {
-                format!("Put a {} counter on ~", self.counter_type.description())
+                format!(
+                    "Put a {} counter on this source",
+                    self.counter_type.description()
+                )
             } else {
                 format!(
-                    "Put {} {} counters on ~",
+                    "Put {} {} counters on this source",
                     count,
                     self.counter_type.description()
                 )

@@ -1,10 +1,9 @@
-import { getPlayerAccent } from "@/lib/player-colors";
+import { getPlayerAccent } from "./player-colors.js";
 
 export function decisionButtonPlayerId(state, decision = state?.decision) {
   return (
-    state?.priority_player
-    ?? decision?.player
-    ?? state?.active_player
+    decision?.player
+    ?? state?.priority_player
     ?? state?.perspective
     ?? null
   );
@@ -12,7 +11,7 @@ export function decisionButtonPlayerId(state, decision = state?.decision) {
 
 export function decisionButtonAccentVars(state, decision = state?.decision) {
   const playerId = decisionButtonPlayerId(state, decision);
-  const accent = getPlayerAccent(state?.players || [], playerId);
+  const accent = getPlayerAccent(state?.players || [], playerId, state?.perspective);
   if (!accent) return undefined;
 
   return {

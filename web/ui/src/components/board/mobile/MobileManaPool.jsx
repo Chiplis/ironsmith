@@ -48,7 +48,7 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
           if (!canActivate) return;
           const action = actions[0];
           dispatch(
-            { type: "priority_action", action_index: action.index },
+            { type: "priority_action", action_index: action.index, action_ref: action.action_ref },
             action.label
           );
         }}

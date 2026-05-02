@@ -131,8 +131,11 @@ export default function LobbyOverlay({
 
   const lobbyActive = multiplayer.mode !== "idle";
   const playerCount = multiplayer.players.length;
-  const readyPlayers = multiplayer.players.filter((player) => player.ready).length;
-  const slotsRemaining = Math.max(0, multiplayer.desiredPlayers - playerCount);
+  const connectedPlayers = multiplayer.players.filter((player) => player.connected !== false).length;
+  const readyPlayers = multiplayer.players.filter(
+    (player) => player.connected !== false && player.ready
+  ).length;
+  const slotsRemaining = Math.max(0, multiplayer.desiredPlayers - connectedPlayers);
   const activeFormat = normalizeMatchFormat(multiplayer.format);
   const createDeckCount = useMemo(
     () => parseDeckList(createDeckText).length,
@@ -438,7 +441,7 @@ export default function LobbyOverlay({
                   <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">
                     Lobby Code
                   </span>
-                  <div className="lobby-sheet-code text-[28px] font-bold uppercase tracking-[0.14em] text-foreground">
+                  <div className="lobby-sheet-code font-mono text-[24px] font-bold tracking-[0.04em] text-foreground">
                     {multiplayer.lobbyId || multiplayer.hostPeerId || "Connecting"}
                   </div>
                   <p className="text-[13px] text-muted-foreground">

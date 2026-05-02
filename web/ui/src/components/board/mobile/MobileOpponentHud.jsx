@@ -32,12 +32,13 @@ export default function MobileOpponentHud({
   onTap,
   onLongPress,
   targetable = false,
+  manaPool = null,
   trailing = null,
   className,
 }) {
   const { state } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const accent = getPlayerAccent(state?.players || [], opponent?.id);
+  const accent = getPlayerAccent(state?.players || [], opponent?.id, state?.perspective);
   const isActiveTurn = opponent?.id === state?.active_player;
 
   const handleLongPress = useCallback(() => {
@@ -108,6 +109,12 @@ export default function MobileOpponentHud({
           H {opponent.hand_size ?? 0} · G {opponent.graveyard_size ?? 0} · D {opponent.library_size ?? 0}
         </span>
       </button>
+
+      {manaPool ? (
+        <div className="mobile-mtga-hud-mana">
+          {manaPool}
+        </div>
+      ) : null}
 
       {cycleEnabled ? (
         <button

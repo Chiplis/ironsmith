@@ -11,6 +11,7 @@ use crate::ability::{Ability, AbilityKind, extract_static_abilities};
 use crate::color::{Color, ColorSet};
 use crate::effect::{Until, Value};
 use crate::filter::PlayerFilterExt;
+use crate::game_state::ObjectMap;
 use crate::ids::{ObjectId, PlayerId};
 use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object};
@@ -1116,7 +1117,7 @@ fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics
 
 /// Context needed for calculating characteristics.
 pub struct CalculationContext<'a> {
-    pub objects: &'a HashMap<ObjectId, Object>,
+    pub objects: &'a ObjectMap,
     pub effects: &'a ContinuousEffectManager,
     pub battlefield: &'a [ObjectId],
     pub game: &'a crate::game_state::GameState,
@@ -1127,7 +1128,7 @@ impl ContinuousEffectManager {
     pub fn calculate_characteristics(
         &self,
         object_id: ObjectId,
-        objects: &HashMap<ObjectId, Object>,
+        objects: &ObjectMap,
         battlefield: &[ObjectId],
         game: &crate::game_state::GameState,
     ) -> Option<CalculatedCharacteristics> {
@@ -1153,7 +1154,7 @@ impl ContinuousEffectManager {
 /// effects (e.g., from static abilities) in addition to registered effects.
 pub fn calculate_characteristics_with_effects(
     object_id: ObjectId,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -1177,7 +1178,7 @@ pub fn calculate_characteristics_with_effects(
 
 pub(crate) fn calculate_characteristics_batch_with_effects(
     ids: &[ObjectId],
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -1212,7 +1213,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
 
 pub(crate) fn calculate_characteristics_with_effects_simple(
     object_id: ObjectId,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -1240,7 +1241,7 @@ pub(crate) fn calculate_characteristics_with_effects_simple(
 /// without later grants/removals or P/T changes folded in.
 pub fn text_box_characteristics_with_effects(
     object_id: ObjectId,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -1267,7 +1268,8 @@ pub fn text_box_characteristics_with_effects(
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
             continue;
         };
-        let needs_source_tracking = layer_needs_source_activity_tracking(layer_effects);
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
         let baseline =
             crate::dependency::needs_baseline_dependency_sort(layer_effects).then(|| {
                 build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
@@ -1349,7 +1351,7 @@ pub fn text_box_characteristics_with_effects(
 fn apply_text_box_modification_to_chars(
     modification: &Modification,
     chars: &mut CalculatedCharacteristics,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
 ) {
     fn copy_characteristics_from_target(
         target: &Object,
@@ -1407,7 +1409,7 @@ fn apply_text_box_modification_to_chars(
 /// Apply all layers to calculate final characteristics using provided effects.
 fn calculate_with_layers_direct_internal(
     object: &Object,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -1449,7 +1451,8 @@ fn calculate_with_layers_direct_internal(
             Some(effects) => effects,
             None => continue,
         };
-        let needs_source_tracking = layer_needs_source_activity_tracking(layer_effects);
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
         let needs_sort_baseline = matches!(sort_mode, DependencySortMode::Baseline)
             && needs_baseline_dependency_sort(layer_effects);
         let baseline = needs_sort_baseline.then(|| {
@@ -1573,7 +1576,8 @@ fn calculate_with_layers_direct_internal(
 
     // Now process Layer 7 effects from continuous effects
     if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
-        let needs_source_tracking = layer_needs_source_activity_tracking(pt_effects);
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(pt_effects, effects.iter(), Layer::PowerToughness);
         let tracked_source_ids =
             needs_source_tracking.then(|| tracked_source_ids_for_layer(pt_effects));
         let mut source_state = if needs_source_tracking {
@@ -1696,7 +1700,7 @@ struct PreparedDirectCalculation<'a> {
 #[allow(dead_code)]
 impl<'a> PreparedDirectCalculation<'a> {
     fn new(
-        objects: &HashMap<ObjectId, Object>,
+        objects: &ObjectMap,
         effects: &'a [ContinuousEffect],
         battlefield: &[ObjectId],
         commanders: &HashSet<ObjectId>,
@@ -1747,37 +1751,38 @@ impl<'a> PreparedDirectCalculation<'a> {
                 }
             };
 
-            let filtered_effects = if layer_needs_source_activity_tracking(layer_effects) {
-                let tracked_source_ids = tracked_source_ids_for_layer(layer_effects);
-                let mut source_state = build_object_baseline_for_ids(
-                    objects,
-                    effects,
-                    battlefield,
-                    commanders,
-                    game,
-                    layer,
-                    None,
-                    &tracked_source_ids,
-                );
-                let mut active_effects = Vec::with_capacity(sorted_effects.len());
-                for effect in sorted_effects {
-                    let effect_active = effect_source_is_active(effect, &source_state);
-                    if effect_active {
-                        advance_layer_source_state(
-                            &mut source_state,
-                            effect,
-                            objects,
-                            battlefield,
-                            commanders,
-                            game,
-                        );
-                        active_effects.push(effect);
+            let filtered_effects =
+                if layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer) {
+                    let tracked_source_ids = tracked_source_ids_for_layer(layer_effects);
+                    let mut source_state = build_object_baseline_for_ids(
+                        objects,
+                        effects,
+                        battlefield,
+                        commanders,
+                        game,
+                        layer,
+                        None,
+                        &tracked_source_ids,
+                    );
+                    let mut active_effects = Vec::with_capacity(sorted_effects.len());
+                    for effect in sorted_effects {
+                        let effect_active = effect_source_is_active(effect, &source_state);
+                        if effect_active {
+                            advance_layer_source_state(
+                                &mut source_state,
+                                effect,
+                                objects,
+                                battlefield,
+                                commanders,
+                                game,
+                            );
+                            active_effects.push(effect);
+                        }
                     }
-                }
-                active_effects
-            } else {
-                sorted_effects
-            };
+                    active_effects
+                } else {
+                    sorted_effects
+                };
 
             prepared_layers.insert(
                 layer,
@@ -1823,7 +1828,7 @@ impl<'a> PreparedDirectCalculation<'a> {
 fn calculate_with_prepared_layers_for_object(
     object: &Object,
     prepared: &PreparedDirectCalculation<'_>,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
@@ -1932,7 +1937,7 @@ fn effect_applies_to_direct(
     effect: &ContinuousEffect,
     object: &Object,
     chars: &CalculatedCharacteristics,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     _battlefield: &[ObjectId],
     _commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
@@ -1949,7 +1954,7 @@ fn effect_applies_to_direct_or_started(
     started_groups: &HashSet<ContinuousEffectGroupId>,
     object: &Object,
     chars: &CalculatedCharacteristics,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
@@ -2023,7 +2028,7 @@ fn effect_target_applies_to_direct(
     effect: &ContinuousEffect,
     object: &Object,
     chars: &CalculatedCharacteristics,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     game: &crate::game_state::GameState,
 ) -> bool {
     // First, check if this is a Resolution effect with locked targets.
@@ -2235,7 +2240,7 @@ fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: Playe
 fn apply_modification_to_chars(
     modification: &Modification,
     chars: &mut CalculatedCharacteristics,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     abilities_removed: &mut bool,
     effect_controller: PlayerId,
     effect_source: ObjectId,
@@ -2699,7 +2704,7 @@ fn apply_modification_to_chars(
 /// Resolve a Value to an i32 (direct version without CalculationContext).
 fn resolve_value_direct(
     value: &Value,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     battlefield: &[ObjectId],
     source: ObjectId,
     controller: PlayerId,
@@ -2756,7 +2761,8 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
             Some(effects) => effects,
             None => continue,
         };
-        let needs_source_tracking = layer_needs_source_activity_tracking(layer_effects);
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(layer_effects, effects.iter().copied(), layer);
         let needs_sort_baseline = needs_baseline_dependency_sort(layer_effects);
         let baseline = if needs_sort_baseline {
             let all_effects =
@@ -3261,7 +3267,11 @@ fn apply_layer_7_effects(
         .copied()
         .filter(|e| e.modification.layer() == Layer::PowerToughness)
         .collect();
-    let needs_source_tracking = layer_needs_source_activity_tracking(&pt_effects);
+    let needs_source_tracking = layer_needs_source_activity_tracking(
+        &pt_effects,
+        effects.iter().copied(),
+        Layer::PowerToughness,
+    );
     let tracked_source_ids =
         needs_source_tracking.then(|| tracked_source_ids_for_layer(&pt_effects));
     let mut source_state = if needs_source_tracking {
@@ -4039,7 +4049,7 @@ fn resolve_value_with_context(
 }
 
 fn build_layer_baseline(
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -4085,7 +4095,7 @@ fn build_layer_baseline(
 }
 
 fn build_object_baseline_for_ids(
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     effects: &[ContinuousEffect],
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
@@ -4134,10 +4144,30 @@ fn build_object_baseline_for_ids(
     baseline
 }
 
-fn layer_needs_source_activity_tracking(layer_effects: &[&ContinuousEffect]) -> bool {
+fn effect_can_change_static_ability_presence(effect: &ContinuousEffect) -> bool {
+    matches!(
+        effect.modification,
+        Modification::CopyOf { .. }
+            | Modification::SetTextBox(_)
+            | Modification::SetAbilities(_)
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana
+    )
+}
+
+fn layer_needs_source_activity_tracking<'a>(
+    layer_effects: &[&ContinuousEffect],
+    all_effects: impl IntoIterator<Item = &'a ContinuousEffect>,
+    layer: Layer,
+) -> bool {
     layer_effects
         .iter()
         .any(|effect| effect.originating_static_ability.is_some())
+        && all_effects.into_iter().any(|effect| {
+            effect.modification.layer() <= layer
+                && effect_can_change_static_ability_presence(effect)
+        })
 }
 
 fn tracked_source_ids_for_layer(layer_effects: &[&ContinuousEffect]) -> HashSet<ObjectId> {
@@ -4168,7 +4198,7 @@ fn effect_source_is_active(
 fn advance_layer_source_state(
     source_state: &mut HashMap<ObjectId, CalculatedCharacteristics>,
     effect: &ContinuousEffect,
-    objects: &HashMap<ObjectId, Object>,
+    objects: &ObjectMap,
     battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,

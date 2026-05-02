@@ -72,4 +72,19 @@ mod tests {
         let def = flooded_strand();
         assert!(!def.abilities[0].is_mana_ability());
     }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn test_flooded_strand_compiled_text_uses_card_subject_for_sacrifice_cost() {
+        let rendered = crate::compiled_text::compiled_text_lines(&flooded_strand()).join(" ");
+
+        assert!(
+            rendered.contains("Sacrifice this land"),
+            "expected source sacrifice cost to render with card subject, got {rendered}"
+        );
+        assert!(
+            !rendered.contains('~'),
+            "source placeholder should not leak into compiled text, got {rendered}"
+        );
+    }
 }

@@ -148,5 +148,5 @@ export function getObjectAccent(state, objectId, explicitControllerId = null) {
   if (controllerId == null || Number(controllerId) === Number(state?.perspective)) {
     return null;
   }
-  return getPlayerAccent(state?.players || [], controllerId);
+  return getPlayerAccent(state?.players || [], controllerId, state?.perspective);
 }

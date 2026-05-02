@@ -126,7 +126,9 @@ function buildActivatableMap(decision) {
 
   for (const action of decision.actions) {
     if (
-      (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
+      (action.kind === "activate_ability"
+        || action.kind === "activate_mana_ability"
+        || action.kind === "untap_land")
       && action.object_id != null
     ) {
       const objId = Number(action.object_id);
@@ -319,7 +321,7 @@ function OpponentSlot({
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
-  const playerAccent = getPlayerAccent(state?.players || [], player?.id);
+  const playerAccent = getPlayerAccent(state?.players || [], player?.id, state?.perspective);
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
@@ -513,7 +515,12 @@ function OpponentSlot({
               </span>
               {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
             </span>
-            <ManaPool pool={player.mana_pool} />
+            <ManaPool
+              pool={player.mana_pool}
+              alwaysVisible
+              compact
+              className="player-name-mana battlefield-header-mana"
+            />
             <div className="ml-auto flex items-center gap-2">
               <ZoneCountInline player={player} />
               {headerControls}

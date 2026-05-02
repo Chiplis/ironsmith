@@ -139,9 +139,9 @@ function resolveTargetDecisionColor(state, decision) {
     ? normalizeNumericId(matchingStackObject?.controller)
     : null;
   const fallbackControllerId = normalizeNumericId(decision?.player);
-  const accent = getPlayerAccent(state?.players || [], controllerId);
+  const accent = getPlayerAccent(state?.players || [], controllerId, state?.perspective);
   if (accent?.hex) return accent.hex;
-  return getPlayerAccent(state?.players || [], fallbackControllerId)?.hex || "#ff3b30";
+  return getPlayerAccent(state?.players || [], fallbackControllerId, state?.perspective)?.hex || "#ff3b30";
 }
 
 function isGenericObjectName(name, objectId = null) {

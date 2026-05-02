@@ -576,7 +576,7 @@ impl EffectExecutor for EachPlayerSacrificesEffect {
 /// Effect that sacrifices a specific target (e.g., the source permanent).
 ///
 /// Unlike `SacrificeEffect` which uses filters, this effect sacrifices a specific
-/// object identified by a `ChooseSpec`. Commonly used for "Sacrifice ~" effects.
+/// object identified by a `ChooseSpec`. Commonly used for source-sacrifice costs.
 ///
 /// # Example
 ///
@@ -687,7 +687,7 @@ impl EffectExecutor for SacrificeTargetEffect {
 
     fn cost_description(&self) -> Option<String> {
         if matches!(self.target, ChooseSpec::Source) {
-            Some("Sacrifice ~".to_string())
+            Some("Sacrifice this source".to_string())
         } else {
             None
         }

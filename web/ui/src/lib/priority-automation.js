@@ -1,4 +1,5 @@
 import { isCombatPhase, isEndingPhase, isMainPhase } from "./constants.js";
+import { priorityCommandForAction } from "./sync-commands.js";
 
 export const LOCAL_STACK_MANUAL_HOLD_REASON = "manual stack resolve";
 export const LOCAL_EMPTY_STACK_HOLD_REASON = "local empty-stack priority";
@@ -111,7 +112,7 @@ export function buildMultiplayerSmartAutoPass({
       return { command: null, holdReason: LOCAL_EMPTY_STACK_HOLD_REASON, passAction };
     }
     return {
-      command: { type: "priority_action", action_index: actionIndex },
+      command: priorityCommandForAction(passAction),
       holdReason: null,
       passAction,
     };
@@ -126,7 +127,7 @@ export function buildMultiplayerSmartAutoPass({
   }
 
   return {
-    command: { type: "priority_action", action_index: actionIndex },
+    command: priorityCommandForAction(passAction),
     holdReason: null,
     passAction,
   };

@@ -440,13 +440,52 @@ fn describe_single_self_replacement_segment(
         return None;
     }
     let branch = &segment.self_replacements[0];
+    let conditional = Effect::conditional(
+        branch.condition.clone(),
+        branch.replacement_effects.clone(),
+        segment.default_effects.clone(),
+    );
+    let conditional_text = describe_effect_list(&[conditional]);
+    if conditional_text.contains(" damage instead if ") {
+        return Some(conditional_text);
+    }
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    if let Some(damage_text) =
+        describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
+    {
+        return Some(damage_text);
+    }
     Some(format!(
         "{default_text}. If {condition_text}, instead {}",
         super::normalize_common::lowercase_first(&replacement_text)
     ))
+}
+
+fn describe_rendered_damage_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let (base_amount, base_target) = split_rendered_damage(default_text)?;
+    let (replacement_amount, replacement_target) = split_rendered_damage(replacement_text)?;
+    if base_target != replacement_target {
+        return None;
+    }
+    Some(format!(
+        "Deal {base_amount} damage to {base_target}. It deals {replacement_amount} damage instead if {condition_text}"
+    ))
+}
+
+fn split_rendered_damage(text: &str) -> Option<(&str, &str)> {
+    let text = text.trim().trim_end_matches('.');
+    let rest = text.strip_prefix("Deal ")?;
+    let (amount, target) = rest.split_once(" damage to ")?;
+    if amount.trim().is_empty() || target.trim().is_empty() {
+        return None;
+    }
+    Some((amount.trim(), target.trim()))
 }
 
 fn describe_resolution_program_for_card(

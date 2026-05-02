@@ -1,10 +1,11 @@
-
 impl WasmGame {
     fn recompute_ui_decision(&mut self) -> Result<(), JsValue> {
         self.pending_decision = None;
         self.pending_replay_action = None;
         self.pending_action_checkpoint = None;
         self.pending_live_action_root = None;
+        self.pending_live_continuation = None;
+        self.priority_state.pending_continuation = None;
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
@@ -15,6 +16,41 @@ impl WasmGame {
             return Ok(());
         }
         self.advance_until_decision()
+    }
+
+    fn live_action_error_checkpoint(
+        &self,
+        local_action_checkpoint: Option<&ReplayCheckpoint>,
+    ) -> Option<ReplayCheckpoint> {
+        self.pending_action_checkpoint
+            .as_ref()
+            .or(local_action_checkpoint)
+            .cloned()
+    }
+
+    fn restore_live_action_chain_to_checkpoint(
+        &mut self,
+        checkpoint: ReplayCheckpoint,
+    ) -> Result<(), JsValue> {
+        self.restore_replay_checkpoint(&checkpoint);
+        self.pending_decision = None;
+        self.pending_replay_action = None;
+        self.pending_action_checkpoint = None;
+        self.pending_live_action_root = None;
+        self.pending_live_continuation = None;
+        self.priority_state.pending_continuation = None;
+        self.active_viewed_cards = None;
+        self.clear_active_resolving_stack_object();
+        self.advance_until_decision()?;
+        Ok(())
+    }
+
+    fn rollback_live_action_chain_to_checkpoint(
+        &mut self,
+        checkpoint: ReplayCheckpoint,
+    ) -> Result<JsValue, JsValue> {
+        self.restore_live_action_chain_to_checkpoint(checkpoint)?;
+        self.snapshot()
     }
 
     pub(super) fn should_auto_resolve_cleanup_discard(&self, ctx: &DecisionContext) -> bool {
@@ -437,25 +473,43 @@ impl WasmGame {
         pending_ctx: DecisionContext,
         command: UiCommand,
     ) -> Result<JsValue, JsValue> {
+        let dispatch_started_at = PerfTimer::start();
+        let mut dispatch_perf = DispatchPerfMetrics {
+            command_kind: ui_command_kind(&command).to_string(),
+            pending_decision_kind: decision_context_kind(&pending_ctx).to_string(),
+            route_kind: "live_priority_response".to_string(),
+            ..DispatchPerfMetrics::default()
+        };
+
+        let command_to_response_started_at = PerfTimer::start();
         let response = match self.command_to_response(&pending_ctx, command) {
             Ok(response) => response,
             Err(err) => {
                 self.pending_decision = Some(pending_ctx);
+                dispatch_perf.command_to_response_ms = command_to_response_started_at.elapsed_ms();
+                dispatch_perf.outcome_kind = "command_to_response_error".to_string();
+                self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
                 return Err(err);
             }
         };
+        dispatch_perf.command_to_response_ms = command_to_response_started_at.elapsed_ms();
 
         let should_track_action_checkpoint = self.pending_action_checkpoint.is_none()
             && self.pending_live_action_root.is_none()
             && Self::response_starts_cancelable_action_chain(&response);
+        let action_checkpoint_started_at = PerfTimer::start();
         let action_checkpoint =
             should_track_action_checkpoint.then(|| self.capture_replay_checkpoint());
+        dispatch_perf.checkpoint_capture_ms += action_checkpoint_started_at.elapsed_ms();
         if should_track_action_checkpoint {
             self.pending_live_action_root = Some(response.clone());
         }
 
+        let step_checkpoint_started_at = PerfTimer::start();
         let step_checkpoint = self.capture_replay_checkpoint_tagged("live_response_dm_capture");
+        dispatch_perf.checkpoint_capture_ms += step_checkpoint_started_at.elapsed_ms();
         let mut live_dm = WasmReplayDecisionMaker::new(&[]);
+        let execute_started_at = PerfTimer::start();
         let result = apply_priority_response_with_dm(
             &mut self.game,
             &mut self.trigger_queue,
@@ -463,6 +517,34 @@ impl WasmGame {
             &response,
             &mut live_dm,
         );
+        dispatch_perf.execute_with_replay_ms = execute_started_at.elapsed_ms();
+        dispatch_perf.replay_execution = Some(ReplayExecutionPerfMetrics {
+            root_kind: "live_priority_response".to_string(),
+            root_execution_ms: dispatch_perf.execute_with_replay_ms,
+            total_ms: dispatch_perf.execute_with_replay_ms,
+            outcome_kind: match &result {
+                Ok(GameProgress::NeedsDecisionCtx(_)) => "needs_decision_progress".to_string(),
+                Ok(GameProgress::Continue) => "continue_progress".to_string(),
+                Ok(GameProgress::StackResolved) => "stack_resolved_progress".to_string(),
+                Ok(GameProgress::GameOver(_)) => "game_over_progress".to_string(),
+                Err(_) => "apply_priority_response_error".to_string(),
+            },
+            progress_kind: result
+                .as_ref()
+                .ok()
+                .map(game_progress_kind)
+                .map(str::to_string),
+            priority_action: last_priority_action_perf(),
+            priority_advance: last_priority_advance_perf(),
+            ..ReplayExecutionPerfMetrics::default()
+        });
+        dispatch_perf.outcome_kind = match &result {
+            Ok(GameProgress::NeedsDecisionCtx(_)) => "needs_decision_progress".to_string(),
+            Ok(GameProgress::Continue) => "continue_progress".to_string(),
+            Ok(GameProgress::StackResolved) => "stack_resolved_progress".to_string(),
+            Ok(GameProgress::GameOver(_)) => "game_over_progress".to_string(),
+            Err(_) => "apply_priority_response_error".to_string(),
+        };
         let (pending_context, viewed_cards) = live_dm.finish();
         self.active_viewed_cards = viewed_cards;
 
@@ -476,31 +558,50 @@ impl WasmGame {
                 self.pending_action_checkpoint = None;
             }
             self.priority_state.pending_continuation = None;
-            self.pending_live_continuation = Some(LivePriorityContinuation {
-                checkpoint: step_checkpoint,
-                root: PendingPriorityContinuation::ApplyResponse(response),
-                answers: Vec::new(),
-                speculative_progress: match (&next_ctx, &result) {
-                    (DecisionContext::Boolean(_), Ok(progress)) => Some(progress.clone()),
-                    _ => None,
-                },
-            });
+            if self.decision_uses_live_priority_response(&next_ctx) {
+                self.pending_live_continuation = None;
+            } else {
+                self.pending_live_continuation = Some(LivePriorityContinuation {
+                    checkpoint: step_checkpoint,
+                    root: PendingPriorityContinuation::ApplyResponse(response),
+                    answers: Vec::new(),
+                    speculative_progress: match (&next_ctx, &result) {
+                        (DecisionContext::Boolean(_), Ok(progress)) => Some(progress.clone()),
+                        _ => None,
+                    },
+                });
+            }
             self.pending_decision = Some(next_ctx);
-            return self.snapshot();
+            dispatch_perf.outcome_kind = "pending_context".to_string();
+            return self.finish_dispatch_with_snapshot(dispatch_started_at, dispatch_perf);
         }
 
         match result {
-            Ok(progress) => self.finish_live_priority_dispatch(
-                progress,
-                action_checkpoint,
-                Some(step_checkpoint),
-            ),
+            Ok(progress) => {
+                self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
+                self.finish_live_priority_dispatch(
+                    progress,
+                    action_checkpoint,
+                    Some(step_checkpoint),
+                )
+            }
             Err(err) => {
+                if let Some(checkpoint) =
+                    self.live_action_error_checkpoint(action_checkpoint.as_ref())
+                {
+                    if should_track_action_checkpoint {
+                        self.pending_live_action_root = None;
+                    }
+                    dispatch_perf.outcome_kind = "rolled_back_action_error".to_string();
+                    self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
+                    return self.rollback_live_action_chain_to_checkpoint(checkpoint);
+                }
                 self.restore_replay_checkpoint(&step_checkpoint);
                 if should_track_action_checkpoint {
                     self.pending_live_action_root = None;
                 }
                 self.pending_decision = Some(pending_ctx);
+                self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
                 Err(JsValue::from_str(&format!("dispatch failed: {err}")))
             }
         }
@@ -616,6 +717,9 @@ impl WasmGame {
                 Some(continuation.checkpoint.clone()),
             ),
             Err(err) => {
+                if let Some(checkpoint) = self.live_action_error_checkpoint(None) {
+                    return self.rollback_live_action_chain_to_checkpoint(checkpoint);
+                }
                 self.restore_replay_checkpoint(&continuation.checkpoint);
                 self.priority_state.pending_continuation = None;
                 self.pending_live_continuation = Some(continuation);
@@ -1114,10 +1218,8 @@ impl WasmGame {
                 Ok(ReplayDecisionAnswer::Proliferate(response))
             }
             (DecisionContext::Targets(targets_ctx), UiCommand::SelectTargets { targets }) => {
-                let converted =
-                    convert_and_validate_targets(targets_ctx, targets).map_err(|err| {
-                        JsValue::from_str(&err)
-                    })?;
+                let converted = convert_and_validate_targets(targets_ctx, targets)
+                    .map_err(|err| JsValue::from_str(&err))?;
                 Ok(ReplayDecisionAnswer::Targets(converted))
             }
             (
@@ -1126,20 +1228,24 @@ impl WasmGame {
             ) => {
                 let converted = validate_attacker_declarations(attackers, &declarations)?
                     .into_iter()
-                    .map(|declaration| ironsmith::decisions::spec::AttackerDeclaration {
-                        creature: declaration.creature,
-                        target: declaration.target,
-                    })
+                    .map(
+                        |declaration| ironsmith::decisions::spec::AttackerDeclaration {
+                            creature: declaration.creature,
+                            target: declaration.target,
+                        },
+                    )
                     .collect();
                 Ok(ReplayDecisionAnswer::Attackers(converted))
             }
             (DecisionContext::Blockers(blockers), UiCommand::DeclareBlockers { declarations }) => {
                 let converted = validate_blocker_declarations(blockers, &declarations)?
                     .into_iter()
-                    .map(|declaration| ironsmith::decisions::spec::BlockerDeclaration {
-                        blocker: declaration.blocker,
-                        blocking: declaration.blocking,
-                    })
+                    .map(
+                        |declaration| ironsmith::decisions::spec::BlockerDeclaration {
+                            blocker: declaration.blocker,
+                            blocking: declaration.blocking,
+                        },
+                    )
                     .collect();
                 Ok(ReplayDecisionAnswer::Blockers(converted))
             }
@@ -1324,10 +1430,8 @@ impl WasmGame {
                 }
             }
             (DecisionContext::Targets(targets_ctx), UiCommand::SelectTargets { targets }) => {
-                let converted =
-                    convert_and_validate_targets(targets_ctx, targets).map_err(|err| {
-                        JsValue::from_str(&err)
-                    })?;
+                let converted = convert_and_validate_targets(targets_ctx, targets)
+                    .map_err(|err| JsValue::from_str(&err))?;
                 Ok(PriorityResponse::Targets(converted))
             }
             (
@@ -1504,5 +1608,172 @@ impl WasmGame {
             self.priority_state.pending_method_selection.is_some(),
             self.game.effect_store.pending_replacement_choice.is_some(),
         )))
+    }
+}
+
+#[cfg(test)]
+mod live_action_rollback_tests {
+    use super::*;
+    use ironsmith::alternative_cast::CastingMethod;
+    use ironsmith::cards::builders::CardDefinitionBuilder;
+    use ironsmith::cost::OptionalCostsPaid;
+    use ironsmith::decisions::context::SelectableOption;
+    use ironsmith::events::cause::EventCause;
+    use ironsmith::game_loop::{CastStage, PendingCast};
+    use ironsmith::game_state::Phase;
+    use ironsmith::ids::{CardId, ObjectId, PlayerId};
+    use ironsmith::mana::{ManaCost, ManaSymbol};
+    use ironsmith::provenance::ProvNodeId;
+    use ironsmith::types::CardType;
+    use ironsmith::zone::Zone;
+
+    #[test]
+    fn live_action_error_restore_returns_to_pre_cast_priority_state() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let colorless_rock = CardDefinitionBuilder::new(CardId::new(), "Colorless Rock")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text("{T}: Add {C}{C}.")
+            .expect("colorless mana rock should parse");
+        let rock_id =
+            wasm.game
+                .create_object_from_definition(&colorless_rock, alice, Zone::Battlefield);
+
+        let white_spell = CardDefinitionBuilder::new(CardId::new(), "White Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let hand_spell_id =
+            wasm.game
+                .create_object_from_definition(&white_spell, alice, Zone::Hand);
+
+        let pre_cast_checkpoint = wasm.capture_replay_checkpoint();
+        let stack_spell_id = wasm
+            .game
+            .move_object(hand_spell_id, Zone::Stack, EventCause::effect())
+            .expect("spell should move to stack for staged cast");
+
+        let mut pending = PendingCast::new(
+            stack_spell_id,
+            Zone::Hand,
+            alice,
+            ProvNodeId::default(),
+            CastStage::PayingMana,
+            None,
+            Vec::new(),
+            CastingMethod::Normal,
+            OptionalCostsPaid::new(0),
+            None,
+            stack_spell_id,
+        );
+        pending.display_mana_pips = vec![vec![ManaSymbol::White]];
+        pending.remaining_mana_pips = vec![vec![ManaSymbol::White]];
+        wasm.priority_state.pending_cast = Some(pending);
+        wasm.pending_action_checkpoint = Some(pre_cast_checkpoint.clone());
+        wasm.pending_decision = Some(DecisionContext::SelectOptions(
+            ironsmith::decisions::context::SelectOptionsContext::mana_pip_payment(
+                alice,
+                stack_spell_id,
+                "White Probe",
+                "W",
+                1,
+                vec![SelectableOption::new(0, "Tap Colorless Rock: Add {C}{C}")],
+            ),
+        ));
+
+        wasm.restore_live_action_chain_to_checkpoint(pre_cast_checkpoint)
+            .expect("rollback should return to a decision");
+
+        assert!(
+            wasm.priority_state.pending_cast.is_none(),
+            "failed payment should clear the staged cast"
+        );
+        assert!(
+            wasm.pending_action_checkpoint.is_none(),
+            "failed payment rollback should clear the action checkpoint"
+        );
+        assert!(
+            wasm.game.object(stack_spell_id).is_none(),
+            "rolled-back stack object should not remain in the live game"
+        );
+        assert_eq!(
+            wasm.game
+                .object(hand_spell_id)
+                .expect("original hand spell should be restored")
+                .zone,
+            Zone::Hand
+        );
+        assert!(
+            !wasm.game.is_tapped(rock_id),
+            "mana source activation should be undone by the rollback"
+        );
+        assert!(
+            matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
+            "rollback should return to a normal priority decision"
+        );
+    }
+
+    #[test]
+    fn generated_tapped_lands_do_not_make_two_mana_creature_castable() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner_awaiting_priority = true;
+
+        let lush_portico = ObjectId(
+            wasm.add_card_to_zone(
+                0,
+                "Lush Portico".to_string(),
+                "Battlefield".to_string(),
+                true,
+            )
+            .expect("Lush Portico should load"),
+        );
+        let plains = ObjectId(
+            wasm.add_card_to_zone(0, "Plains".to_string(), "Battlefield".to_string(), true)
+                .expect("Plains should load"),
+        );
+        let spell = ObjectId(
+            wasm.add_card_to_hand(0, "Charismatic Conqueror".to_string())
+                .expect("Charismatic Conqueror should load"),
+        );
+
+        wasm.game.tap(lush_portico);
+        wasm.game.tap(plains);
+        wasm.game.empty_mana_pools();
+        wasm.recompute_ui_decision()
+            .expect("priority decision should rebuild");
+
+        let Some(DecisionContext::Priority(priority)) = wasm.pending_decision.as_ref() else {
+            panic!("expected priority decision");
+        };
+        let advertised_cast = priority.actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal
+                } if *spell_id == spell
+            )
+        });
+        assert!(
+            !advertised_cast,
+            "Charismatic Conqueror should not be castable from two tapped lands and no floating mana"
+        );
     }
 }

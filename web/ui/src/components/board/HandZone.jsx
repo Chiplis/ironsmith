@@ -189,7 +189,7 @@ export default function HandZone({
   isExpanded = false,
   layout = "fan",
 }) {
-  const { state } = useGame();
+  const { state, multiplayer } = useGame();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const dragThresholdRef = useRef(null);
@@ -213,9 +213,12 @@ export default function HandZone({
 
   const isMe = player?.id === state?.perspective;
 
+  const actionsPausedForSync = Boolean(multiplayer?.matchStarted && multiplayer?.submittingAction);
   const { handPlayable, extraPlayable } = useMemo(
-    () => isMe ? buildPlayableMaps(state, player) : { handPlayable: new Map(), extraPlayable: new Map() },
-    [isMe, state, player]
+    () => isMe && !actionsPausedForSync
+      ? buildPlayableMaps(state, player)
+      : { handPlayable: new Map(), extraPlayable: new Map() },
+    [actionsPausedForSync, isMe, state, player]
   );
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();

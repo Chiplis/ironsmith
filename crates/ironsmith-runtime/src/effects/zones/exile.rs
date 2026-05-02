@@ -319,7 +319,7 @@ impl EffectExecutor for ExileEffect {
 
     fn cost_description(&self) -> Option<String> {
         if matches!(self.spec.base(), ChooseSpec::Source) {
-            return Some("Exile ~".to_string());
+            return Some("Exile this source".to_string());
         }
 
         if let Some((filter, count)) = exile_from_hand_cost_filter(self) {

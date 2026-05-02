@@ -6,6 +6,7 @@
 //! - read a serializable snapshot
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 use std::sync::OnceLock;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -66,6 +67,29 @@ impl PerfTimer {
         {
             self.started_at.elapsed().as_secs_f64() * 1000.0
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CowGameState(Rc<GameState>);
+
+impl CowGameState {
+    fn new(game: GameState) -> Self {
+        Self(Rc::new(game))
+    }
+}
+
+impl std::ops::Deref for CowGameState {
+    type Target = GameState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for CowGameState {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Rc::make_mut(&mut self.0)
     }
 }
 
@@ -221,7 +245,12 @@ fn build_stack_object_snapshot(
         }
     } else {
         let effect_text = if let Some(o) = obj.or(source_obj) {
-            let lines = ironsmith::compiled_text::debug_compiled_lines(&o.to_card_definition());
+            let lines: Vec<_> = o
+                .compiled_card_text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .collect();
             if lines.is_empty() {
                 None
             } else {
@@ -623,7 +652,7 @@ fn fallback_stack_entry_ability_text(
 
     if let Some(source_obj) = obj {
         let compiled_lines =
-            ironsmith::compiled_text::debug_compiled_lines(&source_obj.to_card_definition());
+            ironsmith::compiled_text::compiled_text_lines(&source_obj.to_card_definition());
         if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
             return Some(text);
         }
@@ -703,6 +732,9 @@ enum PriorityActionRef {
     ActivateManaAbility {
         source: u64,
         ability_index: usize,
+    },
+    UntapLand {
+        stable_id: u64,
     },
     TurnFaceUp {
         creature_id: u64,
@@ -906,6 +938,7 @@ impl DecisionView {
         ctx: &DecisionContext,
         perspective: PlayerId,
         viewed_cards: Option<&ActiveViewedCards>,
+        undo_land_stable_id: Option<u64>,
     ) -> Self {
         let enriched_ctx = ironsmith::decisions::context::enrich_display_hints(game, ctx.clone());
         let ctx = &enriched_ctx;
@@ -965,17 +998,32 @@ impl DecisionView {
                 consequence_text: consequence_text(),
                 reason: reason.clone(),
             },
-            DecisionContext::Priority(priority) => DecisionView::Priority {
-                player: priority.player.0,
-                actions: priority
+            DecisionContext::Priority(priority) => {
+                let mut actions: Vec<ActionView> = priority
                     .actions
                     .iter()
                     .enumerate()
                     .map(|(index, action)| {
                         build_action_view(game, perspective, viewed_cards, index, action)
                     })
-                    .collect(),
-            },
+                    .collect();
+                if priority.player == perspective
+                    && let Some(stable_id) = undo_land_stable_id
+                    && let Some(action) = build_untap_land_action_view(
+                        game,
+                        perspective,
+                        viewed_cards,
+                        actions.len(),
+                        stable_id,
+                    )
+                {
+                    actions.push(action);
+                }
+                DecisionView::Priority {
+                    player: priority.player.0,
+                    actions,
+                }
+            }
             DecisionContext::TextInput(text) => DecisionView::TextInput {
                 player: text.player.0,
                 description: text.description.clone(),
@@ -1561,7 +1609,7 @@ enum ReplayDecisionAnswer {
 
 #[derive(Debug, Clone)]
 struct ReplayCheckpoint {
-    game: GameState,
+    game: CowGameState,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
@@ -2017,7 +2065,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
 /// Browser-exposed game handle.
 #[wasm_bindgen]
 pub struct WasmGame {
-    game: GameState,
+    game: CowGameState,
     registry: CardRegistry,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,

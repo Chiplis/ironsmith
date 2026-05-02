@@ -3,9 +3,10 @@ import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
+import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
-import { SymbolText } from "@/lib/mana-symbols";
-import { nextPriorityAdvanceLabel } from "@/lib/constants";
+import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
+import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +15,7 @@ import { Undo2 } from "lucide-react";
 const PRIORITY_ACTION_GROUPS = [
   { key: "play", label: "Play", kinds: ["play_land"] },
   { key: "cast", label: "Cast", kinds: ["cast_spell"] },
+  { key: "untap", label: "Untap", kinds: ["untap_land"] },
   { key: "mana", label: "Mana", kinds: ["activate_mana_ability"] },
   { key: "activate", label: "Activate", kinds: ["activate_ability"] },
 ];
@@ -45,6 +47,9 @@ function formatPriorityActionLabel(action) {
   }
   if (action?.kind === "cast_spell") {
     return `From ${zoneLabelFromAction(action.from_zone)}`;
+  }
+  if (action?.kind === "untap_land") {
+    return "Untap";
   }
   if (action?.kind === "activate_ability" || action?.kind === "activate_mana_ability") {
     // "Activate Black Lotus: Add {R}{R}{R}." -> "Add {R}{R}{R}."
@@ -134,9 +139,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const stackSize = state?.stack_size || 0;
   const holdingPriority = holdRule === "always";
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
-  const passLabel = holdingPriority || hasCustomPassLabel
+  const passAdvanceLabel = holdingPriority || hasCustomPassLabel
     ? passAction?.label || "Pass priority"
     : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`;
+  const passCurrentLabel = currentPriorityPhaseLabel(state?.phase, state?.step);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 
@@ -194,7 +200,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   }, [cancelDecision]);
 
   return (
-    <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[rgba(128,107,78,0.46)] bg-[linear-gradient(180deg,rgba(41,35,31,0.98),rgba(15,14,14,0.98))] backdrop-blur-[1.5px]">
+    <KeywordHelpersProvider enabled={false}>
+      <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[rgba(128,107,78,0.46)] bg-[linear-gradient(180deg,rgba(41,35,31,0.98),rgba(15,14,14,0.98))] backdrop-blur-[1.5px]">
       {/* Cancel flash overlay */}
       {cancelling && (
         <div
@@ -264,26 +271,27 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-7 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
+                  className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
                   style={decisionButtonStyle}
                   data-local-action={localDecisionButton ? "true" : "false"}
                   aria-disabled={!canAct}
                   onClick={() => {
                     if (!canAct) return;
                     dispatch(
-                      { type: "priority_action", action_index: passAction.index },
+                      { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
                       passAction.label
                     );
                   }}
                 >
-                  <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">
-                    {passLabel}
-                  </span>
+                  <PriorityPassButtonLabel
+                    currentLabel={passCurrentLabel}
+                    advanceLabel={passAdvanceLabel}
+                  />
                 </Button>
                 <PhaseHelpPopover
                   state={state}
                   decision={decision}
-                  advanceLabel={passLabel}
+                  advanceLabel={passAdvanceLabel}
                   className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                 />
               </div>
@@ -321,6 +329,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           </div>
         </div>
       </div>
-    </section>
+      </section>
+    </KeywordHelpersProvider>
   );
 }

@@ -42,6 +42,7 @@ pub(crate) struct DerivedGameView<'a> {
     battlefield_opponent_creatures: RefCell<HashMap<PlayerId, Vec<ObjectId>>>,
     potential_mana: RefCell<HashMap<PlayerId, ManaPool>>,
     potential_mana_compute_ms: RefCell<f64>,
+    black_mana_life_permission: RefCell<HashMap<PlayerId, bool>>,
     granted_alternative_casts:
         RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedAlternativeCast>>>,
     granted_play_from: RefCell<HashMap<(ObjectId, Zone, PlayerId), Vec<GrantedPlayFrom>>>,
@@ -260,6 +261,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
             potential_mana_compute_ms: RefCell::new(0.0),
+            black_mana_life_permission: RefCell::new(HashMap::new()),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
@@ -293,6 +295,7 @@ impl<'a> DerivedGameView<'a> {
             battlefield_opponent_creatures: RefCell::new(HashMap::new()),
             potential_mana: RefCell::new(HashMap::new()),
             potential_mana_compute_ms: RefCell::new(0.0),
+            black_mana_life_permission: RefCell::new(HashMap::new()),
             granted_alternative_casts: RefCell::new(HashMap::new()),
             granted_play_from: RefCell::new(HashMap::new()),
             granted_static_ability_presence: RefCell::new(HashMap::new()),
@@ -580,9 +583,7 @@ impl<'a> DerivedGameView<'a> {
         reason: crate::costs::PaymentReason,
     ) -> bool {
         let allow_any_color = self.game.can_spend_mana_as_any_color(player, source);
-        let allow_black_life = self
-            .game
-            .player_can_pay_black_with_life_for_reason(player, source, reason);
+        let allow_black_life = self.player_can_pay_black_with_life_for_reason(player, reason);
         let mut preview_pool = self.potential_mana(player);
         let (can_pay, life_to_pay) = preview_pool
             .try_pay_tracking_life_with_any_color_and_black_life(
@@ -595,6 +596,36 @@ impl<'a> DerivedGameView<'a> {
             && self
                 .game
                 .can_pay_life_with_reason(player, life_to_pay, reason)
+    }
+
+    pub(crate) fn player_can_pay_black_with_life_for_reason(
+        &self,
+        payer: PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> bool {
+        self.player_can_pay_black_with_life(payer)
+            && (!reason.is_cast_or_ability_payment()
+                || !self.game.player_cant_pay_life_to_cast_or_activate(payer))
+    }
+
+    fn player_can_pay_black_with_life(&self, payer: PlayerId) -> bool {
+        if let Some(cached) = self.black_mana_life_permission.borrow().get(&payer) {
+            return *cached;
+        }
+
+        let result = self.game.battlefield.iter().copied().any(|perm_id| {
+            self.current_controller(perm_id) == Some(payer)
+                && self.static_abilities_rc(perm_id).is_some_and(|abilities| {
+                    abilities.iter().any(|ability| {
+                        ability.black_mana_may_be_paid_with_life()
+                            && ability.is_active(self.game, perm_id)
+                    })
+                })
+        });
+        self.black_mana_life_permission
+            .borrow_mut()
+            .insert(payer, result);
+        result
     }
 
     pub(crate) fn simple_battlefield_mana_analysis(

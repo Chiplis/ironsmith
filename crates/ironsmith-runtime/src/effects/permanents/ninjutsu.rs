@@ -159,7 +159,7 @@ impl EffectExecutor for NinjutsuCostEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        Some("Return an unblocked attacker you control to hand".to_string())
+        Some("Return an unblocked attacker you control to its owner's hand".to_string())
     }
 }
 

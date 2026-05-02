@@ -10,11 +10,14 @@ const STACK_RAIL_WIDTH = "clamp(240px, 24vw, 360px)";
 const STACK_EDGE_MARGIN = 6;
 const STACK_MIN_HEIGHT = 44;
 const STACK_DEFAULT_MAX_HEIGHT = 320;
+const STACK_INLINE_MAX_HEIGHT = 236;
+const STACK_INLINE_LEFT_OFFSET = 58;
 
 export default function StackTimelineRail({
   selectedObjectId = null,
   onInspectObject = null,
   floating = false,
+  inlineFlow = false,
   anchorRef = null,
   className = "",
 }) {
@@ -40,6 +43,7 @@ export default function StackTimelineRail({
     STACK_DEFAULT_MAX_HEIGHT,
   );
   const inlineAnchorRef = useRef(null);
+  const flowRailRef = useRef(null);
   const [inlineRect, setInlineRect] = useState(null);
   const shouldShowRail = orderingEntryCount > 0;
 
@@ -112,7 +116,7 @@ export default function StackTimelineRail({
   }, [floating, anchorRef, rawStackEntryCount, state?.players?.length]);
 
   useLayoutEffect(() => {
-    if (floating) return undefined;
+    if (floating || inlineFlow) return undefined;
 
     let rafId = null;
     const publishRect = () => {
@@ -169,7 +173,48 @@ export default function StackTimelineRail({
       window.removeEventListener("resize", scheduleRect);
       window.removeEventListener("scroll", scheduleRect, true);
     };
-  }, [floating, shouldShowRail]);
+  }, [floating, inlineFlow, shouldShowRail]);
+
+  useLayoutEffect(() => {
+    if (!inlineFlow || !shouldShowRail) return undefined;
+
+    const railEl = flowRailRef.current;
+    if (!railEl) return undefined;
+
+    let rafId = null;
+    const measureHeight = () => {
+      const nextHeight = Math.max(
+        150,
+        Math.round(railEl.clientHeight || STACK_DEFAULT_MAX_HEIGHT),
+      );
+      setAvailableHeight((currentHeight) => (
+        Math.abs(currentHeight - nextHeight) >= 1 ? nextHeight : currentHeight
+      ));
+    };
+
+    const scheduleMeasure = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        measureHeight();
+      });
+    };
+
+    scheduleMeasure();
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleMeasure)
+        : null;
+    resizeObserver?.observe(railEl);
+
+    window.addEventListener("resize", scheduleMeasure);
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [inlineFlow, shouldShowRail]);
 
   const collapsedPanelHeight = STACK_MIN_HEIGHT;
   const stackPanelMaxHeight = useMemo(
@@ -227,15 +272,20 @@ export default function StackTimelineRail({
     );
   }
 
-  if (!shouldShowRail) return null;
+  if (inlineFlow) {
+    if (!shouldShowRail) return null;
 
-  const horizontalTimeline = (
-    <div className="flex h-full w-full min-w-0 items-stretch justify-start pointer-events-none pl-2">
-      <div className="inline-flex h-full items-center justify-start">
+    return (
+      <aside
+        ref={flowRailRef}
+        className={cn(
+          "stack-inline-flow-rail stack-inline-vertical-rail pointer-events-none h-full min-w-0 overflow-hidden",
+          className
+        )}
+        aria-hidden={!shouldShowRail}
+      >
         <InspectorStackTimeline
           embedded
-          layout="horizontal"
-          compact
           title="Stack"
           decision={decision}
           canAct={canAct}
@@ -243,10 +293,33 @@ export default function StackTimelineRail({
           stackPreview={stackPreview}
           selectedObjectId={selectedObjectId}
           onInspectObject={onInspectObject}
+          maxBodyHeight={stackBodyMaxHeight}
+          compact
         />
-      </div>
-    </div>
-  );
+      </aside>
+    );
+  }
+
+  if (!shouldShowRail) return null;
+
+  const inlineViewportHeight = typeof window !== "undefined"
+    ? window.innerHeight
+    : inlineRect
+      ? inlineRect.top + STACK_DEFAULT_MAX_HEIGHT
+      : STACK_DEFAULT_MAX_HEIGHT;
+  const inlinePanelMaxHeight = inlineRect
+    ? Math.max(
+        STACK_MIN_HEIGHT,
+        Math.min(
+          STACK_INLINE_MAX_HEIGHT,
+          Math.floor(inlineViewportHeight - inlineRect.top - STACK_EDGE_MARGIN)
+        )
+      )
+    : STACK_DEFAULT_MAX_HEIGHT;
+  const inlineBodyMaxHeight = Math.max(96, inlinePanelMaxHeight - 38);
+  const inlinePanelLeft = inlineRect
+    ? Math.max(STACK_EDGE_MARGIN, inlineRect.left - STACK_INLINE_LEFT_OFFSET)
+    : 0;
 
   return (
     <>
@@ -258,15 +331,34 @@ export default function StackTimelineRail({
       {inlineRect && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-[96] flex items-stretch justify-start bg-transparent"
+              className="pointer-events-none fixed z-[96] flex items-start justify-start bg-transparent"
               style={{
-                left: `${inlineRect.left}px`,
+                left: `${inlinePanelLeft}px`,
                 top: `${inlineRect.top}px`,
                 width: `${inlineRect.width}px`,
-                height: `${inlineRect.height}px`,
+                maxHeight: `${inlinePanelMaxHeight}px`,
               }}
             >
-              {horizontalTimeline}
+              <div
+                className="stack-inline-vertical-rail pointer-events-none min-w-0 pl-2"
+                style={{
+                  width: "min(clamp(188px, 18vw, 260px), 100%)",
+                  maxHeight: `${inlinePanelMaxHeight}px`,
+                }}
+              >
+                <InspectorStackTimeline
+                  embedded
+                  title="Stack"
+                  decision={decision}
+                  canAct={canAct}
+                  stackObjects={stackObjects}
+                  stackPreview={stackPreview}
+                  selectedObjectId={selectedObjectId}
+                  onInspectObject={onInspectObject}
+                  maxBodyHeight={inlineBodyMaxHeight}
+                  compact
+                />
+              </div>
             </div>,
             document.body,
           )

@@ -103,7 +103,10 @@ impl WasmGame {
         let mut priority_state = PriorityLoopState::new(2);
         priority_state.set_auto_choose_single_pip_payment(false);
         Self {
-            game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
+            game: CowGameState::new(GameState::new(
+                vec!["Alice".to_string(), "Bob".to_string()],
+                20,
+            )),
             registry: CardRegistry::new(),
             trigger_queue: TriggerQueue::new(),
             priority_state,
@@ -241,6 +244,7 @@ impl WasmGame {
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let battlefield_transition_ms = transitions_started_at.elapsed_ms();
+        self.game.refresh_continuous_state();
         let build_started_at = PerfTimer::start();
         let mut snap = GameSnapshot::from_game(
             &self.game,
@@ -364,6 +368,7 @@ impl WasmGame {
         let snapshot_id = self.snapshot_serial;
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
+        self.game.refresh_continuous_state();
         let mut snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,

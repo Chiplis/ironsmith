@@ -479,6 +479,7 @@ export default function Workspace({
     game,
     state,
     dispatch,
+    cancelDecision,
     refresh,
     runWasmInteraction,
     setStatus,
@@ -1057,10 +1058,14 @@ export default function Workspace({
           return;
         }
         window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");
-        dispatch(
-          { type: "priority_action", action_index: onlyAction.index },
-          onlyAction.label
-        );
+        if (onlyAction.kind === "untap_land") {
+          cancelDecision();
+        } else {
+          dispatch(
+            { type: "priority_action", action_index: onlyAction.index, action_ref: onlyAction.action_ref },
+            onlyAction.label
+          );
+        }
         if (!combatDeclarationActive && ds.objectId != null && !nonDesktopViewport) {
           setSelectedObjectId(ds.objectId);
           setPinnedInspectorObjectId(null);
@@ -1105,6 +1110,7 @@ export default function Workspace({
     clearHover,
     collapseHandLane,
     combatDeclarationActive,
+    cancelDecision,
     dispatch,
     endDrag,
     nonDesktopViewport,

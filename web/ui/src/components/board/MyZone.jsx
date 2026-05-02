@@ -6,6 +6,8 @@ import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { getPlayerAccent } from "@/lib/player-colors";
+import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 
@@ -129,7 +131,9 @@ function buildActivatableMap(decision) {
 
   for (const action of decision.actions) {
     if (
-      (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
+      (action.kind === "activate_ability"
+        || action.kind === "activate_mana_ability"
+        || action.kind === "untap_land")
       && action.object_id != null
     ) {
       const objId = Number(action.object_id);
@@ -227,10 +231,22 @@ export default function MyZone({
   const mobileHandMeasureRafRef = useRef(null);
   const [mobileHandViewportBounds, setMobileHandViewportBounds] = useState(null);
   const [mobileHandOcclusionViewportTop, setMobileHandOcclusionViewportTop] = useState(null);
-  const playerAccent = explicitPlayerAccent || getPlayerAccent(state?.players || [], player?.id);
+  const playerAccent = explicitPlayerAccent || getPlayerAccent(state?.players || [], player?.id, state?.perspective);
+  const visibleStackObjects = getVisibleStackObjects(state);
+  const stackPreviewCount = Array.isArray(state?.stack_preview) ? state.stack_preview.length : 0;
+  const triggerOrderingCount = isTriggerOrderingDecision(state?.decision)
+    ? (state?.decision?.options || []).length
+    : 0;
   const mergedMobileHeader = Boolean(embeddedActionBar);
   const showHeader = !hideHeader;
   const mobileInspectorVisible = mergedMobileHeader && selectedObjectId != null;
+  const showBodyStackRail = !mergedMobileHeader
+    && Boolean(zoneActionControls)
+    && (
+      visibleStackObjects.length > 0
+      || stackPreviewCount > 0
+      || triggerOrderingCount > 0
+    );
 
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
@@ -634,6 +650,14 @@ export default function MyZone({
                 </span>
                 {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
               </span>
+              {!mergedMobileHeader && (
+                <ManaPool
+                  pool={player.mana_pool}
+                  alwaysVisible
+                  compact
+                  className="player-name-mana battlefield-header-mana"
+                />
+              )}
               <div className="ml-auto flex min-w-0 items-center gap-2">
                 {mergedMobileHeader ? (
                   <div className="my-zone-merged-zone-meta flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[#bcae93] whitespace-nowrap">
@@ -645,7 +669,6 @@ export default function MyZone({
                 ) : (
                   <ZoneCountInline player={player} />
                 )}
-                {!mergedMobileHeader && <ManaPool pool={player.mana_pool} />}
                 {headerControls}
               </div>
             </div>
@@ -653,7 +676,7 @@ export default function MyZone({
               <div className="my-zone-merged-action-shell relative z-[1] min-w-0 flex-1 self-stretch">
                 {embeddedActionBar}
               </div>
-            ) : (
+            ) : showBodyStackRail ? null : (
               <StackTimelineRail
                 selectedObjectId={selectedObjectId}
                 onInspectObject={onInspect}
@@ -743,13 +766,23 @@ export default function MyZone({
             mobileHandRailVisible
               ? "my-zone-mobile-board-shell min-h-0 h-full"
               : "my-zone-board-shell min-h-0 h-full",
-            zoneActionControls && "my-zone-board-shell--with-actions"
+            zoneActionControls && "my-zone-board-shell--with-actions",
+            showBodyStackRail && "my-zone-board-shell--with-stack"
           )}
           data-mobile-hand-drop-target={mobileHandRailVisible ? "board" : undefined}
         >
         {zoneActionControls ? (
           <aside className="my-zone-action-rail min-h-0">
             {zoneActionControls}
+          </aside>
+        ) : null}
+        {showBodyStackRail ? (
+          <aside className="my-zone-stack-rail min-h-0">
+            <StackTimelineRail
+              selectedObjectId={selectedObjectId}
+              onInspectObject={onInspect}
+              inlineFlow
+            />
           </aside>
         ) : null}
         <div

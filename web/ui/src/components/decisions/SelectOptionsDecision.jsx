@@ -80,9 +80,12 @@ function buildContextualOptions(
 ) {
   const inclusionIds = includedObjectIds instanceof Set ? includedObjectIds : null;
   const filteredOptions = inclusionIds && inclusionIds.size > 0
-    ? options.filter((opt) => opt.object_id == null || inclusionIds.has(String(opt.object_id)))
+    ? options.filter((opt) => {
+        const objectIds = optionObjectIds(opt);
+        return objectIds.length === 0 || objectIds.some((id) => inclusionIds.has(id));
+      })
     : options;
-  const hasObjectBoundOptions = filteredOptions.some((opt) => opt.object_id != null);
+  const hasObjectBoundOptions = filteredOptions.some((opt) => optionObjectIds(opt).length > 0);
   if (!hasObjectBoundOptions) {
     return {
       options: filteredOptions,
@@ -94,9 +97,7 @@ function buildContextualOptions(
   const hasMatchedHover =
     hasHoveredObject &&
     filteredOptions.some(
-      (opt) =>
-        opt.object_id != null &&
-        String(opt.object_id) === String(hoveredObjectId),
+      (opt) => optionReferencesObject(opt, hoveredObjectId),
     );
 
   if (fallbackToAll && !hasMatchedHover) {
@@ -107,14 +108,31 @@ function buildContextualOptions(
   }
 
   const contextualOptions = filteredOptions.filter((opt) => {
-    if (opt.object_id == null) return true;
-    return hasMatchedHover && String(opt.object_id) === String(hoveredObjectId);
+    if (optionObjectIds(opt).length === 0) return true;
+    return hasMatchedHover && optionReferencesObject(opt, hoveredObjectId);
   });
 
   return {
     options: contextualOptions,
     waitingForHover: !hasMatchedHover,
   };
+}
+
+function optionObjectIds(opt) {
+  const ids = [];
+  if (opt?.object_id != null) ids.push(String(opt.object_id));
+  if (Array.isArray(opt?.related_object_ids)) {
+    for (const relatedId of opt.related_object_ids) {
+      if (relatedId != null) ids.push(String(relatedId));
+    }
+  }
+  return Array.from(new Set(ids));
+}
+
+function optionReferencesObject(opt, objectId) {
+  if (objectId == null) return false;
+  const normalizedId = String(objectId);
+  return optionObjectIds(opt).some((id) => id === normalizedId);
 }
 
 function buildObjectFamilyIds(players, objectId) {
@@ -162,7 +180,7 @@ function optionAccent(state, objectControllerById, opt) {
   ) {
     return null;
   }
-  return getPlayerAccent(state?.players || [], controllerId);
+  return getPlayerAccent(state?.players || [], controllerId, state?.perspective);
 }
 
 function optionLabelContent(state, objectNameById, objectControllerById, opt) {
@@ -209,6 +227,10 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt) {
 
 function optionHoverObjectId(decision, opt, selectedObjectId = null) {
   if (opt?.object_id != null) return String(opt.object_id);
+  if (Array.isArray(opt?.related_object_ids)) {
+    const relatedObjectId = opt.related_object_ids.find((id) => id != null);
+    if (relatedObjectId != null) return String(relatedObjectId);
+  }
   if (selectedObjectId != null) return null;
   if (isColorChoiceDecision(decision) && decision?.source_id != null) {
     return String(decision.source_id);
