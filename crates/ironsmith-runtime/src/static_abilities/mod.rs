@@ -71,9 +71,7 @@ pub use protection::*;
 pub use restrictions::*;
 
 pub(crate) use continuous::resolve_anthem_count_expression;
-use std::any::Any;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
@@ -280,19 +278,7 @@ where
     }
 }
 
-pub trait StaticAbilityKindAny {
-    fn as_any(&self) -> &dyn Any;
-}
-
-impl<T: Any> StaticAbilityKindAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-pub trait StaticAbilityKind:
-    std::fmt::Debug + Send + Sync + StaticAbilityKindClone + StaticAbilityKindAny
-{
+pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindClone {
     /// Get the unique identifier for this ability type.
     ///
     /// Used for identity checks like `ability.id() == StaticAbilityId::Flying`.
@@ -963,34 +949,12 @@ impl Clone for Box<dyn StaticAbilityKind> {
 /// This provides a convenient way to work with static abilities as values
 /// while maintaining the flexibility of trait objects.
 #[derive(Debug, Clone)]
-pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>, StaticAbilityRuntimeId);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StaticAbilityRuntimeId(u64);
-
-static NEXT_STATIC_ABILITY_RUNTIME_ID: AtomicU64 = AtomicU64::new(1);
-
-impl StaticAbilityRuntimeId {
-    fn fresh() -> Self {
-        Self(NEXT_STATIC_ABILITY_RUNTIME_ID.fetch_add(1, Ordering::Relaxed))
-    }
-}
+pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>);
 
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
-        if self.same_runtime_ability(other) {
-            return true;
-        }
-
         if self.0.id() != other.0.id() {
             return false;
-        }
-
-        if let Some(equal) = self.concrete_eq::<Anthem>(other) {
-            return equal;
-        }
-        if let Some(equal) = self.concrete_eq::<GrantAbility>(other) {
-            return equal;
         }
 
         match self.0.id() {
@@ -1006,21 +970,7 @@ impl PartialEq for StaticAbility {
 impl StaticAbility {
     /// Create a new StaticAbility from any StaticAbilityKind implementation.
     pub fn new<K: StaticAbilityKind + 'static>(kind: K) -> Self {
-        StaticAbility(Arc::new(kind), StaticAbilityRuntimeId::fresh())
-    }
-
-    /// Return true when two handles point at the same runtime ability object.
-    pub fn same_runtime_ability(&self, other: &Self) -> bool {
-        self.1 == other.1 || Arc::ptr_eq(&self.0, &other.0)
-    }
-
-    fn concrete_eq<K>(&self, other: &Self) -> Option<bool>
-    where
-        K: PartialEq + 'static,
-    {
-        let left = self.0.as_any().downcast_ref::<K>()?;
-        let right = other.0.as_any().downcast_ref::<K>()?;
-        Some(left == right)
+        StaticAbility(Arc::new(kind))
     }
 
     /// Get the ability's unique identifier.

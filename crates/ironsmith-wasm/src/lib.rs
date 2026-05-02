@@ -6,7 +6,6 @@
 //! - read a serializable snapshot
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::rc::Rc;
 use std::sync::OnceLock;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -40,6 +39,16 @@ use ironsmith::zone::Zone;
 mod ui_snapshot;
 use ui_snapshot::{GameSnapshot, battlefield_transition_snapshots, build_object_details_snapshot};
 
+#[cfg(test)]
+static TEST_ID_COUNTER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn test_id_counter_guard() -> std::sync::MutexGuard<'static, ()> {
+    TEST_ID_COUNTER_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 struct PerfTimer {
     #[cfg(target_arch = "wasm32")]
     started_at_ms: f64,
@@ -67,29 +76,6 @@ impl PerfTimer {
         {
             self.started_at.elapsed().as_secs_f64() * 1000.0
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct CowGameState(Rc<GameState>);
-
-impl CowGameState {
-    fn new(game: GameState) -> Self {
-        Self(Rc::new(game))
-    }
-}
-
-impl std::ops::Deref for CowGameState {
-    type Target = GameState;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for CowGameState {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        Rc::make_mut(&mut self.0)
     }
 }
 
@@ -1609,7 +1595,7 @@ enum ReplayDecisionAnswer {
 
 #[derive(Debug, Clone)]
 struct ReplayCheckpoint {
-    game: CowGameState,
+    game: GameState,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
@@ -2065,7 +2051,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
 /// Browser-exposed game handle.
 #[wasm_bindgen]
 pub struct WasmGame {
-    game: CowGameState,
+    game: GameState,
     registry: CardRegistry,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,

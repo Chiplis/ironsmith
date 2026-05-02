@@ -1289,6 +1289,7 @@ mod tests {
 
     #[test]
     fn pseudo_hand_hides_opponent_native_escape_card() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -1336,6 +1337,7 @@ mod tests {
 
     #[test]
     fn pseudo_hand_keeps_own_native_escape_card() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let escape_card = CardBuilder::new(CardId::from_raw(90_011), "Own Escape Probe")
@@ -1385,6 +1387,7 @@ mod tests {
 
     #[test]
     fn battlefield_grouping_uses_calculated_characteristics_and_matching_attachments() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let protected_ids = std::collections::HashSet::new();
@@ -1452,6 +1455,7 @@ mod tests {
 
     #[test]
     fn battlefield_grouping_splits_each_protected_legal_target() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
         let bears_card = test_bears_card();
@@ -1487,6 +1491,7 @@ mod tests {
 
     #[test]
     fn battlefield_grouping_uses_current_controller_for_temporary_control_effects() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
         use ironsmith::effect::Until;
 

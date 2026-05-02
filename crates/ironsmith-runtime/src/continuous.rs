@@ -4149,6 +4149,7 @@ fn effect_can_change_static_ability_presence(effect: &ContinuousEffect) -> bool 
         effect.modification,
         Modification::CopyOf { .. }
             | Modification::SetTextBox(_)
+            | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
             | Modification::RemoveAllAbilities

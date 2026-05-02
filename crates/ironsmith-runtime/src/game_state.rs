@@ -3,6 +3,7 @@ use crate::filter::ObjectFilterExt as _;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::{Deref, DerefMut, Range};
+use std::sync::Arc;
 
 use rand::seq::SliceRandom;
 use rand::{SeedableRng, rngs::StdRng};
@@ -107,7 +108,7 @@ struct MetadataStateStore {
 }
 
 /// Storage and denormalized zone indexes for live objects in the game.
-pub(crate) type ObjectMap = HashMap<ObjectId, Object>;
+pub(crate) type ObjectMap = HashMap<ObjectId, Arc<Object>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ObjectStore {
@@ -129,15 +130,22 @@ pub struct ObjectStore {
 
 impl ObjectStore {
     fn object(&self, id: ObjectId) -> Option<&Object> {
-        self.objects.get(&id)
+        self.objects.get(&id).map(Arc::as_ref)
     }
 
     fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
-        self.objects.get_mut(&id)
+        self.objects.get_mut(&id).map(Arc::make_mut)
     }
 
     fn objects_map(&self) -> &ObjectMap {
         &self.objects
+    }
+
+    fn into_owned_object(object: Arc<Object>) -> Object {
+        match Arc::try_unwrap(object) {
+            Ok(object) => object,
+            Err(shared) => (*shared).clone(),
+        }
     }
 }
 
@@ -2606,7 +2614,7 @@ impl GameState {
         let owner = object.owner;
         let stable_id = object.stable_id;
 
-        self.objects.insert(id, object);
+        self.objects.insert(id, Arc::new(object));
         self.stable_id_index.insert(stable_id, id);
 
         // Update zone indexes
@@ -2917,7 +2925,7 @@ impl GameState {
             }
         }
 
-        let old_object = self.objects.remove(&old_id)?;
+        let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
         self.stable_id_index.remove(&old_object.stable_id);
         self.declined_commander_command_zone_moves.remove(&old_id);
         let old_zone = old_object.zone;
@@ -3572,7 +3580,7 @@ impl GameState {
     /// Removes an object from the game completely (e.g., tokens ceasing to exist).
     /// This does NOT create a new object - the object is simply gone.
     pub fn remove_object(&mut self, id: ObjectId) {
-        if let Some(obj) = self.objects.remove(&id) {
+        if let Some(obj) = self.objects.remove(&id).map(ObjectStore::into_owned_object) {
             if let Some(target) = obj.attached_to {
                 match target {
                     AttachmentTarget::Object(parent_id) => {
@@ -5526,7 +5534,7 @@ impl GameState {
     pub fn objects_in_deterministic_order(&self) -> Vec<&Object> {
         self.object_ids_in_deterministic_order()
             .into_iter()
-            .filter_map(|id| self.objects.get(&id))
+            .filter_map(|id| self.objects.get(&id).map(Arc::as_ref))
             .collect()
     }
 

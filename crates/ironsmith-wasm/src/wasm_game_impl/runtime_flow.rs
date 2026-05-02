@@ -1629,6 +1629,7 @@ mod live_action_rollback_tests {
 
     #[test]
     fn live_action_error_restore_returns_to_pre_cast_priority_state() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
 
@@ -1724,6 +1725,7 @@ mod live_action_rollback_tests {
 
     #[test]
     fn generated_tapped_lands_do_not_make_two_mana_creature_castable() {
+        let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
 

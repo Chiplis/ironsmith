@@ -1400,17 +1400,14 @@ pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a C
 
     // Build dependency graph: dependencies[i] contains effects that i depends on
     // If A depends on B, B must come before A in the result
-    let mut depends_on: HashMap<usize, HashSet<usize>> = HashMap::with_capacity(effects.len());
-    for i in 0..effects.len() {
-        depends_on.insert(i, HashSet::new());
-    }
+    let mut depends_on: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
 
     let mut has_any_dependency = false;
     for i in 0..effects.len() {
         for j in 0..effects.len() {
             if i != j && effect_depends_on(effects[i], effects[j]) {
                 // i depends on j, so j must come before i
-                depends_on.get_mut(&i).unwrap().insert(j);
+                depends_on[i].push(j);
                 has_any_dependency = true;
             }
         }
@@ -1424,7 +1421,7 @@ pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a C
     }
 
     // Detect cycles
-    if has_cycle(&depends_on, effects.len()) {
+    if has_cycle(&depends_on) {
         // Fall back to timestamp ordering
         let mut sorted = effects.to_vec();
         sorted.sort_by_key(|e| e.timestamp);
@@ -1435,18 +1432,15 @@ pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a C
     // in_degree[i] = number of effects that i depends on (must come before i)
     let mut in_degree: Vec<usize> = vec![0; effects.len()];
     // in_degree is calculated from depends_on - no iteration needed
-    for (i, deps) in &depends_on {
-        in_degree[*i] = deps.len();
+    for (i, deps) in depends_on.iter().enumerate() {
+        in_degree[i] = deps.len();
     }
 
     // Build reverse map: depended_by[j] = effects that depend on j
-    let mut depended_by: HashMap<usize, Vec<usize>> = HashMap::with_capacity(effects.len());
-    for i in 0..effects.len() {
-        depended_by.insert(i, Vec::new());
-    }
-    for (i, deps) in &depends_on {
+    let mut depended_by: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
+    for (i, deps) in depends_on.iter().enumerate() {
         for &j in deps {
-            depended_by.get_mut(&j).unwrap().push(*i);
+            depended_by[j].push(i);
         }
     }
 
@@ -1459,7 +1453,7 @@ pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a C
     while let Some(idx) = ready.pop() {
         result.push(effects[idx]);
         // Effects that depend on idx can now have their in_degree reduced
-        for &dependent in &depended_by[&idx] {
+        for &dependent in &depended_by[idx] {
             in_degree[dependent] -= 1;
             if in_degree[dependent] == 0 {
                 ready.push(dependent);
@@ -1519,7 +1513,7 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
 }
 
 fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
-    effects.iter().all(|effect| {
+    if effects.iter().all(|effect| {
         effect.condition.is_none()
             && effect.originating_static_ability.is_none()
             && matches!(
@@ -1533,7 +1527,217 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
                     | Modification::SetTextBox(_)
                     | Modification::SetName(_)
             )
-    })
+    }) {
+        return true;
+    }
+
+    non_pt_group_has_no_dynamic_dependencies(effects)
+}
+
+fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bool {
+    if effects.iter().any(|effect| effect.condition.is_some()) {
+        return false;
+    }
+
+    for i in 0..effects.len() {
+        for j in 0..effects.len() {
+            if i == j {
+                continue;
+            }
+
+            let a = effects[i];
+            let b = effects[j];
+            if check_dependency_relationship(&a.modification, &b.modification, a.source, b.source) {
+                return false;
+            }
+            if a.originating_static_ability.is_some()
+                && modification_can_remove_static_ability_presence(&b.modification)
+            {
+                return false;
+            }
+            if modification_can_affect_effect_target(&b.modification, &a.applies_to) {
+                return false;
+            }
+            if modification_can_affect_dependency_output(&a.modification, &b.modification) {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn modification_can_remove_static_ability_presence(modification: &Modification) -> bool {
+    matches!(
+        modification,
+        Modification::CopyOf { .. }
+            | Modification::SetTextBox(_)
+            | Modification::SetSubtypes(_)
+            | Modification::SetAbilities(_)
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana
+    )
+}
+
+fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
+    matches!(
+        a,
+        Modification::CopyActivatedAbilities { .. } | Modification::CopyTriggeredAbilities { .. }
+    ) && modification_can_change_abilities_or_matching_characteristics(b)
+}
+
+fn modification_can_change_abilities_or_matching_characteristics(
+    modification: &Modification,
+) -> bool {
+    matches!(
+        modification,
+        Modification::CopyOf { .. }
+            | Modification::ChangeController(_)
+            | Modification::SetTextBox(_)
+            | Modification::SetName(_)
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+            | Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless
+            | Modification::AddAbility(_)
+            | Modification::AddAbilityGeneric(_)
+            | Modification::SetAbilities(_)
+            | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana
+    )
+}
+
+fn modification_can_affect_effect_target(
+    modification: &Modification,
+    target: &EffectTarget,
+) -> bool {
+    match target {
+        EffectTarget::Specific(_) | EffectTarget::Source | EffectTarget::AllPermanents => false,
+        EffectTarget::AllCreatures | EffectTarget::AttachedTo(_) => {
+            modification_can_change_type_characteristics(modification)
+        }
+        EffectTarget::Filter(filter) => modification_can_affect_filter(modification, filter),
+    }
+}
+
+fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFilter) -> bool {
+    filter
+        .any_of
+        .iter()
+        .any(|inner| modification_can_affect_filter(modification, inner))
+        || filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|inner| modification_can_affect_filter(modification, inner))
+        || filter
+            .targets_only_object
+            .as_deref()
+            .is_some_and(|inner| modification_can_affect_filter(modification, inner))
+        || match modification {
+            Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
+            Modification::ChangeController(_) => filter.controller.is_some(),
+            Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
+                filter_uses_ability_characteristics(filter)
+            }
+            Modification::SetName(_) => {
+                filter.name.is_some() || filter.excluded_name.is_some() || filter.distinct_names
+            }
+            Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes => filter_uses_type_characteristics(filter),
+            Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless => filter_uses_color_characteristics(filter),
+            Modification::AddAbility(_)
+            | Modification::AddAbilityGeneric(_)
+            | Modification::SetAbilities(_)
+            | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyTriggeredAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana => {
+                filter_uses_ability_characteristics(filter)
+            }
+            _ => false,
+        }
+}
+
+fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
+    !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
+        || !filter.excluded_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || filter.type_or_subtype_union
+        || !filter.excluded_subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+        || !filter.excluded_supertypes.is_empty()
+        || filter.historic
+        || filter.nonhistoric
+}
+
+fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
+    filter.colors.is_some()
+        || filter.chosen_color
+        || !filter.excluded_colors.is_empty()
+        || filter.colorless
+        || filter.multicolored
+        || filter.monocolored
+        || filter.all_colors.is_some()
+        || filter.exactly_two_colors.is_some()
+        || filter.color_count.is_some()
+}
+
+fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
+    filter.has_tap_activated_ability
+        || filter.no_abilities
+        || !filter.static_abilities.is_empty()
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
+}
+
+fn modification_can_change_type_characteristics(modification: &Modification) -> bool {
+    matches!(
+        modification,
+        Modification::CopyOf { .. }
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::RemoveAllSubtypesOfFamily(_)
+            | Modification::SetSubtypes(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+    )
 }
 
 fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
@@ -1691,10 +1895,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
         return effects.to_vec();
     }
 
-    let mut depends_on: HashMap<usize, HashSet<usize>> = HashMap::with_capacity(effects.len());
-    for i in 0..effects.len() {
-        depends_on.insert(i, HashSet::new());
-    }
+    let mut depends_on: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
 
     let mut has_any_dependency = false;
     for i in 0..effects.len() {
@@ -1709,7 +1910,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
                     started_groups,
                 )
             {
-                depends_on.get_mut(&i).unwrap().insert(j);
+                depends_on[i].push(j);
                 has_any_dependency = true;
             }
         }
@@ -1721,24 +1922,21 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
         return sorted;
     }
 
-    if has_cycle(&depends_on, effects.len()) {
+    if has_cycle(&depends_on) {
         let mut sorted = effects.to_vec();
         sorted.sort_by_key(|e| e.timestamp);
         return sorted;
     }
 
     let mut in_degree: Vec<usize> = vec![0; effects.len()];
-    for (i, deps) in &depends_on {
-        in_degree[*i] = deps.len();
+    for (i, deps) in depends_on.iter().enumerate() {
+        in_degree[i] = deps.len();
     }
 
-    let mut depended_by: HashMap<usize, Vec<usize>> = HashMap::with_capacity(effects.len());
-    for i in 0..effects.len() {
-        depended_by.insert(i, Vec::new());
-    }
-    for (i, deps) in &depends_on {
+    let mut depended_by: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
+    for (i, deps) in depends_on.iter().enumerate() {
         for &j in deps {
-            depended_by.get_mut(&j).unwrap().push(*i);
+            depended_by[j].push(i);
         }
     }
 
@@ -1749,7 +1947,7 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
 
     while let Some(idx) = ready.pop() {
         result.push(effects[idx]);
-        for &dependent in &depended_by[&idx] {
+        for &dependent in &depended_by[idx] {
             in_degree[dependent] -= 1;
             if in_degree[dependent] == 0 {
                 ready.push(dependent);
@@ -1762,28 +1960,27 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
 }
 
 /// Check if the dependency graph has a cycle.
-fn has_cycle(dependencies: &HashMap<usize, HashSet<usize>>, n: usize) -> bool {
+fn has_cycle(dependencies: &[Vec<usize>]) -> bool {
+    let n = dependencies.len();
     let mut visited = vec![false; n];
     let mut in_stack = vec![false; n];
 
     fn dfs(
         node: usize,
-        dependencies: &HashMap<usize, HashSet<usize>>,
+        dependencies: &[Vec<usize>],
         visited: &mut [bool],
         in_stack: &mut [bool],
     ) -> bool {
         visited[node] = true;
         in_stack[node] = true;
 
-        if let Some(deps) = dependencies.get(&node) {
-            for &dep in deps {
-                if !visited[dep] {
-                    if dfs(dep, dependencies, visited, in_stack) {
-                        return true;
-                    }
-                } else if in_stack[dep] {
-                    return true; // Cycle found
+        for &dep in &dependencies[node] {
+            if !visited[dep] {
+                if dfs(dep, dependencies, visited, in_stack) {
+                    return true;
                 }
+            } else if in_stack[dep] {
+                return true; // Cycle found
             }
         }
 
@@ -1848,6 +2045,7 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
     use crate::types::{CardType, Subtype};
+    use std::sync::Arc;
 
     fn create_test_effect(id: u64, timestamp: u64, modification: Modification) -> ContinuousEffect {
         ContinuousEffect {
@@ -1998,7 +2196,7 @@ mod tests {
             PlayerId::from_index(0),
             Zone::Battlefield,
         );
-        let objects = HashMap::from([(object.id, object.clone())]);
+        let objects = HashMap::from([(object.id, Arc::new(object.clone()))]);
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
@@ -2046,7 +2244,7 @@ mod tests {
             Zone::Battlefield,
         );
 
-        let objects = HashMap::from([(land.id, land.clone())]);
+        let objects = HashMap::from([(land.id, Arc::new(land.clone()))]);
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
@@ -2153,7 +2351,7 @@ mod tests {
             functional_zones: vec![Zone::Battlefield],
         });
 
-        let objects = HashMap::from([(land.id, land.clone())]);
+        let objects = HashMap::from([(land.id, Arc::new(land.clone()))]);
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
@@ -2238,20 +2436,18 @@ mod tests {
     #[test]
     fn test_cycle_detection() {
         // Create a simple graph with a cycle
-        let mut dependencies: HashMap<usize, HashSet<usize>> = HashMap::new();
-        dependencies.insert(0, HashSet::from([1]));
-        dependencies.insert(1, HashSet::from([2]));
-        dependencies.insert(2, HashSet::from([0])); // Creates cycle: 0 -> 1 -> 2 -> 0
+        let dependencies = vec![
+            vec![1],
+            vec![2],
+            vec![0], // Creates cycle: 0 -> 1 -> 2 -> 0
+        ];
 
-        assert!(has_cycle(&dependencies, 3));
+        assert!(has_cycle(&dependencies));
 
         // Graph without cycle
-        let mut no_cycle: HashMap<usize, HashSet<usize>> = HashMap::new();
-        no_cycle.insert(0, HashSet::from([1]));
-        no_cycle.insert(1, HashSet::from([2]));
-        no_cycle.insert(2, HashSet::new());
+        let no_cycle = vec![vec![1], vec![2], Vec::new()];
 
-        assert!(!has_cycle(&no_cycle, 3));
+        assert!(!has_cycle(&no_cycle));
     }
 
     #[test]

@@ -103,10 +103,7 @@ impl WasmGame {
         let mut priority_state = PriorityLoopState::new(2);
         priority_state.set_auto_choose_single_pip_payment(false);
         Self {
-            game: CowGameState::new(GameState::new(
-                vec!["Alice".to_string(), "Bob".to_string()],
-                20,
-            )),
+            game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
             registry: CardRegistry::new(),
             trigger_queue: TriggerQueue::new(),
             priority_state,
