@@ -21,6 +21,12 @@ pub type ScheduleEffectsWhenTaggedLeavesEffect =
     ironsmith_core::ScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 
 impl EffectExecutor for ScheduleEffectsWhenTaggedLeavesEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

@@ -23,6 +23,10 @@ pub use ironsmith_core::AddManaEffect;
 /// let effect = AddManaEffect::new(vec![ManaSymbol::Green, ManaSymbol::Green], PlayerFilter::You);
 /// ```
 impl EffectExecutor for AddManaEffect {
+    fn directly_produces_mana(&self) -> bool {
+        !self.mana.is_empty()
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

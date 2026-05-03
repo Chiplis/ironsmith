@@ -49,6 +49,20 @@ impl EffectExecutor for TaggedEffect {
             .map(|_| self as &dyn CostExecutableEffect)
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&self.effect);
+    }
+
+    fn transparent_child_effect(&self) -> Option<&Effect> {
+        Some(&self.effect)
+    }
+
+    fn is_resolution_prelude(&self) -> bool {
+        self.effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .is_some_and(|sequence| sequence.effects.is_empty())
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -147,6 +161,14 @@ impl EffectExecutor for TagAllEffect {
             .0
             .as_cost_executable()
             .map(|_| self as &dyn CostExecutableEffect)
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&self.effect);
+    }
+
+    fn transparent_child_effect(&self) -> Option<&Effect> {
+        Some(&self.effect)
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {

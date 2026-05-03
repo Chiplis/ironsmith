@@ -1111,13 +1111,13 @@ fn activation_precheck_with_view(
     }
 
     for effect in &activated.effects {
-        if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
-            && choose_mode.disallow_previously_chosen_modes
+        if let Some(modal) = effect.modal_effect_spec()
+            && modal.disallow_previously_chosen_modes
             && !game.ability_has_unchosen_mode(
                 source,
                 ability_index,
-                choose_mode.modes.len(),
-                choose_mode.disallow_previously_chosen_modes_this_turn,
+                modal.modes.len(),
+                modal.disallow_previously_chosen_modes_this_turn,
             )
         {
             if let Some(perf_ctx) = perf_ctx {

@@ -31,6 +31,10 @@ use super::choice_helpers::{
 /// let effect = AddManaOfAnyOneColorEffect::you(3);
 /// ```
 impl EffectExecutor for AddManaOfAnyOneColorEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

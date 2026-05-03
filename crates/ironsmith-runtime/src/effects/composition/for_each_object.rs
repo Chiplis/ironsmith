@@ -16,6 +16,12 @@ impl EffectExecutor for ForEachObject {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }

@@ -25,9 +25,9 @@ pub(super) fn active_target_assignments_for_effect(
         return selected;
     }
 
-    if let Some(spec) = effect.0.get_target_spec()
+    if let Some(profile) = effect.target_selection_profile()
         && let Some(next) = assignments.get(*cursor)
-        && (next.spec == *spec || next.spec.base() == spec.base())
+        && (next.spec == *profile.spec || next.spec.base() == profile.spec.base())
     {
         *cursor += 1;
         return vec![next.clone()];
@@ -43,15 +43,18 @@ fn representative_segment_targets(
     effect_target_assignments: Vec<crate::game_state::TargetAssignment>,
 ) -> Result<Option<Vec<crate::effects::ResolvedTarget>>, GameLoopError> {
     ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
-        let Some(spec) = effect.0.get_target_spec() else {
+        let Some(profile) = effect.target_selection_profile() else {
             return Ok(None);
         };
-        let object_id =
-            match crate::effects::helpers::resolve_single_object_for_effect(game, ctx, spec) {
-                Ok(id) => id,
-                Err(crate::effects::ExecutionError::InvalidTarget) => return Ok(None),
-                Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
-            };
+        let object_id = match crate::effects::helpers::resolve_single_object_for_effect(
+            game,
+            ctx,
+            profile.spec,
+        ) {
+            Ok(id) => id,
+            Err(crate::effects::ExecutionError::InvalidTarget) => return Ok(None),
+            Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+        };
         Ok(Some(vec![crate::effects::ResolvedTarget::Object(
             object_id,
         )]))
@@ -64,24 +67,8 @@ fn apply_self_replacement_tag_prelude(
     effects: &[Effect],
 ) -> Result<(), GameLoopError> {
     for effect in effects {
-        let is_pure_tag_effect = effect
-            .downcast_ref::<crate::effects::TagAttachedToSourceEffect>()
-            .is_some()
-            || effect
-                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
-                .is_some()
-            || effect
-                .downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>()
-                .is_some()
-            || effect
-                .downcast_ref::<crate::effects::TaggedEffect>()
-                .is_some_and(|tagged| {
-                    tagged
-                        .effect
-                        .downcast_ref::<crate::effects::SequenceEffect>()
-                        .is_some_and(|sequence| sequence.effects.is_empty())
-                });
-        if !is_pure_tag_effect {
+        let is_prelude_effect = effect.is_resolution_prelude();
+        if !is_prelude_effect {
             break;
         }
         crate::effects::execute_effect(game, effect, ctx)
@@ -150,13 +137,13 @@ pub(crate) fn execute_resolution_program(
             let representative_effect = segment
                 .default_effects
                 .iter()
-                .find(|effect| effect.0.get_target_spec().is_some())
+                .find(|effect| effect.target_selection_profile().is_some())
                 .or_else(|| {
                     segment
                         .self_replacements
                         .iter()
                         .flat_map(|branch| branch.replacement_effects.iter())
-                        .find(|effect| effect.0.get_target_spec().is_some())
+                        .find(|effect| effect.target_selection_profile().is_some())
                 });
             let representative_assignments = representative_effect
                 .map(|effect| {

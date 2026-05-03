@@ -32,6 +32,12 @@ pub use ironsmith_core::AddManaOfAnyColorEffect;
 /// let effect = AddManaOfAnyColorEffect::you(Value::X);
 /// ```
 impl EffectExecutor for AddManaOfAnyColorEffect {
+    fn directly_produces_mana(&self) -> bool {
+        self.available_colors
+            .as_ref()
+            .is_none_or(|colors| !colors.is_empty())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

@@ -201,6 +201,12 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

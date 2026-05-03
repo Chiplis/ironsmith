@@ -18,11 +18,10 @@ use ironsmith::cards::definitions::{
 };
 use ironsmith::continuous::ContinuousEffect;
 use ironsmith::cost::OptionalCostsPaid;
-use ironsmith::decision::compute_legal_actions;
-use ironsmith::decision::{GameProgress, LegalAction};
+use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
 use ironsmith::decisions::context::{
     BooleanContext, DecisionContext, NumberContext, PriorityContext, SelectObjectsContext,
-    SelectableObject, SelectableOption, TargetRequirementContext, TargetsContext,
+    SelectableObject, SelectableOption, TargetRequirementContext, TargetsContext, ViewCardsContext,
 };
 use ironsmith::effect::{Effect, Until};
 use ironsmith::events::spells::SpellCastEvent;
@@ -5381,6 +5380,60 @@ fn krrik_casting_black_spell_surfaces_pay_two_life_option_in_wasm_flow() {
         }
         other => panic!("expected mana payment choice after starting the cast, got {other:?}"),
     }
+}
+
+#[test]
+fn public_reveal_survives_replay_advance_to_next_prompt() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+    wasm.runner = Some(ironsmith::turn_runner::TurnRunner::new());
+    wasm.runner_awaiting_priority = true;
+
+    let revealed_card = CardBuilder::new(CardId::from_raw(90_200), "Bob's Revealed Top")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let revealed_id = wasm
+        .game
+        .create_object_from_card(&revealed_card, bob, Zone::Library);
+
+    let mut replay_dm = WasmReplayDecisionMaker::new(&[]);
+    let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
+        .with_public(true);
+    DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
+    let (_, viewed_cards) = replay_dm.finish();
+    wasm.active_viewed_cards = viewed_cards;
+
+    wasm.advance_until_decision()
+        .expect("advance should produce a priority prompt");
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        wasm.perspective,
+        wasm.pending_decision.as_ref(),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        wasm.active_viewed_cards.as_ref(),
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let viewed_cards = snapshot
+        .viewed_cards
+        .as_ref()
+        .expect("publicly revealed cards should still be surfaced at the next prompt");
+    assert_eq!(viewed_cards.visibility, "public");
+    assert_eq!(viewed_cards.zone, "Library");
+    assert_eq!(viewed_cards.card_ids, vec![revealed_id.0]);
+    assert_eq!(viewed_cards.cards[0].name, "Bob's Revealed Top");
 }
 
 #[test]

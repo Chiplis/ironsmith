@@ -1289,6 +1289,73 @@ impl Effect {
         self.0.producible_mana_symbols(game, source, controller)
     }
 
+    /// Visit the direct child effects of this effect, if any.
+    pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        self.0.visit_child_effects(visitor);
+    }
+
+    /// Return a transparent wrapper's inner effect, if this effect has one.
+    pub fn transparent_child_effect(&self) -> Option<&Effect> {
+        self.0.transparent_child_effect()
+    }
+
+    /// Return target-selection metadata for this effect, if it declares a target.
+    pub fn target_selection_profile(&self) -> Option<crate::effects::TargetSelectionProfile<'_>> {
+        self.0.target_selection_profile()
+    }
+
+    /// Return modal child-effect metadata for target-selection planning.
+    pub fn modal_effect_spec(&self) -> Option<crate::effects::ModalEffectSpec<'_>> {
+        self.0.modal_effect_spec()
+    }
+
+    /// Return true when this effect only prepares resolution context.
+    pub fn is_resolution_prelude(&self) -> bool {
+        self.0.is_resolution_prelude()
+    }
+
+    /// Return true when this effect can consume X as a cost.
+    pub fn references_cost_x(&self) -> bool {
+        self.0.references_cost_x()
+    }
+
+    /// Maximum legal X value for this effect when used as a cost.
+    pub fn max_cost_x(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<u32> {
+        self.0.max_cost_x(game, source, controller)
+    }
+
+    /// Return true when this effect subtree structurally contains mana production.
+    pub fn contains_mana_production(&self) -> bool {
+        self.0.contains_mana_production()
+    }
+
+    /// Return true when this effect subtree can add mana in the given context.
+    pub fn could_produce_mana(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> bool {
+        self.0.could_produce_mana(game, source, controller)
+    }
+
+    /// Collect all inferable mana symbols from this effect subtree.
+    pub fn collect_producible_mana_symbols(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        out: &mut Vec<ManaSymbol>,
+    ) {
+        self.0
+            .collect_producible_mana_symbols(game, source, controller, out);
+    }
+
     /// Return the primary runtime execution category for this effect.
     pub fn primary_execution_category(&self) -> EffectExecutionCategory {
         self.0.primary_execution_category()

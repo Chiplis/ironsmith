@@ -252,6 +252,236 @@ impl Effect {
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()
     }
 
+    pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        if let Some(sequence) = self.downcast_ref::<crate::effects::SequenceEffect>() {
+            for effect in &sequence.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(may) = self.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+            for effect in &may.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(unless_pays) = self.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
+            for effect in &unless_pays.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(unless_action) =
+            self.downcast_ref::<crate::effects::UnlessActionEffect<Effect>>()
+        {
+            for effect in &unless_action.effects {
+                visitor(effect);
+            }
+            for effect in &unless_action.alternative {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(for_players) = self.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
+            for effect in &for_players.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(for_each_object) = self.downcast_ref::<crate::effects::ForEachObject>() {
+            for effect in &for_each_object.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(for_each_tagged) =
+            self.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+        {
+            for effect in &for_each_tagged.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(for_each_controller) =
+            self.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<Effect>>()
+        {
+            for effect in &for_each_controller.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(for_each_player) =
+            self.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<Effect>>()
+        {
+            for effect in &for_each_player.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(conditional) = self.downcast_ref::<crate::effects::ConditionalEffect>() {
+            for effect in &conditional.if_true {
+                visitor(effect);
+            }
+            for effect in &conditional.if_false {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(if_effect) = self.downcast_ref::<crate::effects::IfEffect>() {
+            for effect in &if_effect.then {
+                visitor(effect);
+            }
+            for effect in &if_effect.else_ {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(choose_mode) = self.downcast_ref::<crate::effects::ChooseModeEffect>() {
+            for mode in &choose_mode.modes {
+                for effect in &mode.effects {
+                    visitor(effect);
+                }
+            }
+            return;
+        }
+        if let Some(tagged) = self.downcast_ref::<crate::effects::TaggedEffect>() {
+            visitor(&tagged.effect);
+            return;
+        }
+        if let Some(with_id) = self.downcast_ref::<crate::effects::WithIdEffect>() {
+            visitor(&with_id.effect);
+            return;
+        }
+        if let Some(local_rewrite) = self.downcast_ref::<crate::effects::LocalRewriteEffect>() {
+            visitor(&local_rewrite.effect);
+            return;
+        }
+        if let Some(execute_with_source) =
+            self.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        {
+            visitor(&execute_with_source.effect);
+            return;
+        }
+        if let Some(repeat_effects) = self.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+            for effect in &repeat_effects.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(repeat_process) = self.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+            for effect in &repeat_process.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(haunt) = self.downcast_ref::<crate::effects::HauntExileEffect>() {
+            for effect in &haunt.haunt_effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(prevent) = self.downcast_ref::<crate::effects::PreventDamageEffect>() {
+            for effect in &prevent.follow_up_effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(prevent) = self.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()
+        {
+            for effect in &prevent.follow_up_effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(schedule) = self.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        {
+            for effect in &schedule.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(schedule) =
+            self.downcast_ref::<crate::effects::ScheduleEffectsWhenTaggedLeavesEffect>()
+        {
+            for effect in &schedule.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(cumulative) = self.downcast_ref::<crate::effects::CumulativeUpkeepEffect>() {
+            for effect in &cumulative.payment {
+                visitor(effect);
+            }
+            for effect in &cumulative.failure {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(reflexive) = self.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
+            for effect in &reflexive.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(vote) = self.downcast_ref::<crate::effects::VoteEffect>() {
+            if let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice {
+                for option in options {
+                    for effect in &option.effects_per_vote {
+                        visitor(effect);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn directly_produces_mana(&self) -> bool {
+        self.downcast_ref::<crate::effects::AddManaEffect>()
+            .is_some()
+            || self
+                .downcast_ref::<crate::effects::mana::AddScaledManaEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
+                .is_some_and(|effect| {
+                    effect
+                        .available_colors
+                        .as_ref()
+                        .is_none_or(|colors| !colors.is_empty())
+                })
+            || self
+                .downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::mana::AddManaOfChosenColorEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::AddManaOfLandProducedTypesEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::AddManaFromCommanderColorIdentityEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::mana::AddManaOfImprintedColorsEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::DoubleManaPoolEffect>()
+                .is_some()
+    }
+
+    pub fn contains_mana_production(&self) -> bool {
+        if self.directly_produces_mana() {
+            return true;
+        }
+
+        let mut found = false;
+        self.visit_child_effects(&mut |effect| {
+            if !found && effect.contains_mana_production() {
+                found = true;
+            }
+        });
+        found
+    }
+
     pub fn target_spec(&self) -> Option<&crate::target::ChooseSpec> {
         if let Some(payload) = self.as_tagged() {
             return payload.effect.target_spec();

@@ -194,6 +194,15 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.payment {
+            visitor(effect);
+        }
+        for effect in &self.failure {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

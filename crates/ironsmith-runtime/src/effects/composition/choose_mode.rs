@@ -1,7 +1,7 @@
 //! ChooseMode effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::executor_trait::ModalSpec;
+use crate::effects::executor_trait::{ModalEffectSpec, ModalSpec};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -10,6 +10,14 @@ pub type ChooseModeEffect = ironsmith_core::ChooseModeEffect<crate::effect::Effe
 impl EffectExecutor for ChooseModeEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for mode in &self.modes {
+            for effect in &mode.effects {
+                visitor(effect);
+            }
+        }
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -30,6 +38,18 @@ impl EffectExecutor for ChooseModeEffect {
             max_modes: self.choose_count.clone(),
             min_modes: self.min_choose_count.clone(),
             allow_repeated_modes: self.allow_repeated_modes,
+        })
+    }
+
+    fn modal_effect_spec(&self) -> Option<ModalEffectSpec<'_>> {
+        Some(ModalEffectSpec {
+            modes: &self.modes,
+            max_modes: &self.choose_count,
+            min_modes: &self.min_choose_count,
+            allow_repeated_modes: self.allow_repeated_modes,
+            disallow_previously_chosen_modes: self.disallow_previously_chosen_modes,
+            disallow_previously_chosen_modes_this_turn: self
+                .disallow_previously_chosen_modes_this_turn,
         })
     }
 }

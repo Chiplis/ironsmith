@@ -88,6 +88,31 @@ fn choose_objects_to_sacrifice(
     Ok(normalize_object_selection(chosen, &matching, required))
 }
 
+fn max_sacrifice_cost_x(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    filter: &ObjectFilter,
+    player: &PlayerFilter,
+) -> Option<u32> {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let ctx = ExecutionContext::new(source, controller, &mut dm);
+    let player_id = resolve_player_filter(game, player, &ctx).unwrap_or(controller);
+    let filter_ctx = ctx.filter_context(game);
+
+    Some(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+            .filter(|(id, obj)| {
+                game.controller_of(obj) == player_id
+                    && filter.matches(obj, &filter_ctx, game)
+                    && game.can_be_sacrificed(*id)
+            })
+            .count() as u32,
+    )
+}
+
 fn tagged_selection_tag(filter: &ObjectFilter) -> Option<&crate::tag::TagKey> {
     filter
         .tagged_constraints
@@ -175,6 +200,17 @@ impl EffectExecutor for SacrificePlayerEffect {
         vec![ChooseSpec::All(self.filter.clone())]
     }
 
+    fn references_cost_x(&self) -> bool {
+        self.count == Value::X
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        max_sacrifice_cost_x(game, source, controller, &self.filter, &self.player)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -219,6 +255,17 @@ impl EffectExecutor for SacrificeEffect {
 
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
+    }
+
+    fn references_cost_x(&self) -> bool {
+        self.count == Value::X
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        max_sacrifice_cost_x(game, source, controller, &self.filter, &self.player)
     }
 
     fn execute(

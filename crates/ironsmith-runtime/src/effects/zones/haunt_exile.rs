@@ -11,6 +11,12 @@ use crate::zone::Zone;
 pub type HauntExileEffect = ironsmith_core::HauntExileEffect<Effect>;
 
 impl EffectExecutor for HauntExileEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.haunt_effects {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

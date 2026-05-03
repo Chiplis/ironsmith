@@ -825,6 +825,7 @@ impl WasmGame {
         self.last_replay_execution_perf = None;
 
         let restore_started_at = PerfTimer::start();
+        let carry_viewed_cards = self.active_viewed_cards.clone();
         self.restore_replay_checkpoint(checkpoint);
         perf.restore_checkpoint_ms = restore_started_at.elapsed_ms();
         self.active_viewed_cards = None;
@@ -880,7 +881,7 @@ impl WasmGame {
         let finish_started_at = PerfTimer::start();
         let (pending_context, viewed_cards) = replay_dm.finish();
         perf.decision_maker_finish_ms = finish_started_at.elapsed_ms();
-        self.active_viewed_cards = viewed_cards;
+        self.active_viewed_cards = viewed_cards.or(carry_viewed_cards);
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));

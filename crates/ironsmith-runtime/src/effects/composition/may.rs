@@ -85,6 +85,12 @@ impl EffectExecutor for MayEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

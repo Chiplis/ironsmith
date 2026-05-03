@@ -46,6 +46,10 @@ impl AddColorlessManaEffect {
 }
 
 impl EffectExecutor for AddColorlessManaEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

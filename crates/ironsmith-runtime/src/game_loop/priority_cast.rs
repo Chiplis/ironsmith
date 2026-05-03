@@ -263,24 +263,8 @@ pub(super) fn non_mana_costs_for_casting_method(
 }
 
 pub(super) fn cost_references_x(cost: &crate::costs::Cost) -> bool {
-    use crate::effect::Value;
-
-    let Some(effect) = cost.effect_ref() else {
-        return false;
-    };
-
-    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
-        return sacrifice.count == Value::X;
-    }
-    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-        return choose.count.dynamic_x;
-    }
-    if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
-    {
-        return remove.display_x;
-    }
-
-    false
+    cost.effect_ref()
+        .is_some_and(|effect| effect.references_cost_x())
 }
 
 pub(super) fn max_x_from_non_mana_costs(
@@ -289,143 +273,13 @@ pub(super) fn max_x_from_non_mana_costs(
     source: ObjectId,
     costs: &[crate::costs::Cost],
 ) -> Option<u32> {
-    use crate::effect::Value;
-    use crate::effects::helpers::resolve_player_filter;
-
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let ctx = ExecutionContext::new(source, caster, &mut dm);
-    let filter_ctx = ctx.filter_context(game);
-
     let mut max_x: Option<u32> = None;
 
     for cost in costs {
         let Some(effect) = cost.effect_ref() else {
             continue;
         };
-        if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
-            if sacrifice.count != Value::X {
-                continue;
-            }
-
-            let player_id = match resolve_player_filter(game, &sacrifice.player, &ctx) {
-                Ok(id) => id,
-                Err(_) => caster,
-            };
-
-            let matching = game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                .filter(|(id, obj)| {
-                    game.controller_of(obj) == player_id
-                        && sacrifice.filter.matches(obj, &filter_ctx, game)
-                        && game.can_be_sacrificed(*id)
-                })
-                .count() as u32;
-
-            max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
-            continue;
-        }
-
-        if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-            if !choose.count.dynamic_x {
-                continue;
-            }
-
-            let chooser_id = match resolve_player_filter(game, &choose.chooser, &ctx) {
-                Ok(id) => id,
-                Err(_) => caster,
-            };
-            let Some(zone) = choose.filter.zone.or(choose.zone) else {
-                continue;
-            };
-
-            let mut matches = |id: &ObjectId| -> bool {
-                let Some(obj) = game.object(*id) else {
-                    return false;
-                };
-                if choose.filter.other && obj.id == source {
-                    return false;
-                }
-                choose.filter.matches(obj, &filter_ctx, game)
-            };
-
-            let matching = match zone {
-                Zone::Battlefield => game
-                    .battlefield
-                    .iter()
-                    .copied()
-                    .filter(&mut matches)
-                    .count(),
-                Zone::Hand => game
-                    .player(chooser_id)
-                    .map(|player| player.hand.iter().copied().filter(&mut matches).count())
-                    .unwrap_or(0),
-                Zone::Graveyard => game
-                    .player(chooser_id)
-                    .map(|player| {
-                        if choose.top_only {
-                            player
-                                .graveyard
-                                .iter()
-                                .copied()
-                                .rev()
-                                .find(|id| matches(id))
-                                .map(|_| 1usize)
-                                .unwrap_or(0)
-                        } else {
-                            player
-                                .graveyard
-                                .iter()
-                                .copied()
-                                .filter(&mut matches)
-                                .count()
-                        }
-                    })
-                    .unwrap_or(0),
-                Zone::Library => game
-                    .player(chooser_id)
-                    .map(|player| {
-                        if choose.top_only {
-                            player
-                                .library
-                                .last()
-                                .copied()
-                                .filter(|id| matches(id))
-                                .map(|_| 1usize)
-                                .unwrap_or(0)
-                        } else {
-                            player.library.iter().copied().filter(&mut matches).count()
-                        }
-                    })
-                    .unwrap_or(0),
-                _ => 0,
-            } as u32;
-
-            max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
-            continue;
-        }
-
-        if let Some(remove) =
-            effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
-        {
-            if !remove.display_x {
-                continue;
-            }
-
-            let matching = game
-                .object(source)
-                .map(|obj| {
-                    if obj.zone != Zone::Battlefield {
-                        return 0;
-                    }
-                    if let Some(counter_type) = remove.counter_type {
-                        obj.counters.get(&counter_type).copied().unwrap_or(0)
-                    } else {
-                        obj.counters.values().copied().sum::<u32>()
-                    }
-                })
-                .unwrap_or(0);
+        if let Some(matching) = effect.max_cost_x(game, source, caster) {
             max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
         }
     }
@@ -644,7 +498,7 @@ pub(super) fn format_alternative_method(
 
 /// Helper to extract modal spec from a spell's effects.
 ///
-/// Searches through the spell's effects to find if it has a modal effect (ChooseModeEffect).
+/// Searches through the spell's effects to find if it has a modal effect.
 /// For compositional effects like ConditionalEffect, this evaluates conditions at cast time
 /// to determine which branch's modal spec to use (e.g., Akroma's Will checking YouControlCommander).
 /// Returns the modal specification if found.
@@ -658,15 +512,10 @@ pub(super) fn extract_modal_spec_from_spell(
     // Check spell effects with context to handle conditional effects like Akroma's Will
     if let Some(ref effects) = obj.spell_effect {
         for effect in effects.all_effects() {
-            // Try context-aware extraction first (handles ConditionalEffect)
             if let Some(spec) = effect
                 .0
                 .get_modal_spec_with_context(game, controller, spell_id)
             {
-                return Some(spec);
-            }
-            // Fall back to simple extraction for direct modal effects
-            if let Some(spec) = effect.0.get_modal_spec() {
                 return Some(spec);
             }
         }

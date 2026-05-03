@@ -52,6 +52,10 @@ impl AddManaOfLandProducedTypesEffect {
 }
 
 impl EffectExecutor for AddManaOfLandProducedTypesEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

@@ -1,6 +1,6 @@
 //! Schedule delayed trigger effect implementation.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -87,6 +87,12 @@ impl ScheduleDelayedTriggerEffect {
 }
 
 impl EffectExecutor for ScheduleDelayedTriggerEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in self.effects.flattened_default_effects() {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

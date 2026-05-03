@@ -7,7 +7,7 @@
 use std::any::Any;
 
 use crate::costs::PaymentReason;
-use crate::effect::{EffectOutcome, Value};
+use crate::effect::{Effect, EffectMode, EffectOutcome, Value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -45,6 +45,36 @@ pub enum EffectExecutionCategory {
     DelayedTriggerRegistration,
     /// An effect whose primary purpose is to register replacement runtime state.
     ReplacementRegistration,
+}
+
+/// Whether a target requirement can reuse an earlier compatible target slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetReusePolicy {
+    /// Reuse a compatible target slot already declared by an earlier effect.
+    ReuseCompatiblePrevious,
+    /// Always declare a new target slot even if the spec matches an earlier one.
+    AlwaysDeclareNew,
+}
+
+/// Target selection metadata for a single effect.
+#[derive(Debug, Clone, Copy)]
+pub struct TargetSelectionProfile<'a> {
+    pub spec: &'a ChooseSpec,
+    pub description: &'static str,
+    pub min_targets: usize,
+    pub max_targets: Option<usize>,
+    pub reuse_policy: TargetReusePolicy,
+}
+
+/// Modal effect metadata used by target-selection planning.
+#[derive(Debug, Clone, Copy)]
+pub struct ModalEffectSpec<'a> {
+    pub modes: &'a [EffectMode],
+    pub max_modes: &'a Value,
+    pub min_modes: &'a Value,
+    pub allow_repeated_modes: bool,
+    pub disallow_previously_chosen_modes: bool,
+    pub disallow_previously_chosen_modes_this_turn: bool,
 }
 
 /// Trait for executing effects.
@@ -139,7 +169,8 @@ pub trait EffectExecutor:
     /// Used for target selection during spell/ability resolution.
     /// Returns `None` for effects that don't require targeting.
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        None
+        self.transparent_child_effect()
+            .and_then(|effect| effect.0.get_target_spec())
     }
 
     /// Return structured object specs that are useful to preview when this
@@ -150,6 +181,9 @@ pub trait EffectExecutor:
     /// that affect a proven set through an `ObjectFilter` can expose that set as
     /// `ChooseSpec::All(filter)`.
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        if let Some(effect) = self.transparent_child_effect() {
+            return effect.0.decision_related_object_specs();
+        }
         self.get_target_spec().cloned().into_iter().collect()
     }
 
@@ -185,6 +219,9 @@ pub trait EffectExecutor:
     ///
     /// Used for UI/logging during target selection.
     fn target_description(&self) -> &'static str {
+        if let Some(effect) = self.transparent_child_effect() {
+            return effect.0.target_description();
+        }
         "target"
     }
 
@@ -193,7 +230,34 @@ pub trait EffectExecutor:
     /// Used for determining min/max targets during target selection.
     /// Returns `None` to use default (exactly 1 target).
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        None
+        self.transparent_child_effect()
+            .and_then(|effect| effect.0.get_target_count())
+    }
+
+    /// Whether this target requirement should reuse a compatible earlier target.
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        self.transparent_child_effect()
+            .map_or(TargetReusePolicy::ReuseCompatiblePrevious, |effect| {
+                effect.0.target_reuse_policy()
+            })
+    }
+
+    /// Structured target selection metadata for this effect.
+    fn target_selection_profile(&self) -> Option<TargetSelectionProfile<'_>> {
+        let spec = self.get_target_spec()?;
+        let (min_targets, max_targets) = if let Some(target_count) = self.get_target_count() {
+            (target_count.min, target_count.max)
+        } else {
+            (1, Some(1))
+        };
+
+        Some(TargetSelectionProfile {
+            spec,
+            description: self.target_description(),
+            min_targets,
+            max_targets,
+            reuse_policy: self.target_reuse_policy(),
+        })
     }
 
     /// Get the modal specification for this effect, if it's a modal effect.
@@ -202,7 +266,14 @@ pub trait EffectExecutor:
     /// This method returns the information needed to present mode choices to the player.
     /// Returns `None` for non-modal effects.
     fn get_modal_spec(&self) -> Option<ModalSpec> {
-        None
+        self.transparent_child_effect()
+            .and_then(|effect| effect.0.get_modal_spec())
+    }
+
+    /// Return modal child-effect metadata for target-selection planning.
+    fn modal_effect_spec(&self) -> Option<ModalEffectSpec<'_>> {
+        self.transparent_child_effect()
+            .and_then(|effect| effect.modal_effect_spec())
     }
 
     /// Get the modal specification with game context, allowing conditional evaluation.
@@ -303,6 +374,81 @@ pub trait EffectExecutor:
         None
     }
 
+    /// Return the semantically transparent child effect for wrappers whose
+    /// metadata should be inherited from a single inner effect.
+    fn transparent_child_effect(&self) -> Option<&Effect> {
+        None
+    }
+
+    /// Visit immediately nested runtime effects, if this effect is a wrapper or
+    /// composition effect.
+    ///
+    /// Implementations should expose only direct children. Recursive traversal is
+    /// provided by the default capability helpers below.
+    fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
+
+    /// Whether this effect is a resolution prelude that only prepares context
+    /// for following effects, such as tagging an object for a self-replacement.
+    fn is_resolution_prelude(&self) -> bool {
+        false
+    }
+
+    /// Whether this effect can consume an X value when used as a cost.
+    fn references_cost_x(&self) -> bool {
+        self.transparent_child_effect()
+            .is_some_and(|effect| effect.references_cost_x())
+    }
+
+    /// Maximum legal X value for this effect when used as a cost.
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        self.transparent_child_effect()
+            .and_then(|effect| effect.max_cost_x(game, source, controller))
+    }
+
+    /// Returns true when this effect is directly capable of adding mana.
+    ///
+    /// This is intentionally context-free, so compiler/runtime classification can
+    /// distinguish "may add mana" from "we can infer exact symbols right now".
+    fn directly_produces_mana(&self) -> bool {
+        false
+    }
+
+    /// Returns true if this effect or any nested child effect can add mana.
+    fn contains_mana_production(&self) -> bool {
+        if self.directly_produces_mana() {
+            return true;
+        }
+
+        let mut found = false;
+        self.visit_child_effects(&mut |effect| {
+            if !found && effect.contains_mana_production() {
+                found = true;
+            }
+        });
+        found
+    }
+
+    /// Returns true if this effect can add mana in the given game context.
+    ///
+    /// This recurses through composition effects via `visit_child_effects`.
+    fn could_produce_mana(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> bool {
+        if self.directly_produces_mana()
+            || self
+                .producible_mana_symbols(game, source, controller)
+                .is_some_and(|symbols| !symbols.is_empty())
+        {
+            return true;
+        }
+
+        let mut found = false;
+        self.visit_child_effects(&mut |effect| {
+            if !found && effect.could_produce_mana(game, source, controller) {
+                found = true;
+            }
+        });
+        found
+    }
+
     /// Returns mana symbols this effect can produce when used as a mana ability payload.
     ///
     /// This is a best-effort capability hook used by inference effects such as
@@ -315,6 +461,22 @@ pub trait EffectExecutor:
         _controller: PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
         None
+    }
+
+    /// Collect all inferable mana symbols from this effect subtree.
+    fn collect_producible_mana_symbols(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        out: &mut Vec<ManaSymbol>,
+    ) {
+        if let Some(symbols) = self.producible_mana_symbols(game, source, controller) {
+            out.extend(symbols);
+        }
+        self.visit_child_effects(&mut |effect| {
+            effect.collect_producible_mana_symbols(game, source, controller, out);
+        });
     }
 
     /// Downcast support for effect introspection.
@@ -465,5 +627,71 @@ mod tests {
                 EffectExecutionCategory::CostExecutable,
             ]
         );
+    }
+
+    #[test]
+    fn transparent_wrappers_inherit_target_and_modal_profiles() {
+        let targeted = crate::effect::Effect::with_id(
+            17,
+            crate::effect::Effect::deal_damage(1, crate::target::ChooseSpec::AnyTarget),
+        );
+        let profile = targeted
+            .target_selection_profile()
+            .expect("with-id wrapper should expose inner target profile");
+        assert_eq!(profile.spec, &crate::target::ChooseSpec::AnyTarget);
+        assert_eq!(profile.min_targets, 1);
+        assert_eq!(profile.max_targets, Some(1));
+
+        let modal = crate::effect::Effect::with_id(
+            18,
+            crate::effect::Effect::choose_one(vec![crate::effect::EffectMode::new(
+                "Deal damage",
+                vec![crate::effect::Effect::deal_damage(
+                    1,
+                    crate::target::ChooseSpec::AnyTarget,
+                )],
+            )]),
+        );
+        let modal_spec = modal
+            .modal_effect_spec()
+            .expect("with-id wrapper should expose inner modal profile");
+        assert_eq!(modal_spec.modes.len(), 1);
+        assert_eq!(modal_spec.min_modes, &crate::effect::Value::Fixed(1));
+        assert_eq!(modal_spec.max_modes, &crate::effect::Value::Fixed(1));
+    }
+
+    #[test]
+    fn target_only_profiles_force_new_target_slots() {
+        let effect = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(
+            crate::target::ChooseSpec::AnyTarget,
+        ));
+        let profile = effect
+            .target_selection_profile()
+            .expect("target-only effect should expose target profile");
+
+        assert_eq!(profile.spec, &crate::target::ChooseSpec::AnyTarget);
+        assert_eq!(profile.reuse_policy, TargetReusePolicy::AlwaysDeclareNew);
+    }
+
+    #[test]
+    fn resolution_prelude_and_cost_x_hooks_delegate_through_wrappers() {
+        assert!(crate::effect::Effect::tag_triggering_object("triggering").is_resolution_prelude());
+        assert!(crate::effect::Effect::tag_attached_to_source("attached").is_resolution_prelude());
+        assert!(
+            crate::effect::Effect::new(crate::effects::TaggedEffect::new(
+                "context",
+                crate::effect::Effect::new(crate::effects::SequenceEffect::new(Vec::new())),
+            ))
+            .is_resolution_prelude()
+        );
+
+        let cost = crate::effect::Effect::with_id(
+            19,
+            crate::effect::Effect::new(crate::effects::SacrificeEffect::you(
+                crate::filter::ObjectFilter::creature(),
+                crate::effect::Value::X,
+            )),
+        );
+        assert!(cost.references_cost_x());
     }
 }

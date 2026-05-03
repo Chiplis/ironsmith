@@ -13,6 +13,10 @@ use crate::mana::ManaSymbol;
 pub type AddManaOfChosenColorEffect = ironsmith_core::AddManaOfChosenColorEffect;
 
 impl EffectExecutor for AddManaOfChosenColorEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

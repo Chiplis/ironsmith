@@ -14,6 +14,10 @@ use crate::mana::ManaSymbol;
 pub type AddManaOfImprintedColorsEffect = ironsmith_core::AddManaOfImprintedColorsEffect;
 
 impl EffectExecutor for AddManaOfImprintedColorsEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

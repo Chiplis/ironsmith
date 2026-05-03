@@ -13,6 +13,10 @@ use crate::mana::ManaSymbol;
 pub type AddScaledManaEffect = ironsmith_core::AddScaledManaEffect;
 
 impl EffectExecutor for AddScaledManaEffect {
+    fn directly_produces_mana(&self) -> bool {
+        !self.mana.is_empty()
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

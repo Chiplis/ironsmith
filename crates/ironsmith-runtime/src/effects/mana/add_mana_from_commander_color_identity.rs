@@ -29,6 +29,10 @@ pub use ironsmith_core::AddManaFromCommanderColorIdentityEffect;
 /// let effect = AddManaFromCommanderColorIdentityEffect::you(1);
 /// ```
 impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

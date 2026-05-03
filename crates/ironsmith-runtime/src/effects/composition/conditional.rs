@@ -35,6 +35,15 @@ impl EffectExecutor for ConditionalEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for effect in &self.if_true {
+            visitor(effect);
+        }
+        for effect in &self.if_false {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -90,15 +99,10 @@ impl EffectExecutor for ConditionalEffect {
 
         // Recursively search through the effects in this branch
         for effect in effects_to_search {
-            // First try the context-aware version
             if let Some(spec) = effect
                 .0
                 .get_modal_spec_with_context(game, controller, source)
             {
-                return Some(spec);
-            }
-            // Fall back to the simple version
-            if let Some(spec) = effect.0.get_modal_spec() {
                 return Some(spec);
             }
         }

@@ -334,57 +334,11 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
     }
 }
 
-/// Extracted target information from an effect.
-pub struct ExtractedTarget<'a> {
-    pub spec: &'a ChooseSpec,
-    pub description: &'static str,
-    pub min_targets: usize,
-    pub max_targets: Option<usize>,
-}
+pub type ExtractedTarget<'a> = crate::effects::TargetSelectionProfile<'a>;
 
 /// Extract a ChooseSpec from an Effect, if it has one that requires selection.
 pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
-    // Use the EffectExecutor trait methods on the wrapped executor
-    effect.0.get_target_spec().map(|spec| {
-        // Check if the effect has a target count override
-        let (min_targets, max_targets) = if let Some(target_count) = effect.0.get_target_count() {
-            (target_count.min, target_count.max)
-        } else {
-            // Default: exactly 1 target
-            (1, Some(1))
-        };
-
-        ExtractedTarget {
-            spec,
-            description: effect.0.target_description(),
-            min_targets,
-            max_targets,
-        }
-    })
-}
-
-fn is_target_only_effect(effect: &Effect) -> bool {
-    effect
-        .downcast_ref::<crate::effects::TargetOnlyEffect>()
-        .is_some()
-        || wrapped_inner_effect(effect).is_some_and(is_target_only_effect)
-}
-
-fn wrapped_inner_effect(effect: &Effect) -> Option<&Effect> {
-    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        Some(&tagged.effect)
-    } else if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        Some(&with_id.effect)
-    } else if let Some(local_rewrite) = effect.downcast_ref::<crate::effects::LocalRewriteEffect>()
-    {
-        Some(&local_rewrite.effect)
-    } else if let Some(execute_with_source) =
-        effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
-    {
-        Some(&execute_with_source.effect)
-    } else {
-        None
-    }
+    effect.target_selection_profile()
 }
 
 #[derive(Clone)]
@@ -392,13 +346,15 @@ pub(super) struct DeclaredTarget {
     spec: ChooseSpec,
 }
 
-fn declare_target(effect: &Effect, spec: &ChooseSpec, declared: &mut Vec<DeclaredTarget>) {
-    if is_target_only_effect(effect)
+fn declare_target(profile: &ExtractedTarget<'_>, declared: &mut Vec<DeclaredTarget>) {
+    if profile.reuse_policy == crate::effects::TargetReusePolicy::AlwaysDeclareNew
         || !declared
             .iter()
-            .any(|declared| target_spec_reuses_declared_target(spec, &declared.spec))
+            .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
     {
-        declared.push(DeclaredTarget { spec: spec.clone() });
+        declared.push(DeclaredTarget {
+            spec: profile.spec.clone(),
+        });
     }
 }
 
@@ -425,34 +381,29 @@ fn target_spec_reuses_declared_target(candidate: &ChooseSpec, declared: &ChooseS
     }
 }
 
-fn effect_reuses_declared_target(
-    effect: &Effect,
-    spec: &ChooseSpec,
+fn profile_reuses_declared_target(
+    profile: &ExtractedTarget<'_>,
     declared: &[DeclaredTarget],
 ) -> bool {
-    !is_target_only_effect(effect)
+    profile.reuse_policy != crate::effects::TargetReusePolicy::AlwaysDeclareNew
         && declared
             .iter()
-            .any(|declared| target_spec_reuses_declared_target(spec, &declared.spec))
+            .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
 }
 
 pub(super) fn resolve_modal_mode_counts(
     game: &GameState,
     source_id: Option<ObjectId>,
-    choose_mode: &crate::effects::ChooseModeEffect,
+    modal: crate::effects::ModalEffectSpec<'_>,
 ) -> (usize, usize) {
     let max_modes = resolve_modal_count_value_for_source(
         game,
         source_id,
-        &choose_mode.choose_count,
-        choose_mode.modes.len().max(1),
+        modal.max_modes,
+        modal.modes.len().max(1),
     );
-    let min_modes = resolve_modal_count_value_for_source(
-        game,
-        source_id,
-        &choose_mode.min_choose_count,
-        max_modes,
-    );
+    let min_modes =
+        resolve_modal_count_value_for_source(game, source_id, modal.min_modes, max_modes);
     (min_modes, max_modes)
 }
 
@@ -481,9 +432,9 @@ pub(super) fn effect_mode_has_legal_targets_with_view(
     })
 }
 
-fn choose_mode_has_legal_targets_internal_with_view(
+fn modal_effect_has_legal_targets_internal_with_view(
     game: &GameState,
-    choose_mode: &crate::effects::ChooseModeEffect,
+    modal: crate::effects::ModalEffectSpec<'_>,
     caster: PlayerId,
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
@@ -491,11 +442,11 @@ fn choose_mode_has_legal_targets_internal_with_view(
     require_full_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    let (min_modes, max_modes) = resolve_modal_mode_counts(game, source_id, choose_mode);
+    let (min_modes, max_modes) = resolve_modal_mode_counts(game, source_id, modal);
     if min_modes > max_modes {
         return false;
     }
-    if choose_mode.modes.is_empty() || max_modes == 0 {
+    if modal.modes.is_empty() || max_modes == 0 {
         return min_modes == 0;
     }
 
@@ -504,11 +455,11 @@ fn choose_mode_has_legal_targets_internal_with_view(
         let mut seen_modes = std::collections::HashSet::new();
 
         for mode_idx in chosen_modes {
-            let Some(mode) = choose_mode.modes.get(*mode_idx) else {
+            let Some(mode) = modal.modes.get(*mode_idx) else {
                 return false;
             };
 
-            if !choose_mode.allow_repeated_modes && !seen_modes.insert(*mode_idx) {
+            if !modal.allow_repeated_modes && !seen_modes.insert(*mode_idx) {
                 return false;
             }
 
@@ -538,7 +489,7 @@ fn choose_mode_has_legal_targets_internal_with_view(
         };
     }
 
-    let legal_mode_count = choose_mode
+    let legal_mode_count = modal
         .modes
         .iter()
         .filter(|mode| {
@@ -564,7 +515,7 @@ fn choose_mode_has_legal_targets_internal_with_view(
         return true;
     }
 
-    if choose_mode.allow_repeated_modes {
+    if modal.allow_repeated_modes {
         legal_mode_count > 0
     } else {
         legal_mode_count >= min_modes
@@ -582,19 +533,19 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     require_full_mode_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let modes_for_this_choose_mode = if !*consumed_modal_selection {
+    if let Some(modal) = effect.modal_effect_spec() {
+        let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
             None
         };
-        return choose_mode_has_legal_targets_internal_with_view(
+        return modal_effect_has_legal_targets_internal_with_view(
             game,
-            choose_mode,
+            modal,
             caster,
             source_id,
-            modes_for_this_choose_mode,
+            modes_for_this_modal,
             declared_targets,
             require_full_mode_selection,
             view,
@@ -604,10 +555,10 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
-        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+        if profile_reuses_declared_target(&extracted, declared_targets) {
             return true;
         }
-        declare_target(effect, extracted.spec, declared_targets);
+        declare_target(&extracted, declared_targets);
         // For "any number" effects, we can cast even with no legal targets.
         if extracted.min_targets == 0 {
             return true;
@@ -684,16 +635,16 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
 ) {
-    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let modes_for_this_choose_mode = if !*consumed_modal_selection {
+    if let Some(modal) = effect.modal_effect_spec() {
+        let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
             None
         };
-        if let Some(chosen_modes) = modes_for_this_choose_mode {
+        if let Some(chosen_modes) = modes_for_this_modal {
             for mode_idx in chosen_modes {
-                if let Some(mode) = choose_mode.modes.get(*mode_idx) {
+                if let Some(mode) = modal.modes.get(*mode_idx) {
                     for inner in &mode.effects {
                         extract_target_requirements_from_effect_internal(
                             game,
@@ -715,10 +666,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
-        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+        if profile_reuses_declared_target(&extracted, declared_targets) {
             return;
         }
-        declare_target(effect, extracted.spec, declared_targets);
+        declare_target(&extracted, declared_targets);
         let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
@@ -742,18 +693,18 @@ fn count_target_selection_slots_from_effect_internal(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
-    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let modes_for_this_choose_mode = if !*consumed_modal_selection {
+    if let Some(modal) = effect.modal_effect_spec() {
+        let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
             None
         };
 
-        return modes_for_this_choose_mode
+        return modes_for_this_modal
             .into_iter()
             .flatten()
-            .filter_map(|mode_idx| choose_mode.modes.get(*mode_idx))
+            .filter_map(|mode_idx| modal.modes.get(*mode_idx))
             .map(|mode| {
                 mode.effects
                     .iter()
@@ -776,10 +727,10 @@ fn count_target_selection_slots_from_effect_internal(
     if !requires_target_selection(extracted.spec) {
         return 0;
     }
-    if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+    if profile_reuses_declared_target(&extracted, declared_targets) {
         return 0;
     }
-    declare_target(effect, extracted.spec, declared_targets);
+    declare_target(&extracted, declared_targets);
     1
 }
 
@@ -1219,17 +1170,17 @@ pub(super) fn collect_validation_target_specs_from_effect(
     declared_targets: &mut Vec<DeclaredTarget>,
     specs: &mut Vec<ChooseSpec>,
 ) {
-    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let modes_for_this_choose_mode = if !*consumed_modal_selection {
+    if let Some(modal) = effect.modal_effect_spec() {
+        let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
             chosen_modes
         } else {
             None
         };
 
-        if let Some(chosen_modes) = modes_for_this_choose_mode {
+        if let Some(chosen_modes) = modes_for_this_modal {
             for mode_idx in chosen_modes {
-                if let Some(mode) = choose_mode.modes.get(*mode_idx) {
+                if let Some(mode) = modal.modes.get(*mode_idx) {
                     for inner in &mode.effects {
                         collect_validation_target_specs_from_effect(
                             inner,
@@ -1248,10 +1199,10 @@ pub(super) fn collect_validation_target_specs_from_effect(
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
     {
-        if effect_reuses_declared_target(effect, extracted.spec, declared_targets) {
+        if profile_reuses_declared_target(&extracted, declared_targets) {
             return;
         }
-        declare_target(effect, extracted.spec, declared_targets);
+        declare_target(&extracted, declared_targets);
         specs.push(extracted.spec.clone());
     }
 }

@@ -77,6 +77,16 @@ impl EffectExecutor for VoteEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        if let VoteChoice::NamedOptions(options) = &self.choice {
+            for option in options {
+                for effect in &option.effects_per_vote {
+                    visitor(effect);
+                }
+            }
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

@@ -37,6 +37,15 @@ impl EffectExecutor for IfEffect {
         Box::new(self.clone())
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for effect in &self.then {
+            visitor(effect);
+        }
+        for effect in &self.else_ {
+            visitor(effect);
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

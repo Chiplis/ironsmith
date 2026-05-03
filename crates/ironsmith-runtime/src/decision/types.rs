@@ -641,8 +641,8 @@ pub(crate) fn activated_ability_uses_simple_precheck(
         && activated.activation_restrictions.is_empty()
         && activated.effects.iter().all(|effect| {
             effect
-                .downcast_ref::<crate::effects::ChooseModeEffect>()
-                .is_none_or(|choose_mode| !choose_mode.disallow_previously_chosen_modes)
+                .modal_effect_spec()
+                .is_none_or(|modal| !modal.disallow_previously_chosen_modes)
         })
 }
 

@@ -69,6 +69,22 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
         Some(self)
     }
 
+    fn references_cost_x(&self) -> bool {
+        self.display_x
+    }
+
+    fn max_cost_x(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        self.max_removable(game, source).ok()
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

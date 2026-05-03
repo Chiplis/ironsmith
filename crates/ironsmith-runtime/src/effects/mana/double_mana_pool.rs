@@ -32,6 +32,10 @@ impl DoubleManaPoolEffect {
 }
 
 impl EffectExecutor for DoubleManaPoolEffect {
+    fn directly_produces_mana(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

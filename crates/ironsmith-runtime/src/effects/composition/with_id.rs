@@ -32,6 +32,14 @@ impl EffectExecutor for WithIdEffect {
             .map(|_| self as &dyn CostExecutableEffect)
     }
 
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        visitor(&self.effect);
+    }
+
+    fn transparent_child_effect(&self) -> Option<&crate::effect::Effect> {
+        Some(&self.effect)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }

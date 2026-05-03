@@ -4,13 +4,12 @@
 //! for reference by subsequent effects in the same spell/ability.
 
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, EffectExecutor};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 /// Effect that prompts a player to choose objects matching a filter and tags them.
@@ -82,6 +81,167 @@ pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, Ex
     Ok(zones)
 }
 
+fn cost_candidate_count(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+) -> Result<usize, CostValidationError> {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let ctx = ExecutionContext::new(source, controller, &mut dm);
+    let filter_ctx = ctx.filter_context(game);
+    let chooser_id =
+        match crate::effects::helpers::resolve_player_filter(game, &effect.chooser, &ctx) {
+            Ok(player) => player,
+            Err(_) => controller,
+        };
+    let search_zones =
+        search_zones(effect).map_err(|err| CostValidationError::Other(format!("{err:?}")))?;
+    let top_only_limit = top_only_selection_limit(effect, None);
+
+    let matches_filter = |obj: &crate::object::Object| {
+        if effect.filter.other && obj.id == source {
+            return false;
+        }
+        effect.filter.matches(obj, &filter_ctx, game)
+    };
+
+    let hidden_zone_owner_ids =
+        |filter: &crate::filter::ObjectFilter| -> Vec<crate::ids::PlayerId> {
+            filter.owner.as_ref().map_or_else(
+                || vec![chooser_id],
+                |owner_filter| {
+                    game.players
+                        .iter()
+                        .map(|player| player.id)
+                        .filter(|player_id| owner_filter.matches_player(*player_id, &filter_ctx))
+                        .collect()
+                },
+            )
+        };
+
+    let mut total = 0usize;
+    for search_zone in search_zones {
+        match search_zone {
+            Zone::Battlefield => {
+                total += game
+                    .battlefield
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| matches_filter(obj))
+                    .count();
+            }
+            Zone::Hand => {
+                let mut hidden_zone_filter = effect.filter.clone();
+                hidden_zone_filter.owner = None;
+                let matches_hidden_filter = |obj: &crate::object::Object| {
+                    if effect.filter.other && obj.id == source {
+                        return false;
+                    }
+                    hidden_zone_filter.matches(obj, &filter_ctx, game)
+                };
+                total += hidden_zone_owner_ids(&effect.filter)
+                    .into_iter()
+                    .filter_map(|owner_id| game.player(owner_id))
+                    .flat_map(|player| player.hand.iter())
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| matches_hidden_filter(obj))
+                    .count();
+            }
+            Zone::Graveyard => {
+                let mut hidden_zone_filter = effect.filter.clone();
+                hidden_zone_filter.owner = None;
+                let matches_hidden_filter = |obj: &crate::object::Object| {
+                    if effect.filter.other && obj.id == source {
+                        return false;
+                    }
+                    hidden_zone_filter.matches(obj, &filter_ctx, game)
+                };
+                if effect.top_only {
+                    let mut zone_total = 0usize;
+                    'owners: for owner_id in hidden_zone_owner_ids(&effect.filter) {
+                        let Some(player) = game.player(owner_id) else {
+                            continue;
+                        };
+                        for obj in player
+                            .graveyard
+                            .iter()
+                            .rev()
+                            .filter_map(|&id| game.object(id))
+                        {
+                            if matches_hidden_filter(obj) {
+                                zone_total += 1;
+                                if zone_total >= top_only_limit {
+                                    break 'owners;
+                                }
+                            }
+                        }
+                    }
+                    total += zone_total;
+                } else {
+                    total += hidden_zone_owner_ids(&effect.filter)
+                        .into_iter()
+                        .filter_map(|owner_id| game.player(owner_id))
+                        .flat_map(|player| player.graveyard.iter())
+                        .filter_map(|&id| game.object(id))
+                        .filter(|obj| matches_hidden_filter(obj))
+                        .count();
+                }
+            }
+            Zone::Library => {
+                let mut hidden_zone_filter = effect.filter.clone();
+                hidden_zone_filter.owner = None;
+                let matches_hidden_filter = |obj: &crate::object::Object| {
+                    if effect.filter.other && obj.id == source {
+                        return false;
+                    }
+                    hidden_zone_filter.matches(obj, &filter_ctx, game)
+                };
+                if effect.top_only {
+                    let mut zone_total = 0usize;
+                    'owners: for owner_id in hidden_zone_owner_ids(&effect.filter) {
+                        let Some(player) = game.player(owner_id) else {
+                            continue;
+                        };
+                        for obj in player
+                            .library
+                            .iter()
+                            .rev()
+                            .filter_map(|&id| game.object(id))
+                        {
+                            if matches_hidden_filter(obj) {
+                                zone_total += 1;
+                                if zone_total >= top_only_limit {
+                                    break 'owners;
+                                }
+                            }
+                        }
+                    }
+                    total += zone_total;
+                } else {
+                    total += hidden_zone_owner_ids(&effect.filter)
+                        .into_iter()
+                        .filter_map(|owner_id| game.player(owner_id))
+                        .flat_map(|player| player.library.iter())
+                        .filter_map(|&id| game.object(id))
+                        .filter(|obj| matches_hidden_filter(obj))
+                        .count();
+                }
+            }
+            _ => {
+                total += game
+                    .objects_in_zone(search_zone)
+                    .into_iter()
+                    .filter_map(|id| game.object(id))
+                    .filter(|obj| matches_filter(obj))
+                    .count();
+            }
+        }
+    }
+
+    Ok(total)
+}
+
 impl EffectExecutor for ChooseObjectsEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -89,6 +249,24 @@ impl EffectExecutor for ChooseObjectsEffect {
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn references_cost_x(&self) -> bool {
+        self.count.dynamic_x
+    }
+
+    fn max_cost_x(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        cost_candidate_count(self, game, source, controller)
+            .ok()
+            .and_then(|count| u32::try_from(count).ok())
     }
 
     fn execute(
@@ -214,157 +392,11 @@ impl CostExecutableEffect for ChooseObjectsEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::effects::CostValidationError;
-        use crate::filter::FilterContext;
-
         if self.count.min == 0 {
             return Ok(());
         }
 
-        // Create a filter context for checking
-        let filter_ctx = FilterContext::new(controller).with_source(source);
-
-        // Resolve the chooser (for cost validation, usually "you")
-        let chooser_id = match self.chooser {
-            PlayerFilter::You => controller,
-            _ => controller, // Default to controller for validation
-        };
-
-        // Find candidates based on the zone - check the filter's zone if set
-        let Some(search_zone) = self.filter.zone.or(self.zone) else {
-            return Err(CostValidationError::Other(
-                "ChooseObjectsEffect requires an explicit search zone".to_string(),
-            ));
-        };
-        let top_only_limit = top_only_selection_limit(self, None);
-
-        let candidate_count = match search_zone {
-            Zone::Battlefield => game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| {
-                    // Apply "other" filter - exclude source
-                    if self.filter.other && obj.id == source {
-                        return false;
-                    }
-                    self.filter.matches(obj, &filter_ctx, game)
-                })
-                .count(),
-            Zone::Hand => {
-                if let Some(player) = game.player(chooser_id) {
-                    player
-                        .hand
-                        .iter()
-                        .filter_map(|&id| game.object(id))
-                        .filter(|obj| {
-                            // Apply "other" filter - exclude source
-                            if self.filter.other && obj.id == source {
-                                return false;
-                            }
-                            self.filter.matches(obj, &filter_ctx, game)
-                        })
-                        .count()
-                } else {
-                    0
-                }
-            }
-            Zone::Graveyard => {
-                if let Some(player) = game.player(chooser_id) {
-                    if self.top_only {
-                        player
-                            .graveyard
-                            .iter()
-                            .rev()
-                            .filter_map(|&id| game.object(id))
-                            .filter(|obj| {
-                                if self.filter.other && obj.id == source {
-                                    return false;
-                                }
-                                self.filter.matches(obj, &filter_ctx, game)
-                            })
-                            .take(top_only_limit)
-                            .count()
-                    } else {
-                        player
-                            .graveyard
-                            .iter()
-                            .filter_map(|&id| game.object(id))
-                            .filter(|obj| {
-                                if self.filter.other && obj.id == source {
-                                    return false;
-                                }
-                                self.filter.matches(obj, &filter_ctx, game)
-                            })
-                            .count()
-                    }
-                } else {
-                    0
-                }
-            }
-            Zone::Library => {
-                let owner_ids: Vec<_> = if let Some(owner_filter) = &self.filter.owner {
-                    game.players
-                        .iter()
-                        .map(|player| player.id)
-                        .filter(|player_id| owner_filter.matches_player(*player_id, &filter_ctx))
-                        .collect()
-                } else {
-                    vec![chooser_id]
-                };
-                if self.top_only {
-                    let mut total = 0usize;
-                    'owners: for owner_id in owner_ids {
-                        let Some(player) = game.player(owner_id) else {
-                            continue;
-                        };
-                        for obj in player
-                            .library
-                            .iter()
-                            .rev()
-                            .filter_map(|&id| game.object(id))
-                        {
-                            if self.filter.other && obj.id == source {
-                                continue;
-                            }
-                            if self.filter.matches(obj, &filter_ctx, game) {
-                                total += 1;
-                                if total >= top_only_limit {
-                                    break 'owners;
-                                }
-                            }
-                        }
-                    }
-                    total
-                } else {
-                    owner_ids
-                        .into_iter()
-                        .filter_map(|owner_id| game.player(owner_id))
-                        .flat_map(|player| player.library.iter())
-                        .filter_map(|&id| game.object(id))
-                        .filter(|obj| {
-                            if self.filter.other && obj.id == source {
-                                return false;
-                            }
-                            self.filter.matches(obj, &filter_ctx, game)
-                        })
-                        .count()
-                }
-            }
-            _ => {
-                // For other zones, check generic
-                game.objects_in_zone(search_zone)
-                    .into_iter()
-                    .filter_map(|id| game.object(id))
-                    .filter(|obj| {
-                        if self.filter.other && obj.id == source {
-                            return false;
-                        }
-                        self.filter.matches(obj, &filter_ctx, game)
-                    })
-                    .count()
-            }
-        };
+        let candidate_count = cost_candidate_count(self, game, source, controller)?;
 
         if candidate_count < self.count.min {
             return Err(CostValidationError::Other(format!(
@@ -384,6 +416,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::target::PlayerFilter;
     use crate::test_prelude::*;
     use crate::types::CardType;
 

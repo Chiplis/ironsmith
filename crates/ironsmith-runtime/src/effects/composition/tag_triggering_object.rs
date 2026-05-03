@@ -13,6 +13,10 @@ impl EffectExecutor for TagTriggeringObjectEffect {
         Box::new(self.clone())
     }
 
+    fn is_resolution_prelude(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

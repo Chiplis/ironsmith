@@ -42,6 +42,14 @@ fn resolve_zone_replacements(
 }
 
 impl EffectExecutor for LocalRewriteEffect {
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        visitor(&self.effect);
+    }
+
+    fn transparent_child_effect(&self) -> Option<&Effect> {
+        Some(&self.effect)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

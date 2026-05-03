@@ -4,8 +4,8 @@
 //! whose rules text only establishes a target (e.g., "Target permanent.").
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
+use crate::effects::{EffectExecutor, TargetReusePolicy};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -42,6 +42,10 @@ impl EffectExecutor for TargetOnlyEffect {
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         Some(self.target.count())
+    }
+
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        TargetReusePolicy::AlwaysDeclareNew
     }
 
     fn target_description(&self) -> &'static str {

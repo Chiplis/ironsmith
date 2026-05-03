@@ -19,11 +19,10 @@ fn check_mode_legal(
     source: ObjectId,
 ) -> bool {
     for effect in &mode.effects {
-        if let Some(target_spec) = effect.0.get_target_spec() {
-            let legal_targets = compute_legal_targets(game, target_spec, controller, Some(source));
+        if let Some(profile) = effect.target_selection_profile() {
+            let legal_targets = compute_legal_targets(game, profile.spec, controller, Some(source));
             // If effect requires targets (min > 0) and none exist, mode is illegal.
-            // Most effects require at least one target unless explicitly "up to".
-            if legal_targets.is_empty() {
+            if legal_targets.len() < profile.min_targets {
                 return false;
             }
         }
