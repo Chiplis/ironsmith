@@ -382,6 +382,7 @@ pub(crate) struct CastLegalityContext<'a> {
     pub(crate) game: &'a GameState,
     pub(crate) player: PlayerId,
     pub(crate) view: &'a DerivedGameView<'a>,
+    pub(crate) allow_library_search_cast_timing: bool,
     pub(crate) has_battlefield_spell_cost_modifiers: bool,
     pub(crate) has_temporary_spell_cost_reductions: bool,
     pub(crate) minimum_total_spell_mana_payment: Option<u32>,
@@ -399,6 +400,7 @@ impl<'a> CastLegalityContext<'a> {
             game,
             player,
             view,
+            allow_library_search_cast_timing: false,
             has_battlefield_spell_cost_modifiers: view.has_battlefield_spell_cost_modifiers(),
             has_temporary_spell_cost_reductions: game
                 .effect_store
@@ -409,6 +411,11 @@ impl<'a> CastLegalityContext<'a> {
             strips_life_pips_for_casts: game.player_cant_pay_life_to_cast_or_activate(player),
             perf: RefCell::new(CastLegalityPerfBreakdown::default()),
         }
+    }
+
+    pub(crate) fn with_library_search_cast_timing(mut self) -> Self {
+        self.allow_library_search_cast_timing = true;
+        self
     }
 
     pub(crate) fn snapshot_perf(&self) -> CastLegalityPerfBreakdown {

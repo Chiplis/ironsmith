@@ -1378,6 +1378,16 @@ pub struct PlayerControlEffect {
     pub expires_on_turn: Option<u32>,
 }
 
+/// A currently resolving scope that causes one player to control another
+/// player's decisions.
+#[derive(Debug, Clone)]
+pub struct ScopedPlayerControlEffect {
+    pub controller: PlayerId,
+    pub target: PlayerId,
+    pub source: Option<StableId>,
+    pub timestamp: u64,
+}
+
 /// A target for spells or abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Target {
@@ -1680,6 +1690,9 @@ pub struct GameState {
     /// Active and pending player-control effects.
     pub player_control_effects: Vec<PlayerControlEffect>,
 
+    /// Player-control effects active only while a resolving instruction is in scope.
+    pub scoped_player_control_effects: Vec<ScopedPlayerControlEffect>,
+
     /// Timestamp counter for player-control effects.
     pub player_control_timestamp: u64,
 
@@ -1853,6 +1866,7 @@ impl GameState {
             active_dungeons: HashMap::new(),
             completed_dungeons: HashMap::new(),
             player_control_effects: Vec::new(),
+            scoped_player_control_effects: Vec::new(),
             player_control_timestamp: 0,
             combat_choice_control_effects: Vec::new(),
             combat_choice_control_timestamp: 0,
@@ -5709,9 +5723,40 @@ impl GameState {
         self.player_control_effects.push(effect);
     }
 
+    /// Add a player-control effect for the currently resolving instruction.
+    ///
+    /// The returned token should be passed to `remove_scoped_player_control`
+    /// when the instruction finishes. Interactive prompts may intentionally
+    /// leave the scope present in the partial game state so UI snapshots can
+    /// route the pending decision to the controlling player.
+    pub fn add_scoped_player_control(
+        &mut self,
+        controller: PlayerId,
+        target: PlayerId,
+        source: Option<ObjectId>,
+    ) -> u64 {
+        self.player_control_timestamp = self.player_control_timestamp.saturating_add(1);
+        let timestamp = self.player_control_timestamp;
+        let source = source.and_then(|id| self.object(id).map(|obj| obj.stable_id));
+        self.scoped_player_control_effects
+            .push(ScopedPlayerControlEffect {
+                controller,
+                target,
+                source,
+                timestamp,
+            });
+        timestamp
+    }
+
+    /// Remove a resolving-scope player-control effect.
+    pub fn remove_scoped_player_control(&mut self, token: u64) {
+        self.scoped_player_control_effects
+            .retain(|effect| effect.timestamp != token);
+    }
+
     /// Return the controlling player for the given player, if any effect applies.
     pub fn controlling_player_for(&self, player: PlayerId) -> PlayerId {
-        let mut best: Option<&PlayerControlEffect> = None;
+        let mut best: Option<(PlayerId, u64)> = None;
         for effect in &self.player_control_effects {
             if !effect.active || effect.target != player {
                 continue;
@@ -5723,12 +5768,27 @@ impl GameState {
             {
                 continue;
             }
-            if best.is_none_or(|current| effect.timestamp > current.timestamp) {
-                best = Some(effect);
+            if best.is_none_or(|(_, timestamp)| effect.timestamp > timestamp) {
+                best = Some((effect.controller, effect.timestamp));
             }
         }
 
-        best.map(|effect| effect.controller).unwrap_or(player)
+        for effect in &self.scoped_player_control_effects {
+            if effect.target != player {
+                continue;
+            }
+            if effect
+                .source
+                .is_some_and(|stable| !self.is_source_on_battlefield(stable))
+            {
+                continue;
+            }
+            if best.is_none_or(|(_, timestamp)| effect.timestamp > timestamp) {
+                best = Some((effect.controller, effect.timestamp));
+            }
+        }
+
+        best.map(|(controller, _)| controller).unwrap_or(player)
     }
 
     /// Activate pending player-control effects for the current active player.

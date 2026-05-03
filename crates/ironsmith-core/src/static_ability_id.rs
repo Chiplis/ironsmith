@@ -194,6 +194,9 @@ pub enum StaticAbilityId {
     AllPlayersLookAtTopCardsOfLibraries,
     AllPlayersLookAtYourTopLibraryCard,
     OpponentsPlayWithHandsRevealed,
+    ControlOpponentsWhileSearchingLibraries,
+    OpponentSearchExileFoundCards,
+    CastThisCardFromLibraryWhileSearching,
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
@@ -412,6 +415,9 @@ impl StaticAbilityId {
             | AllPlayersLookAtTopCardsOfLibraries
             | AllPlayersLookAtYourTopLibraryCard
             | OpponentsPlayWithHandsRevealed
+            | ControlOpponentsWhileSearchingLibraries
+            | OpponentSearchExileFoundCards
+            | CastThisCardFromLibraryWhileSearching
             | LibraryOfLengDiscardReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard

@@ -777,6 +777,41 @@ fn casting_method_grants_flash_timing(
     )
 }
 
+fn casting_method_grants_library_search_timing(
+    game: &GameState,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> bool {
+    matches!(
+        casting_method,
+        CastingMethod::PlayFrom {
+            zone: Zone::Library,
+            ..
+        }
+    ) && spell.zone == Zone::Library
+        && game.current_has_static_ability_id(
+            spell_id,
+            crate::static_abilities::StaticAbilityId::CastThisCardFromLibraryWhileSearching,
+        )
+}
+
+fn casting_method_grants_special_timing(
+    ctx: &CastLegalityContext<'_>,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> bool {
+    casting_method_grants_flash_timing(ctx.game, ctx.player, spell, casting_method)
+        || (ctx.allow_library_search_cast_timing
+            && casting_method_grants_library_search_timing(
+                ctx.game,
+                spell,
+                spell_id,
+                casting_method,
+            ))
+}
+
 pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {
     crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(3)]])
 }
@@ -1026,7 +1061,9 @@ pub(crate) fn can_cast_spell_with_context(
     ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
 
     let timing_started_at = PerfTimer::start();
-    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view) {
+    if !has_valid_spell_timing_with_view(game, player, spell_for_checks, spell.id, view)
+        && !casting_method_grants_special_timing(ctx, spell_for_checks, spell.id, casting_method)
+    {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
         ctx.add_total_ms(total_started_at.elapsed_ms());
         return false;
@@ -1245,7 +1282,7 @@ pub(crate) fn can_cast_with_cost_with_context(
 
     let timing_started_at = PerfTimer::start();
     if !has_valid_spell_timing_with_view(game, player, spell, spell_id, view)
-        && !casting_method_grants_flash_timing(game, player, spell, casting_method)
+        && !casting_method_grants_special_timing(ctx, spell, spell_id, casting_method)
     {
         ctx.add_timing_ms(timing_started_at.elapsed_ms());
         return false;

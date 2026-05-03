@@ -24,6 +24,7 @@ mod reveal_top;
 mod scry;
 mod search_library;
 mod search_library_slots;
+pub(crate) mod search_overrides;
 mod shuffle_graveyard_into_library;
 mod shuffle_hand_and_graveyard_into_library;
 mod shuffle_library;

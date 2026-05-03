@@ -514,6 +514,7 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
+    let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
     for ability in &token.abilities {
         match &ability.kind {
             AbilityKind::Static(static_ability) => {
@@ -535,7 +536,18 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                         .as_str(),
                 ));
             }
-            AbilityKind::Triggered(_) | AbilityKind::Activated(_) => {
+            AbilityKind::Triggered(triggered) => {
+                if !has_non_toxic_poison_trigger
+                    && let Some(keyword) = describe_structural_toxic_keyword(triggered)
+                {
+                    keyword_texts.push(keyword.to_ascii_lowercase());
+                    continue;
+                }
+                extra_ability_texts.push(quote_token_granted_ability_text(
+                    describe_inline_ability(ability).as_str(),
+                ));
+            }
+            AbilityKind::Activated(_) => {
                 extra_ability_texts.push(quote_token_granted_ability_text(
                     describe_inline_ability(ability).as_str(),
                 ));
@@ -552,7 +564,11 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
     if !extra_ability_texts.is_empty() {
         if keyword_texts.is_empty() {
-            text.push_str(". It has ");
+            if token_extra_abilities_prefer_with_clause(&extra_ability_texts) {
+                text.push_str(" with ");
+            } else {
+                text.push_str(". It has ");
+            }
         } else {
             text.push_str(" and ");
         }
@@ -564,6 +580,28 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
 
     text
+}
+
+fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
+    matches!(abilities, [ability] if ability == "\"This token can't block.\"")
+}
+
+fn token_has_non_toxic_poison_trigger(token: &CardDefinition) -> bool {
+    token.abilities.iter().any(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return false;
+        };
+        describe_structural_toxic_keyword(triggered).is_none()
+            && triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::PoisonCountersEffect>()
+                        .is_some()
+                })
+    })
 }
 
 pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
@@ -1840,7 +1878,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact == "create a 1/1 red satyr creature token. it has \"this token can't block.\""
     {
-        return "Create a 1/1 red Satyr creature token with \"Can't block.\"".to_string();
+        return "Create a 1/1 red Satyr creature token with \"This token can't block.\""
+            .to_string();
     }
     if lower_compact == "this creature source is every creature type." {
         return "Mistform Ultimus is every creature type.".to_string();
@@ -5391,6 +5430,9 @@ pub(super) fn describe_card_count(value: &Value) -> String {
         }
         Value::CardTypesAmong(_) | Value::CardTypesInGraveyard(_) => {
             format!("X cards, where X is {}", describe_value(value))
+        }
+        value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo) => {
+            format!("cards equal to {}", describe_value(value.unhinted()))
         }
         _ => {
             if let Some(backref) = describe_effect_count_backref(value) {
@@ -10522,6 +10564,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::LifeTotal(PlayerFilter::You),
+                crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+            {
+                return format!("you have {count} or less life");
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
@@ -10829,6 +10879,18 @@ mod tests {
     }
 
     #[test]
+    fn describe_life_total_at_most_condition_uses_or_less_life_surface() {
+        assert_eq!(
+            describe_condition(&Condition::ValueComparison {
+                left: Value::LifeTotal(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: Value::Fixed(5),
+            }),
+            "you have 5 or less life"
+        );
+    }
+
+    #[test]
     fn normalize_for_each_opponent_clause_inside_trigger_text() {
         assert_eq!(
             normalize_common_semantic_phrasing(
@@ -10923,6 +10985,108 @@ mod tests {
                 "Target creature gains \"When this creature dies, create a Wicked Role token attached to it.\" until end of turn."
             ),
             "Target creature gains \"When this creature dies, create a Wicked Role token attached to it.\" until end of turn."
+        );
+    }
+
+    #[test]
+    fn cant_block_token_blueprint_uses_with_clause() {
+        let token = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(1),
+            "Fungus",
+        )
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Fungus])
+        .color_indicator(crate::ColorSet::BLACK)
+        .power_toughness(crate::PowerToughness::fixed(1, 1))
+        .with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::cant_block(),
+        ))
+        .build();
+
+        assert_eq!(
+            describe_token_blueprint(&token),
+            "1/1 black Fungus creature token with \"This token can't block.\""
+        );
+    }
+
+    #[test]
+    fn toxic_token_blueprint_keeps_toxic_as_keyword() {
+        let toxic = Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
+                )]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let token = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(1),
+            "Phyrexian",
+        )
+        .token()
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Mite])
+        .power_toughness(crate::PowerToughness::fixed(1, 1))
+        .with_abilities(vec![
+            toxic,
+            Ability::static_ability(crate::static_abilities::StaticAbility::cant_block()),
+        ])
+        .build();
+
+        assert_eq!(
+            describe_token_blueprint(&token),
+            "1/1 colorless Phyrexian Mite artifact creature token with toxic 1 and \"This token can't block.\""
+        );
+    }
+
+    #[test]
+    fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
+        let toxic = Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
+                )]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let poison_trigger = Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_damage_to_player(
+                    PlayerFilter::Any,
+                    None,
+                ),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::PoisonCountersEffect::new(1, PlayerFilter::You),
+                )]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let token = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(1),
+            "Snake",
+        )
+        .token()
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Snake])
+        .power_toughness(crate::PowerToughness::fixed(1, 1))
+        .with_abilities(vec![toxic, poison_trigger])
+        .build();
+
+        assert_eq!(
+            describe_token_blueprint(&token),
+            "1/1 colorless Snake artifact creature token. It has \"Toxic 1\" and \"Whenever this token deals damage to a player: you get a poison counter\""
         );
     }
 }

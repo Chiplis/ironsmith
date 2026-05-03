@@ -7,6 +7,10 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::cards::search_overrides::{
+    begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
+    finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
+};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
@@ -30,143 +34,163 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let search_override = opposition_agent_search(game, chooser_id, player_id);
 
         if !game.can_search_library(chooser_id) {
             return Ok(EffectOutcome::prevented());
         }
-
-        let search_event = TriggerEvent::new_with_provenance(
-            SearchLibraryEvent::new(chooser_id, Some(player_id)),
-            ctx.provenance,
-        );
-        let shuffle_event = TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        );
-
-        let mut chosen: Vec<ObjectSnapshot> = ctx
-            .get_tagged_all(self.progress_tag.as_str())
-            .cloned()
-            .unwrap_or_default();
-        if chosen.len() > self.slots.len() {
-            chosen.clear();
-            ctx.clear_object_tag(self.progress_tag.as_str());
-        }
-
-        for slot in self.slots.iter().skip(chosen.len()) {
-            let filter_ctx = ctx.filter_context(game);
-            let already_chosen: HashSet<ObjectId> =
-                chosen.iter().map(|snapshot| snapshot.object_id).collect();
-            let matching_cards: Vec<ObjectId> = game
-                .player(player_id)
-                .map(|player| {
-                    let candidates: Vec<ObjectId> = match slot.filter.zone {
-                        Some(Zone::Graveyard) => player.graveyard.clone(),
-                        Some(Zone::Library) => player.library.clone(),
-                        None => player
-                            .library
-                            .iter()
-                            .chain(player.graveyard.iter())
-                            .copied()
-                            .collect(),
-                        _ => player.library.clone(),
-                    };
-                    candidates
-                        .into_iter()
-                        .filter(|id| !already_chosen.contains(id))
-                        .filter(|id| {
-                            game.object(*id)
-                                .is_some_and(|obj| slot.filter.matches(obj, &filter_ctx, game))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            if matching_cards.is_empty() {
-                continue;
-            }
-
-            let chosen_card = if slot.optional {
-                make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    chooser_id,
-                    Some(ctx.source),
-                    SearchSpec::new(ctx.source, matching_cards, self.reveal),
-                    FallbackStrategy::FirstOption,
-                )
-            } else {
-                make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    chooser_id,
-                    Some(ctx.source),
-                    SearchSpec::mandatory(ctx.source, matching_cards, self.reveal),
-                    FallbackStrategy::FirstOption,
-                )
-            };
-
+        let search_control =
+            begin_opposition_agent_search_control(game, chooser_id, search_override);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            offer_library_search_casts(game, ctx, player_id)?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0).with_event(search_event));
+                return Ok(EffectOutcome::count(0));
             }
 
-            let Some(card_id) = chosen_card else {
-                continue;
-            };
-            let Some(snapshot) = game
-                .object(card_id)
-                .map(|obj| ObjectSnapshot::from_object(obj, game))
-            else {
-                continue;
-            };
-            chosen.push(snapshot.clone());
-            ctx.tag_object(self.progress_tag.clone(), snapshot);
-        }
+            let search_event = TriggerEvent::new_with_provenance(
+                SearchLibraryEvent::new(chooser_id, Some(player_id)),
+                ctx.provenance,
+            );
+            let shuffle_event = TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+                ctx.provenance,
+            );
 
-        let mut moved_ids = Vec::new();
-        let chosen_ids: Vec<ObjectId> = chosen.iter().map(|snapshot| snapshot.object_id).collect();
-
-        if self.destination == Zone::Library {
-            if let Some(player) = game.player_mut(player_id) {
-                player.library.retain(|id| !chosen_ids.contains(id));
+            let mut chosen: Vec<ObjectSnapshot> = ctx
+                .get_tagged_all(self.progress_tag.as_str())
+                .cloned()
+                .unwrap_or_default();
+            if chosen.len() > self.slots.len() {
+                chosen.clear();
+                ctx.clear_object_tag(self.progress_tag.as_str());
             }
-            game.shuffle_player_library(player_id);
-            if let Some(player) = game.player_mut(player_id) {
-                for card_id in chosen_ids {
-                    player.library.push(card_id);
-                    moved_ids.push(card_id);
+
+            for slot in self.slots.iter().skip(chosen.len()) {
+                let filter_ctx = ctx.filter_context(game);
+                let already_chosen: HashSet<ObjectId> =
+                    chosen.iter().map(|snapshot| snapshot.object_id).collect();
+                let matching_cards: Vec<ObjectId> = game
+                    .player(player_id)
+                    .map(|player| {
+                        let candidates: Vec<ObjectId> = match slot.filter.zone {
+                            Some(Zone::Graveyard) => player.graveyard.clone(),
+                            Some(Zone::Library) => player.library.clone(),
+                            None => player
+                                .library
+                                .iter()
+                                .chain(player.graveyard.iter())
+                                .copied()
+                                .collect(),
+                            _ => player.library.clone(),
+                        };
+                        candidates
+                            .into_iter()
+                            .filter(|id| !already_chosen.contains(id))
+                            .filter(|id| {
+                                game.object(*id)
+                                    .is_some_and(|obj| slot.filter.matches(obj, &filter_ctx, game))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                if matching_cards.is_empty() {
+                    continue;
                 }
-            }
-        } else {
-            for card_id in chosen_ids {
-                let new_id = if self.destination == Zone::Battlefield {
-                    match move_to_battlefield_with_options(
+
+                let chosen_card = if slot.optional {
+                    make_decision_with_fallback(
                         game,
-                        ctx,
-                        card_id,
-                        BattlefieldEntryOptions::preserve(false),
-                    ) {
-                        BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
-                        BattlefieldEntryOutcome::Prevented => None,
-                    }
+                        &mut ctx.decision_maker,
+                        chooser_id,
+                        Some(ctx.source),
+                        SearchSpec::new(ctx.source, matching_cards, self.reveal),
+                        FallbackStrategy::FirstOption,
+                    )
                 } else {
-                    game.move_object_by_effect(card_id, self.destination)
+                    make_decision_with_fallback(
+                        game,
+                        &mut ctx.decision_maker,
+                        chooser_id,
+                        Some(ctx.source),
+                        SearchSpec::mandatory(ctx.source, matching_cards, self.reveal),
+                        FallbackStrategy::FirstOption,
+                    )
                 };
 
-                if let Some(new_id) = new_id {
-                    moved_ids.push(new_id);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0).with_event(search_event));
                 }
+
+                let Some(card_id) = chosen_card else {
+                    continue;
+                };
+                let Some(snapshot) = game
+                    .object(card_id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+                else {
+                    continue;
+                };
+                chosen.push(snapshot.clone());
+                ctx.tag_object(self.progress_tag.clone(), snapshot);
             }
-            game.shuffle_player_library(player_id);
-        }
 
-        ctx.clear_object_tag(self.progress_tag.as_str());
+            let mut moved_ids = Vec::new();
+            let chosen_ids: Vec<ObjectId> =
+                chosen.iter().map(|snapshot| snapshot.object_id).collect();
 
-        if moved_ids.is_empty() {
-            Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
-        } else {
-            Ok(EffectOutcome::with_objects(moved_ids).with_events([search_event, shuffle_event]))
+            if self.destination == Zone::Library && search_override.is_none() {
+                if let Some(player) = game.player_mut(player_id) {
+                    player.library.retain(|id| !chosen_ids.contains(id));
+                }
+                game.shuffle_player_library(player_id);
+                if let Some(player) = game.player_mut(player_id) {
+                    for card_id in chosen_ids {
+                        player.library.push(card_id);
+                        moved_ids.push(card_id);
+                    }
+                }
+            } else {
+                for card_id in chosen_ids {
+                    let new_id = if let Some(search) = search_override {
+                        exile_found_cards_for_opposition_agent(game, &[card_id], search)
+                            .first()
+                            .copied()
+                    } else if self.destination == Zone::Battlefield {
+                        match move_to_battlefield_with_options(
+                            game,
+                            ctx,
+                            card_id,
+                            BattlefieldEntryOptions::preserve(false),
+                        ) {
+                            BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
+                            BattlefieldEntryOutcome::Prevented => None,
+                        }
+                    } else {
+                        game.move_object_by_effect(card_id, self.destination)
+                    };
+
+                    if let Some(new_id) = new_id {
+                        moved_ids.push(new_id);
+                    }
+                }
+                game.shuffle_player_library(player_id);
+            }
+
+            ctx.clear_object_tag(self.progress_tag.as_str());
+
+            if moved_ids.is_empty() {
+                Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
+            } else {
+                Ok(EffectOutcome::with_objects(moved_ids)
+                    .with_events([search_event, shuffle_event]))
+            }
+        })();
+
+        if result.is_err() || !ctx.decision_maker.awaiting_choice() {
+            finish_opposition_agent_search_control(game, search_control);
         }
+        result
     }
 }
 

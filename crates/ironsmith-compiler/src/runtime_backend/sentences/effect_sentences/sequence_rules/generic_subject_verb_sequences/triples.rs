@@ -7,9 +7,9 @@ use super::super::super::dispatch_entry::{
     parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, LibraryConsultModeAst, LibraryConsultStopRuleAst,
-    ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
+    LibraryConsultStopRuleAst, ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::find_word_sequence_start;
@@ -333,6 +333,141 @@ pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     ));
 
     Ok(Some(effects))
+}
+
+pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first_effects = effect_sentences::parse_effect_chain(&first_tokens)?;
+    let (mut search_filter, count, count_value, chooser, library_player, search_mode) =
+        match first_effects.as_slice() {
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::SearchLibrary {
+                            filter,
+                            chooser,
+                            player,
+                            search_mode,
+                            count,
+                            count_value,
+                            ..
+                        },
+                    ..
+                }),
+            ] => (
+                filter.clone(),
+                *count,
+                count_value.clone(),
+                *chooser,
+                *player,
+                *search_mode,
+            ),
+            [
+                EffectAst::ChooseObjectsAcrossZones {
+                    filter,
+                    count,
+                    count_value,
+                    player,
+                    zones,
+                    search_mode,
+                    ..
+                },
+            ] if zones.as_slice() == [Zone::Library] => (
+                filter.clone(),
+                *count,
+                count_value.clone(),
+                *player,
+                *player,
+                search_mode.unwrap_or(crate::effect::SearchSelectionMode::Exact),
+            ),
+            _ => return Ok(None),
+        };
+    if count.min != 2 || count.max != Some(2) || count_value.is_some() {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second_tokens).word_refs();
+    let content_words = second_words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    let puts_one_hand = slice_starts_with(&content_words, &["put", "one", "into", "your", "hand"])
+        || slice_starts_with(
+            &content_words,
+            &["put", "one", "of", "them", "into", "your", "hand"],
+        );
+    let puts_other_graveyard =
+        find_word_sequence_start(&content_words, &["other", "into", "your", "graveyard"]).is_some()
+            || find_word_sequence_start(&content_words, &["other", "into", "graveyard"]).is_some();
+    if !puts_one_hand || !puts_other_graveyard {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let third_words = TokenWordView::new(&third_tokens).word_refs();
+    if !matches!(third_words.as_slice(), ["then", "shuffle"] | ["shuffle"]) {
+        return Ok(None);
+    }
+
+    search_filter.zone = Some(Zone::Library);
+    let searched_tag = helper_tag_for_tokens(&first_tokens, "searched");
+    let hand_tag = helper_tag_for_tokens(&second_tokens, "hand");
+    let mut hand_filter = ObjectFilter::tagged(searched_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+    let iterated_is_hand_card =
+        ObjectFilter::default().same_stable_id_as_tagged(TagKey::from(IT_TAG));
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter: search_filter,
+            count,
+            count_value,
+            player: chooser,
+            tag: searched_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: Some(search_mode),
+        },
+        EffectAst::ChooseObjects {
+            filter: hand_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: chooser,
+            tag: hand_tag.clone(),
+        },
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(hand_tag.clone(), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::ForEachTagged {
+            tag: searched_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(hand_tag, iterated_is_hand_card),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            library_player,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ),
+    ]))
 }
 
 pub(crate) fn parse_search_face_down_exile_conditional_cast_else_hand(

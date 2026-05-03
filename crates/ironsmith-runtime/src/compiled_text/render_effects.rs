@@ -766,7 +766,7 @@ fn describe_each_player_may_discard_hand_draw_commander_value(
     if draw.player != PlayerFilter::IteratedPlayer {
         return None;
     }
-    let Value::GreatestManaValue(filter) = &draw.count else {
+    let Value::GreatestManaValue(filter) = draw.count.unhinted() else {
         return None;
     };
     greatest_commander_mana_value_owned_by_iterated(filter).then(|| {
@@ -2822,6 +2822,19 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_target_opponent_create_tokens_with_count(&raw_effects) {
         return compact;
     }
+    if let [sacrifice_effect, extra_turn_effect] = raw_effects.as_slice()
+        && let Some(sacrifice) =
+            sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        && matches!(sacrifice.target, ChooseSpec::Source)
+        && let Some(extra_turn) =
+            extra_turn_effect.downcast_ref::<crate::effects::ExtraTurnEffect>()
+        && extra_turn.player == PlayerFilter::You
+    {
+        return format!(
+            "Sacrifice {} and take an extra turn after this one",
+            describe_choose_spec(&sacrifice.target)
+        );
+    }
 
     let preserve_target_only_players = effects.iter().any(|effect| {
         effect
@@ -2874,6 +2887,78 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_exile_graveyard_reflexive_copy_artifact(&filtered) {
+        return compact;
+    }
+
+    fn describe_search_two_split_hand_graveyard(effects: &[&Effect]) -> Option<String> {
+        let [
+            search_effect,
+            choose_effect,
+            hand_effect,
+            graveyard_effect,
+            shuffle_effect,
+        ] = effects
+        else {
+            return None;
+        };
+        let search = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let hand_uses_chosen_tag = if let Some(hand_move) = downcast_move_to_zone(hand_effect) {
+            move_to_zone_uses_tag(hand_move, choose.tag.as_str(), Zone::Hand)
+        } else if let Some(return_to_hand) =
+            hand_effect.downcast_ref::<crate::effects::ReturnToHandEffect>()
+        {
+            matches!(
+                return_to_hand.spec.base(),
+                ChooseSpec::Tagged(found) if found.as_str() == choose.tag.as_str()
+            )
+        } else {
+            false
+        };
+        let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+        if !search.is_search
+            || choose.is_search
+            || search.count.min != 2
+            || search.count.max != Some(2)
+            || search.count_value.is_some()
+            || choose.count.min != 1
+            || choose.count.max != Some(1)
+            || choose.count_value.is_some()
+            || search.chooser != choose.chooser
+            || shuffle.player != search.chooser
+            || choose_search_zones(search)? != vec![Zone::Library]
+            || !choose_search_zones(choose)?.contains(&Zone::Library)
+            || !filter_is_tagged_as(&choose.filter, search.tag.as_str())
+            || !hand_uses_chosen_tag
+            || effect_moves_unselected_to_zone(
+                graveyard_effect,
+                search.tag.as_str(),
+                choose.tag.as_str(),
+            ) != Some(Zone::Graveyard)
+        {
+            return None;
+        }
+
+        if search.chooser == PlayerFilter::You {
+            return Some(
+                "Search your library for two cards. Put one into your hand and the other into your graveyard. Then shuffle"
+                    .to_string(),
+            );
+        }
+
+        let player = describe_player_filter(&search.chooser);
+        let capitalized = capitalize_first(&player);
+        let possessive = describe_possessive_player_filter(&search.chooser);
+        let shuffle_verb = player_verb(&player, "shuffle", "shuffles");
+        Some(format!(
+            "{capitalized} searches {possessive} library for two cards. Put one into {possessive} hand and the other into {possessive} graveyard. Then {player} {shuffle_verb}"
+        ))
+    }
+
+    if filtered.len() == 5
+        && let Some(compact) = describe_search_two_split_hand_graveyard(&filtered)
+    {
         return compact;
     }
 
@@ -12100,6 +12185,10 @@ fn describe_triggered_inline_ability(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: &str,
 ) -> String {
+    if let Some(rendered) = describe_backup_keyword(triggered) {
+        return rendered;
+    }
+
     let (intervening_condition, trigger_frequency) = triggered
         .intervening_if
         .as_ref()
@@ -12373,6 +12462,141 @@ mod tests {
         assert_eq!(
             describe_effect(&effect),
             "this creature deals damage equal to the number of artifacts they control to that player"
+        );
+    }
+
+    #[test]
+    fn equal_to_draw_count_renders_as_cards_equal_to_dynamic_value() {
+        let amount = Value::GreatestManaValue(ObjectFilter::creature().you_control())
+            .with_surface_hint(ValueSurfaceHint::EqualTo);
+        let effect = Effect::new(crate::effects::DrawCardsEffect::new(
+            amount,
+            PlayerFilter::You,
+        ));
+
+        assert_eq!(
+            describe_effect(&effect),
+            "you draw cards equal to the greatest mana value among creatures you control"
+        );
+    }
+
+    #[test]
+    fn each_player_may_discard_draw_commander_value_compaction_preserves_equal_to_hint() {
+        let mut commanders = ObjectFilter::default();
+        commanders.any_of = vec![
+            ObjectFilter::default()
+                .in_zone(Zone::Battlefield)
+                .owned_by(PlayerFilter::IteratedPlayer)
+                .commander(),
+            ObjectFilter::default()
+                .in_zone(Zone::Command)
+                .owned_by(PlayerFilter::IteratedPlayer)
+                .commander(),
+        ];
+        let amount =
+            Value::GreatestManaValue(commanders).with_surface_hint(ValueSurfaceHint::EqualTo);
+        let effects = vec![Effect::new(crate::effects::ForPlayersEffect {
+            filter: PlayerFilter::Any,
+            effects: vec![Effect::new(crate::effects::MayEffect::new(vec![
+                Effect::new(crate::effects::DiscardHandEffect::new(
+                    PlayerFilter::IteratedPlayer,
+                )),
+                Effect::new(crate::effects::DrawCardsEffect::new(
+                    amount,
+                    PlayerFilter::IteratedPlayer,
+                )),
+            ]))],
+        })];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone"
+        );
+    }
+
+    #[test]
+    fn prevent_all_damage_follow_up_counters_uses_prevention_surface() {
+        let prevent = crate::effects::PreventAllDamageToTargetEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())),
+            Until::EndOfTurn,
+        )
+        .with_follow_up_effects(vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            Value::EventValue(EventValueSpec::Amount),
+            ChooseSpec::AnyTarget,
+        ))]);
+        let effect = Effect::new(prevent);
+
+        assert_eq!(
+            describe_effect(&effect),
+            "Prevent all damage that would be dealt to target creature this turn. For each 1 damage prevented this way, put a +1/+1 counter on that creature"
+        );
+    }
+
+    #[test]
+    fn prevent_all_damage_follow_up_counters_keeps_replacement_surface_for_tagged_target() {
+        let protected = TagKey::from("protected_0");
+        let prevent = crate::effects::PreventAllDamageToTargetEffect::new(
+            ChooseSpec::Tagged(protected),
+            Until::EndOfTurn,
+        )
+        .with_follow_up_effects(vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            Value::EventValue(EventValueSpec::Amount),
+            ChooseSpec::AnyTarget,
+        ))]);
+        let effect = Effect::new(prevent);
+
+        assert_eq!(
+            describe_effect(&effect),
+            "If damage would be dealt to it this turn, prevent that damage and put that many +1/+1 counters on it"
+        );
+    }
+
+    #[test]
+    fn sacrifice_source_then_extra_turn_renders_as_single_clause() {
+        let effects = vec![
+            Effect::new(crate::effects::SacrificeTargetEffect::new(
+                ChooseSpec::Source,
+            )),
+            Effect::new(crate::effects::ExtraTurnEffect::you()),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Sacrifice this source and take an extra turn after this one"
+        );
+    }
+
+    #[test]
+    fn backup_etb_trigger_renders_as_keyword_surface() {
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_enters_battlefield(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::backup(
+                1,
+                Vec::new(),
+            )]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+
+        assert_eq!(
+            describe_backup_keyword(&triggered),
+            Some("Backup 1".to_string())
+        );
+        assert_eq!(
+            describe_triggered_inline_ability(&triggered, "this creature"),
+            "Backup 1"
+        );
+
+        let ability = Ability {
+            kind: AbilityKind::Triggered(triggered),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        assert_eq!(
+            describe_ability(0, &ability, "this creature", true),
+            vec!["Triggered ability 0: Backup 1".to_string()]
         );
     }
 
@@ -13689,6 +13913,63 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Search your library for up to X Plains cards, where X is the number of players who control more lands than you. Reveal those cards, put them into your hand, then shuffle"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_search_two_split_hand_graveyard() {
+        let searched = TagKey::from("searched");
+        let hand = TagKey::from("hand");
+        let search = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default().in_zone(Zone::Library),
+            ChoiceCount::exactly(2),
+            PlayerFilter::You,
+            searched.clone(),
+        )
+        .in_zone(Zone::Library)
+        .as_search();
+        let mut hand_filter = ObjectFilter::default().in_zone(Zone::Library);
+        hand_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: searched.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let choose_hand = crate::effects::ChooseObjectsEffect::new(
+            hand_filter,
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            hand.clone(),
+        )
+        .in_zone(Zone::Library);
+        let rest = crate::effects::ForEachTaggedEffect::new(
+            searched,
+            vec![Effect::new(crate::effects::ConditionalEffect::new(
+                Condition::TaggedObjectMatches(
+                    hand.clone(),
+                    ObjectFilter::default().same_stable_id_as_tagged(TagKey::from("__it__")),
+                ),
+                vec![],
+                vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Graveyard,
+                    false,
+                ))],
+            ))],
+        );
+        let effects = vec![
+            Effect::new(search),
+            Effect::new(choose_hand),
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(hand),
+                Zone::Hand,
+                false,
+            )),
+            Effect::new(rest),
+            Effect::new(crate::effects::ShuffleLibraryEffect::new(PlayerFilter::You)),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Search your library for two cards. Put one into your hand and the other into your graveyard. Then shuffle"
         );
     }
 
@@ -26945,8 +27226,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_all_target.follow_up_effects)
         {
+            if matches!(prevent_all_target.target.base(), ChooseSpec::Tagged(_)) {
+                return format!(
+                    "If {} would be dealt to {} {}, prevent that damage and put that many {} counters on {}",
+                    damage_text,
+                    describe_choose_spec(&prevent_all_target.target),
+                    timing,
+                    describe_counter_type(put.counter_type),
+                    describe_prevention_follow_up_target(&prevent_all_target.target)
+                );
+            }
             return format!(
-                "If {} would be dealt to {} {}, prevent that damage and put that many {} counters on {}",
+                "Prevent all {} that would be dealt to {} {}. For each 1 damage prevented this way, put a {} counter on {}",
                 damage_text,
                 describe_choose_spec(&prevent_all_target.target),
                 timing,
@@ -29822,7 +30113,7 @@ fn describe_structural_afterlife_keyword(
     Some(format!("Afterlife {amount}"))
 }
 
-fn describe_structural_toxic_keyword(
+pub(super) fn describe_structural_toxic_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     if triggered.intervening_if.is_some()
@@ -30342,6 +30633,41 @@ fn describe_annihilator_keyword(triggered: &crate::ability::TriggeredAbility) ->
     Some(format!("Annihilator {amount}"))
 }
 
+fn describe_backup_keyword(triggered: &crate::ability::TriggeredAbility) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+
+    let trigger = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !trigger.this_object
+        || trigger.from != crate::triggers::ZonePattern::Any
+        || trigger.to != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || trigger.object_filter != ObjectFilter::default()
+        || trigger.player != crate::triggers::PlayerRelation::Any
+        || trigger.cause_filter.is_some()
+        || trigger.count_mode != crate::triggers::CountMode::Each
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let backup = effect.downcast_ref::<crate::effects::BackupEffect>()?;
+    Some(format!("Backup {}", backup.amount))
+}
+
 pub(super) fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -30432,6 +30758,9 @@ pub(super) fn describe_ability(
             )]
         }
         AbilityKind::Triggered(triggered) => {
+            if let Some(rendered) = describe_backup_keyword(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_annihilator_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }

@@ -208,6 +208,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_choose_land_or_nonland_then_consult_to_hand_bottom,
     },
     SequenceRuleDef {
+        name: "search-two-put-one-hand-other-graveyard-then-shuffle",
+        feature_tag: Some("search-two-hand-graveyard"),
+        priority: 341,
+        consumed_sentences: 3,
+        predicate: first_word_search,
+        parser: generic_subject_verb_sequences::triples::parse_search_two_then_put_one_hand_other_graveyard_then_shuffle,
+    },
+    SequenceRuleDef {
         name: "mill-then-put-from-among-into-hand-then-if-you-dont",
         feature_tag: Some("mill-followup-choice"),
         priority: 340,

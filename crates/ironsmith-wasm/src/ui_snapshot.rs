@@ -1260,7 +1260,8 @@ mod tests {
     use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
     use ironsmith::cards::tokens::cursed_role_token_definition;
-    use ironsmith::game_state::GameState;
+    use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectableObject};
+    use ironsmith::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
     use ironsmith::ids::{CardId, PlayerId};
     use ironsmith::mana::{ManaCost, ManaSymbol};
     use ironsmith::object::AttachmentTarget;
@@ -1383,6 +1384,67 @@ mod tests {
             graveyard_card.pseudo_hand_glow_kind.as_deref(),
             Some("extra")
         );
+    }
+
+    #[test]
+    fn decision_snapshot_routes_controlled_player_prompt_to_controller() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::from_raw(90_012), "Primeval Titan")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Hand);
+
+        game.add_player_control(
+            bob,
+            alice,
+            PlayerControlStart::Immediate,
+            PlayerControlDuration::UntilEndOfTurn,
+            None,
+        );
+
+        let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            alice,
+            None,
+            "Choose a card",
+            vec![SelectableObject::new(card_id, "Primeval Titan")],
+            1,
+            Some(1),
+        ));
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            bob,
+            Some(&decision),
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        match snapshot
+            .decision
+            .as_ref()
+            .expect("decision should be present")
+        {
+            DecisionView::SelectObjects {
+                player, candidates, ..
+            } => {
+                assert_eq!(
+                    *player, bob.0,
+                    "the browser prompt should belong to the controlling player"
+                );
+                assert_eq!(candidates[0].id, card_id.0);
+                assert_eq!(candidates[0].name, "Primeval Titan");
+            }
+            other => panic!("expected select-object decision, got {other:?}"),
+        }
     }
 
     #[test]

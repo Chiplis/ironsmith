@@ -3281,6 +3281,48 @@ impl StaticAbilityKind for OpponentsPlayWithHandsRevealed {
     }
 }
 
+/// Controls opponents during their library searches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlOpponentsWhileSearchingLibraries;
+
+impl StaticAbilityKind for ControlOpponentsWhileSearchingLibraries {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ControlOpponentsWhileSearchingLibraries
+    }
+
+    fn display(&self) -> String {
+        "You control your opponents while they're searching their libraries.".to_string()
+    }
+}
+
+/// Replaces opponents' found search cards with exile and grants play permission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpponentSearchExileFoundCards;
+
+impl StaticAbilityKind for OpponentSearchExileFoundCards {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentSearchExileFoundCards
+    }
+
+    fn display(&self) -> String {
+        "While an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.".to_string()
+    }
+}
+
+/// Allows this card to be cast from the library while its owner is searching it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CastThisCardFromLibraryWhileSearching;
+
+impl StaticAbilityKind for CastThisCardFromLibraryWhileSearching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CastThisCardFromLibraryWhileSearching
+    }
+
+    fn display(&self) -> String {
+        "While you're searching your library, you may cast this card from your library.".to_string()
+    }
+}
+
 /// Typed fallback keyword text preserved from parser/builder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordFallbackText {

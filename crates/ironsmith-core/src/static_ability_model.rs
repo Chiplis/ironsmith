@@ -2685,6 +2685,28 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn control_opponents_while_searching_libraries() -> Self {
+        Self {
+            id: Some(StaticAbilityId::ControlOpponentsWhileSearchingLibraries),
+            label: "You control your opponents while they're searching their libraries.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn opponent_search_exile_found_cards() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentSearchExileFoundCards),
+            label: "While an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn cast_this_card_from_library_while_searching() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CastThisCardFromLibraryWhileSearching),
+            label: "While you're searching your library, you may cast this card from your library."
+                .into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn additional_land_plays(count: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::RuleRestriction),

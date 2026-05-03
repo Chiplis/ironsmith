@@ -202,7 +202,7 @@ export default function TopbarMenuSheet({
                       className="stone-pill inline-flex items-center justify-start rounded-none px-2.5 py-2 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                       disabled={addLocked}
                     >
-                      Create Card
+                      Compile Card
                     </button>
                   )}
                 />

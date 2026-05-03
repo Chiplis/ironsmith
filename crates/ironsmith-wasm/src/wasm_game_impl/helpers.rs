@@ -387,7 +387,15 @@ pub(super) fn redacted_choice_id(index: usize) -> u64 {
     JS_SAFE_INTEGER_MAX.saturating_sub(index as u64)
 }
 
+pub(super) fn decision_player_for_context(
+    game: &GameState,
+    decision: &DecisionContext,
+) -> PlayerId {
+    game.controlling_player_for(decision.player())
+}
+
 pub(super) fn decision_exposes_object_to_perspective(
+    game: &GameState,
     decision: Option<&DecisionContext>,
     perspective: PlayerId,
     id: ObjectId,
@@ -395,53 +403,49 @@ pub(super) fn decision_exposes_object_to_perspective(
     let Some(decision) = decision else {
         return false;
     };
+    if decision_player_for_context(game, decision) != perspective {
+        return false;
+    }
 
     match decision {
         DecisionContext::SelectObjects(objects) => {
-            objects.player == perspective && objects.candidates.iter().any(|obj| obj.id == id)
+            objects.candidates.iter().any(|obj| obj.id == id)
         }
         DecisionContext::SelectOptions(options) => {
-            options.player == perspective
-                && options
-                    .options
-                    .iter()
-                    .any(|opt| {
-                        opt.object_id.is_some_and(|object_id| object_id == id)
-                            || opt
-                                .related_object_ids
-                                .as_ref()
-                                .is_some_and(|object_ids| object_ids.contains(&id))
-                    })
+            options.options.iter().any(|opt| {
+                opt.object_id.is_some_and(|object_id| object_id == id)
+                    || opt
+                        .related_object_ids
+                        .as_ref()
+                        .is_some_and(|object_ids| object_ids.contains(&id))
+            })
         }
         DecisionContext::Targets(targets) => {
-            targets.player == perspective
-                && targets.requirements.iter().any(|requirement| {
-                    requirement.legal_targets.iter().any(|target| {
-                        matches!(target, Target::Object(object_id) if *object_id == id)
-                    })
+            targets.requirements.iter().any(|requirement| {
+                requirement.legal_targets.iter().any(|target| {
+                    matches!(target, Target::Object(object_id) if *object_id == id)
                 })
+            })
         }
         DecisionContext::Order(order) => {
-            order.player == perspective && order.items.iter().any(|(object_id, _)| *object_id == id)
+            order.items.iter().any(|(object_id, _)| *object_id == id)
         }
         DecisionContext::Attackers(attackers) => {
-            attackers.player == perspective
-                && attackers.attacker_options.iter().any(|option| {
-                    option.creature == id
-                        || option.valid_targets.iter().any(|target| {
-                            matches!(target, AttackTarget::Planeswalker(object_id) if *object_id == id)
-                        })
+            attackers.attacker_options.iter().any(|option| {
+                option.creature == id
+                    || option.valid_targets.iter().any(|target| {
+                        matches!(target, AttackTarget::Planeswalker(object_id) if *object_id == id)
                 })
+            })
         }
         DecisionContext::Blockers(blockers) => {
-            blockers.player == perspective
-                && blockers.blocker_options.iter().any(|option| {
-                    option.attacker == id
-                        || option
-                            .valid_blockers
-                            .iter()
-                            .any(|(blocker, _)| *blocker == id)
-                })
+            blockers.blocker_options.iter().any(|option| {
+                option.attacker == id
+                    || option
+                        .valid_blockers
+                        .iter()
+                        .any(|(blocker, _)| *blocker == id)
+            })
         }
         DecisionContext::Partition(_)
         | DecisionContext::Modes(_)
@@ -475,7 +479,7 @@ pub(super) fn object_visible_to_perspective(
             || visible_via_view_effect;
     }
 
-    if !obj.zone.is_hidden() || obj.owner == perspective {
+    if !obj.zone.is_hidden() || game.controlling_player_for(obj.owner) == perspective {
         return true;
     }
 
@@ -759,7 +763,7 @@ pub(super) fn target_choice_view(
         },
         Target::Object(id) => {
             let visible = object_visible_to_perspective(game, perspective, viewed_cards, *id)
-                || decision_exposes_object_to_perspective(decision, perspective, *id);
+                || decision_exposes_object_to_perspective(game, decision, perspective, *id);
             TargetChoiceView::Object {
                 object: if visible {
                     id.0

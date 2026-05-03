@@ -928,9 +928,10 @@ impl DecisionView {
     ) -> Self {
         let enriched_ctx = ironsmith::decisions::context::enrich_display_hints(game, ctx.clone());
         let ctx = &enriched_ctx;
+        let decision_player_for = |player: PlayerId| game.controlling_player_for(player);
         let decision_object_visible = |id| {
             object_visible_to_perspective(game, perspective, viewed_cards, id)
-                || decision_exposes_object_to_perspective(Some(ctx), perspective, id)
+                || decision_exposes_object_to_perspective(game, Some(ctx), perspective, id)
         };
         let resolve_source_name = |source: Option<ObjectId>| -> Option<String> {
             source
@@ -952,7 +953,7 @@ impl DecisionView {
 
         match ctx {
             DecisionContext::Boolean(boolean) => DecisionView::SelectOptions {
-                player: boolean.player.0,
+                player: decision_player_for(boolean.player).0,
                 description: boolean.description.clone(),
                 min: 1,
                 max: 1,
@@ -985,6 +986,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Priority(priority) => {
+                let decision_player = decision_player_for(priority.player);
                 let mut actions: Vec<ActionView> = priority
                     .actions
                     .iter()
@@ -993,7 +995,7 @@ impl DecisionView {
                         build_action_view(game, perspective, viewed_cards, index, action)
                     })
                     .collect();
-                if priority.player == perspective
+                if decision_player == perspective
                     && let Some(stable_id) = undo_land_stable_id
                     && let Some(action) = build_untap_land_action_view(
                         game,
@@ -1006,12 +1008,12 @@ impl DecisionView {
                     actions.push(action);
                 }
                 DecisionView::Priority {
-                    player: priority.player.0,
+                    player: decision_player.0,
                     actions,
                 }
             }
             DecisionContext::TextInput(text) => DecisionView::TextInput {
-                player: text.player.0,
+                player: decision_player_for(text.player).0,
                 description: text.description.clone(),
                 placeholder: text.placeholder.clone(),
                 value: text.initial_value.clone(),
@@ -1023,7 +1025,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Number(number) => DecisionView::Number {
-                player: number.player.0,
+                player: decision_player_for(number.player).0,
                 description: number.description.clone(),
                 min: number.min,
                 max: number.max,
@@ -1035,7 +1037,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::SelectOptions(options) => DecisionView::SelectOptions {
-                player: options.player.0,
+                player: decision_player_for(options.player).0,
                 description: options.description.clone(),
                 min: options.min,
                 max: options.max,
@@ -1095,7 +1097,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Modes(modes) => DecisionView::SelectOptions {
-                player: modes.player.0,
+                player: decision_player_for(modes.player).0,
                 description: format!("Choose mode for {}", modes.spell_name),
                 min: modes.spec.min_modes,
                 max: modes.spec.max_modes,
@@ -1124,7 +1126,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::HybridChoice(hybrid) => DecisionView::SelectOptions {
-                player: hybrid.player.0,
+                player: decision_player_for(hybrid.player).0,
                 description: format!(
                     "Choose how to pay pip {} of {}",
                     hybrid.pip_number, hybrid.spell_name
@@ -1152,7 +1154,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Order(order) => DecisionView::SelectOptions {
-                player: order.player.0,
+                player: decision_player_for(order.player).0,
                 description: order.description.clone(),
                 min: order.items.len(),
                 max: order.items.len(),
@@ -1188,7 +1190,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Distribute(distribute) => DecisionView::SelectOptions {
-                player: distribute.player.0,
+                player: decision_player_for(distribute.player).0,
                 description: format!(
                     "{} (assign exactly {} total)",
                     distribute.description, distribute.total
@@ -1239,7 +1241,7 @@ impl DecisionView {
                 let choices = colors_for_context(colors);
                 let repeatable_colors = !colors.same_color && colors.count > 1;
                 DecisionView::SelectOptions {
-                    player: colors.player.0,
+                    player: decision_player_for(colors.player).0,
                     description: colors.description.clone(),
                     min: if colors.count == 0 { 0 } else { 1 },
                     max: if colors.same_color {
@@ -1269,7 +1271,7 @@ impl DecisionView {
                 }
             }
             DecisionContext::Counters(counters) => DecisionView::SelectOptions {
-                player: counters.player.0,
+                player: decision_player_for(counters.player).0,
                 description: format!(
                     "Choose up to {} counters to remove from {}",
                     counters.max_total, counters.target_name
@@ -1301,7 +1303,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Partition(partition) => DecisionView::SelectObjects {
-                player: partition.player.0,
+                player: decision_player_for(partition.player).0,
                 description: format!(
                     "{} \u{2014} select cards to put on {}",
                     partition.description, partition.secondary_label
@@ -1329,7 +1331,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Proliferate(proliferate) => DecisionView::SelectOptions {
-                player: proliferate.player.0,
+                player: decision_player_for(proliferate.player).0,
                 description: "Choose permanents and/or players to proliferate".to_string(),
                 min: 0,
                 max: proliferate.eligible_permanents.len() + proliferate.eligible_players.len(),
@@ -1377,7 +1379,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::SelectObjects(objects) => DecisionView::SelectObjects {
-                player: objects.player.0,
+                player: decision_player_for(objects.player).0,
                 description: objects.description.clone(),
                 min: objects.min,
                 max: objects.max,
@@ -1417,7 +1419,7 @@ impl DecisionView {
                 reason: reason.clone(),
             },
             DecisionContext::Targets(targets) => DecisionView::Targets {
-                player: targets.player.0,
+                player: decision_player_for(targets.player).0,
                 context: targets.context.clone(),
                 requirements: targets
                     .requirements
@@ -1450,7 +1452,7 @@ impl DecisionView {
                 reason,
             },
             DecisionContext::Attackers(attackers) => DecisionView::Attackers {
-                player: attackers.player.0,
+                player: decision_player_for(attackers.player).0,
                 attacker_options: attackers
                     .attacker_options
                     .iter()
@@ -1467,7 +1469,7 @@ impl DecisionView {
                     .collect(),
             },
             DecisionContext::Blockers(blockers) => DecisionView::Blockers {
-                player: blockers.player.0,
+                player: decision_player_for(blockers.player).0,
                 blocker_options: blockers
                     .blocker_options
                     .iter()

@@ -16,6 +16,11 @@ use crate::ids::ObjectId;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
+use super::search_overrides::{
+    begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
+    finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
+};
+
 pub type SearchLibraryEffect = ironsmith_core::SearchLibraryEffect;
 
 impl EffectExecutor for SearchLibraryEffect {
@@ -26,127 +31,149 @@ impl EffectExecutor for SearchLibraryEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let search_override = opposition_agent_search(game, chooser_id, player_id);
 
         // Check if the searching player can search libraries.
         if !game.can_search_library(chooser_id) {
             return Ok(EffectOutcome::prevented());
         }
 
-        let search_event = TriggerEvent::new_with_provenance(
-            SearchLibraryEvent::new(chooser_id, Some(player_id)),
-            ctx.provenance,
-        );
-        let shuffle_event = TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        );
+        let search_control =
+            begin_opposition_agent_search_control(game, chooser_id, search_override);
+        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+            offer_library_search_casts(game, ctx, player_id)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let filter_ctx = ctx.filter_context(game);
+            let search_event = TriggerEvent::new_with_provenance(
+                SearchLibraryEvent::new(chooser_id, Some(player_id)),
+                ctx.provenance,
+            );
+            let shuffle_event = TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+                ctx.provenance,
+            );
 
-        // Get all cards in the player's library that match the filter
-        let matching_cards: Vec<ObjectId> = game
-            .player(player_id)
-            .map(|p| {
-                p.library
-                    .iter()
-                    .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                    .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
-                    .map(|(id, _)| id)
-                    .collect()
-            })
-            .unwrap_or_default();
+            let filter_ctx = ctx.filter_context(game);
 
-        // Let the player choose a card (or fail to find) using the spec-based system
-        let may_fail_to_find = match self.search_mode {
-            SearchSelectionMode::Exact => self.filter.has_search_stated_quality(),
-            SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => true,
-        };
-        let spec = if may_fail_to_find {
-            SearchSpec::new(ctx.source, matching_cards.clone(), self.reveal)
-        } else {
-            SearchSpec::mandatory(ctx.source, matching_cards.clone(), self.reveal)
-        };
-        let mut chosen_card = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            chooser_id,
-            Some(ctx.source),
-            spec,
-            FallbackStrategy::FirstOption, // Auto-select first card when no decision maker
-        );
-        if chosen_card.is_none() && !may_fail_to_find {
-            chosen_card = matching_cards.first().copied();
-        }
-
-        // If a card was chosen, move it to the destination
-        if let Some(card_id) = chosen_card {
-            // Verify the card is still in the library (in case decision maker did something weird)
-            let still_in_library = game
+            // Get all cards in the player's library that match the filter
+            let matching_cards: Vec<ObjectId> = game
                 .player(player_id)
-                .is_some_and(|p| p.library.contains(&card_id));
+                .map(|p| {
+                    p.library
+                        .iter()
+                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                        .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
+                        .map(|(id, _)| id)
+                        .collect()
+                })
+                .unwrap_or_default();
 
-            if still_in_library {
-                let chosen_memory = OutcomeObjectMemory::from_object_id(game, card_id);
-                // For "put on top of library" effects (like Vampiric Tutor), we need to:
-                // 1. Remove the card from the library
-                // 2. Shuffle the library
-                // 3. Put the card on top
-                // This matches the card text "then shuffle and put that card on top"
-                if self.destination == Zone::Library {
-                    // Remove the card from library first
-                    if let Some(p) = game.player_mut(player_id) {
-                        p.library.retain(|&id| id != card_id);
-                    }
-                    // Shuffle the remaining library
-                    game.shuffle_player_library(player_id);
-                    // Now put the card on top (push adds to end, which is the top)
-                    if let Some(p) = game.player_mut(player_id) {
-                        p.library.push(card_id);
-                    }
-                    let mut outcome = EffectOutcome::with_objects(vec![card_id])
-                        .with_events([search_event.clone(), shuffle_event.clone()]);
-                    if let Some(memory) = chosen_memory {
-                        outcome = outcome
-                            .with_chosen_object_memory(vec![memory.clone()])
-                            .with_affected_object_memory(vec![memory]);
-                    }
-                    return Ok(outcome);
-                }
+            // Let the player choose a card (or fail to find) using the spec-based system
+            let may_fail_to_find = match self.search_mode {
+                SearchSelectionMode::Exact => self.filter.has_search_stated_quality(),
+                SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => true,
+            };
+            let spec = if may_fail_to_find {
+                SearchSpec::new(ctx.source, matching_cards.clone(), self.reveal)
+            } else {
+                SearchSpec::mandatory(ctx.source, matching_cards.clone(), self.reveal)
+            };
+            let mut chosen_card = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                chooser_id,
+                Some(ctx.source),
+                spec,
+                FallbackStrategy::FirstOption, // Auto-select first card when no decision maker
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0).with_event(search_event));
+            }
+            if chosen_card.is_none() && !may_fail_to_find {
+                chosen_card = matching_cards.first().copied();
+            }
 
-                // For other destinations, move then shuffle
-                let new_id = if self.destination == Zone::Battlefield {
-                    match move_to_battlefield_with_options(
-                        game,
-                        ctx,
-                        card_id,
-                        BattlefieldEntryOptions::preserve(false),
-                    ) {
-                        BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
-                        BattlefieldEntryOutcome::Prevented => None,
-                    }
-                } else {
-                    game.move_object_by_effect(card_id, self.destination)
-                };
+            // If a card was chosen, move it to the destination
+            if let Some(card_id) = chosen_card {
+                // Verify the card is still in the library (in case decision maker did something weird)
+                let still_in_library = game
+                    .player(player_id)
+                    .is_some_and(|p| p.library.contains(&card_id));
 
-                if let Some(new_id) = new_id {
-                    // Shuffle the library after searching
-                    game.shuffle_player_library(player_id);
-                    let mut outcome = EffectOutcome::with_objects(vec![new_id])
-                        .with_affected_objects(vec![new_id])
-                        .with_events([search_event.clone(), shuffle_event.clone()]);
-                    if let Some(memory) = chosen_memory {
-                        outcome = outcome
-                            .with_chosen_object_memory(vec![memory.clone()])
-                            .with_affected_object_memory(vec![memory]);
+                if still_in_library {
+                    let chosen_memory = OutcomeObjectMemory::from_object_id(game, card_id);
+                    // For "put on top of library" effects (like Vampiric Tutor), we need to:
+                    // 1. Remove the card from the library
+                    // 2. Shuffle the library
+                    // 3. Put the card on top
+                    // This matches the card text "then shuffle and put that card on top"
+                    if self.destination == Zone::Library && search_override.is_none() {
+                        // Remove the card from library first
+                        if let Some(p) = game.player_mut(player_id) {
+                            p.library.retain(|&id| id != card_id);
+                        }
+                        // Shuffle the remaining library
+                        game.shuffle_player_library(player_id);
+                        // Now put the card on top (push adds to end, which is the top)
+                        if let Some(p) = game.player_mut(player_id) {
+                            p.library.push(card_id);
+                        }
+                        let mut outcome = EffectOutcome::with_objects(vec![card_id])
+                            .with_events([search_event.clone(), shuffle_event.clone()]);
+                        if let Some(memory) = chosen_memory {
+                            outcome = outcome
+                                .with_chosen_object_memory(vec![memory.clone()])
+                                .with_affected_object_memory(vec![memory]);
+                        }
+                        return Ok(outcome);
                     }
-                    return Ok(outcome);
+
+                    // For other destinations, move then shuffle
+                    let new_id = if let Some(search_override) = search_override {
+                        exile_found_cards_for_opposition_agent(game, &[card_id], search_override)
+                            .first()
+                            .copied()
+                    } else if self.destination == Zone::Battlefield {
+                        match move_to_battlefield_with_options(
+                            game,
+                            ctx,
+                            card_id,
+                            BattlefieldEntryOptions::preserve(false),
+                        ) {
+                            BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
+                            BattlefieldEntryOutcome::Prevented => None,
+                        }
+                    } else {
+                        game.move_object_by_effect(card_id, self.destination)
+                    };
+
+                    if let Some(new_id) = new_id {
+                        // Shuffle the library after searching
+                        game.shuffle_player_library(player_id);
+                        let mut outcome = EffectOutcome::with_objects(vec![new_id])
+                            .with_affected_objects(vec![new_id])
+                            .with_events([search_event.clone(), shuffle_event.clone()]);
+                        if let Some(memory) = chosen_memory {
+                            outcome = outcome
+                                .with_chosen_object_memory(vec![memory.clone()])
+                                .with_affected_object_memory(vec![memory]);
+                        }
+                        return Ok(outcome);
+                    }
                 }
             }
+
+            // No card found or chosen - still shuffle (searching always shuffles)
+            game.shuffle_player_library(player_id);
+
+            Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
+        })();
+
+        if result.is_err() || !ctx.decision_maker.awaiting_choice() {
+            finish_opposition_agent_search_control(game, search_control);
         }
-
-        // No card found or chosen - still shuffle (searching always shuffles)
-        game.shuffle_player_library(player_id);
-
-        Ok(EffectOutcome::count(0).with_events([search_event, shuffle_event]))
+        result
     }
 }

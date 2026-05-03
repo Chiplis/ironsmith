@@ -71,7 +71,7 @@ export default function TableActionControls({
             className={triggerPill}
             disabled={addLocked}
           >
-            Create Card
+            Compile Card
           </button>
         )}
       />

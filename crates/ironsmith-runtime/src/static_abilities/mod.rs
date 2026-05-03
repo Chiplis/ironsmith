@@ -2566,6 +2566,18 @@ impl StaticAbility {
         Self::new(OpponentsPlayWithHandsRevealed)
     }
 
+    pub fn control_opponents_while_searching_libraries() -> Self {
+        Self::new(ControlOpponentsWhileSearchingLibraries)
+    }
+
+    pub fn opponent_search_exile_found_cards() -> Self {
+        Self::new(OpponentSearchExileFoundCards)
+    }
+
+    pub fn cast_this_card_from_library_while_searching() -> Self {
+        Self::new(CastThisCardFromLibraryWhileSearching)
+    }
+
     pub fn unsupported_parser_line(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {
         Self::new(UnsupportedParserLine::new(raw_line, reason))
     }

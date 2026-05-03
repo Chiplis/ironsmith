@@ -1,6 +1,14 @@
 use super::*;
 
 pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zone>> {
+    let normalized = normalized_line.to_ascii_lowercase();
+    if (str_contains(normalized.as_str(), "while youre searching your library")
+        || str_contains(normalized.as_str(), "while you're searching your library"))
+        && str_contains(normalized.as_str(), "from your library")
+    {
+        return Some(vec![Zone::Library]);
+    }
+
     let mut zones = Vec::new();
     for (needles, zone) in [
         (

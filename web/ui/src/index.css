@@ -362,6 +362,9 @@
 
 /* ---- Card Forge ---- */
 .card-forge-sheet {
+  gap: 0 !important;
+  border: 0;
+  border-radius: 0;
   background:
     radial-gradient(140% 120% at 18% 2%, rgba(214, 170, 96, 0.14), transparent 42%),
     radial-gradient(120% 120% at 84% 100%, rgba(115, 62, 36, 0.16), transparent 38%),
@@ -373,6 +376,8 @@
 }
 
 .card-forge-header {
+  flex: 0 0 auto;
+  padding: 12px 16px 10px;
   border-bottom: 1px solid rgba(153, 124, 84, 0.22);
   background:
     linear-gradient(180deg, rgba(82, 65, 49, 0.34), rgba(31, 26, 22, 0.16)),
@@ -388,11 +393,12 @@
 
 .card-forge-toolbar,
 .card-forge-footer {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid rgba(136, 108, 77, 0.28);
 }
 
@@ -412,31 +418,48 @@
   color: #bca37a;
 }
 
+.card-forge-footer > .flex:last-child {
+  margin-left: auto;
+}
+
 .card-forge-description {
   color: #cfb892 !important;
 }
 
 .card-forge-grid {
+  flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(300px, 0.92fr) minmax(0, 1.08fr);
-  gap: 16px;
-  padding: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
+  gap: 12px;
+  padding: 12px 16px;
   min-height: 0;
-  max-height: calc(92vh - 214px);
-  overflow: auto;
+  overflow: hidden;
 }
 
-.card-forge-left,
-.card-forge-right {
+.card-forge-main,
+.card-forge-side {
+  min-width: 0;
+  min-height: 0;
+}
+
+.card-forge-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.card-forge-side {
   display: grid;
-  gap: 16px;
-  align-content: start;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
 }
 
 .card-forge-panel {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  min-height: 0;
+  padding: 12px;
   border: 1px solid rgba(135, 112, 81, 0.3);
   background:
     linear-gradient(180deg, rgba(59, 50, 42, 0.78), rgba(30, 26, 23, 0.94));
@@ -453,10 +476,29 @@
   color: #d1b279;
 }
 
-.card-forge-preview-card {
+.card-forge-face-tabs {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-single-face {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-face-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-inline-editor {
   position: relative;
-  min-height: 380px;
-  padding: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
   border: 1px solid rgba(138, 113, 81, 0.26);
   background:
     linear-gradient(180deg, rgba(37, 31, 28, 0.96), rgba(18, 15, 13, 0.98));
@@ -473,12 +515,14 @@
   opacity: 0.82;
 }
 
-.card-forge-preview-frame {
+.card-forge-inline-frame {
   position: relative;
   display: grid;
-  gap: 12px;
-  min-height: 354px;
-  padding: 16px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px;
   border: 1px solid rgba(161, 130, 83, 0.26);
   background:
     linear-gradient(180deg, rgba(51, 42, 36, 0.96), rgba(22, 19, 17, 0.95)),
@@ -488,58 +532,125 @@
     inset 0 0 26px rgba(0, 0, 0, 0.26);
 }
 
-.card-forge-preview-header,
-.card-forge-preview-footer {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
+.card-forge-inline-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(116px, 160px);
   gap: 12px;
+  align-items: start;
 }
 
-.card-forge-preview-name {
-  font-size: 22px;
-  line-height: 1;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.card-forge-inline-name {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(161, 130, 83, 0.28);
+  background: rgba(22, 18, 16, 0.26);
   color: #f7eed7;
+  font-size: 22px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.card-forge-inline-cost {
+  width: 100%;
+  border: 1px solid rgba(147, 121, 84, 0.34);
+  background: rgba(20, 17, 15, 0.7);
+  color: #f1dcae;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 14px;
+  padding: 8px 10px;
+  text-align: right;
+  outline: none;
+}
+
+.card-forge-inline-header-side,
+.card-forge-inline-art-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-forge-inline-name:focus,
+.card-forge-inline-cost:focus {
+  border-color: rgba(200, 166, 105, 0.58);
+  box-shadow: 0 0 0 1px rgba(200, 166, 105, 0.22);
 }
 
 .card-forge-preview-layout,
 .card-forge-preview-colors,
 .card-forge-preview-cost {
   font-size: 11px;
-  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: #bca37a;
 }
 
-.card-forge-preview-type {
-  padding: 8px 10px;
+.card-forge-inline-type {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(260px, 1fr);
+  gap: 8px 12px;
+  min-height: 0;
+  padding: 10px;
   border-block: 1px solid rgba(153, 124, 84, 0.22);
-  font-size: 13px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #eadfc4;
+  background: rgba(23, 19, 17, 0.42);
 }
 
-.card-forge-preview-text {
-  min-height: 150px;
+.card-forge-inline-row,
+.card-forge-inline-subtypes {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  align-content: start;
+}
+
+.card-forge-inline-row--types {
+  grid-column: 1 / -1;
+}
+
+.card-forge-inline-rules {
+  width: 100%;
+  min-height: 0;
   padding: 12px;
   border: 1px solid rgba(138, 113, 81, 0.24);
   background: rgba(21, 18, 16, 0.58);
-  white-space: pre-wrap;
+  resize: none;
+  overflow: auto;
+  font-family: inherit;
   font-size: 14px;
   line-height: 1.45;
   color: #f1e6cf;
+  outline: none;
 }
 
-.card-forge-preview-stat {
-  min-width: 42px;
-  padding: 4px 8px;
+.card-forge-inline-rules:focus {
+  border-color: rgba(200, 166, 105, 0.54);
+  box-shadow: 0 0 0 1px rgba(200, 166, 105, 0.22);
+}
+
+.card-forge-inline-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card-forge-stat-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(52px, 76px);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 8px;
   border: 1px solid rgba(161, 130, 83, 0.28);
   background: rgba(141, 101, 54, 0.14);
-  text-align: center;
-  font-size: 14px;
+}
+
+.card-forge-stat-field span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
   color: #ffd796;
 }
 
@@ -563,10 +674,12 @@
 }
 
 .card-forge-codeblock {
-  min-height: 124px;
+  height: 100%;
+  min-height: 0;
   padding: 10px 12px;
   border: 1px solid rgba(136, 108, 77, 0.26);
   background: rgba(19, 16, 14, 0.76);
+  overflow: auto;
   white-space: pre-wrap;
   font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
   font-size: 12px;
@@ -574,7 +687,25 @@
   color: #d7c3a3;
 }
 
+.card-forge-compile-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.card-forge-compile-grid {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-compile-grid > * {
+  min-height: 0;
+}
+
 .card-forge-tabs-list {
+  flex: 0 0 auto;
   width: 100%;
   justify-content: flex-start;
   padding-inline: 4px;
@@ -646,6 +777,11 @@
     inset 0 0 0 1px rgba(14, 11, 9, 0.28);
 }
 
+.card-forge-input--compact {
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
 .card-forge-input:focus,
 .card-forge-textarea:focus {
   border-color: rgba(200, 166, 105, 0.54);
@@ -677,6 +813,17 @@
     color 120ms ease,
     border-color 120ms ease,
     transform 120ms ease;
+}
+
+.card-forge-inline-type .card-forge-chip,
+.card-forge-inline-type .card-forge-color {
+  padding: 5px 8px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.card-forge-inline-type .card-forge-color {
+  min-width: 30px;
 }
 
 .card-forge-choice {
@@ -715,20 +862,221 @@
   border-color: rgba(116, 97, 74, 0.24) !important;
 }
 
+@media (max-width: 1120px) {
+  .card-forge-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(310px, 0.62fr);
+  }
+
+  .card-forge-inline-type {
+    grid-template-columns: 1fr;
+  }
+
+  .card-forge-inline-row--types {
+    grid-column: auto;
+  }
+}
+
 @media (max-width: 960px) {
   .card-forge-grid {
     grid-template-columns: 1fr;
-    max-height: calc(92vh - 206px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding: 10px;
+  }
+
+  .card-forge-side {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .card-forge-compile-panel {
+    grid-column: 1 / -1;
+    max-height: 164px;
   }
 
   .card-forge-toolbar,
   .card-forge-footer {
-    align-items: start;
-    flex-direction: column;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .card-forge-tab-trigger {
     min-width: 118px;
+  }
+}
+
+@media (max-width: 720px) {
+  .card-forge-header {
+    padding-right: 44px;
+  }
+
+  .card-forge-description,
+  .card-forge-footer-note {
+    display: none;
+  }
+
+  .card-forge-side {
+    grid-template-columns: 1fr;
+  }
+
+  .card-forge-compile-panel {
+    display: none;
+  }
+
+  .card-forge-inline-header,
+  .card-forge-inline-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-height: 760px) {
+  .card-forge-description,
+  .card-forge-footer-note {
+    display: none;
+  }
+
+  .card-forge-header {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .card-forge-toolbar,
+  .card-forge-footer {
+    padding-block: 6px;
+  }
+
+  .card-forge-panel,
+  .card-forge-inline-frame {
+    gap: 8px;
+    padding: 10px;
+  }
+}
+
+@media (max-height: 520px) {
+  .card-forge-eyebrow,
+  .card-forge-toolbar,
+  .card-forge-compile-panel {
+    display: none;
+  }
+
+  .card-forge-header {
+    padding: 6px 44px 6px 12px;
+  }
+
+  .card-forge-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.5fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .card-forge-side {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 8px;
+  }
+
+  .card-forge-panel,
+  .card-forge-inline-frame {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .card-forge-inline-frame {
+    grid-template-columns: minmax(0, 0.56fr) minmax(0, 0.44fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .card-forge-inline-editor {
+    padding: 6px;
+  }
+
+  .card-forge-inline-header {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 128px);
+    gap: 8px;
+  }
+
+  .card-forge-inline-name {
+    font-size: 18px;
+  }
+
+  .card-forge-inline-cost {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .card-forge-inline-header-side,
+  .card-forge-inline-art-field {
+    gap: 3px;
+  }
+
+  .card-forge-inline-type {
+    grid-column: 1;
+    grid-row: 2 / 4;
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+    gap: 3px 6px;
+    align-content: start;
+    padding: 4px;
+  }
+
+  .card-forge-inline-row,
+  .card-forge-inline-subtypes {
+    gap: 2px;
+  }
+
+  .card-forge-inline-row--types {
+    grid-column: 1 / -1;
+  }
+
+  .card-forge-section-label,
+  .card-forge-panel-title,
+  .card-forge-stat-field span {
+    font-size: 9px;
+  }
+
+  .card-forge-inline-type .flex {
+    gap: 3px;
+  }
+
+  .card-forge-inline-type .card-forge-chip,
+  .card-forge-inline-type .card-forge-color {
+    padding: 2px 4px;
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .card-forge-inline-type .card-forge-color {
+    min-width: 20px;
+  }
+
+  .card-forge-input--compact {
+    padding: 3px 5px;
+    font-size: 12px;
+  }
+
+  .card-forge-inline-rules {
+    grid-column: 2;
+    grid-row: 2;
+    padding: 7px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .card-forge-inline-stats {
+    grid-column: 2;
+    grid-row: 3;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+
+  .card-forge-stat-field {
+    grid-template-columns: minmax(0, 1fr) minmax(42px, 58px);
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
+  .card-forge-footer {
+    padding: 6px 12px;
   }
 }
 

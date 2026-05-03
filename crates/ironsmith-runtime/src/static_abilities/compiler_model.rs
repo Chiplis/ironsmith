@@ -124,6 +124,15 @@ impl StaticAbility {
             Some(StaticAbilityId::OpponentsCantDrawExtraCards) => {
                 Self::opponents_cant_draw_extra_cards()
             }
+            Some(StaticAbilityId::ControlOpponentsWhileSearchingLibraries) => {
+                Self::control_opponents_while_searching_libraries()
+            }
+            Some(StaticAbilityId::OpponentSearchExileFoundCards) => {
+                Self::opponent_search_exile_found_cards()
+            }
+            Some(StaticAbilityId::CastThisCardFromLibraryWhileSearching) => {
+                Self::cast_this_card_from_library_while_searching()
+            }
             Some(StaticAbilityId::CantHaveCountersPlaced) => Self::cant_have_counters_placed(),
             Some(StaticAbilityId::PermanentsCantBeSacrificed) => {
                 Self::permanents_you_control_cant_be_sacrificed()

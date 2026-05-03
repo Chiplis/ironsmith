@@ -320,6 +320,18 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("your"),
             StaticAbilityLineHeadHint::Pair("your", "opponents"),
         ],
+        "parse_control_opponents_while_searching_libraries_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "control"),
+        ],
+        "parse_opponent_search_exile_found_cards_line" => vec![
+            StaticAbilityLineHeadHint::Single("while"),
+            StaticAbilityLineHeadHint::Pair("while", "an"),
+        ],
+        "parse_cast_this_card_from_library_while_searching_line" => vec![
+            StaticAbilityLineHeadHint::Single("while"),
+            StaticAbilityLineHeadHint::Pair("while", "youre"),
+        ],
         "parse_additional_land_play_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -646,6 +658,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_players_play_top_card_libraries_revealed_line),
         single_static_ability_ast_rule!(parse_play_top_card_your_library_revealed_line),
         single_static_ability_ast_rule!(parse_your_opponents_play_with_hands_revealed_line),
+        single_static_ability_ast_rule!(parse_control_opponents_while_searching_libraries_line),
+        single_static_ability_ast_rule!(parse_opponent_search_exile_found_cards_line),
+        single_static_ability_ast_rule!(parse_cast_this_card_from_library_while_searching_line),
         single_static_ability_ast_rule!(parse_play_lands_from_graveyard_line),
         single_static_ability_ast_rule!(parse_cast_spells_from_hand_without_paying_mana_costs_line),
         single_static_ability_ast_rule!(parse_cost_reduction_line),
@@ -5757,6 +5772,114 @@ pub(crate) fn parse_your_opponents_play_with_hands_revealed_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_your_opponents_play_with_hands_revealed_line_lexed(tokens) {
         return Ok(Some(StaticAbility::opponents_play_with_hands_revealed()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_control_opponents_while_searching_libraries_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_text_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "you",
+            "control",
+            "your",
+            "opponents",
+            "while",
+            "theyre" | "they're",
+            "searching",
+            "their",
+            "libraries",
+        ]
+    ) {
+        return Ok(Some(
+            StaticAbility::control_opponents_while_searching_libraries(),
+        ));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_opponent_search_exile_found_cards_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_text_word_refs(tokens);
+    if words
+        == [
+            "while",
+            "an",
+            "opponent",
+            "is",
+            "searching",
+            "their",
+            "library",
+            "they",
+            "exile",
+            "each",
+            "card",
+            "they",
+            "find",
+            "you",
+            "may",
+            "play",
+            "those",
+            "cards",
+            "for",
+            "as",
+            "long",
+            "as",
+            "they",
+            "remain",
+            "exiled",
+            "and",
+            "you",
+            "may",
+            "spend",
+            "mana",
+            "as",
+            "though",
+            "it",
+            "were",
+            "mana",
+            "of",
+            "any",
+            "color",
+            "to",
+            "cast",
+            "them",
+        ]
+    {
+        return Ok(Some(StaticAbility::opponent_search_exile_found_cards()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_cast_this_card_from_library_while_searching_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_text_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "while",
+            "youre" | "you're",
+            "searching",
+            "your",
+            "library",
+            "you",
+            "may",
+            "cast",
+            "this",
+            "card",
+            "from",
+            "your",
+            "library",
+        ]
+    ) {
+        return Ok(Some(
+            StaticAbility::cast_this_card_from_library_while_searching(),
+        ));
     }
     Ok(None)
 }

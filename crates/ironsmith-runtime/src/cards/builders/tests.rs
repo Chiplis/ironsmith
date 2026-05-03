@@ -8125,7 +8125,7 @@ fn render_token_controller_clause_precedes_quoted_ability_sentence() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains(
-            "that player creates a 0/1 colorless goblin construct artifact creature token. it has \"this token can't block.\""
+            "that player creates a 0/1 colorless goblin construct artifact creature token with \"this token can't block.\""
         ),
         "expected controller text to attach to token creation before quoted ability, got {rendered}"
     );
@@ -35899,7 +35899,7 @@ fn parse_oracle_satyrs_cunning_keeps_escape_exile_clause_in_scored_text() {
     let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
 
     assert!(
-        rendered.contains("Create a 1/1 red Satyr creature token with \"Can't block.\"")
+        rendered.contains("Create a 1/1 red Satyr creature token with \"This token can't block.\"")
             && rendered.contains("Escape")
             && rendered.contains("{2}{R}")
             && rendered.contains("Exile two other cards from your graveyard"),

@@ -1130,6 +1130,28 @@ pub enum DecisionContext {
 }
 
 impl DecisionContext {
+    pub fn player(&self) -> PlayerId {
+        match self {
+            DecisionContext::Boolean(ctx) => ctx.player,
+            DecisionContext::Number(ctx) => ctx.player,
+            DecisionContext::TextInput(ctx) => ctx.player,
+            DecisionContext::SelectObjects(ctx) => ctx.player,
+            DecisionContext::SelectOptions(ctx) => ctx.player,
+            DecisionContext::Modes(ctx) => ctx.player,
+            DecisionContext::HybridChoice(ctx) => ctx.player,
+            DecisionContext::Order(ctx) => ctx.player,
+            DecisionContext::Attackers(ctx) => ctx.player,
+            DecisionContext::Blockers(ctx) => ctx.player,
+            DecisionContext::Distribute(ctx) => ctx.player,
+            DecisionContext::Colors(ctx) => ctx.player,
+            DecisionContext::Counters(ctx) => ctx.player,
+            DecisionContext::Partition(ctx) => ctx.player,
+            DecisionContext::Proliferate(ctx) => ctx.player,
+            DecisionContext::Priority(ctx) => ctx.player,
+            DecisionContext::Targets(ctx) => ctx.player,
+        }
+    }
+
     pub fn source(&self) -> Option<ObjectId> {
         match self {
             DecisionContext::Boolean(ctx) => ctx.source,

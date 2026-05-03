@@ -27,7 +27,9 @@ use ironsmith::decisions::context::{
 use ironsmith::effect::{Effect, Until};
 use ironsmith::events::spells::SpellCastEvent;
 use ironsmith::game_loop::{CastStage, PendingCast, PendingManaAbility, PriorityResponse};
-use ironsmith::game_state::{GameState, Phase, StackEntry, Step, Target};
+use ironsmith::game_state::{
+    GameState, Phase, PlayerControlDuration, PlayerControlStart, StackEntry, Step, Target,
+};
 use ironsmith::ids::{CardId, ObjectId, PlayerId};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::object::CounterType;
@@ -1939,6 +1941,71 @@ fn snapshot_shows_hidden_zone_select_object_candidates_to_decision_player() {
         Some(bob.0),
         "visible select-object candidates should include their current controller for UI coloring"
     );
+}
+
+#[test]
+fn snapshot_routes_controlled_player_decision_to_controller() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = wasm
+        .add_card_to_zone(0, "Primeval Titan".to_string(), "hand".to_string(), true)
+        .expect("adding hidden hand card should succeed");
+    let card_id = ObjectId::from_raw(card);
+
+    wasm.game.add_player_control(
+        bob,
+        alice,
+        PlayerControlStart::Immediate,
+        PlayerControlDuration::UntilEndOfTurn,
+        None,
+    );
+
+    let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+        alice,
+        None,
+        "Choose a card",
+        vec![SelectableObject::new(card_id, "Primeval Titan")],
+        1,
+        Some(1),
+    ));
+    let pending_cast_stack_id = wasm
+        .priority_state
+        .pending_cast
+        .as_ref()
+        .map(|p| p.stack_id);
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        bob,
+        Some(&decision),
+        None,
+        wasm.game_over.as_ref(),
+        pending_cast_stack_id,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        None,
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+
+    match snapshot
+        .decision
+        .as_ref()
+        .expect("snapshot should include the controlled-player decision")
+    {
+        super::DecisionView::SelectObjects {
+            player, candidates, ..
+        } => {
+            assert_eq!(
+                *player, bob.0,
+                "UI decisions should be routed to the controlling player"
+            );
+            assert_eq!(candidates[0].name, "Primeval Titan");
+            assert_eq!(candidates[0].id, card);
+        }
+        other => panic!("expected select_objects view, got {other:?}"),
+    }
 }
 
 #[test]

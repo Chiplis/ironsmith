@@ -7016,6 +7016,58 @@ fn parse_courser_of_kruphix_public_top_library_and_land_grant() {
 }
 
 #[test]
+fn parse_searching_library_static_permissions() {
+    let opposition = CardDefinitionBuilder::new(CardId::new(), "Opposition Agent Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\nYou control your opponents while they're searching their libraries.\nWhile an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.",
+        )
+        .expect("Opposition Agent search-control text should parse");
+    let opposition_debug = format!("{:?}", opposition.abilities);
+    assert!(
+        opposition_debug.contains("ControlOpponentsWhileSearchingLibraries"),
+        "expected opponent-search control static ability, got {opposition_debug}"
+    );
+    assert!(
+        opposition_debug.contains("OpponentSearchExileFoundCards"),
+        "expected opponent-search exile/play static ability, got {opposition_debug}"
+    );
+
+    let panglacial = CardDefinitionBuilder::new(CardId::new(), "Panglacial Wurm Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Trample\nWhile you're searching your library, you may cast this card from your library.",
+        )
+        .expect("Panglacial Wurm library-search cast text should parse");
+    let panglacial_debug = format!("{:?}", panglacial.abilities);
+    assert!(
+        panglacial_debug.contains("CastThisCardFromLibraryWhileSearching"),
+        "expected library-search cast static ability, got {panglacial_debug}"
+    );
+    assert!(
+        panglacial_debug.contains("functional_zones: [Library]"),
+        "expected Panglacial Wurm permission to function from library, got {panglacial_debug}"
+    );
+}
+
+#[test]
+fn parse_final_parting_search_two_split_destinations() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Final Parting Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for two cards. Put one into your hand and the other into your graveyard. Then shuffle.",
+        )
+        .expect("Final Parting search split should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("is_search: true"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+    assert!(debug.contains("ShuffleLibraryEffect"), "{debug}");
+}
+
+#[test]
 fn rewrite_grammar_chosen_type_static_line_probes_match_keyword_static_shapes() {
     type Probe = fn(&[crate::runtime_backend::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(

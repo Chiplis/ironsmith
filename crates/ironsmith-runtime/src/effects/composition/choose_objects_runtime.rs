@@ -5,6 +5,10 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{
     ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, SearchSelectionMode,
 };
+use crate::effects::cards::search_overrides::{
+    begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
+    finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
+};
 use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_to_list, resolve_value,
 };
@@ -852,6 +856,30 @@ pub(crate) fn run_choose_objects(
     let chooser_id = resolve_player_filter(game, &effect.chooser, ctx)?;
 
     let search_zones = search_zones(effect)?;
+    let library_owner = if effect.is_search && search_zones.as_slice() == [Zone::Library] {
+        let filter_ctx = if object_filter_mentions_iterated_player(&effect.filter)
+            && matches!(effect.chooser, PlayerFilter::Target(_))
+        {
+            let base_ctx = ctx.filter_context(game);
+            if base_ctx.iterated_player.is_none() {
+                base_ctx.with_iterated_player(Some(chooser_id))
+            } else {
+                base_ctx
+            }
+        } else {
+            ctx.filter_context(game)
+        };
+        let owners = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
+        if owners.len() == 1 {
+            Some(owners[0])
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let search_override =
+        library_owner.and_then(|owner| opposition_agent_search(game, chooser_id, owner));
 
     if effect.is_search
         && search_zones == vec![Zone::Library]
@@ -859,196 +887,237 @@ pub(crate) fn run_choose_objects(
     {
         return Ok(EffectOutcome::prevented());
     }
-    let search_event = (effect.is_search && search_zones.contains(&Zone::Library)).then(|| {
-        TriggerEvent::new_with_provenance(SearchLibraryEvent::new(chooser_id, None), ctx.provenance)
-    });
-
-    let candidates = collect_candidates(effect, game, ctx, chooser_id)?;
-    if candidates.is_empty() {
-        let outcome = EffectOutcome::count(0);
-        return Ok(if let Some(search_event) = search_event.clone() {
-            outcome.with_event(search_event)
-        } else {
-            outcome
-        });
-    }
-
-    let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
-        let x = if let Some(count_value) = effect.count_value.as_ref() {
-            let previous_iterated_player = ctx.iteration.iterated_player;
-            if previous_iterated_player.is_none()
-                && matches!(effect.chooser, PlayerFilter::Target(_))
-                && value_mentions_iterated_player(count_value)
-            {
-                ctx.iteration.iterated_player = Some(chooser_id);
+    let search_control = begin_opposition_agent_search_control(game, chooser_id, search_override);
+    let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        if let Some(owner) = library_owner {
+            offer_library_search_casts(game, ctx, owner)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-            let resolved = resolve_value(game, count_value, ctx);
-            ctx.iteration.iterated_player = previous_iterated_player;
-            resolved?.max(0) as usize
-        } else {
-            ctx.x_value
-                .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
-                as usize
-        };
-
-        let optional_dynamic_choice = effect.count.up_to_x
-            || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
-        if optional_dynamic_choice {
-            (0, x.min(candidates.len()))
-        } else if x > candidates.len() && !effect.is_search {
-            return Err(ExecutionError::Impossible(format!(
-                "Not enough candidates to choose dynamic-count objects ({x}, {} available)",
-                candidates.len()
-            )));
-        } else {
-            let bounded = x.min(candidates.len());
-            (bounded, bounded)
         }
-    } else {
-        compute_choice_bounds(effect.count, candidates.len())
-    };
-    if max == 0 {
-        let outcome = EffectOutcome::count(0);
-        return Ok(if let Some(search_event) = search_event.clone() {
-            outcome.with_event(search_event)
-        } else {
-            outcome
+        let search_event = (effect.is_search && search_zones.contains(&Zone::Library)).then(|| {
+            TriggerEvent::new_with_provenance(
+                SearchLibraryEvent::new(chooser_id, library_owner),
+                ctx.provenance,
+            )
         });
-    }
 
-    let has_hidden_search_zones = effect.is_search && search_zones.iter().any(Zone::is_hidden);
-    let has_search_stated_quality = effect.filter.has_search_stated_quality();
-    let search_required_count = compute_search_required_count(effect.search_mode, max);
-    let allow_hidden_partial =
-        effect.is_search && has_hidden_search_zones && has_search_stated_quality;
-    let min = if effect.is_search {
-        if allow_hidden_partial {
+        let candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+        if candidates.is_empty() {
+            let outcome = EffectOutcome::count(0);
+            return Ok(if let Some(search_event) = search_event.clone() {
+                outcome.with_event(search_event)
+            } else {
+                outcome
+            });
+        }
+
+        let (base_min, max) = if effect.count.dynamic_x || effect.count_value.is_some() {
+            let x = if let Some(count_value) = effect.count_value.as_ref() {
+                let previous_iterated_player = ctx.iteration.iterated_player;
+                if previous_iterated_player.is_none()
+                    && matches!(effect.chooser, PlayerFilter::Target(_))
+                    && value_mentions_iterated_player(count_value)
+                {
+                    ctx.iteration.iterated_player = Some(chooser_id);
+                }
+                let resolved = resolve_value(game, count_value, ctx);
+                ctx.iteration.iterated_player = previous_iterated_player;
+                resolved?.max(0) as usize
+            } else {
+                ctx.x_value.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("X value not set".to_string())
+                })? as usize
+            };
+
+            let optional_dynamic_choice = effect.count.up_to_x
+                || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
+            if optional_dynamic_choice {
+                (0, x.min(candidates.len()))
+            } else if x > candidates.len() && !effect.is_search {
+                return Err(ExecutionError::Impossible(format!(
+                    "Not enough candidates to choose dynamic-count objects ({x}, {} available)",
+                    candidates.len()
+                )));
+            } else {
+                let bounded = x.min(candidates.len());
+                (bounded, bounded)
+            }
+        } else {
+            compute_choice_bounds(effect.count, candidates.len())
+        };
+        if max == 0 {
+            let outcome = EffectOutcome::count(0);
+            return Ok(if let Some(search_event) = search_event.clone() {
+                outcome.with_event(search_event)
+            } else {
+                outcome
+            });
+        }
+
+        let has_hidden_search_zones = effect.is_search && search_zones.iter().any(Zone::is_hidden);
+        let has_search_stated_quality = effect.filter.has_search_stated_quality();
+        let search_required_count = compute_search_required_count(effect.search_mode, max);
+        let allow_hidden_partial =
+            effect.is_search && has_hidden_search_zones && has_search_stated_quality;
+        let min = if effect.is_search {
+            if allow_hidden_partial {
+                0
+            } else {
+                search_required_count.max(base_min)
+            }
+        } else {
+            base_min
+        };
+        let required_public_count = if allow_hidden_partial {
+            let public_count = public_search_candidates(game, &candidates).len();
+            match effect.search_mode {
+                SearchSelectionMode::Exact => search_required_count.min(public_count),
+                SearchSelectionMode::Optional => 0,
+                SearchSelectionMode::AllMatching => public_count,
+            }
+        } else {
             0
-        } else {
-            search_required_count.max(base_min)
-        }
-    } else {
-        base_min
-    };
-    let required_public_count = if allow_hidden_partial {
-        let public_count = public_search_candidates(game, &candidates).len();
-        match effect.search_mode {
-            SearchSelectionMode::Exact => search_required_count.min(public_count),
-            SearchSelectionMode::Optional => 0,
-            SearchSelectionMode::AllMatching => public_count,
-        }
-    } else {
-        0
-    };
-
-    let description = if effect.is_search
-        && matches!(
-            effect.description.as_str(),
-            "Choose" | "card" | "cards" | "objects"
-        )
-        && let Some(prompt) = friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
-    {
-        prompt
-    } else if effect.description == "Choose" {
-        let tag_str = effect.tag.as_str();
-        let verb = if tag_str.starts_with("sacrificed") {
-            "sacrifice"
-        } else if tag_str.starts_with("discarded") {
-            "discard"
-        } else if tag_str.starts_with("exiled") {
-            "exile"
-        } else if tag_str.starts_with("returned") {
-            "return"
-        } else {
-            "choose"
         };
-        describe_choose_from_filter(&effect.filter, min, max, verb)
-    } else {
-        effect.description.clone()
-    };
-    let chosen: Vec<ObjectId> = if effect.count.is_random() {
-        let mut randomized = candidates.clone();
-        game.shuffle_slice(&mut randomized);
-        randomized.truncate(max);
-        randomized
-    } else if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
-        candidates.clone()
-    } else {
-        let mut spec =
-            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
-        if allow_hidden_partial {
-            spec = spec.allow_partial_completion();
+
+        let description = if effect.is_search
+            && matches!(
+                effect.description.as_str(),
+                "Choose" | "card" | "cards" | "objects"
+            )
+            && let Some(prompt) =
+                friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
+        {
+            prompt
+        } else if effect.description == "Choose" {
+            let tag_str = effect.tag.as_str();
+            let verb = if tag_str.starts_with("sacrificed") {
+                "sacrifice"
+            } else if tag_str.starts_with("discarded") {
+                "discard"
+            } else if tag_str.starts_with("exiled") {
+                "exile"
+            } else if tag_str.starts_with("returned") {
+                "return"
+            } else {
+                "choose"
+            };
+            describe_choose_from_filter(&effect.filter, min, max, verb)
+        } else {
+            effect.description.clone()
+        };
+        let chosen: Vec<ObjectId> = if effect.count.is_random() {
+            let mut randomized = candidates.clone();
+            game.shuffle_slice(&mut randomized);
+            randomized.truncate(max);
+            randomized
+        } else if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
+            candidates.clone()
+        } else {
+            let mut spec =
+                ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
+            if allow_hidden_partial {
+                spec = spec.allow_partial_completion();
+            }
+            make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
+        };
+        if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
+            ctx.clear_object_tag(effect.tag.as_str());
+            let outcome = EffectOutcome::count(0);
+            return Ok(if let Some(search_event) = search_event {
+                outcome.with_event(search_event)
+            } else {
+                outcome
+            });
         }
-        make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
-    };
-    if !effect.count.is_random() && ctx.decision_maker.awaiting_choice() {
-        ctx.clear_object_tag(effect.tag.as_str());
-        let outcome = EffectOutcome::count(0);
-        return Ok(if let Some(search_event) = search_event {
+        let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !allow_hidden_partial);
+        let chosen = enforce_public_search_choice_constraint(
+            game,
+            &candidates,
+            chosen,
+            required_public_count,
+            max,
+        );
+        let chosen =
+            enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
+        let chosen = if effect.filter.distinct_names {
+            normalize_chosen_distinct_names(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen = if effect.filter.distinct_powers {
+            normalize_chosen_distinct_powers(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen = if effect.filter.distinct_creature_types {
+            normalize_chosen_distinct_creature_types(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen_memory: Vec<_> = chosen
+            .iter()
+            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+            .collect();
+        if search_zones.iter().any(Zone::is_hidden) {
+            ctx.remember_face_down_exile_viewers(&chosen, game.controlling_player_for(chooser_id));
+        }
+
+        let (objects_for_tags, outcome_objects) = if let Some(search) = search_override {
+            (
+                Vec::new(),
+                exile_found_cards_for_opposition_agent(game, &chosen, search),
+            )
+        } else {
+            (chosen.clone(), chosen.clone())
+        };
+
+        let snapshots = snapshot_chosen_objects(game, &objects_for_tags);
+        if !snapshots.is_empty() {
+            if effect.replace_tagged_objects {
+                ctx.set_tagged_objects(effect.tag.clone(), snapshots);
+            } else {
+                ctx.tag_objects(effect.tag.clone(), snapshots);
+            }
+        } else {
+            ctx.clear_object_tag(effect.tag.as_str());
+        }
+
+        let outcome = EffectOutcome::with_objects(outcome_objects.clone())
+            .with_execution_fact(ExecutionFact::ChosenObjects(outcome_objects))
+            .with_chosen_object_memory(chosen_memory);
+        Ok(if let Some(search_event) = search_event {
             outcome.with_event(search_event)
         } else {
             outcome
-        });
-    }
-    let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !allow_hidden_partial);
-    let chosen = enforce_public_search_choice_constraint(
-        game,
-        &candidates,
-        chosen,
-        required_public_count,
-        max,
-    );
-    let chosen =
-        enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
-    let chosen = if effect.filter.distinct_names {
-        normalize_chosen_distinct_names(game, chosen, &candidates, min, max, !allow_hidden_partial)
-    } else {
-        chosen
-    };
-    let chosen = if effect.filter.distinct_powers {
-        normalize_chosen_distinct_powers(game, chosen, &candidates, min, max, !allow_hidden_partial)
-    } else {
-        chosen
-    };
-    let chosen = if effect.filter.distinct_creature_types {
-        normalize_chosen_distinct_creature_types(
-            game,
-            chosen,
-            &candidates,
-            min,
-            max,
-            !allow_hidden_partial,
-        )
-    } else {
-        chosen
-    };
-    if search_zones.iter().any(Zone::is_hidden) {
-        ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
-    }
+        })
+    })();
 
-    let snapshots = snapshot_chosen_objects(game, &chosen);
-    if !snapshots.is_empty() {
-        if effect.replace_tagged_objects {
-            ctx.set_tagged_objects(effect.tag.clone(), snapshots);
-        } else {
-            ctx.tag_objects(effect.tag.clone(), snapshots);
-        }
-    } else {
-        ctx.clear_object_tag(effect.tag.as_str());
+    if result.is_err() || !ctx.decision_maker.awaiting_choice() {
+        finish_opposition_agent_search_control(game, search_control);
     }
-
-    let chosen_memory: Vec<_> = chosen
-        .iter()
-        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
-        .collect();
-    let outcome = EffectOutcome::with_objects(chosen.clone())
-        .with_execution_fact(ExecutionFact::ChosenObjects(chosen))
-        .with_chosen_object_memory(chosen_memory);
-    Ok(if let Some(search_event) = search_event {
-        outcome.with_event(search_event)
-    } else {
-        outcome
-    })
+    result
 }
 
 #[cfg(test)]
