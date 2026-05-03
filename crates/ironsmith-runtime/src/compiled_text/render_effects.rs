@@ -11847,7 +11847,7 @@ pub(super) fn describe_inline_ability_with_self_subject(
             if line.is_empty() {
                 "a mana ability".to_string()
             } else {
-                line
+                normalize_ability_self_reference_surface(&line, self_subject)
             }
         }
         AbilityKind::Activated(activated) => {
@@ -12671,6 +12671,138 @@ mod tests {
             describe_effect(&effect),
             "Add two mana in any combination of colors"
         );
+    }
+
+    #[test]
+    fn riot_structural_keyword_accepts_permanent_haste_choice() {
+        let haste_effect = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::Source,
+            crate::continuous::Modification::AddAbilityGeneric(Ability::static_ability(
+                crate::static_abilities::StaticAbility::haste(),
+            )),
+            Until::Forever,
+        ));
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_enters_battlefield(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::choose_one(
+                vec![
+                    ironsmith_core::EffectMode::new(
+                        "This creature enters with a +1/+1 counter on it",
+                        vec![Effect::put_counters_on_source(
+                            CounterType::PlusOnePlusOne,
+                            1,
+                        )],
+                    ),
+                    ironsmith_core::EffectMode::new(
+                        "This creature gains haste",
+                        vec![haste_effect],
+                    ),
+                ],
+            )]),
+            choices: vec![],
+            intervening_if: None,
+            presentation_label: None,
+        };
+
+        assert_eq!(
+            describe_structural_riot_keyword(&triggered),
+            Some("Riot".to_string())
+        );
+    }
+
+    #[test]
+    fn inline_mana_ability_normalizes_this_source_cost_to_subject() {
+        let ability = Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::from_cost(
+                    crate::costs::Cost::try_effect(Effect::sacrifice_source())
+                        .expect("sacrifice source is a cost-executable effect"),
+                ),
+                effects: crate::resolution::ResolutionProgram::default(),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: false,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: Some(vec![ManaSymbol::Black]),
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+
+        assert_eq!(
+            describe_inline_ability_with_self_subject(&ability, "this land"),
+            "Sacrifice this land: Add {B}"
+        );
+    }
+
+    #[test]
+    fn zero_cost_loyalty_mana_ability_renders_zero_prefix() {
+        let ability = Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::default(),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: true,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: Some(vec![
+                    ManaSymbol::Colorless,
+                    ManaSymbol::Colorless,
+                    ManaSymbol::Colorless,
+                ]),
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+
+        assert_eq!(
+            describe_ability(4, &ability, "This planeswalker", false),
+            vec!["0: Add {C}{C}{C}".to_string()]
+        );
+    }
+
+    #[test]
+    fn loyalty_mana_ability_keeps_usage_restriction_clause() {
+        let ability = Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::add_counters(
+                    CounterType::Loyalty,
+                    1,
+                )),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::add_mana_of_any_color_restricted(
+                        Value::Fixed(2),
+                        crate::color::Color::ALL.to_vec(),
+                    ),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: true,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![
+                    crate::ability::ManaUsageRestriction::CastSpellMatching {
+                        filter: ObjectFilter::default().with_subtype(Subtype::Dragon),
+                        restrict_to_matching_spell: true,
+                        grant_uncounterable: false,
+                        enters_with_counters: vec![],
+                        granted_abilities: vec![],
+                    },
+                ],
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+
+        let rendered = describe_ability(1, &ability, "This planeswalker", false);
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].starts_with("+1: Add two mana in any combination of colors."));
+        assert!(rendered[0].contains("Spend this mana only to cast"));
     }
 
     #[test]
@@ -14256,6 +14388,15 @@ fn describe_loyalty_activation_prefix(costs: &[crate::costs::Cost]) -> Option<St
         }
         _ => None,
     }
+}
+
+fn describe_loyalty_activation_prefix_for_activated(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    describe_loyalty_activation_prefix(activated.mana_cost.costs()).or_else(|| {
+        (activated.is_loyalty_ability() && activated.mana_cost.costs().is_empty())
+            .then(|| "0".to_string())
+    })
 }
 
 fn loyalty_prefix_amount(value: &Value) -> Option<String> {
@@ -29534,7 +29675,7 @@ fn describe_structural_riot_keyword(
     let has_haste_mode = choose
         .modes
         .iter()
-        .any(|mode| matches!(mode.effects.as_slice(), [effect] if is_source_haste_until_end_of_turn(effect)));
+        .any(|mode| matches!(mode.effects.as_slice(), [effect] if is_source_permanent_haste_grant(effect)));
     (has_counter_mode && has_haste_mode).then(|| "Riot".to_string())
 }
 
@@ -29931,12 +30072,12 @@ fn is_plus_one_counter_on_source(effect: &Effect) -> bool {
         })
 }
 
-fn is_source_haste_until_end_of_turn(effect: &Effect) -> bool {
+fn is_source_permanent_haste_grant(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()
         .is_some_and(|apply| {
             matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Source))
-                && matches!(apply.until, Until::EndOfTurn)
+                && matches!(apply.until, Until::Forever)
                 && apply_continuous_adds_static_ability(
                     apply,
                     crate::static_abilities::StaticAbilityId::Haste,
@@ -30893,7 +31034,7 @@ pub(super) fn describe_ability(
             {
                 cost_text = Some("Exile this card from your hand".to_string());
             }
-            let loyalty_prefix = describe_loyalty_activation_prefix(activated.mana_cost.costs());
+            let loyalty_prefix = describe_loyalty_activation_prefix_for_activated(activated);
             let mana_symbols = activated.mana_symbols();
             let add_text = if !mana_symbols.is_empty() {
                 Some(format!(
@@ -30984,7 +31125,7 @@ pub(super) fn describe_ability(
                 )];
             }
             if let Some(loyalty_prefix) =
-                describe_loyalty_activation_prefix(activated.mana_cost.costs())
+                describe_loyalty_activation_prefix_for_activated(activated)
             {
                 let mut line = format!("{loyalty_prefix}:");
                 let mana_symbols = activated.mana_symbols();
@@ -31025,6 +31166,17 @@ pub(super) fn describe_ability(
                     );
                     effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
                     line.push_str(&effects);
+                }
+                if let Some(condition) = &activated.activation_condition {
+                    let clause = describe_mana_activation_condition(condition);
+                    if !clause.is_empty() {
+                        line.push_str(". ");
+                        line.push_str(&clause);
+                    }
+                }
+                for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
+                    line.push_str(". ");
+                    line.push_str(&clause);
                 }
                 return vec![line];
             }
