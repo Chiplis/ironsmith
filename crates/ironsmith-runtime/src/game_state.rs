@@ -1424,9 +1424,11 @@ pub struct StackEntry {
     pub defending_player: Option<PlayerId>,
     /// The chosen player linked to this source at the time the stack entry was created.
     pub chosen_player: Option<PlayerId>,
-    /// If this is a saga's final chapter ability, the saga's object ID.
-    /// When this ability resolves, the saga should be marked for sacrifice.
-    pub saga_final_chapter_source: Option<ObjectId>,
+    /// If this is a chapter ability, the source object's ID.
+    ///
+    /// Saga state-based actions use this to delay sacrifice while a chapter
+    /// ability from that Saga is still on the stack.
+    pub chapter_ability_source: Option<ObjectId>,
     /// The stable instance ID of the source (persists across zone changes).
     /// Used to track the source even after it leaves the battlefield.
     pub source_stable_id: Option<StableId>,
@@ -1491,7 +1493,7 @@ impl StackEntry {
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
             chosen_player: None,
-            saga_final_chapter_source: None,
+            chapter_ability_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: None,
@@ -1525,7 +1527,7 @@ impl StackEntry {
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
             chosen_player: None,
-            saga_final_chapter_source: None,
+            chapter_ability_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: None,
@@ -1540,9 +1542,9 @@ impl StackEntry {
         }
     }
 
-    /// Mark this as a saga's final chapter ability.
-    pub fn with_saga_final_chapter(mut self, saga_id: ObjectId) -> Self {
-        self.saga_final_chapter_source = Some(saga_id);
+    /// Mark this as a chapter ability from the given source.
+    pub fn with_chapter_ability_source(mut self, source_id: ObjectId) -> Self {
+        self.chapter_ability_source = Some(source_id);
         self
     }
 
@@ -1780,9 +1782,6 @@ pub struct GameState {
     /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
     pub plotted_cards: HashMap<ObjectId, (PlayerId, u32)>,
 
-    /// Sagas whose final chapter ability has resolved (ready to be sacrificed).
-    pub saga_final_chapter_resolved: HashSet<ObjectId>,
-
     /// Objects designated as commanders.
     pub commanders: HashSet<ObjectId>,
 
@@ -1892,7 +1891,6 @@ impl GameState {
             madness_exiled: HashSet::new(),
             foretold_cards: HashSet::new(),
             plotted_cards: HashMap::new(),
-            saga_final_chapter_resolved: HashSet::new(),
             commanders: HashSet::new(),
             commander_casts_from_command_zone: HashMap::new(),
             declined_commander_command_zone_moves: HashSet::new(),
@@ -6783,26 +6781,6 @@ impl GameState {
             .contains(&player)
     }
 
-    /// Check if a saga's final chapter has resolved.
-    pub fn is_saga_final_chapter_resolved(&self, id: ObjectId) -> bool {
-        self.saga_final_chapter_resolved.contains(&id)
-    }
-
-    /// Mark a saga's final chapter as resolved.
-    pub fn set_saga_final_chapter_resolved(&mut self, id: ObjectId) {
-        self.saga_final_chapter_resolved.insert(id);
-    }
-
-    /// Alias for set_saga_final_chapter_resolved.
-    pub fn mark_saga_final_chapter_resolved(&mut self, id: ObjectId) {
-        self.saga_final_chapter_resolved.insert(id);
-    }
-
-    /// Clear a saga's final chapter resolved flag.
-    pub fn clear_saga_final_chapter_resolved(&mut self, id: ObjectId) {
-        self.saga_final_chapter_resolved.remove(&id);
-    }
-
     /// Check if an object is designated as a commander.
     pub fn is_commander_object(&self, id: ObjectId) -> bool {
         self.is_commander(id)
@@ -6844,7 +6822,7 @@ impl GameState {
             .turn_history
             .chosen_modes_by_ability_this_turn
             .retain(|(source, _), _| *source != id);
-        // Note: saga_final_chapter_resolved and commanders persist across zone changes
+        // Note: commanders persist across zone changes
     }
 
     fn soulbond_pair_is_valid(&self, left: ObjectId, right: ObjectId) -> bool {

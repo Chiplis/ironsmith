@@ -70,6 +70,7 @@ pub mod cards;
 pub mod counters;
 pub mod damage;
 pub mod life;
+pub mod mana;
 pub mod permanents;
 pub mod raw_event;
 pub mod zones;
@@ -93,6 +94,7 @@ pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
 pub use damage::DamageEvent;
 pub use life::{LifeGainEvent, LifeLossEvent};
+pub use mana::ManaAddedEvent;
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
 pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 
@@ -253,6 +255,19 @@ impl Event {
                 amount,
                 from_damage,
             },
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a mana-added event.
+    pub fn mana_added(
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+        mana: Vec<crate::mana::ManaSymbol>,
+    ) -> Self {
+        Self::new_with_provenance(
+            ManaAddedEvent::new(source, controller, player, mana),
             ProvNodeId::default(),
         )
     }

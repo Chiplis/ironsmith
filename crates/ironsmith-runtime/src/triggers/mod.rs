@@ -707,6 +707,11 @@ impl Trigger {
         Self::new(TapForManaTrigger::new(player, filter))
     }
 
+    /// Create a "whenever mana is added to [player]'s mana pool" trigger.
+    pub fn mana_added(player: PlayerFilter) -> Self {
+        Self::new(ManaAddedTrigger::new(player))
+    }
+
     /// Create a "when this permanent becomes the target of a spell or ability" trigger.
     pub fn becomes_targeted() -> Self {
         Self::new(BecomesTargetedTrigger)

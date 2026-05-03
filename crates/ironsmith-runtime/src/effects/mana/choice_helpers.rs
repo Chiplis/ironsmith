@@ -2,12 +2,50 @@
 
 use crate::color::Color;
 use crate::decisions::{ManaColorsSpec, ask_choose_one, make_decision};
+use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::ExecutionContext;
+use crate::events::ManaAddedEvent;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::ids::PlayerId;
 use crate::mana::ManaSymbol;
 use crate::types::Subtype;
+
+pub(crate) fn mana_added_value_outcome(
+    ctx: &ExecutionContext,
+    player_id: PlayerId,
+    mana: Vec<ManaSymbol>,
+) -> EffectOutcome {
+    mana_added_outcome_with_value(ctx, player_id, mana.clone(), OutcomeValue::ManaAdded(mana))
+}
+
+pub(crate) fn mana_added_count_outcome(
+    ctx: &ExecutionContext,
+    player_id: PlayerId,
+    mana: Vec<ManaSymbol>,
+    count: i32,
+) -> EffectOutcome {
+    mana_added_outcome_with_value(ctx, player_id, mana, OutcomeValue::Count(count))
+}
+
+pub(crate) fn mana_added_outcome_with_value(
+    ctx: &ExecutionContext,
+    player_id: PlayerId,
+    mana: Vec<ManaSymbol>,
+    value: OutcomeValue,
+) -> EffectOutcome {
+    let outcome = EffectOutcome::from_value(value);
+    if mana.is_empty() {
+        outcome
+    } else {
+        outcome.with_event(ManaAddedEvent::trigger_event(
+            ctx.source,
+            ctx.controller,
+            player_id,
+            mana,
+        ))
+    }
+}
 
 /// Choose one or more mana colors through the decision system with stable
 /// fallback behavior and length normalization.

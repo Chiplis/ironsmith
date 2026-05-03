@@ -63,7 +63,6 @@ fn synthetic_snapshot(
         defense: None,
         abilities: Vec::new(),
         aura_attach_filter: None,
-        max_saga_chapter: None,
         x_value: None,
         cast_order_this_turn: None,
         counters: std::collections::HashMap::new(),

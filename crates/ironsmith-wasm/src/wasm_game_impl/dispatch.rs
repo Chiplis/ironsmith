@@ -578,17 +578,12 @@ impl WasmGame {
                     &mut self.trigger_queue,
                 );
 
-                if self
-                    .game
-                    .object(entered_id)
-                    .is_some_and(|obj| obj.subtypes.contains(&Subtype::Saga))
-                {
-                    ironsmith::game_loop::add_lore_counter_and_check_chapters(
-                        &mut self.game,
-                        entered_id,
-                        &mut self.trigger_queue,
-                    );
-                }
+                ironsmith::game_loop::handle_saga_enters_battlefield(
+                    &mut self.game,
+                    entered_id,
+                    &mut self.trigger_queue,
+                    dm,
+                );
             }
 
             entered_id

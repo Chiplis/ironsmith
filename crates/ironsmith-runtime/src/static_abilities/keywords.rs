@@ -110,6 +110,7 @@ define_keyword!(Flanking, Flanking, "Flanking");
 define_keyword!(Partner, Partner, "Partner");
 define_keyword!(DoctorsCompanion, DoctorsCompanion, "Doctor's companion");
 define_keyword!(Assist, Assist, "Assist");
+define_keyword!(ReadAhead, ReadAhead, "Read ahead");
 
 // === Defensive keywords ===
 

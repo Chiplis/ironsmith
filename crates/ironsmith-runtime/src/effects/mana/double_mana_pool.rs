@@ -1,5 +1,6 @@
 //! Double a player's unspent mana.
 
+use super::choice_helpers::mana_added_value_outcome;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -78,7 +79,7 @@ impl EffectExecutor for DoubleManaPoolEffect {
             player.add_restricted_mana(unit);
         }
 
-        Ok(EffectOutcome::mana_added(added))
+        Ok(mana_added_value_outcome(ctx, player_id, added))
     }
 }
 

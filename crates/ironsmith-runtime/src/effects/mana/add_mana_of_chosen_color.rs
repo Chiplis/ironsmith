@@ -1,6 +1,8 @@
 //! Add mana of the chosen color effect implementation.
 
-use super::choice_helpers::{choose_mana_colors, credit_repeated_mana_symbol_from_context};
+use super::choice_helpers::{
+    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outcome,
+};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -39,15 +41,16 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
             chosen
         };
 
-        credit_repeated_mana_symbol_from_context(
-            game,
-            player_id,
-            ManaSymbol::from_color(selected),
-            amount,
-            ctx,
-        );
+        let symbol = ManaSymbol::from_color(selected);
+        credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
+        let mana = std::iter::repeat_n(symbol, amount as usize).collect::<Vec<_>>();
 
-        Ok(EffectOutcome::count(amount as i32))
+        Ok(mana_added_count_outcome(
+            ctx,
+            player_id,
+            mana,
+            amount as i32,
+        ))
     }
 
     fn producible_mana_symbols(

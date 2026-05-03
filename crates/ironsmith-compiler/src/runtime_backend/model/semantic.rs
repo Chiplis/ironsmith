@@ -243,6 +243,7 @@ pub(crate) struct ParsedModalActivatedHeader {
     pub(crate) mana_cost: TotalCost,
     pub(crate) functional_zones: Vec<Zone>,
     pub(crate) timing: ActivationTiming,
+    pub(crate) is_loyalty_ability: bool,
     pub(crate) additional_restrictions: Vec<String>,
     pub(crate) activation_restrictions: Vec<ConditionExpr>,
 }

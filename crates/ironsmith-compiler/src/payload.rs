@@ -100,6 +100,7 @@ pub enum KeywordAction {
     SplitSecond,
     Rebound,
     Sunburst,
+    ReadAhead,
     Fading(u32),
     Vanishing(u32),
     Fear,
@@ -199,6 +200,7 @@ impl KeywordAction {
                 | Self::SplitSecond
                 | Self::Rebound
                 | Self::Sunburst
+                | Self::ReadAhead
                 | Self::Fading(_)
                 | Self::Vanishing(_)
                 | Self::Fear
@@ -332,6 +334,7 @@ impl KeywordAction {
             Self::SplitSecond => "Split second".to_string(),
             Self::Rebound => "Rebound".to_string(),
             Self::Sunburst => "Sunburst".to_string(),
+            Self::ReadAhead => "Read ahead".to_string(),
             Self::Fading(amount) => format!("Fading {amount}"),
             Self::Vanishing(amount) => format!("Vanishing {amount}"),
             Self::Fear => "Fear".to_string(),

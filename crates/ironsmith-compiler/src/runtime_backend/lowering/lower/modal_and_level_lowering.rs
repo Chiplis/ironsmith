@@ -286,6 +286,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
                 effects: combined_effects.clone(),
                 choices: prefix_choices,
                 timing: activated.timing,
+                is_loyalty_ability: activated.is_loyalty_ability,
                 additional_restrictions: activated.additional_restrictions,
                 activation_restrictions: activated.activation_restrictions,
                 mana_output: None,

@@ -1412,7 +1412,7 @@ impl Effect {
         Self::new(crate::effects::ApplyContinuousEffect::with_spec(
             crate::target::ChooseSpec::Source,
             crate::continuous::Modification::AddAbilityGeneric(ability.into()),
-            Until::EndOfTurn,
+            Until::Forever,
         ))
     }
 

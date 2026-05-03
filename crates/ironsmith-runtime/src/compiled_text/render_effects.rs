@@ -30987,6 +30987,7 @@ pub(super) fn describe_ability(
                 describe_loyalty_activation_prefix(activated.mana_cost.costs())
             {
                 let mut line = format!("{loyalty_prefix}:");
+                let mana_symbols = activated.mana_symbols();
                 if !activated.choices.is_empty()
                     && !(!activated.effects.is_empty()
                         && choices_are_simple_targets(&activated.choices))
@@ -31002,7 +31003,18 @@ pub(super) fn describe_ability(
                     );
                     line.push(':');
                 }
-                if !activated.effects.is_empty() {
+                if !mana_symbols.is_empty() {
+                    line.push(' ');
+                    line.push_str("Add ");
+                    line.push_str(
+                        &mana_symbols
+                            .iter()
+                            .copied()
+                            .map(describe_mana_symbol)
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    );
+                } else if !activated.effects.is_empty() {
                     line.push(' ');
                     let effects =
                         super::ast_render::describe_resolution_program(&activated.effects);

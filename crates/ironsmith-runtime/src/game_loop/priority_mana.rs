@@ -1240,7 +1240,8 @@ pub(super) fn execute_pip_payment_action(
                 .player(player)
                 .map(|player_obj| player_obj.mana_pool.clone());
             let mana_color_restriction = pip_mana_color_restriction(pip, allow_any_color);
-            crate::special_actions::perform_activate_mana_ability_restricted_colors(
+            let emitted_events =
+                crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
                 game,
                 player,
                 *source_id,
@@ -1248,6 +1249,12 @@ pub(super) fn execute_pip_payment_action(
                 mana_color_restriction,
                 decision_maker,
             )?;
+            for event in emitted_events {
+                let include_delayed = event
+                    .downcast::<crate::events::AbilityActivatedEvent>()
+                    .is_some();
+                queue_triggers_from_event(game, trigger_queue, event, include_delayed);
+            }
             record_pip_payment_action(payment_trace, action);
 
             let produced_symbols = before_pool
@@ -1985,6 +1992,18 @@ pub(super) fn execute_pending_mana_ability(
                 player_obj.mana_pool.add(*symbol, 1);
             }
         }
+        let snapshot = game
+            .object(pending.source)
+            .map(|obj| ObjectSnapshot::from_object(obj, game));
+        let event = crate::events::ManaAddedEvent::new(
+            pending.source,
+            pending.activator,
+            pending.activator,
+            pending.mana_to_add.clone(),
+        )
+        .with_snapshot(snapshot)
+        .into_trigger_event();
+        queue_triggers_from_event(game, trigger_queue, event, false);
     }
 
     // Execute additional effects (for complex mana abilities)
@@ -4031,7 +4050,8 @@ mod priority_mana_tests {
     };
     use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::{
-        basic_mountain, blood_celebrant, command_tower, wall_of_roots,
+        basic_mountain, basic_swamp, blood_celebrant, command_tower, ornithopter, phyrexian_tower,
+        wall_of_roots, yawgmoth_thran_physician,
     };
     use crate::cards::tokens::treasure_token_definition;
     use crate::color::Color;
@@ -4251,6 +4271,7 @@ mod priority_mana_tests {
                     mana_output: Some(vec![ManaSymbol::Green]),
                     activation_condition: None,
                     mana_usage_restrictions: vec![restriction.clone()],
+                    is_loyalty_ability: false,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             });
@@ -4590,6 +4611,94 @@ mod priority_mana_tests {
             "treasure should be sacrificed as part of activation cost"
         );
         let _ = payment_trace;
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn test_black_pip_payment_options_include_phyrexian_tower_sacrifice_ability() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let yawgmoth_id = game.create_object_from_definition(
+            &yawgmoth_thran_physician(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(&basic_swamp(), alice, Zone::Battlefield);
+        game.create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+        let options = build_pip_payment_options(
+            &game,
+            alice,
+            &[ManaSymbol::Black],
+            Some(&[ManaSymbol::Black]),
+            false,
+            false,
+            Some(yawgmoth_id),
+            &mut dm,
+        );
+
+        let potential = crate::decision::compute_potential_mana(&game, alice);
+        assert!(
+            potential.black >= 2,
+            "potential mana should include Phyrexian Tower's black sacrifice output"
+        );
+
+        let descriptions: Vec<_> = options
+            .iter()
+            .map(|option| option.description.as_str())
+            .collect();
+        assert!(
+            descriptions
+                .iter()
+                .any(|description| description.contains("Tap Swamp: Add {B}")),
+            "sanity check: Swamp should be offered, got {descriptions:?}"
+        );
+        assert!(
+            descriptions
+                .iter()
+                .any(|description| description.contains("Tap Phyrexian Tower: Add {B}{B}")),
+            "Phyrexian Tower's sacrifice mana ability should be offered for a black pip, got {descriptions:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn test_phyrexian_tower_alternative_mana_abilities_are_one_payment_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        game.create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+        game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Tower Overcount Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Colorless],
+            ]))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+
+        assert!(
+            !actions.iter().any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *id == spell_id
+            )),
+            "Phyrexian Tower can activate either its {{C}} ability or its sacrifice-for-{{B}}{{B}} ability, not both"
+        );
     }
 
     #[test]

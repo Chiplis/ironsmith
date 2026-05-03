@@ -651,13 +651,13 @@ fn test_urzas_saga_under_blood_moon_survives_without_chapter_abilities() {
 /// The precombat main phase begins.
 ///
 /// Expected behavior:
-/// - Urza's Saga gains a lore counter (it's still a Saga subtype)
-/// - No chapter abilities trigger (they were removed by Blood Moon)
+/// - Urza's Saga does not gain a lore counter because it has no chapter abilities
+/// - No chapter abilities trigger
 ///
 /// This tests the interaction between Layer 6, Saga mechanics, and triggers.
 #[test]
 #[cfg(ironsmith_runtime_parser_tests)]
-fn test_urzas_saga_under_blood_moon_gains_lore_counter_but_no_triggers() {
+fn test_urzas_saga_under_blood_moon_gets_no_lore_counter_or_triggers() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     game.turn.active_player = alice;
@@ -683,10 +683,6 @@ fn test_urzas_saga_under_blood_moon_gains_lore_counter_but_no_triggers() {
         .copied()
         .unwrap_or(0);
 
-    // Process the precombat main phase lore counter addition
-    // Urza's Saga keeps its Saga subtype under Blood Moon (since Saga is an enchantment
-    // subtype, not a land subtype), so it still gains lore counters each turn.
-    // However, no chapter abilities will trigger because Blood Moon removes all abilities.
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
     crate::game_loop::add_saga_lore_counters(&mut game, &mut trigger_queue);
 
@@ -698,14 +694,11 @@ fn test_urzas_saga_under_blood_moon_gains_lore_counter_but_no_triggers() {
         .copied()
         .unwrap_or(0);
 
-    // Urza's Saga still has Saga subtype, so it gains a lore counter
     assert_eq!(
-        initial_lore + 1,
-        final_lore,
-        "Urza's Saga under Blood Moon should still gain lore counters (it's still a Saga)"
+        initial_lore, final_lore,
+        "Urza's Saga under Blood Moon should not gain lore counters without chapter abilities"
     );
 
-    // But no chapter abilities should have triggered (they were removed by Blood Moon)
     assert!(
         trigger_queue.is_empty(),
         "No chapter abilities should trigger (Blood Moon removed all abilities)"

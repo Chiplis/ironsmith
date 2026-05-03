@@ -212,7 +212,6 @@ fn enforce_definition_builder_boundary(manifest_dir: &str) {
         ".aura_attach_filter =",
         ".has_fuse =",
         ".additional_cost =",
-        ".max_saga_chapter =",
         "CardDefinition::spell(",
         "CardDefinition::spell_with_abilities(",
         "CardDefinition::with_abilities(",

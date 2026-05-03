@@ -357,6 +357,22 @@ where
             _ => None,
         }
     }
+
+    fn is_loyalty_activation_cost(&self) -> bool {
+        matches!(
+            self,
+            Self::RemoveCounters {
+                counter_type: CounterType::Loyalty,
+                ..
+            } | Self::AddCounters {
+                counter_type: CounterType::Loyalty,
+                ..
+            } | Self::RemoveAnyCountersFromSource {
+                counter_type: Some(CounterType::Loyalty),
+                ..
+            }
+        )
+    }
 }
 
 impl<E> CoreCostComponent for Cost<E>
@@ -386,6 +402,10 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
     }
 
     fn is_sacrifice_self(&self) -> bool {
+        false
+    }
+
+    fn is_loyalty_activation_cost(&self) -> bool {
         false
     }
 
@@ -517,6 +537,17 @@ impl<C: CostComponent> TotalCost<C> {
         match &self.kind {
             TotalCostKind::All(costs) => costs.iter().any(|cost| !cost.is_mana_cost()),
             TotalCostKind::OneOf(branches) => branches.iter().any(Self::has_non_mana_costs),
+        }
+    }
+
+    pub fn has_loyalty_activation_cost(&self) -> bool {
+        match &self.kind {
+            TotalCostKind::All(costs) => {
+                costs.iter().any(CostComponent::is_loyalty_activation_cost)
+            }
+            TotalCostKind::OneOf(branches) => {
+                branches.iter().any(Self::has_loyalty_activation_cost)
+            }
         }
     }
 

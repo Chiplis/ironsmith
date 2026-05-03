@@ -1119,6 +1119,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             &["living", "weapon"],
             &["battle", "cry"],
             &["split", "second"],
+            &["read", "ahead"],
             &["doctor", "companion"],
         ],
     ) {
@@ -1127,6 +1128,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             ["living", "weapon"] => KeywordAction::LivingWeapon,
             ["battle", "cry"] => KeywordAction::BattleCry,
             ["split", "second"] => KeywordAction::SplitSecond,
+            ["read", "ahead"] => KeywordAction::ReadAhead,
             ["doctor", "companion"] => KeywordAction::Marker("doctor companion"),
             _ => unreachable!("matched phrase must be one of the declared keyword heads"),
         });

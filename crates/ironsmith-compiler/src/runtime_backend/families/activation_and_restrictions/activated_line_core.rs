@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
@@ -89,6 +90,29 @@ pub(crate) fn parse_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_activated_line_with_raw(tokens, None)
+}
+
+fn fixed_mana_symbols_from_mana_groups(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
+    let mut mana = Vec::new();
+    for token in tokens {
+        match token.kind {
+            TokenKind::ManaGroup => {
+                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                mana.push(parse_mana_symbol(inner).ok()?);
+            }
+            TokenKind::Period | TokenKind::Comma => {}
+            _ => return None,
+        }
+    }
+
+    if mana.is_empty() { None } else { Some(mana) }
+}
+
+fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
+    matches!(
+        subject,
+        None | Some(SubjectAst::Player(PlayerAst::You | PlayerAst::Implicit))
+    )
 }
 
 pub(crate) fn parse_activated_line_with_raw(
@@ -202,10 +226,11 @@ pub(crate) fn parse_activated_line_with_raw(
             let loyalty_timing = if loyalty_shorthand_cost.is_some() {
                 ActivationTiming::SorcerySpeed
             } else {
-                ActivationTiming::AnyTime
+                timing.clone()
             };
             let loyalty_restrictions =
                 loyalty_additional_restrictions(loyalty_shorthand_cost.is_some());
+            let is_loyalty_ability = loyalty_shorthand_cost.is_some();
             let build_additional_restrictions = || {
                 let mut restrictions = loyalty_restrictions.clone();
                 restrictions.extend(additional_activation_restrictions.clone());
@@ -229,6 +254,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         effects: crate::resolution::ResolutionProgram::default(),
                         choices: vec![],
                         timing: loyalty_timing.clone(),
+                        is_loyalty_ability,
                         additional_restrictions: build_additional_restrictions(),
                         activation_restrictions: vec![],
                         mana_output: Some(vec![]),
@@ -248,21 +274,18 @@ pub(crate) fn parse_activated_line_with_raw(
                 }));
             }
 
-            let mana: Vec<_> = mana_tokens
-                .iter()
-                .filter_map(|token| token.as_word())
-                .filter(|word| !matches!(*word, "mana" | "to" | "your" | "pool"))
-                .filter_map(|word| parse_mana_symbol(word).ok())
-                .collect();
-
-            if !mana.is_empty() {
-                if dynamic_amount.is_none() && extra_effects_ast.is_empty() {
+            if let Some(mana) = fixed_mana_symbols_from_mana_groups(mana_tokens) {
+                if dynamic_amount.is_none()
+                    && extra_effects_ast.is_empty()
+                    && subject_allows_direct_mana_output(&mana_subject)
+                {
                     let ability = Ability {
                         kind: AbilityKind::Activated(ActivatedAbility {
                             mana_cost,
                             effects: crate::resolution::ResolutionProgram::default(),
                             choices: vec![],
                             timing: loyalty_timing.clone(),
+                            is_loyalty_ability,
                             additional_restrictions: build_additional_restrictions(),
                             activation_restrictions: vec![],
                             mana_output: Some(mana),
@@ -291,6 +314,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         effects: crate::resolution::ResolutionProgram::default(),
                         choices: vec![],
                         timing: loyalty_timing,
+                        is_loyalty_ability,
                         additional_restrictions: build_additional_restrictions(),
                         activation_restrictions: vec![],
                         mana_output: Some(vec![]),
@@ -336,6 +360,7 @@ pub(crate) fn parse_activated_line_with_raw(
                         effects: crate::resolution::ResolutionProgram::default(),
                         choices: vec![],
                         timing,
+                        is_loyalty_ability: loyalty_shorthand_cost.is_some(),
                         additional_restrictions: additional_activation_restrictions,
                         activation_restrictions: vec![],
                         mana_output: None,
@@ -386,6 +411,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     effects: crate::resolution::ResolutionProgram::default(),
                     choices: vec![],
                     timing,
+                    is_loyalty_ability: loyalty_shorthand_cost.is_some(),
                     additional_restrictions: additional_activation_restrictions,
                     activation_restrictions: vec![],
                     mana_output: None,

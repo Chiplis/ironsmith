@@ -61,6 +61,8 @@ pub enum EventKind {
     LandPlayed,
     /// An activated or mana ability was activated
     AbilityActivated,
+    /// Mana was added to a player's mana pool
+    ManaAdded,
     /// A permanent became the target of a spell or ability
     BecomesTargeted,
     /// A creature attacked

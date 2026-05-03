@@ -3632,12 +3632,14 @@ fn compile_subject_verb_effect(
             let effect = tag_object_target_effect(Effect::new(effect), &spec, ctx, "retargeted");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::GrantAbilityToSource { ability } => {
+        SubjectVerbActionAst::GrantAbilityToSource { ability, duration } => {
             let lowered = lower_parsed_ability(ability.clone())?;
             Ok((
-                vec![Effect::grant_object_ability_to_source(
-                    lowered.into_runtime(),
-                )],
+                vec![Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                    crate::target::ChooseSpec::Source,
+                    crate::continuous::Modification::AddAbilityGeneric(lowered.into_runtime()),
+                    duration.clone(),
+                ))],
                 Vec::new(),
             ))
         }

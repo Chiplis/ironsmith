@@ -50,12 +50,16 @@ impl TriggerMatcher for SagaChapterTrigger {
         // Calculate what the count was before this counter addition
         let previous_count = current_count.saturating_sub(e.amount);
 
-        // A chapter triggers if the threshold was CROSSED by this counter addition:
-        // - Previous count was below the chapter number
-        // - Current count is at or above the chapter number
-        self.chapters
-            .iter()
-            .any(|&chapter| previous_count < chapter && current_count >= chapter)
+        let entered_this_turn =
+            crate::game_loop::source_entered_battlefield_this_turn(ctx.game, e.permanent);
+        let read_ahead_suppresses_skipped_chapters =
+            entered_this_turn && crate::game_loop::source_has_read_ahead(ctx.game, e.permanent);
+
+        self.chapters.iter().any(|&chapter| {
+            previous_count < chapter
+                && current_count >= chapter
+                && (!read_ahead_suppresses_skipped_chapters || current_count == chapter)
+        })
     }
 
     fn display(&self) -> String {

@@ -1664,22 +1664,21 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
     }
-    let max_saga_chapter = def.max_saga_chapter.or_else(|| {
-        def.abilities
-            .iter()
-            .filter_map(|ability| {
-                if let AbilityKind::Triggered(triggered) = &ability.kind {
-                    triggered
-                        .trigger
-                        .saga_chapters()
-                        .and_then(|chapters| chapters.iter().copied().max())
-                } else {
-                    None
-                }
-            })
-            .max()
-    });
-    if let Some(max_chapter) = max_saga_chapter
+    let derived_final_chapter = def
+        .abilities
+        .iter()
+        .filter_map(|ability| {
+            if let AbilityKind::Triggered(triggered) = &ability.kind {
+                triggered
+                    .trigger
+                    .saga_chapters()
+                    .and_then(|chapters| chapters.iter().copied().max())
+            } else {
+                None
+            }
+        })
+        .max();
+    if let Some(max_chapter) = derived_final_chapter
         && let Some(roman) = chapter_number_to_roman(max_chapter)
     {
         out.push(format!(

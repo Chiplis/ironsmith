@@ -4,74 +4,205 @@ use super::*;
 // Saga Support
 // ============================================================================
 
-/// Add lore counters to sagas at the start of precombat main phase.
-///
-/// This should be called once at the start of the precombat main phase, before
-/// players receive priority.
-///
-/// Per MTG rules, this checks the CALCULATED subtypes (after continuous effects)
-/// to determine if a permanent is still a Saga. For example, under Blood Moon,
-/// Urza's Saga becomes a basic Mountain and loses its Saga subtype, so it
-/// won't gain lore counters.
-pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
-    let active_player = game.turn.active_player;
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SagaProfile {
+    pub controller: PlayerId,
+    pub final_chapter: u32,
+    pub has_read_ahead: bool,
+}
 
-    // Collect sagas controlled by active player
-    // IMPORTANT: Use calculated_subtypes to check if the permanent is STILL a Saga
-    // after continuous effects are applied (e.g., Blood Moon removes Saga subtype)
-    let sagas: Vec<ObjectId> = game
-        .battlefield
+pub(crate) fn final_chapter_number_from_abilities(
+    abilities: &[crate::ability::Ability],
+) -> Option<u32> {
+    abilities
         .iter()
-        .filter_map(|&id| {
-            let obj = game.object(id)?;
-            // Check calculated subtypes (after continuous effects), not base subtypes
-            let subtypes = game.calculated_subtypes(id);
-            if subtypes.contains(&Subtype::Saga) && game.controller_of(obj) == active_player {
-                Some(id)
+        .filter_map(|ability| {
+            if let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind {
+                triggered
+                    .trigger
+                    .saga_chapters()
+                    .and_then(|chapters| chapters.iter().copied().max())
             } else {
                 None
             }
         })
-        .collect();
+        .max()
+}
+
+pub(crate) fn final_chapter_number_with_view(
+    view: &crate::derived_view::DerivedGameView<'_>,
+    object_id: ObjectId,
+) -> Option<u32> {
+    let abilities = view.abilities_rc(object_id)?;
+    final_chapter_number_from_abilities(abilities.as_ref())
+}
+
+pub(crate) fn saga_profile_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    object_id: ObjectId,
+) -> Option<SagaProfile> {
+    if !view.calculated_subtypes(object_id).contains(&Subtype::Saga) {
+        return None;
+    }
+    let final_chapter = final_chapter_number_with_view(view, object_id)?;
+    let controller = view
+        .calculated_characteristics(object_id)
+        .map(|chars| chars.controller)
+        .or_else(|| game.object(object_id).map(|obj| game.controller_of(obj)))?;
+    let has_read_ahead = view.object_has_static_ability_id(
+        object_id,
+        crate::static_abilities::StaticAbilityId::ReadAhead,
+    );
+    Some(SagaProfile {
+        controller,
+        final_chapter,
+        has_read_ahead,
+    })
+}
+
+pub(crate) fn source_has_read_ahead(game: &GameState, source_id: ObjectId) -> bool {
+    game.current_has_static_ability_id(
+        source_id,
+        crate::static_abilities::StaticAbilityId::ReadAhead,
+    )
+}
+
+pub(crate) fn source_entered_battlefield_this_turn(game: &GameState, source_id: ObjectId) -> bool {
+    game.object(source_id)
+        .and_then(|obj| {
+            game.turn_store
+                .turn_history
+                .object_entered_battlefield_controller_this_turn(obj.stable_id)
+        })
+        .is_some()
+}
+
+/// Add lore counters to Sagas at the start of the precombat main phase.
+///
+/// Per CR 714.3c, this applies only to Sagas the active player controls that
+/// currently have one or more chapter abilities.
+pub fn add_saga_lore_counters(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let active_player = game.turn.active_player;
+    let sagas: Vec<ObjectId> = {
+        let view = crate::derived_view::DerivedGameView::new(game);
+        game.battlefield
+            .iter()
+            .copied()
+            .filter(|&id| {
+                saga_profile_with_view(game, &view, id)
+                    .is_some_and(|profile| profile.controller == active_player)
+            })
+            .collect()
+    };
 
     for saga_id in sagas {
         add_lore_counter_and_check_chapters(game, saga_id, trigger_queue);
     }
 }
 
-/// Add a lore counter to a saga and check for chapter triggers.
-///
-/// This uses the normal trigger system: adds a lore counter, generates a
-/// CounterPlaced event, and lets check_triggers find matching chapter abilities.
-/// Chapter triggers use threshold-crossing logic: they fire when the lore count
-/// crosses a chapter's threshold, allowing chapters to trigger multiple times
-/// if counters are removed and re-added.
+pub fn handle_saga_enters_battlefield(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    let Some(profile) = ({
+        let view = crate::derived_view::DerivedGameView::new(game);
+        saga_profile_with_view(game, &view, saga_id)
+    }) else {
+        return;
+    };
+
+    let amount = if profile.has_read_ahead {
+        choose_read_ahead_chapter(
+            game,
+            saga_id,
+            profile.controller,
+            profile.final_chapter,
+            decision_maker,
+        )
+    } else {
+        1
+    };
+
+    add_lore_counters_and_check_chapters(game, saga_id, amount, trigger_queue);
+}
+
+fn choose_read_ahead_chapter(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    controller: PlayerId,
+    final_chapter: u32,
+    decision_maker: &mut dyn DecisionMaker,
+) -> u32 {
+    if final_chapter == 0 {
+        return 0;
+    }
+    let display_options = (1..=final_chapter)
+        .enumerate()
+        .map(|(idx, chapter)| {
+            let label = chapter_number_to_roman(chapter)
+                .map(|roman| format!("Chapter {roman}"))
+                .unwrap_or_else(|| format!("Chapter {chapter}"));
+            crate::decisions::spec::DisplayOption::new(idx, label)
+        })
+        .collect::<Vec<_>>();
+    let choice_spec = crate::decisions::specs::ChoiceSpec::single(saga_id, display_options);
+    let mut chosen = crate::decisions::make_decision(
+        game,
+        decision_maker,
+        controller,
+        Some(saga_id),
+        choice_spec,
+    );
+    chosen
+        .pop()
+        .and_then(|idx| u32::try_from(idx + 1).ok())
+        .filter(|chapter| (1..=final_chapter).contains(chapter))
+        .unwrap_or(1)
+}
+
+fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
+    match chapter {
+        1 => Some("I"),
+        2 => Some("II"),
+        3 => Some("III"),
+        4 => Some("IV"),
+        5 => Some("V"),
+        6 => Some("VI"),
+        7 => Some("VII"),
+        8 => Some("VIII"),
+        9 => Some("IX"),
+        10 => Some("X"),
+        _ => None,
+    }
+}
+
+/// Add one lore counter to a Saga and check for chapter triggers.
 pub fn add_lore_counter_and_check_chapters(
     game: &mut GameState,
     saga_id: ObjectId,
     trigger_queue: &mut TriggerQueue,
 ) {
-    // Add lore counter and get the CounterPlaced event
-    let Some(event) = game.add_counters(saga_id, CounterType::Lore, 1) else {
-        return;
-    };
-
-    // Check triggers - this will find any saga chapter abilities that should fire
-    // based on whether the threshold was crossed by this counter addition
-    queue_triggers_from_event(game, trigger_queue, event, false);
+    add_lore_counters_and_check_chapters(game, saga_id, 1, trigger_queue);
 }
 
-/// Mark a saga as having resolved its final chapter.
+/// Add lore counters to a Saga and check for chapter triggers.
 ///
-/// Call this after a saga's final chapter ability finishes resolving.
-/// The saga will then be sacrificed as a state-based action IF it still has
-/// enough lore counters. This function unconditionally marks the saga;
-/// the SBA checks the lore counter count before sacrificing.
-pub fn mark_saga_final_chapter_resolved(game: &mut GameState, saga_id: ObjectId) {
-    if let Some(saga) = game.object(saga_id)
-        && saga.subtypes.contains(&Subtype::Saga)
-    {
-        // Always mark as resolved - the SBA will check lore counters before sacrificing
-        game.set_saga_final_chapter_resolved(saga_id);
+/// This uses the normal trigger system: adding lore counters emits a
+/// CounterPlaced event, and chapter abilities match threshold crossings.
+pub fn add_lore_counters_and_check_chapters(
+    game: &mut GameState,
+    saga_id: ObjectId,
+    amount: u32,
+    trigger_queue: &mut TriggerQueue,
+) {
+    if amount == 0 {
+        return;
     }
+    let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) else {
+        return;
+    };
+    queue_triggers_from_event(game, trigger_queue, event, false);
 }

@@ -459,7 +459,6 @@ pub fn compile_builder_to_runtime_definition(
 #[derive(Debug, Clone)]
 pub struct RuntimeBuilderSnapshot {
     pub card: ironsmith::card::Card,
-    pub max_saga_chapter: Option<u32>,
     pub has_fuse: bool,
 }
 
@@ -495,9 +494,6 @@ impl RuntimeBuilderSnapshot {
         }
         if self.card.is_token {
             builder = builder.token();
-        }
-        if let Some(max_chapters) = self.max_saga_chapter {
-            builder = builder.saga(max_chapters);
         }
         if self.has_fuse {
             builder = builder.has_fuse();

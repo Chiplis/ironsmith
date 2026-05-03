@@ -1921,6 +1921,7 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     })
@@ -1986,6 +1987,7 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     })
@@ -2278,6 +2280,7 @@ pub(crate) fn token_red_pump_ability() -> Ability {
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2301,6 +2304,7 @@ pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2320,6 +2324,7 @@ pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -2824,6 +2829,7 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
             mana_output: None,
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     }
@@ -3580,6 +3586,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     mana_output: None,
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };
@@ -3636,6 +3643,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     mana_output: None,
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             };

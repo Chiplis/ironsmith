@@ -89,7 +89,6 @@ pub struct ObjectSnapshot {
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// For sagas: maximum chapter number.
-    pub max_saga_chapter: Option<u32>,
     /// X value chosen when this object was cast (if any).
     pub x_value: Option<u32>,
     /// 1-based cast index for this spell cast during the current turn, if this snapshot
@@ -159,7 +158,6 @@ impl ObjectSnapshot {
             defense: obj.base_defense,
             abilities: obj.abilities.clone(),
             aura_attach_filter: obj.aura_attach_filter.clone(),
-            max_saga_chapter: obj.max_saga_chapter,
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
 
@@ -449,7 +447,6 @@ impl ObjectSnapshot {
             defense: None,
             abilities: vec![],
             aura_attach_filter: None,
-            max_saga_chapter: None,
             x_value: None,
             cast_order_this_turn: None,
             counters: HashMap::new(),

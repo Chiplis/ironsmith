@@ -1,6 +1,8 @@
 //! Add mana from commander color identity effect implementation.
 
-use super::choice_helpers::{choose_mana_colors, credit_repeated_mana_symbol_from_context};
+use super::choice_helpers::{
+    choose_mana_colors, credit_repeated_mana_symbol_from_context, mana_added_count_outcome,
+};
 use crate::color::Color;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -51,7 +53,14 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
                 amount,
                 ctx,
             );
-            return Ok(EffectOutcome::count(amount as i32));
+            let mana =
+                std::iter::repeat_n(ManaSymbol::Colorless, amount as usize).collect::<Vec<_>>();
+            return Ok(mana_added_count_outcome(
+                ctx,
+                player_id,
+                mana,
+                amount as i32,
+            ));
         }
 
         // Build list of available colors from identity
@@ -85,15 +94,16 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
         .next()
         .unwrap_or(available_colors[0]);
 
-        credit_repeated_mana_symbol_from_context(
-            game,
-            player_id,
-            ManaSymbol::from_color(color),
-            amount,
-            ctx,
-        );
+        let symbol = ManaSymbol::from_color(color);
+        credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
+        let mana = std::iter::repeat_n(symbol, amount as usize).collect::<Vec<_>>();
 
-        Ok(EffectOutcome::count(amount as i32))
+        Ok(mana_added_count_outcome(
+            ctx,
+            player_id,
+            mana,
+            amount as i32,
+        ))
     }
 
     fn producible_mana_symbols(

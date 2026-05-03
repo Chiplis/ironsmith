@@ -770,7 +770,59 @@ fn rewrite_lower_parsed_ability_internal(
     )?;
     activated.effects = lowered.effects;
     activated.choices = lowered.choices;
+    if activated.mana_output.is_none() && resolution_program_produces_mana(&activated.effects) {
+        activated.mana_output = Some(vec![]);
+    }
     Ok(parsed)
+}
+
+fn resolution_program_produces_mana(program: &crate::resolution::ResolutionProgram) -> bool {
+    program
+        .flattened_default_effects()
+        .iter()
+        .any(effect_produces_mana)
+}
+
+fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return conditional.if_true.iter().any(effect_produces_mana)
+            || conditional.if_false.iter().any(effect_produces_mana);
+    }
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return if_effect.then.iter().any(effect_produces_mana)
+            || if_effect.else_.iter().any(effect_produces_mana);
+    }
+    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        return choose_mode
+            .modes
+            .iter()
+            .any(|mode| mode.effects.iter().any(effect_produces_mana));
+    }
+
+    effect
+        .downcast_ref::<crate::effects::AddManaEffect>()
+        .is_some()
+        || effect
+            .downcast_ref::<crate::effects::mana::AddScaledManaEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::mana::AddManaOfChosenColorEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::AddManaOfLandProducedTypesEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::AddManaFromCommanderColorIdentityEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::mana::AddManaOfImprintedColorsEffect>()
+            .is_some()
 }
 
 pub(crate) fn rewrite_lower_parsed_ability(
@@ -989,6 +1041,7 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
         KeywordAction::Rebound => Some(StaticAbility::rebound()),
         KeywordAction::Sunburst => Some(StaticAbility::keyword_marker("sunburst".to_string())),
+        KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
         KeywordAction::Fading(amount) => {
             Some(StaticAbility::keyword_marker(format!("fading {amount}")))
         }

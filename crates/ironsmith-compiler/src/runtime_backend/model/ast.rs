@@ -1226,6 +1226,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     GrantAbilityToSource {
         ability: ParsedAbility,
+        duration: Until,
     },
     DealDamage {
         amount: Value,
@@ -2452,9 +2453,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("mode", mode)
                 .field("require_change", require_change)
                 .finish(),
-            Self::GrantAbilityToSource { ability } => f
-                .debug_tuple("GrantAbilityToSource")
-                .field(ability)
+            Self::GrantAbilityToSource { ability, duration } => f
+                .debug_struct("GrantAbilityToSource")
+                .field("ability", ability)
+                .field("duration", duration)
                 .finish(),
             Self::DealDamage { amount, target } => f
                 .debug_struct("DealDamage")
@@ -4033,11 +4035,14 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_ability_to_source(ability: ParsedAbility) -> Self {
+    pub(crate) fn subject_verb_grant_ability_to_source(
+        ability: ParsedAbility,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::GrantAbilityToSource { ability },
+            SubjectVerbActionAst::GrantAbilityToSource { ability, duration },
         )
     }
 

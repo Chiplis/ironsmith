@@ -115,12 +115,6 @@ impl CardDefinitionBuilder {
         self
     }
 
-    pub fn saga(mut self, max_chapters: u32) -> Self {
-        self.runtime = self.runtime.saga(max_chapters);
-        self.compiler = self.compiler.saga(max_chapters);
-        self
-    }
-
     pub fn enchants(mut self, filter: impl Into<AuraAttachmentFilter>) -> Self {
         let filter = filter.into();
         self.runtime = self.runtime.enchants(filter.clone());

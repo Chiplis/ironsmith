@@ -108,6 +108,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
                 } else {
                     ActivationTiming::AnyTime
                 },
+                is_loyalty_ability: loyalty_shorthand,
                 additional_restrictions: if loyalty_shorthand {
                     vec!["Activate only once each turn.".to_string()]
                 } else {

@@ -535,6 +535,7 @@ pub(crate) enum KeywordAction {
     SplitSecond,
     Rebound,
     Sunburst,
+    ReadAhead,
     Fading(u32),
     Vanishing(u32),
     Fear,
@@ -635,6 +636,7 @@ impl KeywordAction {
                 | Self::SplitSecond
                 | Self::Rebound
                 | Self::Sunburst
+                | Self::ReadAhead
                 | Self::Fading(_)
                 | Self::Vanishing(_)
                 | Self::Fear
@@ -768,6 +770,7 @@ impl KeywordAction {
             Self::SplitSecond => "Split second".to_string(),
             Self::Rebound => "Rebound".to_string(),
             Self::Sunburst => "Sunburst".to_string(),
+            Self::ReadAhead => "Read ahead".to_string(),
             Self::Fading(amount) => format!("Fading {amount}"),
             Self::Vanishing(amount) => format!("Vanishing {amount}"),
             Self::Fear => "Fear".to_string(),
@@ -1261,9 +1264,6 @@ pub struct CardDefinitionBuilder {
     /// Optional costs (kicker, buyback, etc.)
     optional_costs: Vec<OptionalCost>,
 
-    /// For sagas: the maximum chapter number
-    max_saga_chapter: Option<u32>,
-
     /// Additional non-printed costs paid while casting this spell.
     additional_cost: TotalCost,
 
@@ -1294,7 +1294,6 @@ fn runtime_builder_snapshot(
 ) -> compiler_runtime_for_tests::RuntimeBuilderSnapshot {
     compiler_runtime_for_tests::RuntimeBuilderSnapshot {
         card: builder.card_builder.clone().build(),
-        max_saga_chapter: builder.max_saga_chapter,
         has_fuse: builder.has_fuse,
     }
 }
@@ -1441,7 +1440,6 @@ impl CardDefinitionBuilder {
             spell_effect: None,
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
             aura_attach_filter: None,
             has_fuse: false,
@@ -1612,6 +1610,7 @@ impl CardDefinitionBuilder {
             KeywordAction::SplitSecond => self.split_second(),
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
+            KeywordAction::ReadAhead => self.read_ahead(),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Fear => self.fear(),
@@ -1727,6 +1726,7 @@ impl CardDefinitionBuilder {
                         mana_output: None,
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
+                        is_loyalty_ability: false,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                 })
@@ -1751,6 +1751,7 @@ impl CardDefinitionBuilder {
                         mana_output: None,
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
+                        is_loyalty_ability: false,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                 })
@@ -2458,6 +2459,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         })
@@ -2484,6 +2486,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Graveyard],
         })
@@ -2518,6 +2521,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Graveyard],
         })
@@ -2546,6 +2550,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Hand],
         })
@@ -3082,6 +3087,11 @@ impl CardDefinitionBuilder {
         self.with_ability(
             Ability::static_ability(StaticAbility::rebound()).in_zones(vec![Zone::Stack]),
         )
+    }
+
+    /// Add read ahead.
+    pub fn read_ahead(self) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::read_ahead()))
     }
 
     /// Add sunburst.
@@ -3969,18 +3979,6 @@ impl CardDefinitionBuilder {
         self
     }
 
-    // === Saga Support ===
-
-    /// Configure this card as a saga with the given number of chapters.
-    ///
-    /// Sagas automatically gain a lore counter at the start of each precombat main phase.
-    /// When a lore counter is added, any chapters at or below that number that haven't
-    /// triggered yet will trigger.
-    pub fn saga(mut self, max_chapters: u32) -> Self {
-        self.max_saga_chapter = Some(max_chapters);
-        self
-    }
-
     /// Add a saga chapter ability that triggers on a single chapter.
     ///
     /// # Example
@@ -4036,6 +4034,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         };
@@ -4122,7 +4121,6 @@ impl CardDefinitionBuilder {
             alternative_casts: self.alternative_casts,
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs,
-            max_saga_chapter: self.max_saga_chapter,
             additional_cost: self.additional_cost,
         });
         finalize_cipher_effects(definition)

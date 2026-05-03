@@ -30,8 +30,9 @@ pub fn check_and_apply_sbas_with(
 ) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
-        apply_legend_rule_choice, apply_state_based_actions_from_actions_with,
-        check_state_based_actions_with_view, legend_rule_specs_from_actions,
+        StateBasedActionContext, apply_legend_rule_choice,
+        apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
+        legend_rule_specs_from_actions,
     };
 
     // Refresh continuous state (static ability effects and "can't" effect tracking)
@@ -41,7 +42,8 @@ pub fn check_and_apply_sbas_with(
     loop {
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let all_effects = view.effects().to_vec();
-        let actions = check_state_based_actions_with_view(game, &view);
+        let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
+        let actions = check_state_based_actions_with_context(game, &view, &context);
         drop(view);
         if actions.is_empty() {
             game.clear_deathtouch_damage_since_sba();
@@ -61,7 +63,12 @@ pub fn check_and_apply_sbas_with(
         let applied = if had_legend_decisions {
             let post_legend_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
             let post_legend_effects = post_legend_view.effects().to_vec();
-            let post_legend_actions = check_state_based_actions_with_view(game, &post_legend_view);
+            let post_legend_context = StateBasedActionContext::from_trigger_queue(trigger_queue);
+            let post_legend_actions = check_state_based_actions_with_context(
+                game,
+                &post_legend_view,
+                &post_legend_context,
+            );
             drop(post_legend_view);
             apply_state_based_actions_from_actions_with(
                 game,
@@ -302,17 +309,11 @@ fn order_triggers_for_controller(
 }
 
 pub(super) fn is_triggered_mana_ability(game: &GameState, trigger: &TriggeredAbilityEntry) -> bool {
-    if !trigger.ability.choices.is_empty() {
+    if trigger.ability.choices.iter().any(ChooseSpec::is_target) {
         return false;
     }
 
-    let Some(activated_event) = trigger
-        .triggering_event
-        .downcast::<crate::events::spells::AbilityActivatedEvent>()
-    else {
-        return false;
-    };
-    if !activated_event.is_mana_ability {
+    if !triggered_by_mana_event(trigger) {
         return false;
     }
 
@@ -322,6 +323,20 @@ pub(super) fn is_triggered_mana_ability(game: &GameState, trigger: &TriggeredAbi
         trigger.controller,
         &trigger.ability.effects,
     )
+}
+
+fn triggered_by_mana_event(trigger: &TriggeredAbilityEntry) -> bool {
+    if let Some(activated_event) = trigger
+        .triggering_event
+        .downcast::<crate::events::spells::AbilityActivatedEvent>()
+    {
+        return activated_event.is_mana_ability;
+    }
+
+    trigger
+        .triggering_event
+        .downcast::<crate::events::ManaAddedEvent>()
+        .is_some_and(|event| !event.mana.is_empty())
 }
 
 pub(super) fn effects_could_add_mana(
@@ -497,10 +512,6 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
     drain_pending_trigger_events(game, trigger_queue);
-
-    if let Some(saga_id) = entry.saga_final_chapter_source {
-        mark_saga_final_chapter_resolved(game, saga_id);
-    }
 }
 
 pub(super) fn resolve_triggered_mana_abilities_with_dm(
@@ -609,7 +620,13 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     }
 
     // Check if this trigger has targets that need to be selected
-    if trigger.ability.choices.is_empty() {
+    let target_choices = trigger
+        .ability
+        .choices
+        .iter()
+        .filter(|choice| choice.is_target())
+        .collect::<Vec<_>>();
+    if target_choices.is_empty() {
         // No targets needed
         return Some(entry);
     }
@@ -656,7 +673,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     // Select targets for each target spec
     let mut chosen_targets = Vec::new();
     let mut target_assignments = Vec::new();
-    for target_spec in &trigger.ability.choices {
+    for target_spec in target_choices {
         let count = target_spec.count();
 
         // Compute legal targets for this spec
@@ -724,7 +741,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         chosen_targets.extend(selected_targets);
         let end = chosen_targets.len();
         target_assignments.push(crate::game_state::TargetAssignment {
-            spec: target_spec.clone(),
+            spec: (*target_spec).clone(),
             range: start..end,
         });
     }
@@ -888,15 +905,8 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         }
     }
 
-    // Check if this is a saga's final chapter ability.
-    // Use trigger metadata directly instead of parsing display strings.
-    if let Some(chapters) = trigger.ability.trigger.saga_chapters()
-        && let Some(saga_obj) = game.object(trigger.source)
-    {
-        let max_chapter = saga_obj.max_saga_chapter.unwrap_or(0);
-        if chapters.iter().any(|&ch| ch >= max_chapter) {
-            entry = entry.with_saga_final_chapter(trigger.source);
-        }
+    if trigger.ability.trigger.saga_chapters().is_some() {
+        entry = entry.with_chapter_ability_source(trigger.source);
     }
 
     entry

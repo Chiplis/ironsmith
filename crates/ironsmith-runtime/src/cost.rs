@@ -11,6 +11,8 @@ use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaCost;
+use crate::object::CounterType;
+use crate::target::ChooseSpec;
 pub type TotalCost = ironsmith_core::TotalCost<Cost>;
 pub type OptionalCost = ironsmith_core::OptionalCost<Cost>;
 pub type OptionalCostsPaid = ironsmith_core::OptionalCostsPaid;
@@ -50,6 +52,28 @@ impl ironsmith_core::CostComponent for Cost {
 
     fn dynamic_mana_cost_ref(&self) -> Option<&ironsmith_core::DynamicManaCost> {
         self.dynamic_mana_cost_ref()
+    }
+
+    fn is_loyalty_activation_cost(&self) -> bool {
+        fn is_source(spec: &ChooseSpec) -> bool {
+            matches!(spec.base(), ChooseSpec::Source)
+        }
+
+        self.effect_ref().is_some_and(|effect| {
+            effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .is_some_and(|put| {
+                    put.counter_type == CounterType::Loyalty && is_source(&put.target)
+                })
+                || effect
+                    .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                    .is_some_and(|remove| {
+                        remove.counter_type == CounterType::Loyalty && is_source(&remove.target)
+                    })
+                || effect
+                    .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+                    .is_some_and(|remove| remove.counter_type == Some(CounterType::Loyalty))
+        })
     }
 }
 

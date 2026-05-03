@@ -100,6 +100,7 @@ pub struct ActivatedAbility<E, C> {
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
     pub timing: ActivationTiming,
+    pub is_loyalty_ability: bool,
     pub additional_restrictions: Vec<String>,
     pub activation_restrictions: Vec<Condition>,
     pub mana_output: Option<Vec<ManaSymbol>>,
@@ -151,6 +152,7 @@ where
                 effects: effects.into(),
                 choices: vec![],
                 timing,
+                is_loyalty_ability: false,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
                 mana_output: None,
@@ -174,6 +176,7 @@ where
                 effects: effects.into(),
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: false,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
                 mana_output: None,
@@ -195,6 +198,7 @@ where
                 effects: ResolutionProgram::default(),
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: false,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
                 mana_output: Some(mana),
@@ -214,6 +218,7 @@ where
                 effects: effects.into(),
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
+                is_loyalty_ability: false,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
                 mana_output: Some(vec![]),
@@ -277,6 +282,7 @@ where
                 effects: activated.effects.try_map_effects(&mut map_effect)?,
                 choices: activated.choices,
                 timing: activated.timing,
+                is_loyalty_ability: activated.is_loyalty_ability,
                 additional_restrictions: activated.additional_restrictions,
                 activation_restrictions: activated.activation_restrictions,
                 mana_output: activated.mana_output,
@@ -345,8 +351,20 @@ impl<T, E: Clone> TriggeredAbility<T, E> {
 }
 
 impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
-    pub fn is_mana_ability(&self) -> bool {
+    pub fn produces_mana(&self) -> bool {
         self.mana_output.is_some()
+    }
+
+    pub fn has_targets(&self) -> bool {
+        self.choices.iter().any(crate::ChooseSpec::is_target)
+    }
+
+    pub fn is_loyalty_ability(&self) -> bool {
+        self.is_loyalty_ability || self.mana_cost.has_loyalty_activation_cost()
+    }
+
+    pub fn is_mana_ability(&self) -> bool {
+        self.produces_mana() && !self.has_targets() && !self.is_loyalty_ability()
     }
 
     pub fn mana_symbols(&self) -> &[ManaSymbol] {
@@ -427,6 +445,7 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
             effects: ResolutionProgram::default(),
             choices: vec![],
             timing: ActivationTiming::AnyTime,
+            is_loyalty_ability: false,
             additional_restrictions: vec![],
             activation_restrictions: vec![],
             mana_output: Some(vec![mana]),
@@ -447,6 +466,7 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
             effects: ResolutionProgram::default(),
             choices: vec![],
             timing: ActivationTiming::AnyTime,
+            is_loyalty_ability: false,
             additional_restrictions: vec![],
             activation_restrictions: vec![],
             mana_output: Some(mana),
@@ -474,6 +494,7 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
             effects: ResolutionProgram::default(),
             choices: vec![],
             timing: ActivationTiming::AnyTime,
+            is_loyalty_ability: false,
             additional_restrictions: vec![],
             activation_restrictions: vec![],
             mana_output: Some(vec![mana]),
@@ -543,5 +564,35 @@ fn parse_named_count_word(word: &str) -> Option<u32> {
         "nine" => Some(9),
         "ten" => Some(10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ChooseSpec, Cost, CounterType};
+
+    #[test]
+    fn targeted_mana_production_is_not_a_mana_ability() {
+        let mut ability = ActivatedAbility::<(), Cost<()>>::basic_mana(ManaSymbol::Green);
+        ability.choices.push(ChooseSpec::target_player());
+
+        assert!(ability.produces_mana());
+        assert!(ability.has_targets());
+        assert!(!ability.is_mana_ability());
+    }
+
+    #[test]
+    fn loyalty_mana_production_is_not_a_mana_ability() {
+        let mut flagged = ActivatedAbility::<(), Cost<()>>::basic_mana(ManaSymbol::Green);
+        flagged.is_loyalty_ability = true;
+        assert!(flagged.produces_mana());
+        assert!(flagged.is_loyalty_ability());
+        assert!(!flagged.is_mana_ability());
+
+        let mut inferred = ActivatedAbility::<(), Cost<()>>::basic_mana(ManaSymbol::Green);
+        inferred.mana_cost = TotalCost::from_cost(Cost::add_counters(CounterType::Loyalty, 1));
+        assert!(inferred.is_loyalty_ability());
+        assert!(!inferred.is_mana_ability());
     }
 }

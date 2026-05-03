@@ -830,6 +830,7 @@ fn rewrite_item_to_parsed_item(
                 line.effect_text.clone(),
                 line.effect_parse_tokens.clone(),
                 line.timing_hint.clone(),
+                line.is_loyalty_ability,
                 line.chosen_option_label.clone(),
             )?;
             Ok(Some(ParsedCardItem::Line(ParsedLineAst {

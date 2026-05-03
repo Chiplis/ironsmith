@@ -3398,6 +3398,7 @@ pub(crate) fn parse_level_up_line(
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         }
@@ -4246,6 +4247,7 @@ pub(crate) fn parse_transmute_line(
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Hand],
         }
@@ -4336,6 +4338,7 @@ pub(crate) fn parse_reinforce_line(
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Hand],
         }

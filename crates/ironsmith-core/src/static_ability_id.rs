@@ -47,6 +47,7 @@ pub enum StaticAbilityId {
     SplitSecond,
     Rebound,
     Cascade,
+    ReadAhead,
     Unleash,
     ConditionalSpellKeyword,
     ThisSpellCastRestriction,
@@ -268,6 +269,7 @@ impl StaticAbilityId {
             | SplitSecond
             | Rebound
             | Cascade
+            | ReadAhead
             | Unleash
             | ConditionalSpellKeyword
             | ThisSpellCastRestriction
@@ -488,6 +490,7 @@ impl StaticAbilityId {
                 | SplitSecond
                 | Rebound
                 | Cascade
+                | ReadAhead
                 | Unleash
                 | KeywordText
                 | KeywordMarker

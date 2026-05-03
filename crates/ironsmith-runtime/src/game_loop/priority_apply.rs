@@ -500,12 +500,7 @@ pub fn apply_priority_response_with_dm(
                     trigger_queue.add(trigger);
                 }
 
-                if game
-                    .object(new_id)
-                    .is_some_and(|obj| obj.subtypes.contains(&Subtype::Saga))
-                {
-                    add_lore_counter_and_check_chapters(game, new_id, trigger_queue);
-                }
+                handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker);
             }
 
             // Mark that the player has played a land this turn
@@ -979,6 +974,18 @@ pub fn apply_priority_response_with_dm(
                                 player_obj.mana_pool.add(*symbol, 1);
                             }
                         }
+                        let snapshot = game
+                            .object(*source)
+                            .map(|obj| ObjectSnapshot::from_object(obj, game));
+                        let event = crate::events::ManaAddedEvent::new(
+                            *source,
+                            player,
+                            player,
+                            mana_to_add.clone(),
+                        )
+                        .with_snapshot(snapshot)
+                        .into_trigger_event();
+                        queue_triggers_from_event(game, trigger_queue, event, false);
                     }
 
                     // Execute additional effects (for complex mana abilities)

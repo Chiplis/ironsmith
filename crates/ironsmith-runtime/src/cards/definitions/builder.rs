@@ -61,10 +61,6 @@ impl CardDefinitionBuilder {
         Self(self.0.token())
     }
 
-    pub(crate) fn saga(self, max_chapters: u32) -> Self {
-        Self(self.0.saga(max_chapters))
-    }
-
     pub(crate) fn parse_text(
         self,
         text: impl Into<String>,

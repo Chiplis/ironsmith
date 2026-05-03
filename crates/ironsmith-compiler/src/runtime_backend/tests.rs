@@ -2425,6 +2425,7 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         mana_output: None,
         activation_condition: None,
         mana_usage_restrictions: vec![],
+        is_loyalty_ability: false,
     };
     super::restriction_support::apply_pending_activation_restriction(
         &mut attacked_ability,
@@ -2456,6 +2457,7 @@ fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
         mana_output: None,
         activation_condition: None,
         mana_usage_restrictions: vec![],
+        is_loyalty_ability: false,
     };
     super::restriction_support::apply_pending_activation_restriction(
         &mut didnt_attack_ability,
@@ -9771,6 +9773,65 @@ fn rewrite_lowered_mana_ability_preserves_fixed_mana_groups() -> Result<(), Card
             );
         }
         other => panic!("expected activated mana ability, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_targeted_mana_production_is_not_a_mana_ability() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Font")
+        .card_types(vec![CardType::Artifact]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{T}: Target player adds {G}.".to_string(),
+        false,
+    )?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+
+    match &ability.kind {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert!(activated.produces_mana());
+            assert!(!activated.is_mana_ability());
+            assert!(
+                activated
+                    .choices
+                    .iter()
+                    .any(crate::target::ChooseSpec::is_target)
+            );
+            assert!(
+                activated.mana_symbols().is_empty(),
+                "targeted mana production should resolve through its effect payload"
+            );
+        }
+        other => panic!("expected activated ability, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_zero_loyalty_mana_production_is_not_a_mana_ability() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Walker")
+        .card_types(vec![CardType::Planeswalker]);
+    let (definition, _) =
+        parse_text_with_annotations_lowered(builder, "0: Add {G}.".to_string(), false)?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+
+    match &ability.kind {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert!(activated.produces_mana());
+            assert!(activated.is_loyalty_ability());
+            assert!(!activated.is_mana_ability());
+        }
+        other => panic!("expected activated loyalty ability, got {other:?}"),
     }
 
     Ok(())

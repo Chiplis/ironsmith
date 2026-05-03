@@ -154,7 +154,7 @@ export default function TableCore({
   ) : null;
   const middlePlayerHeaderElement = sharedMiddleControls ? (
     <div
-      className="table-shared-player-header battlefield-panel-header relative z-[92] flex h-full items-center gap-2 overflow-visible pr-2"
+      className="table-shared-player-header battlefield-panel-header relative z-[92] flex h-full min-w-0 items-center gap-2 overflow-visible pr-2"
       data-turn-priority={isPriorityPlayer ? "true" : "false"}
     >
       <div className="flex min-w-0 items-center gap-2" data-my-zone-header-content>
@@ -172,7 +172,7 @@ export default function TableCore({
         </span>
         <span
           className={cn(
-            "battlefield-name text-[16px] uppercase tracking-wider font-bold",
+            "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold",
             isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
           )}
           data-player-target={me.id}
@@ -194,7 +194,7 @@ export default function TableCore({
           compact
           className="player-name-mana battlefield-header-mana"
         />
-        <div className="ml-auto flex min-w-0 items-center gap-2">
+        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
           <ZoneCountInline player={me} />
         </div>
       </div>

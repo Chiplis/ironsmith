@@ -6535,14 +6535,114 @@ textarea,
   margin-left: 0.1rem;
 }
 
+.battlefield-panel-header,
+.table-shared-player-header {
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.battlefield-panel-header [data-my-zone-header-content],
+.table-shared-player-header > [data-my-zone-header-content] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.battlefield-panel-header .battlefield-life,
+.table-shared-player-header .battlefield-life {
+  flex: 0 0 auto;
+}
+
+.battlefield-panel-header .battlefield-name,
+.table-shared-player-header .battlefield-name {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  max-width: clamp(44px, 16cqw, 132px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battlefield-panel-header .battlefield-name > span,
+.table-shared-player-header .battlefield-name > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .battlefield-panel-header .player-name-mana.mana-pool-inline,
 .table-shared-player-header .player-name-mana.mana-pool-inline {
   display: flex !important;
-  max-width: min(34vw, 218px);
-  overflow-x: auto;
+  flex: 0 1 auto;
+  max-width: clamp(78px, 22cqw, 154px);
+  min-width: 0;
+  gap: clamp(1px, 0.45cqw, 3px) !important;
+  overflow-x: hidden;
   overflow-y: hidden;
   padding-inline: 0.05rem;
   scrollbar-width: none;
+}
+
+.battlefield-panel-header .player-name-mana .mana-pool-chip--compact,
+.table-shared-player-header .player-name-mana .mana-pool-chip--compact {
+  gap: 0.1rem;
+  padding-inline: 0.08rem;
+}
+
+.battlefield-panel-header .player-name-mana .mana-pool-chip--compact svg,
+.table-shared-player-header .player-name-mana .mana-pool-chip--compact svg {
+  width: 11px;
+  height: 11px;
+}
+
+.battlefield-panel-header .player-name-mana .mana-pool-chip--compact > span:last-child,
+.table-shared-player-header .player-name-mana .mana-pool-chip--compact > span:last-child {
+  min-width: 5px;
+  font-size: 9px;
+}
+
+.battlefield-panel-header .player-name-mana .mana-pool-chip--empty > span:last-child,
+.table-shared-player-header .player-name-mana .mana-pool-chip--empty > span:last-child {
+  display: none;
+}
+
+.battlefield-panel-header .battlefield-counts,
+.table-shared-player-header .battlefield-counts {
+  display: flex !important;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  gap: 1px clamp(4px, 0.65cqw, 8px) !important;
+  font-size: clamp(10px, 2.05cqw, 11px);
+  line-height: 1.1;
+  letter-spacing: 0.04em !important;
+  white-space: normal !important;
+}
+
+.battlefield-count-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.22em;
+  min-width: max-content;
+}
+
+.battlefield-count-item--with-top {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.battlefield-count-top {
+  display: inline-block;
+  min-width: 0;
+  max-width: clamp(24px, 12cqw, 140px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .battlefield-panel-header .player-name-mana::-webkit-scrollbar,

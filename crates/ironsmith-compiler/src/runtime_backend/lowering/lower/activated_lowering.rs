@@ -70,10 +70,7 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
         return None;
     };
     let prefix_words = token_word_refs(&tokens[..add_idx]);
-    if !matches!(
-        prefix_words.as_slice(),
-        [] | ["you"] | ["that", "player"] | ["target", "player"]
-    ) {
+    if !matches!(prefix_words.as_slice(), [] | ["you"]) {
         return None;
     }
 
@@ -376,6 +373,7 @@ pub(crate) fn lower_rewrite_activated_to_chunk(
     effect_text: String,
     effect_parse_tokens: Vec<OwnedLexToken>,
     timing_hint: ActivationTiming,
+    is_loyalty_ability: bool,
     chosen_option_label: Option<String>,
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
     lower_rewrite_activated_to_chunk_impl(
@@ -386,6 +384,7 @@ pub(crate) fn lower_rewrite_activated_to_chunk(
             effect_text,
             effect_parse_tokens: effect_parse_tokens.clone(),
             timing_hint,
+            is_loyalty_ability,
             chosen_option_label,
         },
         &cost_parse_tokens,
@@ -439,6 +438,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                     effects: ResolutionProgram::default(),
                     choices: vec![],
                     timing: line.timing_hint.clone(),
+                    is_loyalty_ability: line.is_loyalty_ability,
                     additional_restrictions: vec![],
                     activation_restrictions: vec![],
                     mana_output: Some(mana_output),
@@ -490,6 +490,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                         effects: ResolutionProgram::default(),
                         choices: vec![],
                         timing: line.timing_hint.clone(),
+                        is_loyalty_ability: line.is_loyalty_ability,
                         additional_restrictions: vec![],
                         activation_restrictions: vec![],
                         mana_output: Some(vec![]),
@@ -543,6 +544,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                 effects: ResolutionProgram::default(),
                 choices: vec![],
                 timing: line.timing_hint.clone(),
+                is_loyalty_ability: line.is_loyalty_ability,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
                 mana_output: None,

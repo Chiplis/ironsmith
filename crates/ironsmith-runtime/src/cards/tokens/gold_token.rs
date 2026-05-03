@@ -27,6 +27,7 @@ pub fn gold_token_definition() -> CardDefinition {
             mana_output: Some(vec![]),
             activation_condition: None,
             mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
     };

@@ -22,7 +22,6 @@ pub fn the_birth_of_meletis() -> CardDefinition {
         ]))
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Saga])
-        .saga(3)
         .parse_text(
             "I — Search your library for a basic Plains card, reveal it, put it into your hand, then shuffle.\n\
              II — Create a 0/4 colorless Wall artifact creature token with defender.\n\
@@ -43,7 +42,6 @@ mod tests {
         assert_eq!(def.name(), "The Birth of Meletis");
         assert!(def.card.is_enchantment());
         assert!(def.card.subtypes.contains(&Subtype::Saga));
-        assert_eq!(def.max_saga_chapter, Some(3));
 
         // Should have 3 chapter abilities (now using Trigger struct)
         let chapter_abilities: Vec<_> = def

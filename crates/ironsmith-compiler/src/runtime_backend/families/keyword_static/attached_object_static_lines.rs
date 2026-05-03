@@ -200,6 +200,7 @@ fn parse_nonstatic_keyword_action_as_object_ability(
                         mana_output: None,
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
+                        is_loyalty_ability: false,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                 }

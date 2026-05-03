@@ -860,8 +860,8 @@ impl TurnRunner {
     ) -> Result<RunnerProgress<()>, GameLoopError> {
         use crate::decisions::make_decision;
         use crate::rules::state_based::{
-            StateBasedAction, apply_legend_rule_choice,
-            apply_state_based_actions_from_actions_with, check_state_based_actions_with_view,
+            StateBasedAction, StateBasedActionContext, apply_legend_rule_choice,
+            apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
             legend_rule_specs_from_actions,
         };
 
@@ -870,7 +870,8 @@ impl TurnRunner {
         loop {
             let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
             let all_effects = view.effects().to_vec();
-            let actions = check_state_based_actions_with_view(game, &view);
+            let context = StateBasedActionContext::from_trigger_queue(tq);
+            let actions = check_state_based_actions_with_context(game, &view, &context);
             drop(view);
             if actions.is_empty() {
                 self.pending_boolean = None;

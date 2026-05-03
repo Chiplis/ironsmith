@@ -97,6 +97,7 @@ pub(crate) fn parse_cycling_line_lexed(
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Hand],
         }
@@ -434,6 +435,7 @@ pub(crate) fn parse_equip_line(
                     mana_output: None,
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
                 }),
                 functional_zones: vec![Zone::Battlefield],
             }
@@ -484,6 +486,7 @@ pub(crate) fn parse_equip_line(
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         }

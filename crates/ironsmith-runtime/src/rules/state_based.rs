@@ -11,8 +11,10 @@ use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::targeting::has_protection_from_source;
+use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+use std::collections::HashSet;
 
 /// A state-based action that needs to be performed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +79,29 @@ pub enum LoseReason {
     CommanderDamage,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct StateBasedActionContext {
+    pending_chapter_ability_sources: HashSet<ObjectId>,
+}
+
+impl StateBasedActionContext {
+    pub(crate) fn from_trigger_queue(trigger_queue: &TriggerQueue) -> Self {
+        let pending_chapter_ability_sources = trigger_queue
+            .entries
+            .iter()
+            .filter(|entry| entry.ability.trigger.saga_chapters().is_some())
+            .map(|entry| entry.source)
+            .collect();
+        Self {
+            pending_chapter_ability_sources,
+        }
+    }
+
+    fn has_pending_chapter_ability_from(&self, source: ObjectId) -> bool {
+        self.pending_chapter_ability_sources.contains(&source)
+    }
+}
+
 /// Check state-based actions and return a list of actions that need to be performed.
 ///
 /// This should be called whenever a player would receive priority.
@@ -98,6 +123,14 @@ pub(crate) fn check_state_based_actions_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<StateBasedAction> {
+    check_state_based_actions_with_context(game, view, &StateBasedActionContext::default())
+}
+
+pub(crate) fn check_state_based_actions_with_context(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    context: &StateBasedActionContext,
+) -> Vec<StateBasedAction> {
     let mut actions = Vec::new();
 
     // Check player state-based actions
@@ -105,7 +138,7 @@ pub(crate) fn check_state_based_actions_with_view(
     check_commander_zone_sbas(game, &mut actions);
 
     // Check permanent state-based actions
-    check_permanent_sbas_with_view(game, view, &mut actions);
+    check_permanent_sbas_with_view(game, view, context, &mut actions);
 
     // Check Role Aura uniqueness (one Role Aura per controller per permanent)
     check_role_sbas_with_view(game, view, &mut actions);
@@ -181,6 +214,7 @@ fn check_commander_zone_sbas(game: &GameState, actions: &mut Vec<StateBasedActio
 fn check_permanent_sbas_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    context: &StateBasedActionContext,
     actions: &mut Vec<StateBasedAction>,
 ) {
     for &obj_id in &game.battlefield {
@@ -274,18 +308,22 @@ fn check_permanent_sbas_with_view(
             }
         }
 
-        // Saga with final chapter resolved AND still at max lore counters
-        // (If lore counters are removed after final chapter triggers, the saga survives)
         if calculated_subtypes.contains(&Subtype::Saga)
-            && game.is_saga_final_chapter_resolved(obj_id)
+            && let Some(max_chapter) =
+                crate::game_loop::final_chapter_number_with_view(view, obj_id)
         {
-            let max_chapter = obj.max_saga_chapter.unwrap_or(0);
             let lore_count = obj
                 .counters
                 .get(&crate::object::CounterType::Lore)
                 .copied()
                 .unwrap_or(0);
-            if lore_count >= max_chapter {
+            let chapter_ability_pending_or_stacked = context
+                .has_pending_chapter_ability_from(obj_id)
+                || game
+                    .stack
+                    .iter()
+                    .any(|entry| entry.chapter_ability_source == Some(obj_id));
+            if lore_count >= max_chapter && !chapter_ability_pending_or_stacked {
                 actions.push(StateBasedAction::SagaSacrifice(obj_id));
             }
         }

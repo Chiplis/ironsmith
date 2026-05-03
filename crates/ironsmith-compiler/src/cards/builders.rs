@@ -98,7 +98,6 @@ pub struct CardDefinitionBuilder {
     pub(crate) spell_effect: Option<ResolutionProgram>,
     pub(crate) alternative_casts: Vec<crate::alternative_cast::AlternativeCastingMethod>,
     pub(crate) optional_costs: Vec<OptionalCost>,
-    pub(crate) max_saga_chapter: Option<u32>,
     pub(crate) additional_cost: TotalCost,
     pub(crate) aura_attach_filter: Option<AuraAttachmentFilter>,
     pub(crate) has_fuse: bool,
@@ -112,7 +111,6 @@ impl CardDefinitionBuilder {
             spell_effect: None,
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
             aura_attach_filter: None,
             has_fuse: false,
@@ -186,11 +184,6 @@ impl CardDefinitionBuilder {
 
     pub fn token(mut self) -> Self {
         self.card_builder = self.card_builder.token();
-        self
-    }
-
-    pub fn saga(mut self, max_chapters: u32) -> Self {
-        self.max_saga_chapter = Some(max_chapters);
         self
     }
 
@@ -340,6 +333,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Cascade => self.cascade(),
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
+            KeywordAction::ReadAhead => self.read_ahead(),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
             KeywordAction::ModularSunburst => self.modular_sunburst(),
@@ -821,6 +815,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
@@ -837,7 +832,7 @@ impl CardDefinitionBuilder {
                 )],
             ),
             crate::effect::EffectMode::new(
-                "This creature gains haste until end of turn",
+                "This creature gains haste",
                 vec![crate::effect::Effect::grant_object_ability_to_source(
                     crate::ability::Ability::static_ability(
                         crate::static_abilities::StaticAbility::haste(),
@@ -909,6 +904,7 @@ impl CardDefinitionBuilder {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: Vec::new(),
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
@@ -1516,6 +1512,12 @@ impl CardDefinitionBuilder {
         )
     }
 
+    pub fn read_ahead(self) -> Self {
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::read_ahead(),
+        ))
+    }
+
     pub fn sunburst(self) -> Self {
         let counter_type = if self
             .card_builder
@@ -2045,7 +2047,6 @@ impl CardDefinitionBuilder {
             alternative_casts: self.alternative_casts,
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs,
-            max_saga_chapter: self.max_saga_chapter,
             additional_cost: self.additional_cost,
         }
     }

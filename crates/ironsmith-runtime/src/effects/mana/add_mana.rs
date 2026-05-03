@@ -1,6 +1,6 @@
 //! Add mana effect implementation.
 
-use super::choice_helpers::credit_mana_symbols_from_context;
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -32,7 +32,7 @@ impl EffectExecutor for AddManaEffect {
 
         credit_mana_symbols_from_context(game, player_id, self.mana.iter().copied(), ctx);
 
-        Ok(EffectOutcome::mana_added(self.mana.clone()))
+        Ok(mana_added_value_outcome(ctx, player_id, self.mana.clone()))
     }
 
     fn producible_mana_symbols(
@@ -69,6 +69,14 @@ mod tests {
             result.value,
             crate::effect::OutcomeValue::ManaAdded(vec![ManaSymbol::Green])
         );
+        assert_eq!(result.events.len(), 1);
+        let event = result.events[0]
+            .downcast::<crate::events::ManaAddedEvent>()
+            .expect("add mana should emit a ManaAddedEvent");
+        assert_eq!(event.source, source);
+        assert_eq!(event.controller, alice);
+        assert_eq!(event.player, alice);
+        assert_eq!(event.mana, vec![ManaSymbol::Green]);
         assert_eq!(game.player(alice).unwrap().mana_pool.green, 1);
     }
 

@@ -448,12 +448,6 @@ pub(super) fn resolve_stack_entry_full(
         drain_pending_trigger_events(game, tq);
     }
 
-    // If this was a saga's final chapter ability, mark it as resolved
-    // (the saga will be sacrificed as a state-based action)
-    if let Some(saga_id) = entry.saga_final_chapter_source {
-        mark_saga_final_chapter_resolved(game, saga_id);
-    }
-
     // Move spell to appropriate zone after resolution
     if let Some(obj) = &obj {
         if obj.zone == Zone::Stack && obj.is_permanent() {
@@ -716,6 +710,18 @@ pub(super) fn resolve_stack_entry_full(
                     );
                 }
 
+                if let Some(ref mut tq) = trigger_queue {
+                    handle_saga_enters_battlefield(game, result.new_id, tq, decision_maker);
+                } else {
+                    let mut temp_queue = TriggerQueue::new();
+                    handle_saga_enters_battlefield(
+                        game,
+                        result.new_id,
+                        &mut temp_queue,
+                        decision_maker,
+                    );
+                }
+
                 // Check for ETB triggers and add them to the trigger queue
                 if let Some(ref mut tq) = trigger_queue {
                     // Drain pending ZoneChangeEvent emitted by ETB move processing.
@@ -739,19 +745,6 @@ pub(super) fn resolve_stack_entry_full(
                     let etb_triggers = check_triggers(game, &etb_event);
                     for trigger in etb_triggers {
                         tq.add(trigger);
-                    }
-                }
-
-                // If it's a saga, add its initial lore counter and check for chapter triggers
-                if obj.subtypes.contains(&Subtype::Saga) {
-                    if let Some(tq) = trigger_queue {
-                        // Process immediately with the provided trigger queue
-                        add_lore_counter_and_check_chapters(game, result.new_id, tq);
-                    } else {
-                        // Create a temporary trigger queue for immediate processing
-                        let mut temp_queue = TriggerQueue::new();
-                        add_lore_counter_and_check_chapters(game, result.new_id, &mut temp_queue);
-                        // Note: triggers will be put on stack in advance_priority
                     }
                 }
             }

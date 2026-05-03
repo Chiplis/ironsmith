@@ -471,6 +471,7 @@ where
                 mana_output: activated.mana_output,
                 activation_condition: activated.activation_condition,
                 mana_usage_restrictions: activated.mana_usage_restrictions,
+                is_loyalty_ability: activated.is_loyalty_ability,
             })
         }
 
@@ -1616,6 +1617,10 @@ impl<
 
     pub fn cascade() -> Self {
         Self::identified(StaticAbilityId::Cascade, "cascade")
+    }
+
+    pub fn read_ahead() -> Self {
+        Self::identified(StaticAbilityId::ReadAhead, "read ahead")
     }
 
     pub fn skulk() -> Self {

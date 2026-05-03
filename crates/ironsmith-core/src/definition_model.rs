@@ -9,7 +9,6 @@ pub struct CardDefinition<A, E, C, AC, OC> {
     pub alternative_casts: Vec<AC>,
     pub has_fuse: bool,
     pub optional_costs: Vec<OC>,
-    pub max_saga_chapter: Option<u32>,
     pub additional_cost: TotalCost<C>,
 }
 
@@ -26,7 +25,6 @@ where
             alternative_casts: Vec::new(),
             has_fuse: false,
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
         }
     }
@@ -40,7 +38,6 @@ where
             alternative_casts: Vec::new(),
             has_fuse: false,
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
         }
     }
@@ -57,7 +54,6 @@ where
             alternative_casts: Vec::new(),
             has_fuse: false,
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
         }
     }
@@ -74,7 +70,6 @@ where
             alternative_casts: Vec::new(),
             has_fuse: false,
             optional_costs: Vec::new(),
-            max_saga_chapter: None,
             additional_cost: TotalCost::free(),
         }
     }
@@ -136,7 +131,6 @@ where
             alternative_casts,
             has_fuse: self.has_fuse,
             optional_costs,
-            max_saga_chapter: self.max_saga_chapter,
             additional_cost: self.additional_cost.try_map(map_cost)?,
         })
     }

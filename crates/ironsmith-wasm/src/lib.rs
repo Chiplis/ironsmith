@@ -33,7 +33,7 @@ use ironsmith::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_i
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::types::{CardType, Subtype};
+use ironsmith::types::CardType;
 use ironsmith::zone::Zone;
 
 mod ui_snapshot;

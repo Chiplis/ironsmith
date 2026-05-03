@@ -2964,6 +2964,7 @@ mod tests {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         };
@@ -3144,6 +3145,7 @@ mod tests {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         };
@@ -3268,6 +3270,7 @@ mod tests {
                         mana_output: None,
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
+                        is_loyalty_ability: false,
                     }),
                     functional_zones: vec![Zone::Hand],
                 },
@@ -3552,6 +3555,7 @@ mod tests {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         };
@@ -3616,6 +3620,7 @@ mod tests {
                     mana_output: None,
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
                 }),
                 functional_zones: vec![Zone::Hand],
             });

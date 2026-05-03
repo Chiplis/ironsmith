@@ -332,12 +332,17 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return Some(action);
         }
 
+        if words.starts_with(&["read", "ahead"]) {
+            return Some(KeywordAction::ReadAhead);
+        }
+
         if words.len() == 2 {
             return match words.as_slice() {
                 ["first", "strike"] => Some(KeywordAction::FirstStrike),
                 ["double", "strike"] => Some(KeywordAction::DoubleStrike),
                 ["battle", "cry"] => Some(KeywordAction::BattleCry),
                 ["split", "second"] => Some(KeywordAction::SplitSecond),
+                ["read", "ahead"] => Some(KeywordAction::ReadAhead),
                 ["for", "mirrodin"] => Some(KeywordAction::ForMirrodin),
                 ["living", "weapon"] => Some(KeywordAction::LivingWeapon),
                 ["umbra", "armor"] => Some(KeywordAction::UmbraArmor),

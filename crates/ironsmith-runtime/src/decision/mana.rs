@@ -2993,6 +2993,7 @@ fn available_mana_sources_for_payment(
         let abilities = view
             .abilities_rc(perm_id)
             .unwrap_or_else(|| std::rc::Rc::new(object.abilities.clone()));
+        let mut outputs_for_permanent = Vec::new();
         for &ability_index in analysis.mana_ability_indices_for(perm_id) {
             let Some(ability) = abilities.get(ability_index) else {
                 continue;
@@ -3015,10 +3016,17 @@ fn available_mana_sources_for_payment(
                 .is_ok()
             {
                 let outputs = mana_ability_output_options(game, player, perm_id, mana_ability);
-                if !outputs.is_empty() {
-                    sources.push(AvailableManaSource { outputs });
+                for output in outputs {
+                    if !outputs_for_permanent.contains(&output) {
+                        outputs_for_permanent.push(output);
+                    }
                 }
             }
+        }
+        if !outputs_for_permanent.is_empty() {
+            sources.push(AvailableManaSource {
+                outputs: outputs_for_permanent,
+            });
         }
     }
 
@@ -3482,7 +3490,10 @@ pub(crate) fn compute_potential_mana_with_view(
             continue;
         };
 
-        if let Some(symbols) = simple_mana_analysis.first_output_for(perm_id) {
+        let mana_ability_indices = simple_mana_analysis.mana_ability_indices_for(perm_id);
+        if mana_ability_indices.len() == 1
+            && let Some(symbols) = simple_mana_analysis.first_output_for(perm_id)
+        {
             for mana in symbols {
                 potential.add(*mana, 1);
             }
@@ -3491,7 +3502,7 @@ pub(crate) fn compute_potential_mana_with_view(
 
         let cached_abilities = view.abilities_rc(perm_id);
         let abilities = cached_abilities.as_deref().unwrap_or(&perm.abilities);
-        for &ability_idx in simple_mana_analysis.mana_ability_indices_for(perm_id) {
+        for &ability_idx in mana_ability_indices {
             let Some(ability) = abilities.get(ability_idx) else {
                 continue;
             };
@@ -3541,23 +3552,50 @@ pub(crate) fn compute_potential_mana_with_view(
             } else {
                 let ctx = CostCheckContext::new(perm_id, player)
                     .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-                mana_ability.mana_cost.costs().iter().all(|cost| {
-                    // Skip mana cost check to avoid recursion - we only check
-                    // non-mana costs like tap, life, sacrifice
-                    if cost.processing_mode().is_mana_payment() {
-                        // Assume mana costs could be paid from other sources
-                        // This is an approximation but prevents infinite recursion
-                        true
-                    } else {
-                        if game
-                            .validate_cost_for_payment_reason(player, perm_id, cost, ctx.reason)
-                            .is_err()
-                        {
-                            return false;
+                let components = mana_ability.mana_cost.costs();
+                let mut idx = 0usize;
+                let mut payable = true;
+                while idx < components.len() {
+                    let cost = if let Some(choose) =
+                        components[idx].effect_ref().and_then(|effect| {
+                            effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                        })
+                        && let Some(next) = components.get(idx + 1)
+                        && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+                    {
+                        idx += 2;
+                        match step {
+                            crate::game_loop::ActivationCostStep::Cost(cost)
+                            | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                            crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+                                activation_card_cost_choice_cost(&choice).clone()
+                            }
                         }
-                        can_pay_with_check_context(&*cost.0, game, &ctx).is_ok()
+                    } else {
+                        let cost = components[idx].clone();
+                        idx += 1;
+                        cost
+                    };
+
+                    // Skip mana cost check to avoid recursion - we only check
+                    // non-mana costs like tap, life, sacrifice.
+                    if cost.processing_mode().is_mana_payment() {
+                        continue;
                     }
-                })
+
+                    if game
+                        .validate_cost_for_payment_reason(player, perm_id, &cost, ctx.reason)
+                        .is_err()
+                    {
+                        payable = false;
+                        break;
+                    }
+                    if can_pay_with_check_context(&*cost.0, game, &ctx).is_err() {
+                        payable = false;
+                        break;
+                    }
+                }
+                payable
             };
 
             // Also check activation condition if present
@@ -3582,13 +3620,24 @@ pub(crate) fn compute_potential_mana_with_view(
                 {
                     potential.add(mana, 1);
                 }
-                // Only count one mana ability per permanent (can only tap once)
-                break;
             }
         }
     }
 
     potential
+}
+
+fn activation_card_cost_choice_cost(
+    choice: &crate::game_loop::ActivationCardCostChoice,
+) -> &crate::costs::Cost {
+    match choice {
+        crate::game_loop::ActivationCardCostChoice::Discard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+    }
 }
 
 pub(crate) fn simple_battlefield_mana_ability_output(

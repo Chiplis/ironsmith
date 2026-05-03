@@ -207,10 +207,6 @@ pub struct Object {
     pub keyword_payment_contributions_to_cast: Vec<crate::decision::KeywordPaymentContribution>,
     /// Additional non-printed costs paid while casting this object as a spell.
     pub additional_cost: TotalCost,
-
-    // === Saga fields ===
-    /// For sagas: the maximum chapter number (typically 3)
-    pub max_saga_chapter: Option<u32>,
     // Note: The following fields have been moved to GameState extension maps:
     // - tapped -> GameState::tapped_permanents
     // - flipped -> GameState::flipped
@@ -221,7 +217,6 @@ pub struct Object {
     // - is_monstrous -> GameState::monstrous
     // - regeneration_shields -> GameState::regeneration_shields
     // - madness_exiled -> GameState::madness_exiled
-    // - final_chapter_resolved -> GameState::saga_final_chapter_resolved
     // - is_commander -> GameState::commanders
 }
 
@@ -255,6 +250,7 @@ fn static_ability_from_id(ability: StaticAbilityId) -> Option<StaticAbility> {
         StaticAbilityId::Reach => Some(StaticAbility::reach()),
         StaticAbilityId::Trample => Some(StaticAbility::trample()),
         StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
+        StaticAbilityId::ReadAhead => Some(StaticAbility::read_ahead()),
         _ => None,
     }
 }
@@ -323,7 +319,6 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
-            max_saga_chapter: None,
         }
     }
 
@@ -344,7 +339,6 @@ impl Object {
         obj.alternative_casts = def.alternative_casts.clone();
         obj.has_fuse = def.has_fuse;
         obj.optional_costs = def.optional_costs.clone();
-        obj.max_saga_chapter = def.max_saga_chapter;
         obj.additional_cost = def.additional_cost.clone();
         obj
     }
@@ -384,7 +378,6 @@ impl Object {
         self.alternative_casts = def.alternative_casts.clone();
         self.has_fuse = def.has_fuse;
         self.optional_costs = def.optional_costs.clone();
-        self.max_saga_chapter = def.max_saga_chapter;
         self.additional_cost = def.additional_cost.clone();
     }
 
@@ -463,7 +456,6 @@ impl Object {
             alternative_casts: self.alternative_casts.clone(),
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs.clone(),
-            max_saga_chapter: self.max_saga_chapter,
             additional_cost: self.additional_cost.clone(),
         }
     }
@@ -519,7 +511,6 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
-            max_saga_chapter: None,
         }
     }
 
@@ -575,7 +566,6 @@ impl Object {
             // Cost effects are copiable
             additional_cost: source.additional_cost.clone(),
             // Saga fields - copiable (a token copy of a saga is also a saga)
-            max_saga_chapter: source.max_saga_chapter,
         };
         // Planeswalker tokens enter with loyalty counters equal to base loyalty
         if let Some(loyalty) = source.base_loyalty {
@@ -632,7 +622,6 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
-            max_saga_chapter: snapshot.max_saga_chapter,
         };
         if let Some(loyalty) = snapshot.loyalty {
             token.add_counters(CounterType::Loyalty, loyalty);
@@ -690,7 +679,6 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: TotalCost::free(),
-            max_saga_chapter: None,
         }
     }
 
@@ -1227,7 +1215,6 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             additional_cost: def.additional_cost.clone(),
-            max_saga_chapter: def.max_saga_chapter,
         }
     }
 }

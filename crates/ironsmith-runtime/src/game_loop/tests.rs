@@ -2150,6 +2150,236 @@ fn test_triggered_mana_ability_resolves_immediately_without_stack() {
 }
 
 #[test]
+fn test_mana_added_event_triggers_mana_ability_immediately() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::new(), "Mana Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let echo_card = CardBuilder::new(CardId::new(), "Mana Echo")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
+    if let Some(echo) = game.object_mut(echo_id) {
+        echo.abilities.push(Ability::triggered(
+            Trigger::mana_added(crate::target::PlayerFilter::You),
+            vec![Effect::add_mana_player(
+                vec![crate::mana::ManaSymbol::Black],
+                crate::target::PlayerFilter::Specific(bob),
+            )],
+        ));
+    }
+
+    let event = crate::events::ManaAddedEvent::trigger_event(
+        source_id,
+        alice,
+        alice,
+        vec![crate::mana::ManaSymbol::Green],
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("mana-added trigger processing should succeed");
+
+    assert!(
+        trigger_queue.is_empty(),
+        "triggered mana ability should resolve immediately"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "triggered mana abilities should not use the stack"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").mana_pool.black,
+        1,
+        "mana-added triggered mana ability should add mana immediately"
+    );
+}
+
+#[test]
+fn test_triggered_mana_ability_target_requirement_uses_stack() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::new(), "Mana Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let echo_card = CardBuilder::new(CardId::new(), "Targeting Mana Echo")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
+    if let Some(echo) = game.object_mut(echo_id) {
+        echo.abilities.push(Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::mana_added(crate::target::PlayerFilter::You),
+                effects: vec![Effect::add_mana_player(
+                    vec![crate::mana::ManaSymbol::Black],
+                    crate::target::PlayerFilter::Specific(bob),
+                )]
+                .into(),
+                choices: vec![crate::target::ChooseSpec::target(
+                    crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Any),
+                )],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+    }
+
+    let event = crate::events::ManaAddedEvent::trigger_event(
+        source_id,
+        alice,
+        alice,
+        vec![crate::mana::ManaSymbol::Green],
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("targeted trigger should be stacked normally");
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "triggered abilities that require targets are not mana abilities"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").mana_pool.black,
+        0,
+        "targeted trigger should not resolve immediately"
+    );
+}
+
+#[test]
+fn test_triggered_mana_ability_ignores_non_target_choices() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_card = CardBuilder::new(CardId::new(), "Mana Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+    let echo_card = CardBuilder::new(CardId::new(), "Choosing Mana Echo")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
+    if let Some(echo) = game.object_mut(echo_id) {
+        echo.abilities.push(Ability {
+            kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::mana_added(crate::target::PlayerFilter::You),
+                effects: vec![Effect::add_mana_player(
+                    vec![crate::mana::ManaSymbol::Black],
+                    crate::target::PlayerFilter::Specific(bob),
+                )]
+                .into(),
+                choices: vec![crate::target::ChooseSpec::SpecificPlayer(alice)],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+    }
+
+    let event = crate::events::ManaAddedEvent::trigger_event(
+        source_id,
+        alice,
+        alice,
+        vec![crate::mana::ManaSymbol::Green],
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("non-target choice trigger should resolve immediately");
+
+    assert!(game.stack.is_empty());
+    assert_eq!(game.player(bob).expect("bob").mana_pool.black, 1);
+}
+
+#[test]
+fn test_activated_mana_ability_emits_mana_added_event_for_triggers() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let land_card = CardBuilder::new(CardId::new(), "Event Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
+    if let Some(land) = game.object_mut(land_id) {
+        land.abilities.push(Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![crate::mana::ManaSymbol::Black],
+        ));
+    }
+
+    let echo_card = CardBuilder::new(CardId::new(), "Mana Added Echo")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let echo_id = game.create_object_from_card(&echo_card, alice, Zone::Battlefield);
+    if let Some(echo) = game.object_mut(echo_id) {
+        echo.abilities.push(Ability::triggered(
+            Trigger::mana_added(crate::target::PlayerFilter::You),
+            vec![Effect::add_mana_player(
+                vec![crate::mana::ManaSymbol::Green],
+                crate::target::PlayerFilter::Specific(bob),
+            )],
+        ));
+    }
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateManaAbility {
+                    source,
+                    ability_index: _
+                } if *source == land_id
+            )
+        })
+        .expect("mana ability activation should be legal");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("mana ability activation should succeed");
+
+    let alice_pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(alice_pool.black, 1, "land should add its fixed black mana");
+    assert_eq!(
+        game.player(bob).expect("bob").mana_pool.green,
+        1,
+        "mana-added triggered mana ability should resolve from the emitted event"
+    );
+    assert!(game.stack.is_empty());
+    assert!(trigger_queue.is_empty());
+}
+
+#[test]
 fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -7380,6 +7610,7 @@ fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -10908,6 +11139,7 @@ fn test_once_per_turn_ability_tracking() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -10952,6 +11184,7 @@ fn test_activate_no_more_than_twice_each_turn_restriction() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -11007,6 +11240,7 @@ fn test_non_mana_activation_condition_max_activations_per_turn_is_enforced() {
                 mana_output: None,
                 activation_condition: Some(crate::ConditionExpr::MaxActivationsPerTurn(2)),
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -11592,6 +11826,7 @@ fn test_once_per_turn_in_legal_actions() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -11658,6 +11893,7 @@ fn test_nonactive_player_keeps_priority_after_activating_ability() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -11738,6 +11974,7 @@ fn test_once_per_turn_restriction_survives_control_change() {
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
             }),
             functional_zones: vec![Zone::Battlefield],
         });
@@ -14273,7 +14510,7 @@ fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
         .find(|action| {
             matches!(
                 action,
-                LegalAction::ActivateAbility {
+                LegalAction::ActivateManaAbility {
                     source,
                     ability_index: idx,
                 } if *source == sacellum_id && *idx == ability_index
@@ -14305,12 +14542,9 @@ fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
     );
     assert_eq!(
         game.stack.len(),
-        1,
-        "Sacellum Godspeaker's activated ability should be on the stack"
+        0,
+        "Sacellum Godspeaker is a mana ability and should not use the stack"
     );
-
-    resolve_stack_entry_with(&mut game, &mut dm)
-        .expect("Sacellum Godspeaker ability should resolve");
 
     assert_eq!(
         game.player(alice).expect("alice exists").mana_pool.green,
@@ -22077,6 +22311,109 @@ fn test_saga_etb_adds_lore_counter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_saga_chapter_one_leaving_stack_does_not_sacrifice() {
+    use crate::cards::definitions::the_birth_of_meletis;
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let saga_def = the_birth_of_meletis();
+    let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
+    let mut dm = SelectFirstDecisionMaker;
+
+    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm);
+    assert_eq!(
+        game.object(saga_id)
+            .unwrap()
+            .counters
+            .get(&CounterType::Lore)
+            .copied()
+            .unwrap_or(0),
+        1
+    );
+    assert_eq!(trigger_queue.entries.len(), 1);
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    game.pop_from_stack();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
+    assert!(
+        game.battlefield.contains(&saga_id),
+        "A non-final chapter leaving the stack must not sacrifice the Saga"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
+    struct ChooseSecondOption;
+
+    impl DecisionMaker for ChooseSecondOption {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx
+                .options
+                .iter()
+                .any(|option| option.legal && option.index == 1)
+            {
+                vec![1]
+            } else {
+                ctx.options
+                    .iter()
+                    .filter(|option| option.legal)
+                    .map(|option| option.index)
+                    .take(ctx.min)
+                    .collect()
+            }
+        }
+    }
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(991_001), "Read Ahead Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .parse_text(
+            "Read ahead (Choose a chapter and start with that many lore counters. Add one after your draw step. Skipped chapters don't trigger. Sacrifice after III.)\n\
+             I — You gain 1 life.\n\
+             II — You gain 2 life.\n\
+             III — You gain 3 life.",
+        )
+        .expect("read ahead Saga should parse");
+    let hand_id = game.create_object_from_definition(&saga_def, alice, Zone::Hand);
+    let mut dm = ChooseSecondOption;
+    let enters = game
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .expect("Saga should enter");
+    handle_saga_enters_battlefield(&mut game, enters.new_id, &mut trigger_queue, &mut dm);
+
+    assert_eq!(
+        game.object(enters.new_id)
+            .unwrap()
+            .counters
+            .get(&CounterType::Lore)
+            .copied()
+            .unwrap_or(0),
+        2
+    );
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Read ahead choosing chapter II should skip chapter I on the entry turn"
+    );
+    let chapters = trigger_queue.entries[0]
+        .ability
+        .trigger
+        .saga_chapters()
+        .expect("queued trigger should be a chapter trigger");
+    assert_eq!(chapters, &[2]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_saga_precombat_main_adds_lore_counter() {
     use crate::cards::definitions::the_birth_of_meletis;
 
@@ -22113,95 +22450,112 @@ fn test_saga_precombat_main_adds_lore_counter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn test_saga_final_chapter_marks_for_sacrifice() {
-    use crate::cards::definitions::the_birth_of_meletis;
+fn test_urzas_saga_keeps_chapter_one_mana_ability_after_chapter_two() {
+    use crate::ability::AbilityKind;
+    use crate::cards::definitions::urzas_saga;
 
-    // Test that when the final chapter ability resolves, the saga is marked for sacrifice
+    fn granted_activated_counts(game: &GameState, saga_id: ObjectId) -> (usize, usize) {
+        let abilities = game
+            .current_abilities(saga_id)
+            .expect("Urza's Saga should have current abilities");
+        abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated.is_mana_ability()),
+                _ => None,
+            })
+            .fold((0usize, 0usize), |(mana, non_mana), is_mana| {
+                if is_mana {
+                    (mana + 1, non_mana)
+                } else {
+                    (mana, non_mana + 1)
+                }
+            })
+    }
+
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
 
-    // Put saga on battlefield with 3 lore counters (final chapter)
-    let saga_def = the_birth_of_meletis();
+    let saga_def = urzas_saga();
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
-    game.object_mut(saga_id)
-        .unwrap()
-        .add_counters(CounterType::Lore, 3);
 
-    // Verify saga is not marked as final_chapter_resolved yet
-    assert!(
-        !game.is_saga_final_chapter_resolved(saga_id),
-        "Saga should not be marked as resolved yet"
+    handle_saga_enters_battlefield(&mut game, saga_id, &mut trigger_queue, &mut dm);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    resolve_stack_entry(&mut game).expect("Urza's Saga chapter I should resolve");
+
+    assert_eq!(
+        granted_activated_counts(&game, saga_id),
+        (1, 0),
+        "chapter I should grant the colorless mana ability"
     );
 
-    // Simulate final chapter ability resolving by calling mark_saga_final_chapter_resolved
-    mark_saga_final_chapter_resolved(&mut game, saga_id);
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
+    game.refresh_continuous_state();
+    assert_eq!(
+        granted_activated_counts(&game, saga_id),
+        (1, 0),
+        "Urza's Saga chapter I grant has no until-end-of-turn duration"
+    );
 
-    // Verify saga is now marked as final_chapter_resolved
-    assert!(
-        game.is_saga_final_chapter_resolved(saga_id),
-        "Saga should be marked as resolved after final chapter ability"
+    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    resolve_stack_entry(&mut game).expect("Urza's Saga chapter II should resolve");
+
+    assert_eq!(
+        granted_activated_counts(&game, saga_id),
+        (1, 1),
+        "after chapter II, Urza's Saga should have both the chapter I mana ability and chapter II token ability"
     );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn test_saga_sacrifice_sba() {
+fn test_saga_final_chapter_waits_for_pending_and_stacked_chapter_ability() {
     use crate::cards::definitions::the_birth_of_meletis;
-    use crate::rules::state_based::check_state_based_actions;
+    use crate::rules::state_based::{
+        StateBasedAction, StateBasedActionContext, check_state_based_actions_with_context,
+    };
 
-    // Test that a saga marked as final_chapter_resolved is sacrificed by SBA
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
 
-    // Put saga on battlefield with final chapter resolved
     let saga_def = the_birth_of_meletis();
     let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
     game.object_mut(saga_id)
         .unwrap()
-        .add_counters(CounterType::Lore, 3);
-    game.mark_saga_final_chapter_resolved(saga_id);
+        .add_counters(CounterType::Lore, 2);
 
-    // Verify saga is on battlefield
+    add_saga_lore_counters(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1);
+
+    game.refresh_continuous_state();
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(&game);
+    let context = StateBasedActionContext::from_trigger_queue(&trigger_queue);
+    let pending_sbas = check_state_based_actions_with_context(&game, &view, &context);
+    assert!(
+        !pending_sbas
+            .iter()
+            .any(|sba| matches!(sba, StateBasedAction::SagaSacrifice(id) if *id == saga_id)),
+        "Saga should not be sacrificed while its final chapter ability is still pending"
+    );
+    drop(view);
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    assert_eq!(game.stack.len(), 1);
+    check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
     assert!(
         game.battlefield.contains(&saga_id),
-        "Saga should be on battlefield"
+        "Saga should not be sacrificed while its final chapter ability is on the stack"
     );
-
-    // Check SBAs - should include saga sacrifice
-    let sbas = check_state_based_actions(&game);
-
-    // Verify saga sacrifice SBA is present
-    let has_saga_sacrifice = sbas.iter().any(|sba| {
-        matches!(
-            sba,
-            crate::rules::state_based::StateBasedAction::SagaSacrifice(id) if *id == saga_id
-        )
-    });
-    assert!(
-        has_saga_sacrifice,
-        "SBA should include saga sacrifice for resolved saga"
-    );
-
-    // Apply SBAs
-    let mut trigger_queue = TriggerQueue::new();
+    game.pop_from_stack();
     check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
-
-    // Verify saga is no longer on battlefield
     assert!(
         !game.battlefield.contains(&saga_id),
-        "Saga should no longer be on battlefield after SBA"
-    );
-
-    // Verify a saga is in graveyard (note: zone change creates new object ID per rule 400.7)
-    let alice_player = game.player(alice).unwrap();
-    let saga_in_graveyard = alice_player.graveyard.iter().any(|&id| {
-        game.object(id)
-            .map(|o| o.name == "The Birth of Meletis")
-            .unwrap_or(false)
-    });
-    assert!(
-        saga_in_graveyard,
-        "Saga should be in graveyard after sacrifice"
+        "Saga should be sacrificed once the final chapter ability has left the stack"
     );
 }
 
@@ -22258,14 +22612,9 @@ fn test_saga_full_lifecycle() {
     );
     assert_eq!(trigger_queue.entries.len(), 1);
 
-    // Verify saga is NOT marked for sacrifice yet (final chapter hasn't resolved)
-    assert!(!game.is_saga_final_chapter_resolved(saga_id));
-
-    // Simulate final chapter ability resolving
-    mark_saga_final_chapter_resolved(&mut game, saga_id);
-
-    // Verify saga IS marked for sacrifice
-    assert!(game.is_saga_final_chapter_resolved(saga_id));
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    assert_eq!(game.stack.len(), 1);
+    game.pop_from_stack();
 
     // Apply SBAs - saga should be sacrificed
     check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
@@ -22414,15 +22763,6 @@ fn test_saga_survives_when_lore_counter_removed() {
     let result = execute_effect(&mut game, &search_effect, &mut ctx);
     assert!(result.is_ok(), "Search should succeed");
 
-    // Simulate the final chapter ability resolving - this would mark the saga
-    // But ONLY if it still has enough lore counters
-    mark_saga_final_chapter_resolved(&mut game, saga_id);
-
-    // The saga is marked as final_chapter_resolved, but it only has 2 counters
-    assert!(
-        game.is_saga_final_chapter_resolved(saga_id),
-        "Saga should be marked as final chapter resolved"
-    );
     let saga = game.object(saga_id).unwrap();
     assert_eq!(
         saga.counters.get(&CounterType::Lore).copied().unwrap_or(0),
@@ -22538,12 +22878,8 @@ fn test_saga_chapter_triggers_again_after_counter_removed() {
         "Turn 1: Saga should have 2 lore counters after Hex Parasite"
     );
 
-    // Chapter III trigger resolves (the search effect)
-    // For this test, we just clear the queue to simulate resolution
-    trigger_queue.clear();
-
-    // Mark final chapter as resolved
-    mark_saga_final_chapter_resolved(&mut game, saga_id);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    game.pop_from_stack();
 
     // Check SBAs - saga should survive because 2 < 3
     check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();
@@ -22553,10 +22889,6 @@ fn test_saga_chapter_triggers_again_after_counter_removed() {
     );
 
     // --- TURN 2: Precombat main phase ---
-    // Reset final_chapter_resolved for next turn's processing
-    // (In a real game, this would be a new chapter trigger instance)
-    game.clear_saga_final_chapter_resolved(saga_id);
-
     // Add lore counter (2 -> 3), Chapter III should trigger AGAIN!
     // This is the key test: the threshold crossing logic should allow re-triggering
     add_saga_lore_counters(&mut game, &mut trigger_queue);
@@ -22577,9 +22909,8 @@ fn test_saga_chapter_triggers_again_after_counter_removed() {
         "Turn 2: Chapter III should have triggered AGAIN (threshold crossed again)"
     );
 
-    // Chapter III trigger resolves
-    trigger_queue.clear();
-    mark_saga_final_chapter_resolved(&mut game, saga_id);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).unwrap();
+    game.pop_from_stack();
 
     // Check SBAs - saga should now be sacrificed because 3 >= 3
     check_and_apply_sbas(&mut game, &mut trigger_queue).unwrap();

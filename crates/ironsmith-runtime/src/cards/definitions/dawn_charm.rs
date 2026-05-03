@@ -91,7 +91,7 @@ mod tests {
             optional_costs_paid: Default::default(),
             defending_player: None,
             chosen_player: None,
-            saga_final_chapter_source: None,
+            chapter_ability_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: Some(name.to_string()),

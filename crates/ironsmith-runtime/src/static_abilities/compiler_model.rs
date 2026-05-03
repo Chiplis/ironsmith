@@ -50,6 +50,7 @@ impl StaticAbility {
             Some(StaticAbilityId::SplitSecond) => Self::split_second(),
             Some(StaticAbilityId::Rebound) => Self::rebound(),
             Some(StaticAbilityId::Cascade) => Self::cascade(),
+            Some(StaticAbilityId::ReadAhead) => Self::read_ahead(),
             Some(StaticAbilityId::Unleash) => Self::unleash(),
             Some(StaticAbilityId::Unblockable) => Self::unblockable(),
             Some(StaticAbilityId::CantBlock) => Self::cant_block(),

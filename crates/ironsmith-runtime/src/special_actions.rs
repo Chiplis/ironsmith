@@ -1086,9 +1086,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
 ) -> Result<(), ActionError> {
-    use crate::costs::{
-        CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
-    };
+    use crate::costs::CostCheckContext;
 
     let object = game
         .object(permanent_id)
@@ -1228,29 +1226,45 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
     }
     let affordability_started_at = crate::perf::PerfTimer::start();
-    for cost in total_cost.costs() {
-        if has_activation_cost_modifiers {
-            game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
-                .map_err(cost_error_to_action_error)?;
-        }
-        if cost.processing_mode().is_mana_payment() {
-            if let Some(mana_cost) = cost.mana_cost_ref() {
-                if !view.can_potentially_pay_with_reason(
-                    player,
-                    Some(permanent_id),
-                    mana_cost,
-                    0,
-                    crate::costs::PaymentReason::ActivateManaAbility,
-                ) {
-                    return Err(ActionError::CantPayCost);
+    let components = total_cost.costs();
+    let mut idx = 0usize;
+    while idx < components.len() {
+        if let Some(choose) = components[idx]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(next) = components.get(idx + 1)
+            && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+        {
+            let paired_cost = match &step {
+                crate::game_loop::ActivationCostStep::Cost(cost) => cost,
+                crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+                    activation_card_cost_choice_cost(choice)
                 }
-            } else {
-                can_potentially_pay_with_check_context(&*cost.0, game, &ctx)
-                    .map_err(cost_error_to_action_error)?;
-            }
-        } else {
-            can_pay_with_check_context(&*cost.0, game, &ctx).map_err(cost_error_to_action_error)?;
+            };
+            mana_ability_cost_component_payable(
+                game,
+                view,
+                player,
+                permanent_id,
+                paired_cost,
+                &ctx,
+                has_activation_cost_modifiers,
+            )?;
+            idx += 2;
+            continue;
         }
+
+        mana_ability_cost_component_payable(
+            game,
+            view,
+            player,
+            permanent_id,
+            &components[idx],
+            &ctx,
+            has_activation_cost_modifiers,
+        )?;
+        idx += 1;
     }
     if let Some(perf_ctx) = perf_ctx {
         perf_ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
@@ -1263,6 +1277,55 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     }
 
     Ok(())
+}
+
+fn mana_ability_cost_component_payable(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    cost: &crate::costs::Cost,
+    ctx: &crate::costs::CostCheckContext,
+    has_activation_cost_modifiers: bool,
+) -> Result<(), ActionError> {
+    use crate::costs::{can_pay_with_check_context, can_potentially_pay_with_check_context};
+
+    if has_activation_cost_modifiers {
+        game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
+            .map_err(cost_error_to_action_error)?;
+    }
+    if cost.processing_mode().is_mana_payment() {
+        if let Some(mana_cost) = cost.mana_cost_ref() {
+            if !view.can_potentially_pay_with_reason(
+                player,
+                Some(permanent_id),
+                mana_cost,
+                0,
+                crate::costs::PaymentReason::ActivateManaAbility,
+            ) {
+                return Err(ActionError::CantPayCost);
+            }
+        } else {
+            can_potentially_pay_with_check_context(&*cost.0, game, ctx)
+                .map_err(cost_error_to_action_error)?;
+        }
+    } else {
+        can_pay_with_check_context(&*cost.0, game, ctx).map_err(cost_error_to_action_error)?;
+    }
+    Ok(())
+}
+
+fn activation_card_cost_choice_cost(
+    choice: &crate::game_loop::ActivationCardCostChoice,
+) -> &crate::costs::Cost {
+    match choice {
+        crate::game_loop::ActivationCardCostChoice::Discard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
+        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. } => cost,
+    }
 }
 
 /// Check if a mana ability's activation condition is met.
@@ -1312,11 +1375,34 @@ pub fn perform_activate_mana_ability_restricted_colors(
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
+    perform_activate_mana_ability_restricted_colors_with_events(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_color_restriction,
+        decision_maker,
+    )
+    .map(|_| ())
+}
+
+pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<Vec<crate::triggers::TriggerEvent>, ActionError> {
     use crate::effects::ExecutionContext;
 
     // Get the mana ability details
-    game.object(permanent_id)
-        .ok_or(ActionError::ObjectNotFound)?;
+    let source_snapshot = {
+        let object = game
+            .object(permanent_id)
+            .ok_or(ActionError::ObjectNotFound)?;
+        crate::snapshot::ObjectSnapshot::from_object(object, game)
+    };
     let ability = game
         .current_ability(permanent_id, ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
@@ -1334,6 +1420,7 @@ pub fn perform_activate_mana_ability_restricted_colors(
         let mana = mana_ability.mana_output.clone().unwrap_or_default();
         let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
         let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
+        let mut emitted_events = Vec::new();
 
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
@@ -1347,7 +1434,7 @@ pub fn perform_activate_mana_ability_restricted_colors(
 
         // Add mana to player's pool
         if let Some(player_data) = game.player_mut(player) {
-            for symbol in mana {
+            for symbol in mana.iter().copied() {
                 if mana_usage_restrictions.is_empty() {
                     player_data.mana_pool.add(symbol, 1);
                 } else {
@@ -1360,6 +1447,13 @@ pub fn perform_activate_mana_ability_restricted_colors(
                 }
             }
         }
+        if !mana.is_empty() {
+            emitted_events.push(
+                crate::events::ManaAddedEvent::new(permanent_id, player, player, mana.clone())
+                    .with_snapshot(Some(source_snapshot.clone()))
+                    .into_trigger_event(),
+            );
+        }
 
         // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
         if !effects.is_empty() {
@@ -1370,7 +1464,7 @@ pub fn perform_activate_mana_ability_restricted_colors(
             if let Some(x) = x_value_from_costs {
                 effect_ctx = effect_ctx.with_x(x);
             }
-            let _ = crate::game_loop::execute_resolution_program(
+            if let Ok(events) = crate::game_loop::execute_resolution_program(
                 game,
                 &mut effect_ctx,
                 player,
@@ -1378,11 +1472,23 @@ pub fn perform_activate_mana_ability_restricted_colors(
                 &effects,
                 None,
                 &[],
-            );
+            ) {
+                emitted_events.extend(events);
+            }
         }
 
         game.record_ability_activation(permanent_id, ability_index);
-        Ok(())
+        let is_land_source = game
+            .object(permanent_id)
+            .map(|obj| obj.is_land())
+            .unwrap_or(source_snapshot.is_land());
+        if is_land_source {
+            game.turn_store
+                .turn_history
+                .players_tapped_land_for_mana_this_turn
+                .insert(player);
+        }
+        Ok(emitted_events)
     } else {
         Err(ActionError::NoSuchAbility)
     }

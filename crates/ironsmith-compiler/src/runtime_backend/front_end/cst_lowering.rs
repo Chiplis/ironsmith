@@ -11,7 +11,30 @@ use super::ir::{
     RewriteSemanticItem, RewriteStatementLine, RewriteStaticLine, RewriteTriggeredLine,
     RewriteUnsupportedLine,
 };
-use super::leaf::lower_activation_cost_cst;
+use super::leaf::{ActivationCostCst, ActivationCostSegmentCst, lower_activation_cost_cst};
+
+fn activation_cost_cst_is_loyalty(cost: &ActivationCostCst) -> bool {
+    let normalized_raw = cost.raw.trim().replace('−', "-");
+    if normalized_raw == "0" || normalized_raw.starts_with('+') || normalized_raw.starts_with('-') {
+        return true;
+    }
+
+    cost.segments.iter().any(|segment| {
+        matches!(
+            segment,
+            ActivationCostSegmentCst::PutCounters {
+                counter_type: crate::object::CounterType::Loyalty,
+                ..
+            } | ActivationCostSegmentCst::RemoveCounters {
+                counter_type: crate::object::CounterType::Loyalty,
+                ..
+            } | ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type: Some(crate::object::CounterType::Loyalty),
+                ..
+            }
+        )
+    })
+}
 
 pub(crate) fn lower_non_metadata_rewrite_line_cst(
     line: RewriteLineCst,
@@ -66,6 +89,7 @@ fn lower_activated_line(
         effect_text: activated.effect_text,
         effect_parse_tokens: activated.effect_parse_tokens,
         timing_hint: ActivationTiming::AnyTime,
+        is_loyalty_ability: activation_cost_cst_is_loyalty(&activated.cost),
         chosen_option_label: activated.chosen_option_label,
     }))
 }

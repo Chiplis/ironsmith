@@ -531,7 +531,6 @@ mod tests {
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             additional_cost: crate::cost::TotalCost::free(),
-            max_saga_chapter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
         }

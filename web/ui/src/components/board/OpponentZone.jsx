@@ -87,12 +87,12 @@ function zoneCounts(player) {
   }, 0);
 
   return [
-    { label: "Battlefield", count: battlefieldCount },
-    { label: "Hand", count: player.hand_size ?? 0 },
-    { label: "GY", count: player.graveyard_size ?? 0 },
-    { label: "Deck", count: player.library_size ?? 0 },
-    { label: "Exile", count: exileCards.length },
-    { label: "CZ", count: player.command_size ?? commandCards.length },
+    { label: "BF", title: "Battlefield", count: battlefieldCount },
+    { label: "Hand", title: "Hand", count: player.hand_size ?? 0 },
+    { label: "GY", title: "Graveyard", count: player.graveyard_size ?? 0 },
+    { label: "Deck", title: "Library", count: player.library_size ?? 0 },
+    { label: "Exl", title: "Exile", count: exileCards.length },
+    { label: "CZ", title: "Command Zone", count: player.command_size ?? commandCards.length },
   ];
 }
 
@@ -150,13 +150,13 @@ function ZoneCountInline({ player }) {
         return (
           <span
             key={entry.label}
-            className={showLibraryTop ? "min-w-0 max-w-[220px] truncate" : undefined}
-            title={showLibraryTop ? `Top card: ${libraryTopName}` : undefined}
+            className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
+            title={showLibraryTop ? `Top card: ${libraryTopName}` : entry.title}
           >
-            <span className="font-bold text-[#c1d4ea]">{entry.label}</span>{" "}
+            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{entry.label}</span>
             <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
             {showLibraryTop && (
-              <span className="text-[#f0dfba] font-semibold"> ({libraryTopName})</span>
+              <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
             )}
           </span>
         );
@@ -480,7 +480,7 @@ function OpponentSlot({
       <div>
         {!mobileViewport ? (
           <div
-            className="battlefield-panel-header battlefield-panel-header--compact flex items-center gap-2"
+            className="battlefield-panel-header battlefield-panel-header--compact flex min-w-0 items-center gap-2 overflow-hidden"
             data-turn-priority={isPriorityPlayer ? "true" : "false"}
           >
             <span
@@ -498,7 +498,7 @@ function OpponentSlot({
             </span>
             <span
               className={cn(
-                "battlefield-name text-[16px] uppercase tracking-wider font-bold",
+                "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold",
                 isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
               )}
               data-player-target={player.index ?? player.id}
@@ -521,7 +521,7 @@ function OpponentSlot({
               compact
               className="player-name-mana battlefield-header-mana"
             />
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               <ZoneCountInline player={player} />
               {headerControls}
             </div>

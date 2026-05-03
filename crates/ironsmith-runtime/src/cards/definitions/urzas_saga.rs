@@ -27,7 +27,6 @@ pub fn urzas_saga() -> CardDefinition {
         // No mana cost (it's a land)
         .card_types(vec![CardType::Enchantment, CardType::Land])
         .subtypes(vec![Subtype::Urzas, Subtype::Saga])
-        .saga(3)
         // Chapter III: Search for artifact with mana cost {0} or {1}
         // IMPORTANT: The card says "mana cost {0} or {1}" which means:
         // - Must have a mana cost (excludes suspend-only cards like Sol Talisman)
@@ -69,9 +68,6 @@ mod tests {
         // Should have Urza's and Saga subtypes
         assert!(def.card.subtypes.contains(&Subtype::Urzas));
         assert!(def.card.subtypes.contains(&Subtype::Saga));
-
-        // Should have max 3 chapters
-        assert_eq!(def.max_saga_chapter, Some(3));
 
         // Should not start with a mana ability; it's granted by chapter I/II.
         assert!(!def.abilities.iter().any(|a| a.is_mana_ability()));

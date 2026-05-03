@@ -252,7 +252,6 @@ fn definition_has_semantics(definition: &CardDefinition) -> bool {
         || definition.aura_attach_filter.is_some()
         || !definition.alternative_casts.is_empty()
         || !definition.optional_costs.is_empty()
-        || definition.max_saga_chapter.is_some()
         || !definition.additional_cost.costs().is_empty()
 }
 

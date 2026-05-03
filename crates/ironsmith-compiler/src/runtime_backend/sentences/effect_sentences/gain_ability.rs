@@ -1684,10 +1684,22 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
         return Ok(None);
     }
 
-    let ability_tokens = trim_edge_punctuation(&tokens[gain_token_idx + 1..]);
+    let words_after_gain = &clause_words[gain_idx + 1..];
+    let duration_phrase = parse_simple_ability_duration(words_after_gain);
+    let duration = duration_phrase
+        .as_ref()
+        .map(|(_, _, duration)| duration.clone())
+        .unwrap_or(Until::Forever);
+    let ability_end_word_idx = duration_phrase
+        .as_ref()
+        .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel)
+        .unwrap_or(clause_words.len());
+    let ability_end_token_idx =
+        token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
+    let ability_tokens = trim_edge_punctuation(&tokens[gain_token_idx + 1..ability_end_token_idx]);
     if let Some(parsed) = parse_activated_line(&ability_tokens)? {
         return Ok(Some(EffectAst::subject_verb_grant_ability_to_source(
-            parsed,
+            parsed, duration,
         )));
     }
 
@@ -1716,6 +1728,10 @@ mod tests {
             "expected source grant effect, got {debug}"
         );
         assert!(
+            string_contains(&debug, "duration: Forever"),
+            "source ability grants without an explicit duration should be indefinite, got {debug}"
+        );
+        assert!(
             string_contains(&debug, "effects_ast: Some"),
             "expected parsed ability to remain unlowered in the AST, got {debug}"
         );
@@ -1726,10 +1742,29 @@ mod tests {
         assert!(
             (string_contains(&compiled_debug, "ApplyContinuousEffect")
                 && string_contains(&compiled_debug, "AddAbilityGeneric")
-                && string_contains(&compiled_debug, "target_spec: Some(Source)"))
+                && string_contains(&compiled_debug, "target_spec: Some(Source)")
+                && string_contains(&compiled_debug, "until: Forever"))
                 || (string_contains(&compiled_debug, "GrantObjectAbilityEffect")
                     && string_contains(&compiled_debug, "target: Source")),
             "expected source grant effect after lowering, got {compiled_debug}"
+        );
+    }
+
+    #[test]
+    fn gain_ability_to_source_respects_explicit_until_end_of_turn_duration() {
+        let tokens = tokenize_line("This creature gains {T}: Draw a card until end of turn.", 0);
+        let effect = parse_gain_ability_to_source_sentence(&tokens)
+            .expect("gain-to-source sentence should parse")
+            .expect("gain-to-source sentence should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "GrantAbilityToSource"),
+            "expected source grant effect, got {debug}"
+        );
+        assert!(
+            string_contains(&debug, "duration: EndOfTurn"),
+            "explicit source ability grant duration should be preserved, got {debug}"
         );
     }
 

@@ -157,7 +157,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 optional_costs_paid: OptionalCostsPaid::default(),
                 defending_player: None,
                 chosen_player: None,
-                saga_final_chapter_source: None,
+                chapter_ability_source: None,
                 source_stable_id: stable_id,
                 source_snapshot: None,
                 source_name: Some(card_name),
