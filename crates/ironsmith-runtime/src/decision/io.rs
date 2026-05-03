@@ -1,5 +1,6 @@
 use super::legal_actions::commander_action_indices;
 use super::*;
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use std::io;
 
 // ============================================================================
@@ -2512,9 +2513,13 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             let name = game.object(*source).map(|o| o.name.as_str()).unwrap_or("?");
 
             // Check if this ability requires tapping
-            if let Some(ability) = game.current_ability(*source, *ability_index) {
+            if let (Some(ability), Some(object)) = (
+                game.current_ability(*source, *ability_index),
+                game.object(*source),
+            ) {
+                let controller = game.controller_of(object);
                 if let crate::AbilityKind::Activated(mana_ability) = &ability.kind
-                    && mana_ability.is_mana_ability()
+                    && mana_ability.is_runtime_mana_ability(game, *source, controller)
                 {
                     if mana_ability.has_tap_cost() {
                         format!("Tap {}", name)

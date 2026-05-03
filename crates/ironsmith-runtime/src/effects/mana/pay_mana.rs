@@ -1,5 +1,6 @@
 //! Pay mana effect implementation.
 
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
@@ -225,7 +226,10 @@ fn get_available_mana_abilities(
         }
 
         for (ability_index, ability) in permanent.abilities.iter().enumerate() {
-            if !ability.is_mana_ability() {
+            let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
                 continue;
             }
 
@@ -240,7 +244,7 @@ fn get_available_mana_abilities(
             abilities.push((
                 permanent_id,
                 ability_index,
-                describe_mana_ability(&ability.kind),
+                describe_mana_ability(game, permanent_id, player, &ability.kind),
             ));
         }
     }
@@ -248,15 +252,20 @@ fn get_available_mana_abilities(
     abilities
 }
 
-fn describe_mana_ability(kind: &crate::ability::AbilityKind) -> String {
+fn describe_mana_ability(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    kind: &crate::ability::AbilityKind,
+) -> String {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
 
     if let AbilityKind::Activated(mana_ability) = kind
-        && mana_ability.is_mana_ability()
+        && mana_ability.is_runtime_mana_ability(game, source, controller)
     {
         let produced: Vec<&str> = mana_ability
-            .mana_symbols()
+            .inferred_mana_symbols(game, source, controller)
             .iter()
             .map(|symbol| match symbol {
                 ManaSymbol::White => "{W}",

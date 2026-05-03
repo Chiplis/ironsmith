@@ -1029,7 +1029,7 @@ pub(super) fn mana_ability_can_pay_pip(
     let AbilityKind::Activated(mana_ability) = &ability.kind else {
         return false;
     };
-    if !mana_ability.is_mana_ability() {
+    if !mana_ability.is_runtime_mana_ability(game, perm_id, game.controller_of(obj)) {
         return false;
     }
     if !mana_ability.mana_usage_restrictions.is_empty() {
@@ -1102,7 +1102,7 @@ pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_ind
     let AbilityKind::Activated(mana_ability) = &ability.kind else {
         return false;
     };
-    if !mana_ability.is_mana_ability() {
+    if !mana_ability.is_runtime_mana_ability(game, source, game.controller_of(object)) {
         return false;
     }
 
@@ -1836,7 +1836,7 @@ pub(super) fn apply_mana_payment_response_mana_ability(
                 if game.object(*perm_id).is_some()
                     && let Some(ability) = game.current_ability(*perm_id, *ability_index)
                     && let AbilityKind::Activated(mana_ability) = &ability.kind
-                    && mana_ability.is_mana_ability()
+                    && mana_ability.is_runtime_mana_ability(game, *perm_id, pending.activator)
                 {
                     let produced =
                         mana_ability.inferred_mana_symbols(game, *perm_id, pending.activator);

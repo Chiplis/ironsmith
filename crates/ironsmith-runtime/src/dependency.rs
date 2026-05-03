@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ability::Ability;
+use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
     EffectTarget, Layer, Modification, PtSublayer,
@@ -26,6 +26,17 @@ use crate::filter::PlayerFilterExt;
 use crate::game_state::{GameState, ObjectMap};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
+
+fn ability_is_mana_for_object(
+    ability: &Ability,
+    game: &GameState,
+    object: &crate::object::Object,
+) -> bool {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    activated.is_runtime_mana_ability(game, object.id, game.controller_of(object))
+}
 
 /// Check if effect A depends on effect B.
 ///
@@ -305,7 +316,12 @@ fn effect_applicability_changed(
         let applies_before = effect_applies_with_chars(a, obj, chars, game);
         let mut chars_after = chars.clone();
         if effect_applies_with_chars(b, obj, chars, game) {
-            apply_modification_to_chars_for_dependency(&b.modification, &mut chars_after, obj);
+            apply_modification_to_chars_for_dependency(
+                &b.modification,
+                &mut chars_after,
+                obj,
+                game,
+            );
         }
         let applies_after = effect_applies_with_chars(a, obj, &chars_after, game);
         if applies_before != applies_after {
@@ -343,6 +359,7 @@ fn source_ability_presence_changed(
             &b.modification,
             &mut source_chars_after,
             source_obj,
+            game,
         );
     }
 
@@ -987,7 +1004,7 @@ fn collect_activated_ability_signatures(
             if !matches!(ability.kind, AbilityKind::Activated(_)) {
                 continue;
             }
-            if ability.is_mana_ability() && !include_mana {
+            if ability_is_mana_for_object(ability, game, obj) && !include_mana {
                 continue;
             }
             signatures.insert(format!("{:?}", ability.kind));
@@ -1010,7 +1027,12 @@ fn apply_effect_to_baseline(
         };
         if effect_applies_with_chars(effect, obj, chars, game) {
             let mut new_chars = chars.clone();
-            apply_modification_to_chars_for_dependency(&effect.modification, &mut new_chars, obj);
+            apply_modification_to_chars_for_dependency(
+                &effect.modification,
+                &mut new_chars,
+                obj,
+                game,
+            );
             after.insert(id, new_chars);
         }
     }
@@ -1020,7 +1042,8 @@ fn apply_effect_to_baseline(
 pub(crate) fn apply_modification_to_chars_for_dependency(
     modification: &Modification,
     chars: &mut CalculatedCharacteristics,
-    _object: &crate::object::Object,
+    object: &crate::object::Object,
+    game: &GameState,
 ) {
     match modification {
         Modification::CopyOf { .. } => {}
@@ -1196,7 +1219,9 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.static_abilities.clear();
         }
         Modification::RemoveAllAbilitiesExceptMana => {
-            chars.abilities.retain(|ability| ability.is_mana_ability());
+            chars
+                .abilities
+                .retain(|ability| ability_is_mana_for_object(ability, game, object));
             chars.static_abilities.clear();
         }
         Modification::ModifyPower(delta) => {

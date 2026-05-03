@@ -9779,6 +9779,40 @@ fn rewrite_lowered_mana_ability_preserves_fixed_mana_groups() -> Result<(), Card
 }
 
 #[test]
+fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Selvala, Explorer Returned")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{T}: Each player reveals the top card of their library. For each nonland card revealed this way, add {G} and you gain 1 life. Then each player draws a card."
+            .to_string(),
+        false,
+    )?;
+    let ability = definition
+        .abilities
+        .first()
+        .expect("rewrite lowering should produce one ability");
+
+    match &ability.kind {
+        crate::ability::AbilityKind::Activated(activated) => {
+            assert!(activated.produces_mana());
+            assert!(activated.is_mana_ability());
+            assert!(
+                activated.mana_symbols().is_empty(),
+                "nested mana production should resolve through its effect payload"
+            );
+            let debug = format!("{:#?}", activated.effects);
+            assert!(debug.contains("ForPlayersEffect"), "{debug}");
+            assert!(debug.contains("ForEachObject"), "{debug}");
+            assert!(debug.contains("AddManaEffect"), "{debug}");
+        }
+        other => panic!("expected activated mana ability, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_lowered_targeted_mana_production_is_not_a_mana_ability() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Font")
         .card_types(vec![CardType::Artifact]);

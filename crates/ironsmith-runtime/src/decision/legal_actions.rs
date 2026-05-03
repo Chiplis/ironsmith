@@ -1,4 +1,5 @@
 use super::*;
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
@@ -996,7 +997,9 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if !activated.is_mana_ability() && !source_facts.can_activate_non_mana_abilities_of_source {
+    if !activated.is_runtime_mana_ability(game, source, controller)
+        && !source_facts.can_activate_non_mana_abilities_of_source
+    {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }

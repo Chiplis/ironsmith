@@ -1,4 +1,5 @@
 use super::*;
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::filter::ObjectFilterExt as _;
 
 fn count_basic_land_types_among_filter(
@@ -3110,10 +3111,20 @@ fn mana_ability_output_options(
         outputs = combine_mana_output_options(&outputs, &effect_outputs);
     }
 
-    outputs
+    let outputs = outputs
         .into_iter()
         .filter(|output| !output.is_empty())
-        .collect()
+        .collect::<Vec<_>>();
+    if outputs.is_empty() {
+        let inferred = mana_ability.inferred_mana_symbols(game, source, player);
+        if inferred.is_empty() {
+            Vec::new()
+        } else {
+            vec![inferred]
+        }
+    } else {
+        outputs
+    }
 }
 
 fn any_color_output_options(
@@ -3509,7 +3520,7 @@ pub(crate) fn compute_potential_mana_with_view(
             let AbilityKind::Activated(mana_ability) = &ability.kind else {
                 continue;
             };
-            if !mana_ability.is_mana_ability() {
+            if !mana_ability.is_runtime_mana_ability(game, perm_id, game.controller_of(perm)) {
                 continue;
             }
             if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(perm_id) {
@@ -3654,7 +3665,6 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     if game.controller_of(object) != player
         || object.zone != Zone::Battlefield
         || !ability.functions_in(&object.zone)
-        || !ability.is_mana_ability()
     {
         return None;
     }
@@ -3662,7 +3672,9 @@ pub(crate) fn simple_battlefield_mana_ability_output(
     let AbilityKind::Activated(mana_ability) = &ability.kind else {
         return None;
     };
-    if !mana_ability.is_mana_ability() || !game.can_activate_abilities_of(permanent_id) {
+    if !mana_ability.is_runtime_mana_ability(game, permanent_id, player)
+        || !game.can_activate_abilities_of(permanent_id)
+    {
         return None;
     }
     if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
@@ -3813,7 +3825,11 @@ pub(crate) fn inferred_potential_mana_symbols_for_ability(
         }
     }
 
-    inferred
+    if inferred.is_empty() {
+        mana_ability.inferred_mana_symbols(game, source, controller)
+    } else {
+        inferred
+    }
 }
 
 /// Check mana ability condition for potential mana computation.

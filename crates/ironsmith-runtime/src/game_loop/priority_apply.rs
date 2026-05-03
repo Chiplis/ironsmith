@@ -1,4 +1,5 @@
 use super::*;
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::perf::PerfTimer;
 
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
@@ -893,7 +894,7 @@ pub fn apply_priority_response_with_dm(
             if game.object(*source).is_some()
                 && let Some(ability) = game.current_ability(*source, *ability_index)
                 && let AbilityKind::Activated(mana_ability) = &ability.kind
-                && mana_ability.is_mana_ability()
+                && mana_ability.is_runtime_mana_ability(game, *source, player)
             {
                 let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
                 let effects_to_run = mana_ability.effects.clone();

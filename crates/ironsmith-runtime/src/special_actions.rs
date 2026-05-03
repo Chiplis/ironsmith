@@ -3,6 +3,7 @@
 //! Special actions include playing lands, turning face-down creatures face up,
 //! suspending/foretelling cards, and activating mana abilities.
 
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPaymentResult};
 use crate::decision::DecisionMaker;
@@ -981,10 +982,6 @@ fn can_activate_mana_ability_with_cost_checks(
         .current_ability(permanent_id, ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
 
-    if !ability.is_mana_ability() {
-        return Err(ActionError::NoSuchAbility);
-    }
-
     // Check the ability functions in this zone
     if !ability.functions_in(&object.zone) {
         return Err(ActionError::WrongZone {
@@ -994,20 +991,22 @@ fn can_activate_mana_ability_with_cost_checks(
     }
 
     // Check if the cost can be paid
-    if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
-        && mana_ability.is_mana_ability()
-    {
-        if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
-            return Err(ActionError::CantPayCost);
-        }
-        check_costs(mana_ability)?;
+    let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
+        return Err(ActionError::NoSuchAbility);
+    }
+    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+        return Err(ActionError::CantPayCost);
+    }
+    check_costs(mana_ability)?;
 
-        // Check activation condition if present
-        if let Some(condition) = &mana_ability.activation_condition
-            && !check_mana_ability_condition(game, player, permanent_id, ability_index, condition)
-        {
-            return Err(ActionError::CantPayCost);
-        }
+    // Check activation condition if present
+    if let Some(condition) = &mana_ability.activation_condition
+        && !check_mana_ability_condition(game, player, permanent_id, ability_index, condition)
+    {
+        return Err(ActionError::CantPayCost);
     }
 
     Ok(())
@@ -1104,7 +1103,10 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         return Err(ActionError::CantPayCost);
     }
 
-    if !ability.is_mana_ability() {
+    let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
         }
@@ -1119,16 +1121,6 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
             expected: Zone::Battlefield,
             actual: object.zone,
         });
-    }
-
-    let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
-        return Err(ActionError::NoSuchAbility);
-    };
-    if !mana_ability.is_mana_ability() {
-        if let Some(perf_ctx) = perf_ctx {
-            perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
-        }
-        return Err(ActionError::NoSuchAbility);
     }
 
     if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
@@ -1408,7 +1400,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         .ok_or(ActionError::NoSuchAbility)?;
 
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
-        && mana_ability.is_mana_ability()
+        && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
     {
         let total_cost = crate::decision::calculate_effective_activation_total_cost(
             game,

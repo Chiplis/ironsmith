@@ -7,7 +7,9 @@ use crate::filter::ObjectFilterExt as _;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use crate::ability::{Ability, AbilityKind, extract_static_abilities};
+use crate::ability::{
+    Ability, AbilityKind, ActivatedAbilityRuntimeExt as _, extract_static_abilities,
+};
 use crate::color::{Color, ColorSet};
 use crate::effect::{Until, Value};
 use crate::filter::PlayerFilterExt;
@@ -997,6 +999,17 @@ pub struct CalculatedCharacteristics {
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: Vec<StaticAbility>,
     pub controller: PlayerId,
+}
+
+fn ability_is_mana_for_object(
+    ability: &Ability,
+    game: &crate::game_state::GameState,
+    object: &Object,
+) -> bool {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+    activated.is_runtime_mana_ability(game, object.id, game.controller_of(object))
 }
 
 #[derive(Debug, Clone)]
@@ -2449,7 +2462,7 @@ fn apply_modification_to_chars(
                     if !matches!(ability.kind, AbilityKind::Activated(_)) {
                         continue;
                     }
-                    if ability.is_mana_ability() && !*include_mana {
+                    if ability_is_mana_for_object(ability, game, candidate) && !*include_mana {
                         continue;
                     }
                     let mut copied = ability.clone();
@@ -2540,7 +2553,9 @@ fn apply_modification_to_chars(
             *abilities_removed = true;
         }
         Modification::RemoveAllAbilitiesExceptMana => {
-            chars.abilities.retain(|ability| ability.is_mana_ability());
+            chars
+                .abilities
+                .retain(|ability| ability_is_mana_for_object(ability, game, object));
             chars.static_abilities.clear();
             *abilities_removed = true;
         }
@@ -3077,7 +3092,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                             if !matches!(ability.kind, AbilityKind::Activated(_)) {
                                 continue;
                             }
-                            if ability.is_mana_ability() && !*include_mana {
+                            if ability_is_mana_for_object(ability, ctx.game, candidate)
+                                && !*include_mana
+                            {
                                 continue;
                             }
                             let mut copied = ability.clone();
@@ -3157,7 +3174,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     abilities_removed = true;
                 }
                 Modification::RemoveAllAbilitiesExceptMana => {
-                    chars.abilities.retain(|ability| ability.is_mana_ability());
+                    chars
+                        .abilities
+                        .retain(|ability| ability_is_mana_for_object(ability, ctx.game, object));
                     chars.static_abilities.clear();
                     abilities_removed = true;
                 }
@@ -4230,6 +4249,7 @@ fn advance_layer_source_state(
             &effect.modification,
             &mut updated,
             object,
+            game,
         );
         source_state.insert(id, updated);
     }

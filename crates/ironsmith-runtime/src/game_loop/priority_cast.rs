@@ -1636,7 +1636,7 @@ pub(super) fn compute_mana_ability_payment_options(
         let can_help = if game.object(*perm_id).is_some()
             && let Some(ability) = game.current_ability(*perm_id, *ability_index)
             && let AbilityKind::Activated(mana_ability) = &ability.kind
-            && mana_ability.is_mana_ability()
+            && mana_ability.is_runtime_mana_ability(game, *perm_id, player)
         {
             let produced = mana_ability.inferred_mana_symbols(game, *perm_id, player);
             mana_can_help_pay_cost(&produced, &pending.mana_cost, game, player, allow_any_color)
@@ -1787,7 +1787,7 @@ pub(super) fn get_available_mana_abilities(
                 )
                 .is_ok()
             {
-                let desc = describe_mana_ability(&ability.kind);
+                let desc = describe_mana_ability(game, perm_id, player, &ability.kind);
                 abilities.push((perm_id, ability_index, desc));
             }
         }
@@ -1798,15 +1798,20 @@ pub(super) fn get_available_mana_abilities(
 }
 
 /// Describe a mana ability for display.
-pub(super) fn describe_mana_ability(kind: &crate::ability::AbilityKind) -> String {
+pub(super) fn describe_mana_ability(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    kind: &crate::ability::AbilityKind,
+) -> String {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
 
     if let AbilityKind::Activated(mana_ability) = kind
-        && mana_ability.is_mana_ability()
+        && mana_ability.is_runtime_mana_ability(game, source, controller)
     {
         let mana_strs: Vec<&str> = mana_ability
-            .mana_symbols()
+            .inferred_mana_symbols(game, source, controller)
             .iter()
             .map(|m| match m {
                 ManaSymbol::White => "{W}",

@@ -3,7 +3,7 @@
 use super::choice_helpers::{
     choose_mana_symbols, credit_mana_symbols_from_context, mana_added_count_outcome,
 };
-use crate::ability::{AbilityKind, ActivatedAbility};
+use crate::ability::{AbilityKind, ActivatedAbility, ActivatedAbilityRuntimeExt as _};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -115,24 +115,17 @@ fn collect_available_mana_symbols(
             let AbilityKind::Activated(mana_ability) = &ability.kind else {
                 continue;
             };
-            if !mana_ability.is_mana_ability() {
+            if !mana_ability.is_runtime_mana_ability(game, perm.id, game.controller_of(perm)) {
                 continue;
             }
             if !mana_ability_condition_met(game, perm, mana_ability) {
                 continue;
             }
 
-            for symbol in mana_ability.mana_symbols() {
-                push_symbol_if_addable(&mut symbols, *symbol);
-            }
-            for effect in &mana_ability.effects {
-                infer_symbols_from_mana_effect(
-                    game,
-                    perm.id,
-                    game.controller_of(perm),
-                    effect,
-                    &mut symbols,
-                );
+            for symbol in
+                mana_ability.inferred_mana_symbols(game, perm.id, game.controller_of(perm))
+            {
+                push_symbol_if_addable(&mut symbols, symbol);
             }
         }
     }
@@ -169,20 +162,6 @@ fn mana_ability_condition_met(
             };
             crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
         })
-}
-
-fn infer_symbols_from_mana_effect(
-    game: &GameState,
-    source: crate::ids::ObjectId,
-    land_controller: crate::ids::PlayerId,
-    effect: &crate::effect::Effect,
-    out: &mut Vec<ManaSymbol>,
-) {
-    if let Some(inferred) = effect.producible_mana_symbols(game, source, land_controller) {
-        for symbol in inferred {
-            push_symbol_if_addable(out, symbol);
-        }
-    }
 }
 
 fn push_symbol_if_addable(out: &mut Vec<ManaSymbol>, symbol: ManaSymbol) {

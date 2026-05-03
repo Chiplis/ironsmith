@@ -14559,6 +14559,57 @@ fn test_sacellum_godspeaker_reveals_hand_creatures_and_adds_green_mana() {
 }
 
 #[test]
+fn test_nested_mana_effect_without_mana_output_is_mana_ability_action() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(99035), "Nested Mana Probe")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
+            vec![Effect::for_players(
+                PlayerFilter::Any,
+                vec![Effect::for_each(
+                    crate::filter::ObjectFilter::default(),
+                    vec![Effect::add_mana(vec![ManaSymbol::Green])],
+                )],
+            )],
+        ))
+        .build();
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateManaAbility {
+                source: action_source,
+                ability_index: 0,
+            } if *action_source == source
+        )),
+        "nested mana-producing effects should be offered as mana abilities: {actions:?}"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility {
+                source: action_source,
+                ability_index: 0,
+                ..
+            } if *action_source == source
+        )),
+        "nested mana-producing effects should not be offered as responseable activated abilities: {actions:?}"
+    );
+}
+
+#[test]
 fn test_suspend_creature_gains_haste_until_control_changes() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

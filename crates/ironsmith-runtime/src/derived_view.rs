@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::ability::{Ability, AbilityKind};
+use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{CalculatedCharacteristics, ContinuousEffect, EffectTarget, Layer};
 use crate::game_state::GameState;
 use crate::grant::{DerivedAlternativeCast, Grantable};
@@ -422,16 +422,19 @@ impl<'a> DerivedGameView<'a> {
         let cached_abilities = self.abilities_rc(object_id);
         let abilities = cached_abilities.as_deref().unwrap_or(&object.abilities);
         let mut summary = AbilityIndexSummary::default();
+        let controller = self
+            .current_controller(object_id)
+            .unwrap_or_else(|| self.game.controller_of(object));
         for (ability_index, ability) in abilities.iter().enumerate() {
             if !ability.functions_in(&object.zone) {
                 continue;
             }
-            if ability.is_mana_ability() {
-                summary.mana_ability_indices.push(ability_index);
-            }
-            if matches!(&ability.kind, AbilityKind::Activated(activated) if !activated.is_mana_ability())
-            {
-                summary.activated_ability_indices.push(ability_index);
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                if activated.is_runtime_mana_ability(self.game, object_id, controller) {
+                    summary.mana_ability_indices.push(ability_index);
+                } else {
+                    summary.activated_ability_indices.push(ability_index);
+                }
             }
         }
 

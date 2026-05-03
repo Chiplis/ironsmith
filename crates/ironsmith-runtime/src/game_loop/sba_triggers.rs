@@ -317,7 +317,7 @@ pub(super) fn is_triggered_mana_ability(game: &GameState, trigger: &TriggeredAbi
         return false;
     }
 
-    effects_could_add_mana(
+    crate::ability::effects_could_add_mana(
         game,
         trigger.source,
         trigger.controller,
@@ -337,89 +337,6 @@ fn triggered_by_mana_event(trigger: &TriggeredAbilityEntry) -> bool {
         .triggering_event
         .downcast::<crate::events::ManaAddedEvent>()
         .is_some_and(|event| !event.mana.is_empty())
-}
-
-pub(super) fn effects_could_add_mana(
-    game: &GameState,
-    source: ObjectId,
-    controller: PlayerId,
-    effects: &[crate::effect::Effect],
-) -> bool {
-    effects
-        .iter()
-        .any(|effect| effect_could_add_mana(game, source, controller, effect))
-}
-
-pub(super) fn effect_could_add_mana(
-    game: &GameState,
-    source: ObjectId,
-    controller: PlayerId,
-    effect: &crate::effect::Effect,
-) -> bool {
-    if effect
-        .producible_mana_symbols(game, source, controller)
-        .is_some_and(|symbols| !symbols.is_empty())
-    {
-        return true;
-    }
-
-    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
-        return effects_could_add_mana(game, source, controller, &sequence.effects);
-    }
-    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
-        return effects_could_add_mana(game, source, controller, &may.effects);
-    }
-    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
-        return effects_could_add_mana(game, source, controller, &conditional.if_true)
-            || effects_could_add_mana(game, source, controller, &conditional.if_false);
-    }
-    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
-        return effects_could_add_mana(game, source, controller, &if_effect.then)
-            || effects_could_add_mana(game, source, controller, &if_effect.else_);
-    }
-    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        return effect_could_add_mana(game, source, controller, &with_id.effect);
-    }
-    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        return choose_mode
-            .modes
-            .iter()
-            .any(|mode| effects_could_add_mana(game, source, controller, &mode.effects));
-    }
-    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return effect_could_add_mana(game, source, controller, &tagged.effect);
-    }
-    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
-        return effect_could_add_mana(game, source, controller, &tag_all.effect);
-    }
-    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
-        return effects_could_add_mana(game, source, controller, &for_each.effects);
-    }
-    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-        return effects_could_add_mana(game, source, controller, &for_players.effects);
-    }
-    if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
-        return effects_could_add_mana(game, source, controller, &for_each_tagged.effects);
-    }
-    if let Some(for_each_controller) =
-        effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()
-    {
-        return effects_could_add_mana(game, source, controller, &for_each_controller.effects);
-    }
-    if let Some(for_each_tagged_player) =
-        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()
-    {
-        return effects_could_add_mana(game, source, controller, &for_each_tagged_player.effects);
-    }
-    if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
-        return effects_could_add_mana(game, source, controller, &unless_action.effects)
-            || effects_could_add_mana(game, source, controller, &unless_action.alternative);
-    }
-    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
-        return effects_could_add_mana(game, source, controller, &unless_pays.effects);
-    }
-
-    false
 }
 
 pub(super) fn resolve_triggered_stack_entry_immediately(

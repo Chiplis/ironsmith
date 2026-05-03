@@ -1,4 +1,4 @@
-use crate::ability::AbilityKind;
+use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};
 use crate::cost::OptionalCostsPaid;
 use crate::decision::{
@@ -730,7 +730,10 @@ fn available_mana_abilities(
         }
 
         for (ability_index, ability) in permanent.abilities.iter().enumerate() {
-            if !ability.is_mana_ability() {
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
                 continue;
             }
             let action = SpecialAction::ActivateManaAbility {
@@ -744,7 +747,7 @@ fn available_mana_abilities(
             abilities.push((
                 permanent_id,
                 ability_index,
-                describe_mana_ability(&ability.kind),
+                describe_mana_ability(game, permanent_id, player, &ability.kind),
             ));
         }
     }
@@ -752,12 +755,17 @@ fn available_mana_abilities(
     abilities
 }
 
-fn describe_mana_ability(kind: &AbilityKind) -> String {
+fn describe_mana_ability(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    kind: &AbilityKind,
+) -> String {
     if let AbilityKind::Activated(mana_ability) = kind
-        && mana_ability.is_mana_ability()
+        && mana_ability.is_runtime_mana_ability(game, source, controller)
     {
         let produced: Vec<&str> = mana_ability
-            .mana_symbols()
+            .inferred_mana_symbols(game, source, controller)
             .iter()
             .map(|symbol| match symbol {
                 ManaSymbol::White => "{W}",
