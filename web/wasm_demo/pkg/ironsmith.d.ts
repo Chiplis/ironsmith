@@ -78,7 +78,8 @@ export class WasmGame {
     lastReplayExecutionPerf(): any;
     lastSnapshotPerf(): any;
     /**
-     * Load explicit decks by card name. JS format: `string[][]`.
+     * Load explicit decks by card name. JS format: `string[][]` or
+     * `{ decks: string[][], sideboards?: string[][] }`.
      *
      * Deck list index maps to player index.
      * Returns a JSON object with total and categorized failures:

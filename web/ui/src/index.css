@@ -13315,22 +13315,8 @@ select::-ms-expand {
   background-blend-mode: multiply;
 }
 
-/* Hand zone: leather strap on the top edge. */
 .hand-zone-surface {
   position: relative;
-}
-
-.hand-zone-surface::before {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: 0;
-  right: 0;
-  height: 14px;
-  background: url("/theme/hand-leather-strap.svg") repeat-x left top / 240px 14px;
-  opacity: 0.7;
-  pointer-events: none;
-  z-index: 1;
 }
 
 /* Mana pool chips: brass gem socket behind the symbol. */
@@ -13467,22 +13453,22 @@ select::-ms-expand {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  height: 28px;
-  min-width: min(92px, 100%);
-  max-width: min(190px, 31cqw);
-  padding: 0 12px !important;
-  border: 1px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.42);
-  border-radius: 6px !important;
+  height: 26px;
+  min-width: min(78px, 100%);
+  max-width: min(178px, 31cqw);
+  padding: 0 10px 0 12px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   background:
-    linear-gradient(180deg, rgba(255, 250, 232, 0.08), rgba(255, 250, 232, 0)),
-    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.22), rgba(26, 23, 20, 0.84) 46%, rgba(16, 15, 14, 0.9));
+    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.2), rgba(42, 35, 27, 0.42) 38%, rgba(17, 15, 13, 0) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 245, 220, 0.1),
-    inset 3px 0 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.82),
-    0 7px 14px rgba(0, 0, 0, 0.18);
+    inset 0 -1px 0 rgba(216, 191, 106, 0.22),
+    inset 3px 0 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.76);
   color: var(--player-accent, #d8bf6a) !important;
-  letter-spacing: 0 !important;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72);
+  letter-spacing: 0.035em !important;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.84),
+    0 0 10px rgba(var(--player-accent-rgb, 216, 191, 106), 0.18);
 }
 
 .battlefield-panel-header--compact .battlefield-name {
@@ -13502,12 +13488,12 @@ select::-ms-expand {
 .table-shared-player-header .battlefield-name::after {
   content: "";
   position: absolute;
-  right: 10px;
-  bottom: 3px;
-  left: 10px;
+  right: 0;
+  bottom: 1px;
+  left: 12px;
   height: 1px;
-  background: linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.86), transparent);
-  opacity: 0.68;
+  background: linear-gradient(90deg, rgba(216, 191, 106, 0.62), transparent);
+  opacity: 0.54;
   pointer-events: none;
 }
 

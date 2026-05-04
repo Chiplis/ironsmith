@@ -24,6 +24,9 @@ const INSPECTOR_METADATA_FONT_SIZE = 13;
 const INSPECTOR_RULES_FONT_SIZE = 17;
 const INSPECTOR_RULES_LINE_HEIGHT = INSPECTOR_RULES_FONT_SIZE * 1.34;
 const INSPECTOR_DEFAULT_HEIGHT = 248;
+const INSPECTOR_LOW_PROFILE_HEIGHT = 140;
+const INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING = 10;
+const INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING = 8;
 const INSPECTOR_RULES_MIN_WIDTH = 220;
 const INSPECTOR_RULES_MAX_LINE_WIDTH = 920;
 const INSPECTOR_HEADER_HORIZONTAL_PADDING = 136;
@@ -878,6 +881,14 @@ export default function HoverArtOverlay({
     ));
   }, [ruleLineWidths]);
   const preferredInlineWidth = null;
+  const availableInspectorHeightNum = Number(availableInspectorHeight);
+  const lowProfileInspector = (
+    !compact
+    && displayMode === "inspector"
+    && Number.isFinite(availableInspectorHeightNum)
+    && availableInspectorHeightNum > 0
+    && availableInspectorHeightNum < INSPECTOR_LOW_PROFILE_HEIGHT
+  );
   const preferredInspectorWidth = compact || displayMode !== "inspector" || measuredPreferredRulesWidth == null
     ? null
     : Math.ceil(measuredPreferredRulesWidth + INSPECTOR_HEADER_HORIZONTAL_PADDING);
@@ -1349,7 +1360,10 @@ export default function HoverArtOverlay({
   const inspectorTitleScale = activeInspectorTitleScale;
   const oracleContainerClass = compact
     ? "relative z-10 flex flex-col items-center px-2.5"
-    : "relative z-10 min-h-full flex flex-col items-center justify-end";
+    : cn(
+      "relative z-10 min-h-full flex flex-col items-center justify-end",
+      lowProfileInspector && "items-end"
+    );
   const hasTopLeftMetadata = Boolean(
     transitionTitle
     || displayStatsText
@@ -1422,8 +1436,12 @@ export default function HoverArtOverlay({
       + 22
     );
   const inspectorOracleContainerStyle = compact ? undefined : {
-    paddingTop: `${inspectorOracleTopPadding * inspectorScale}px`,
-    paddingBottom: `${Math.max(INSPECTOR_ORACLE_BOTTOM_PADDING * inspectorScale, inspectorBottomOverlayPadding)}px`,
+    paddingTop: lowProfileInspector
+      ? `${INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING}px`
+      : `${inspectorOracleTopPadding * inspectorScale}px`,
+    paddingBottom: lowProfileInspector
+      ? `${INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING}px`
+      : `${Math.max(INSPECTOR_ORACLE_BOTTOM_PADDING * inspectorScale, inspectorBottomOverlayPadding)}px`,
     paddingLeft: `${10 * inspectorScale}px`,
     paddingRight: `${10 * inspectorScale}px`,
   };
@@ -1575,7 +1593,8 @@ export default function HoverArtOverlay({
     <div
       className={cn(
         "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden",
-        (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none"
+        (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none",
+        lowProfileInspector && "hover-art-stage--low-profile"
       )}
     >
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
@@ -1700,7 +1719,7 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && (transitionTitle || displayStatsText || displayTopLeftDetailLines.length > 0 || displayTopLeftOwnershipLines.length > 0) && (
+        {!compactTopbarLayout && (transitionTitle || displayStatsText || (!lowProfileInspector && (displayTopLeftDetailLines.length > 0 || displayTopLeftOwnershipLines.length > 0))) && (
           <div
             ref={topHeaderRef}
             className={cn(
@@ -1758,7 +1777,7 @@ export default function HoverArtOverlay({
               </div>
             )}
             <InspectorMetadataBlock
-              lines={displayTopLeftDetailLines}
+              lines={lowProfileInspector ? [] : displayTopLeftDetailLines}
               className={cn(
                 "inspector-banner inspector-banner--meta self-start rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 backdrop-blur-[1.8px]",
                 topMetadataTextClassName
@@ -1766,7 +1785,7 @@ export default function HoverArtOverlay({
               lineClassName="text-left"
               style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
             />
-            {displayTypeLineBadges.length > 0 && (
+            {!lowProfileInspector && displayTypeLineBadges.length > 0 && (
               <div className="flex max-w-full flex-wrap gap-1">
                 {displayTypeLineBadges.map((badge) => (
                   <span
@@ -1784,7 +1803,7 @@ export default function HoverArtOverlay({
               </div>
             )}
             <InspectorMetadataBlock
-              lines={displayTopLeftOwnershipLines}
+              lines={lowProfileInspector ? [] : displayTopLeftOwnershipLines}
               className={cn(
                 "inspector-banner inspector-banner--meta self-start rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 backdrop-blur-[1.8px]",
                 topMetadataTextClassName
@@ -1798,7 +1817,7 @@ export default function HoverArtOverlay({
             />
           </div>
         )}
-        {!compactTopbarLayout && (displayManaCost || displayTopRightDetailLines.length > 0) && (
+        {!compactTopbarLayout && (displayManaCost || (!lowProfileInspector && displayTopRightDetailLines.length > 0)) && (
           <div ref={topMetadataRef} className="absolute top-0 right-0 z-[50] flex max-w-[40%] flex-col items-end gap-0">
             {displayManaCost && (
               <div className="flex items-center justify-end gap-1.5">
@@ -1808,7 +1827,7 @@ export default function HoverArtOverlay({
               </div>
             )}
             <InspectorMetadataBlock
-              lines={displayTopRightDetailLines}
+              lines={lowProfileInspector ? [] : displayTopRightDetailLines}
               className={cn(
                 "inspector-banner inspector-banner--meta mt-1 self-end rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 text-right backdrop-blur-[1.8px]",
                 topMetadataTextClassName
@@ -1862,7 +1881,7 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && displayObjectName && (
+        {!compactTopbarLayout && !lowProfileInspector && displayObjectName && (
           <div className="pointer-events-none absolute bottom-0 left-0 z-10 flex max-w-[72%] items-end px-3 pb-3">
             <div
               ref={inspectorTitleRef}
@@ -1883,7 +1902,7 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && displayBottomRightZoneLines.length > 0 && (
+        {!compactTopbarLayout && !lowProfileInspector && displayBottomRightZoneLines.length > 0 && (
           <div className="pointer-events-none absolute bottom-0 right-0 z-10 flex max-w-[48%] items-end px-3 pb-3">
             <InspectorMetadataBlock
               lines={displayBottomRightZoneLines}
