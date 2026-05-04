@@ -11,10 +11,12 @@ import {
 } from "@/lib/decklists";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 
-const PROTOCOL_VERSION = 5;
+const PROTOCOL_VERSION = 6;
 const DEFAULT_OPENING_HAND_SIZE = 7;
 const PEER_OPEN_TIMEOUT_MS = 10000;
 const PEER_CONNECT_TIMEOUT_MS = 15000;
+const PEER_HEARTBEAT_INTERVAL_MS = 3000;
+const PEER_HEARTBEAT_TIMEOUT_MS = 10000;
 const CURRENT_PLAYER_STORAGE_KEY = "currentPlayer";
 const CURRENT_LOBBY_STORAGE_KEY = "currentLobby";
 const MATCH_SEED_OFFSET = 0xcbf29ce484222325n;
@@ -226,14 +228,40 @@ function buildPeerOptions() {
   return options;
 }
 
+function buildPeerHeartbeatConfig() {
+  const intervalMs = Math.max(
+    0,
+    parseNumberEnv(
+      readPeerEnv("VITE_PEER_HEARTBEAT_INTERVAL_MS"),
+      PEER_HEARTBEAT_INTERVAL_MS
+    )
+  );
+  const timeoutMs = Math.max(
+    intervalMs * 2,
+    parseNumberEnv(
+      readPeerEnv("VITE_PEER_HEARTBEAT_TIMEOUT_MS"),
+      PEER_HEARTBEAT_TIMEOUT_MS
+    )
+  );
+  return { intervalMs, timeoutMs };
+}
+
 function safeSend(conn, payload) {
   if (!conn || conn.open === false) return;
-  conn.send(payload);
+  try {
+    conn.send(payload);
+  } catch {
+    // PeerJS can report stale connections as open until the next send.
+  }
 }
 
 function createPeer(peerId, options) {
   const requestedPeerId = String(peerId || "").trim();
   return requestedPeerId ? new Peer(requestedPeerId, options) : new Peer(options);
+}
+
+function connectionHeartbeatKey(kind, peerId) {
+  return `${kind}:${String(peerId || "")}`;
 }
 
 function cloneMultiplayerPayload(value) {
@@ -601,18 +629,20 @@ export function usePeerLobby({
   setState,
   setStatus,
   applySyncedCommand,
-  applyAuthoritativeState,
 }) {
   const initialPeerOptions = buildPeerOptions();
+  const initialHeartbeatConfig = buildPeerHeartbeatConfig();
   const [multiplayer, setMultiplayer] = useState(() => createEmptyState());
   const peerRef = useRef(null);
   const hostConnectionRef = useRef(null);
   const clientConnectionsRef = useRef(new Map());
+  const connectionHeartbeatsRef = useRef(new Map());
   const matchStartPayloadRef = useRef(null);
   const actionHistoryRef = useRef([]);
   const gameRef = useRef(game);
   const multiplayerRef = useRef(multiplayer);
   const peerOptionsRef = useRef(initialPeerOptions);
+  const peerHeartbeatConfigRef = useRef(initialHeartbeatConfig);
   const peerServerLabelRef = useRef(describePeerServer(initialPeerOptions));
   const hostMessageQueueRef = useRef(Promise.resolve());
   const clientMessageQueueRef = useRef(Promise.resolve());
@@ -620,7 +650,6 @@ export function usePeerLobby({
   const resyncingPeerIdsRef = useRef(new Set());
   const resyncWaitersRef = useRef([]);
   const awaitingStateResyncRef = useRef(false);
-  const usingAuthoritativeHostStateRef = useRef(false);
 
   useEffect(() => {
     gameRef.current = game;
@@ -629,6 +658,73 @@ export function usePeerLobby({
   useEffect(() => {
     multiplayerRef.current = multiplayer;
   }, [multiplayer]);
+
+  const clearConnectionHeartbeat = useCallback((key) => {
+    const heartbeat = connectionHeartbeatsRef.current.get(key);
+    if (!heartbeat) return;
+    window.clearInterval(heartbeat.timer);
+    connectionHeartbeatsRef.current.delete(key);
+  }, []);
+
+  const clearAllConnectionHeartbeats = useCallback(() => {
+    for (const heartbeat of connectionHeartbeatsRef.current.values()) {
+      window.clearInterval(heartbeat.timer);
+    }
+    connectionHeartbeatsRef.current.clear();
+  }, []);
+
+  const markConnectionAlive = useCallback((key) => {
+    const heartbeat = connectionHeartbeatsRef.current.get(key);
+    if (heartbeat) {
+      heartbeat.lastSeen = Date.now();
+    }
+  }, []);
+
+  const startConnectionHeartbeat = useCallback((key, conn, onStale) => {
+    clearConnectionHeartbeat(key);
+    const { intervalMs, timeoutMs } = peerHeartbeatConfigRef.current;
+    if (!intervalMs || !timeoutMs) return;
+
+    const heartbeat = {
+      lastSeen: Date.now(),
+      timer: window.setInterval(() => {
+        if (!conn || conn.open === false) {
+          clearConnectionHeartbeat(key);
+          onStale?.("Connection closed");
+          return;
+        }
+
+        if (Date.now() - heartbeat.lastSeen > timeoutMs) {
+          clearConnectionHeartbeat(key);
+          try {
+            conn.close();
+          } catch {
+            // Best effort; the stale callback handles local state cleanup.
+          }
+          onStale?.("Peer heartbeat timed out");
+          return;
+        }
+
+        safeSend(conn, {
+          type: "peer_heartbeat",
+          protocolVersion: PROTOCOL_VERSION,
+          at: Date.now(),
+        });
+      }, intervalMs),
+    };
+    connectionHeartbeatsRef.current.set(key, heartbeat);
+  }, [clearConnectionHeartbeat]);
+
+  const handleConnectionHeartbeatMessage = useCallback((conn, message) => {
+    if (message?.type === "peer_heartbeat_ack") return true;
+    if (message?.type !== "peer_heartbeat") return false;
+    safeSend(conn, {
+      type: "peer_heartbeat_ack",
+      protocolVersion: PROTOCOL_VERSION,
+      at: message.at ?? Date.now(),
+    });
+    return true;
+  }, []);
 
   const updateMultiplayer = useCallback((updater) => {
     const next =
@@ -672,9 +768,9 @@ export function usePeerLobby({
   }, []);
 
   const teardownPeer = useCallback(() => {
+    clearAllConnectionHeartbeats();
     clearAllPeerResyncs();
     awaitingStateResyncRef.current = false;
-    usingAuthoritativeHostStateRef.current = false;
 
     const hostConn = hostConnectionRef.current;
     hostConnectionRef.current = null;
@@ -704,7 +800,7 @@ export function usePeerLobby({
         void err;
       }
     }
-  }, [clearAllPeerResyncs]);
+  }, [clearAllConnectionHeartbeats, clearAllPeerResyncs]);
 
   const leaveLobby = useCallback(
     (message = "Left lobby", options = {}) => {
@@ -714,7 +810,6 @@ export function usePeerLobby({
       teardownPeer();
       matchStartPayloadRef.current = null;
       actionHistoryRef.current = [];
-      usingAuthoritativeHostStateRef.current = false;
       updateMultiplayer(createEmptyState());
       if (message) {
         setStatus(message, Boolean(options.isError));
@@ -756,56 +851,25 @@ export function usePeerLobby({
     };
   }, []);
 
-  const serializedGameStateFromMessage = useCallback((message) => (
-    message?.serializedGameState ?? message?.gameState ?? message?.state ?? null
-  ), []);
-
-  const buildHostedSerializedGameState = useCallback(
-    async (playerIndex) => {
-      const currentGame = gameRef.current;
-      if (
-        !currentGame
-        || typeof currentGame.setPerspective !== "function"
-        || typeof currentGame.uiState !== "function"
-      ) {
-        throw new Error("Game engine cannot serialize current match state");
-      }
-
-      const session = multiplayerRef.current;
-      const restoreIndex = normalizePlayerIndex(session.localPlayerIndex) ?? 0;
-      const targetIndex = normalizePlayerIndex(playerIndex);
-      if (targetIndex == null) {
-        throw new Error("Cannot serialize state for an unassigned player");
-      }
-
-      try {
-        await currentGame.setPerspective(targetIndex);
-        return cloneMultiplayerPayload(await currentGame.uiState());
-      } finally {
-        try {
-          await currentGame.setPerspective(restoreIndex);
-        } catch {
-          // Best effort only; the next local UI refresh can set perspective again.
-        }
-      }
-    },
-    []
-  );
-
   const sendHostedStateMessage = useCallback(
     async (conn, payload) => {
       const session = multiplayerRef.current;
-      const player = session.players.find((entry) => entry.peerId === conn.peer);
-      if (!player) {
-        throw new Error("Cannot serialize state for an unknown peer");
+      if (!session.players.some((entry) => entry.peerId === conn.peer)) {
+        throw new Error("Cannot resync an unknown peer");
       }
-      const serializedGameState = await buildHostedSerializedGameState(player.index);
+      const currentGame = gameRef.current;
+      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+        throw new Error("Game engine cannot export a resync checkpoint");
+      }
+      const checkpoint = await currentGame.exportSyncCheckpoint();
       safeSend(conn, {
         ...payload,
-        serializedGameState,
+        checkpoint,
+        actions: (payload.actions || actionHistoryRef.current || [])
+          .map((entry) => cloneMultiplayerPayload(entry)),
       });
     },
-    [buildHostedSerializedGameState]
+    []
   );
 
   const applyMatchStart = useCallback(
@@ -840,7 +904,6 @@ export function usePeerLobby({
       setState(nextState);
       matchStartPayloadRef.current = cloneMultiplayerPayload(payload);
       actionHistoryRef.current = [];
-      usingAuthoritativeHostStateRef.current = false;
       writeStoredPlayerIndex(payload.lobbyId || payload.hostPeerId, localEntry.index);
 
       updateMultiplayer((prev) => ({
@@ -907,38 +970,40 @@ export function usePeerLobby({
       if (!matchPayload || typeof matchPayload !== "object") {
         throw new Error("Resync payload is missing match state");
       }
+      if (!message?.checkpoint || typeof message.checkpoint !== "object") {
+        throw new Error("Resync payload is missing WASM checkpoint");
+      }
 
-      const serializedGameState = serializedGameStateFromMessage(message);
+      const currentGame = gameRef.current;
+      if (!currentGame || typeof currentGame.importSyncCheckpoint !== "function") {
+        throw new Error("Game engine cannot import a resync checkpoint");
+      }
+
+      const currentSession = multiplayerRef.current;
+      const localEntry = matchPayload.players?.find(
+        (player) => player.peerId === currentSession.localPeerId
+      );
+
+      if (!localEntry) {
+        throw new Error("Local player is missing from the resync payload");
+      }
+
       const actionEntries = Array.isArray(message?.actions)
         ? [...message.actions].sort((left, right) => Number(left?.seq || 0) - Number(right?.seq || 0))
         : [];
 
-      if (serializedGameState && typeof applyAuthoritativeState === "function") {
-        const currentSession = multiplayerRef.current;
-        const localEntry = matchPayload.players.find(
-          (player) => player.peerId === currentSession.localPeerId
-        );
-        if (!localEntry) {
-          throw new Error("Local player is missing from the resync payload");
-        }
-        await applyAuthoritativeState(serializedGameState, { clearViewedCards: true });
-        matchStartPayloadRef.current = cloneMultiplayerPayload(matchPayload);
-        usingAuthoritativeHostStateRef.current = true;
-        writeStoredPlayerIndex(matchPayload.lobbyId || matchPayload.hostPeerId, localEntry.index);
-      } else {
-        await applyMatchStart(matchPayload);
-        for (const entry of actionEntries) {
-          await applySyncedCommand(entry.command, "", {
-            actorIndex: entry.actorIndex,
-            sequence: entry.seq,
-          });
-        }
-      }
+      const nextState = await currentGame.importSyncCheckpoint(
+        message.checkpoint,
+        localEntry.index,
+      );
+      setState(nextState);
 
       const lastSequence = Number(
         message?.lastSequence ?? actionEntries.at(-1)?.seq ?? 0
       );
+      matchStartPayloadRef.current = cloneMultiplayerPayload(matchPayload);
       actionHistoryRef.current = actionEntries.map((entry) => cloneMultiplayerPayload(entry));
+      writeStoredPlayerIndex(matchPayload.lobbyId || matchPayload.hostPeerId, localEntry.index);
       updateMultiplayer((prev) => ({
         ...prev,
         role: matchPayload.hostPeerId === prev.localPeerId ? "host" : prev.role,
@@ -957,7 +1022,7 @@ export function usePeerLobby({
         mode: "in_match",
       }));
       setStatus(
-        serializedGameState || actionEntries.length > 0
+        actionEntries.length > 0
           ? `Resynced with host at action ${lastSequence}`
           : "Resynced with host",
       );
@@ -970,10 +1035,7 @@ export function usePeerLobby({
       });
     },
     [
-      applyAuthoritativeState,
-      applyMatchStart,
-      applySyncedCommand,
-      serializedGameStateFromMessage,
+      setState,
       setStatus,
       updateMultiplayer,
     ]
@@ -1440,7 +1502,6 @@ export function usePeerLobby({
               actorIndex: message.actorIndex,
               sequence: nextSequence,
             });
-            usingAuthoritativeHostStateRef.current = false;
             actionHistoryRef.current = [
               ...actionHistoryRef.current,
               {
@@ -1488,6 +1549,7 @@ export function usePeerLobby({
 
   const handleClientDisconnect = useCallback(
     (peerId) => {
+      clearConnectionHeartbeat(connectionHeartbeatKey("client", peerId));
       clientConnectionsRef.current.delete(peerId);
       finishPeerResync(peerId);
       const departed = multiplayerRef.current.players.find(
@@ -1515,6 +1577,7 @@ export function usePeerLobby({
     [
       broadcastLobbyState,
       broadcastMatchPresence,
+      clearConnectionHeartbeat,
       finishPeerResync,
       setStatus,
       updateMultiplayer,
@@ -1995,7 +2058,19 @@ export function usePeerLobby({
 
   const configureHostConnection = useCallback(
     (conn) => {
+      const heartbeatKey = connectionHeartbeatKey("client", conn.peer);
+      const beginHeartbeat = () => startConnectionHeartbeat(heartbeatKey, conn, () => {
+        if (clientConnectionsRef.current.get(conn.peer) !== conn) return;
+        handleClientDisconnect(conn.peer);
+      });
+      if (conn.open) {
+        beginHeartbeat();
+      } else {
+        conn.on("open", beginHeartbeat);
+      }
       conn.on("data", (message) => {
+        markConnectionAlive(heartbeatKey);
+        if (handleConnectionHeartbeatMessage(conn, message)) return;
         const handleError = (err) => {
           safeSend(conn, {
             type: "action_error",
@@ -2016,15 +2091,24 @@ export function usePeerLobby({
         ).catch(handleError);
       });
       conn.on("close", () => {
+        clearConnectionHeartbeat(heartbeatKey);
         if (clientConnectionsRef.current.get(conn.peer) !== conn) return;
         handleClientDisconnect(conn.peer);
       });
       conn.on("error", () => {
+        clearConnectionHeartbeat(heartbeatKey);
         if (clientConnectionsRef.current.get(conn.peer) !== conn) return;
         handleClientDisconnect(conn.peer);
       });
     },
-    [handleClientDisconnect, handleClientMessage]
+    [
+      clearConnectionHeartbeat,
+      handleClientDisconnect,
+      handleClientMessage,
+      handleConnectionHeartbeatMessage,
+      markConnectionAlive,
+      startConnectionHeartbeat,
+    ]
   );
 
   const promoteLocalPlayerToHost = useCallback(
@@ -2033,13 +2117,6 @@ export function usePeerLobby({
       const lobbyId = String(session.lobbyId || session.hostPeerId || "").trim();
       const localPlayerIndex = resolveReconnectPlayerIndex(session, lobbyId);
       if (session.role !== "client" || !lobbyId || localPlayerIndex == null) {
-        return false;
-      }
-      if (usingAuthoritativeHostStateRef.current) {
-        setStatus(
-          `${reason} Waiting to reconnect to the authoritative host state...`,
-          true
-        );
         return false;
       }
 
@@ -2087,6 +2164,7 @@ export function usePeerLobby({
         }
       }
       clientConnectionsRef.current.clear();
+      clearAllConnectionHeartbeats();
       clearAllPeerResyncs();
       awaitingStateResyncRef.current = false;
 
@@ -2284,6 +2362,7 @@ export function usePeerLobby({
     },
     [
       clearAllPeerResyncs,
+      clearAllConnectionHeartbeats,
       configureHostConnection,
       leaveLobby,
       peerOptionsRef,
@@ -2542,6 +2621,7 @@ export function usePeerLobby({
         if (currentConn?.open) return;
         if (currentConn) {
           hostConnectionRef.current = null;
+          clearConnectionHeartbeat(connectionHeartbeatKey("host", currentConn.peer));
           try {
             currentConn.close();
           } catch (err) {
@@ -2556,9 +2636,11 @@ export function usePeerLobby({
           serialization: "json",
         });
         hostConnectionRef.current = conn;
+        const heartbeatKey = connectionHeartbeatKey("host", hostTarget);
         const connOpenTimeout = window.setTimeout(() => {
           if (hostConnectionRef.current !== conn || conn.open) return;
           hostConnectionRef.current = null;
+          clearConnectionHeartbeat(heartbeatKey);
           try {
             conn.close();
           } catch (err) {
@@ -2572,10 +2654,21 @@ export function usePeerLobby({
           clearTimeout(peerOpenTimeout);
           clearTimeout(connOpenTimeout);
         };
+        const handleHostConnectionLost = (reason) => {
+          if (hostConnectionRef.current !== conn) return;
+          clearJoinTimeouts();
+          clearConnectionHeartbeat(heartbeatKey);
+          hostConnectionRef.current = null;
+          if (promoteLocalPlayerToHost(reason)) return;
+          scheduleHostReconnect(reason);
+        };
         conn.on("open", () => {
           if (hostConnectionRef.current !== conn) return;
           clearJoinTimeouts();
           clearHostReconnect();
+          startConnectionHeartbeat(heartbeatKey, conn, () => {
+            handleHostConnectionLost("Lost heartbeat from lobby host.");
+          });
           const session = multiplayerRef.current;
           if (session.matchStarted) {
             safeSend(conn, {
@@ -2614,9 +2707,7 @@ export function usePeerLobby({
             return;
           }
           if (state === "failed") {
-            clearJoinTimeouts();
-            hostConnectionRef.current = null;
-            scheduleHostReconnect(
+            handleHostConnectionLost(
               "Could not establish a direct peer connection to the lobby host. The two machines likely need TURN relay support."
             );
             return;
@@ -2632,6 +2723,8 @@ export function usePeerLobby({
         });
         conn.on("data", (message) => {
           if (hostConnectionRef.current !== conn) return;
+          markConnectionAlive(heartbeatKey);
+          if (handleConnectionHeartbeatMessage(conn, message)) return;
           void enqueueAsync(hostMessageQueueRef, () => handleHostMessage(message)).catch((err) => {
             emitSyncFailureNotice(
               "Sync failed",
@@ -2642,18 +2735,12 @@ export function usePeerLobby({
         });
         conn.on("close", () => {
           if (hostConnectionRef.current !== conn) return;
-          clearJoinTimeouts();
-          hostConnectionRef.current = null;
-          if (promoteLocalPlayerToHost("Disconnected from lobby host.")) return;
-          scheduleHostReconnect("Disconnected from lobby host.");
+          handleHostConnectionLost("Disconnected from lobby host.");
         });
         conn.on("error", (err) => {
           if (hostConnectionRef.current !== conn) return;
-          clearJoinTimeouts();
-          hostConnectionRef.current = null;
           const reason = formatPeerError(err, "Lobby connection failed");
-          if (promoteLocalPlayerToHost(reason)) return;
-          scheduleHostReconnect(reason);
+          handleHostConnectionLost(reason);
         });
       };
       const scheduleReconnect = (reason) => {
@@ -2721,11 +2808,15 @@ export function usePeerLobby({
       });
     },
     [
+      clearConnectionHeartbeat,
       handleHostMessage,
+      handleConnectionHeartbeatMessage,
       leaveLobby,
+      markConnectionAlive,
       peerOptionsRef,
       promoteLocalPlayerToHost,
       setStatus,
+      startConnectionHeartbeat,
       teardownPeer,
       updateMultiplayer,
     ]

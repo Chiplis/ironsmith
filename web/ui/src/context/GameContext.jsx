@@ -1238,25 +1238,6 @@ export function GameProvider({ children }) {
     [finalizeState]
   );
 
-  const applyAuthoritativeState = useCallback(
-    async (
-      nextState,
-      {
-        message = "",
-        clearViewedCards = false,
-      } = {}
-    ) => {
-      const visibleState = applyStickyViewedCards(nextState, { clear: clearViewedCards });
-      setState(visibleState);
-      stateRef.current = visibleState;
-      if (message) {
-        setStatus(message);
-      }
-      return visibleState;
-    },
-    [applyStickyViewedCards, setStatus]
-  );
-
   const {
     multiplayer,
     canStartHostedMatch,
@@ -1274,7 +1255,6 @@ export function GameProvider({ children }) {
     setState,
     setStatus,
     applySyncedCommand,
-    applyAuthoritativeState,
   });
 
   const startHostedMatch = useCallback(

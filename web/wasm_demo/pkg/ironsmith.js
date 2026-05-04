@@ -176,6 +176,17 @@ export class WasmGame {
         }
     }
     /**
+     * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
+     * @returns {any}
+     */
+    exportSyncCheckpoint() {
+        const ret = wasm.wasmgame_exportSyncCheckpoint(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      * @param {string} card_name
      * @returns {number}
@@ -193,6 +204,19 @@ export class WasmGame {
     getSemanticThreshold() {
         const ret = wasm.wasmgame_getSemanticThreshold(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * Replace this WASM engine with a checkpoint from the current authoritative host.
+     * @param {any} checkpoint
+     * @param {number} perspective_index
+     * @returns {any}
+     */
+    importSyncCheckpoint(checkpoint, perspective_index) {
+        const ret = wasm.wasmgame_importSyncCheckpoint(this.__wbg_ptr, checkpoint, perspective_index);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
     }
     /**
      * Return whether the query resolves to a locally known card name.

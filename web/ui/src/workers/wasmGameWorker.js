@@ -14,6 +14,7 @@ const SNAPSHOT_METHODS = new Set([
   "advancePhase",
   "cancelDecision",
   "dispatch",
+  "importSyncCheckpoint",
   "snapshot",
   "startMatch",
   "switchPerspective",

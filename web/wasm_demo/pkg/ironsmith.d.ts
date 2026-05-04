@@ -62,6 +62,10 @@ export class WasmGame {
      */
     drawOpeningHands(cards_per_player: number): void;
     /**
+     * Export a WASM-owned resync checkpoint that can hydrate another peer's engine.
+     */
+    exportSyncCheckpoint(): any;
+    /**
      * Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
      */
     getCardSemanticScore(card_name: string): number;
@@ -69,6 +73,10 @@ export class WasmGame {
      * Get the current semantic threshold as percentage points.
      */
     getSemanticThreshold(): number;
+    /**
+     * Replace this WASM engine with a checkpoint from the current authoritative host.
+     */
+    importSyncCheckpoint(checkpoint: any, perspective_index: number): any;
     /**
      * Return whether the query resolves to a locally known card name.
      */
@@ -202,6 +210,8 @@ export interface InitOutput {
     readonly wasmgame_setPerspective: (a: number, b: number) => [number, number];
     readonly wasmgame_cancelDecision: (a: number) => [number, number, number];
     readonly wasmgame_dispatch: (a: number, b: any) => [number, number, number];
+    readonly wasmgame_exportSyncCheckpoint: (a: number) => [number, number, number];
+    readonly wasmgame_importSyncCheckpoint: (a: number, b: any, c: number) => [number, number, number];
     readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
