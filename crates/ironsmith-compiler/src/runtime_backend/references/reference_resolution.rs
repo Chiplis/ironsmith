@@ -2714,6 +2714,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)

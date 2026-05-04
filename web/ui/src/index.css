@@ -4168,7 +4168,7 @@
   display: block;
   width: fit-content;
   max-width: 100%;
-  margin-left: auto;
+  margin-left: 0;
   padding-inline: 0.28rem;
   border-radius: 2px;
   background: transparent;
@@ -6950,6 +6950,37 @@ textarea,
     0 calc(100% - 10px),
     0 10px
   );
+}
+
+.hover-art-stage-vignette {
+  position: absolute;
+  inset: 1px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.16) 48%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+}
+
+.hover-art-stage-frame {
+  display: none;
+}
+
+.ironsmith-inspector-shell--expanded .hover-art-stage-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 85;
+  display: block;
+  pointer-events: none;
+  border: 1px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.9);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--player-accent-rgb, 216, 191, 106), 0.46),
+    inset 0 -2px 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.34),
+    inset 0 -3px 0 rgba(8, 7, 6, 0.6);
 }
 
 .inspector-chip,

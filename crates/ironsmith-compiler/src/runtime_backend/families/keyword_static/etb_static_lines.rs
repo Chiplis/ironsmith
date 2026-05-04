@@ -403,12 +403,14 @@ pub(crate) fn parse_enters_with_counters_line(
                 ))
             })?;
         } else {
-            count = parse_value_binding_clause(&tail).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported trailing self ETB counter clause (clause: '{}')",
-                    full_words.join(" ")
-                ))
-            })?;
+            count = parse_value_binding_clause(&tail)
+                .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported trailing self ETB counter clause (clause: '{}')",
+                        full_words.join(" ")
+                    ))
+                })?;
         }
     }
 
@@ -1500,6 +1502,22 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
         return Some(scale_where_x_number_value(
             Value::BasicLandTypesAmong(scope_filter),
+            multiplier,
+        ));
+    }
+    if etb_word_slice_starts_with(&filter_words, &["creature", "type", "among"])
+        || etb_word_slice_starts_with(&filter_words, &["creature", "types", "among"])
+    {
+        let mut scope_tokens = &filter_tokens[3..];
+        if scope_tokens
+            .first()
+            .is_some_and(|token| token.is_word("the"))
+        {
+            scope_tokens = &scope_tokens[1..];
+        }
+        let scope_filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
+        return Some(scale_where_x_number_value(
+            Value::CreatureTypesAmong(scope_filter),
             multiplier,
         ));
     }

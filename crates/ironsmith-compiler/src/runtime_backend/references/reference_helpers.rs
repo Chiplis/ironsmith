@@ -594,6 +594,9 @@ pub(crate) fn resolve_value_it_tag(
         Value::BasicLandTypesAmong(filter) => {
             Ok(Value::BasicLandTypesAmong(resolve_it_tag(filter, refs)?))
         }
+        Value::CreatureTypesAmong(filter) => {
+            Ok(Value::CreatureTypesAmong(resolve_it_tag(filter, refs)?))
+        }
         Value::CardTypesAmong(filter) => Ok(Value::CardTypesAmong(resolve_it_tag(filter, refs)?)),
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),

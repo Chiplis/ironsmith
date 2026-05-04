@@ -5680,6 +5680,9 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     if let Some(subject) = describe_commander_zone_union_subject(filter) {
         return subject;
     }
+    if let Some(subject) = describe_domain_union_count_filter_subject(filter) {
+        return subject;
+    }
     if filter.stack_kind == Some(StackObjectKind::Spell)
         && filter.cast_by == Some(PlayerFilter::You)
         && filter.zone == Some(Zone::Stack)
@@ -5767,6 +5770,52 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }
 
     subject
+}
+
+fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let first_signature = domain_union_signature(filter.any_of.first()?)?;
+    if filter.any_of.iter().any(|branch| {
+        domain_union_signature(branch)
+            .as_ref()
+            .is_none_or(|signature| signature != &first_signature)
+    }) {
+        return None;
+    }
+
+    let subjects = filter
+        .any_of
+        .iter()
+        .map(describe_count_filter_value_subject)
+        .collect::<Vec<_>>();
+    if subjects.iter().any(|subject| subject.trim().is_empty()) {
+        return None;
+    }
+
+    Some(join_with_and(&subjects))
+}
+
+fn domain_union_signature(filter: &ObjectFilter) -> Option<ObjectFilter> {
+    if !filter.any_of.is_empty() {
+        return None;
+    }
+
+    let mut signature = filter.clone();
+    signature.zone = None;
+    signature.controller = None;
+    signature.owner = None;
+    signature.single_graveyard = false;
+    signature.other = false;
+    Some(signature)
 }
 
 fn describe_commander_zone_union_subject(filter: &ObjectFilter) -> Option<String> {

@@ -14604,6 +14604,10 @@ fn describe_payment_each_value(value: &Value) -> String {
         Value::BasicLandTypesAmong(filter) => {
             describe_basic_land_types_among(filter).replace("basic land types", "basic land type")
         }
+        Value::CreatureTypesAmong(filter) => format!(
+            "creature type among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::CardTypesAmong(filter) => format!(
             "card type among {}",
             describe_count_filter_value_subject(filter)
@@ -16906,6 +16910,10 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
             "{player} {verb} a card for each {}",
             describe_basic_land_types_among(filter)
         )),
+        Value::CreatureTypesAmong(filter) => Some(format!(
+            "{player} {verb} a card for each creature type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
         Value::CardTypesAmong(filter) => Some(format!(
             "{player} {verb} a card for each card type among {}",
             describe_count_filter_value_subject(filter)
@@ -16995,6 +17003,10 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     match value.unhinted() {
         Value::Count(filter) => Some(describe_for_each_filter(filter)),
         Value::BasicLandTypesAmong(filter) => Some(describe_basic_land_types_among(filter)),
+        Value::CreatureTypesAmong(filter) => Some(format!(
+            "creature type among {}",
+            describe_count_filter_value_subject(filter)
+        )),
         Value::CardTypesAmong(filter) => Some(format!(
             "card type among {}",
             describe_count_filter_value_subject(filter)
@@ -24280,6 +24292,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let ChooseSpec::WithCount(inner, count) = &put_counters.target
             && matches!(inner.as_ref(), ChooseSpec::Target(_))
             && !count.is_single()
+            && count.max != Some(1)
             && !target.starts_with("each of ")
         {
             target = format!("each of {target}");
@@ -25553,14 +25566,41 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(modify_pt) = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>() {
         let power_text = describe_value(&modify_pt.power);
         let toughness_text = describe_value(&modify_pt.toughness);
-        if let (Value::Count(power_filter), Value::Count(toughness_filter)) =
-            (&modify_pt.power, &modify_pt.toughness)
-            && power_filter == toughness_filter
-        {
+        let for_each_text = match (&modify_pt.power, &modify_pt.toughness) {
+            (Value::Count(power_filter), Value::Count(toughness_filter))
+                if power_filter == toughness_filter =>
+            {
+                Some(describe_for_each_count_filter(power_filter))
+            }
+            (
+                Value::BasicLandTypesAmong(power_filter),
+                Value::BasicLandTypesAmong(toughness_filter),
+            ) if power_filter == toughness_filter => Some(
+                describe_basic_land_types_among(power_filter)
+                    .replace("basic land types", "basic land type"),
+            ),
+            (
+                Value::CreatureTypesAmong(power_filter),
+                Value::CreatureTypesAmong(toughness_filter),
+            ) if power_filter == toughness_filter => Some(format!(
+                "creature type among {}",
+                describe_count_filter_value_subject(power_filter)
+            )),
+            (Value::CardTypesAmong(power_filter), Value::CardTypesAmong(toughness_filter))
+                if power_filter == toughness_filter =>
+            {
+                Some(format!(
+                    "card type among {}",
+                    describe_count_filter_value_subject(power_filter)
+                ))
+            }
+            _ => None,
+        };
+        if let Some(for_each_text) = for_each_text {
             return format!(
                 "{} gets +1/+1 for each {} {}",
                 describe_choose_spec(&modify_pt.target),
-                describe_for_each_count_filter(power_filter),
+                for_each_text,
                 describe_until(&modify_pt.duration)
             );
         }
@@ -25635,7 +25675,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         let each_text = match &modify_pt_each.count {
             Value::Count(filter) => describe_for_each_count_filter(filter),
-            Value::BasicLandTypesAmong(filter) => describe_basic_land_types_among(filter),
+            Value::BasicLandTypesAmong(filter) => describe_basic_land_types_among(filter)
+                .replace("basic land types", "basic land type"),
+            Value::CreatureTypesAmong(filter) => format!(
+                "creature type among {}",
+                describe_count_filter_value_subject(filter)
+            ),
             Value::CardTypesAmong(filter) => format!(
                 "card type among {}",
                 describe_count_filter_value_subject(filter)

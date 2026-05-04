@@ -2180,6 +2180,19 @@ pub(crate) fn parse_anthem_for_each_expression(
         return Ok(AnthemCountExpression::BasicLandTypesAmong(filter));
     }
 
+    if words_start_with(rest, &["creature", "type", "among"])
+        || words_start_with(rest, &["creature", "types", "among"])
+    {
+        let filter_tokens = &rest[3..];
+        let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported creature-type count filter (clause: '{}')",
+                crate::runtime_backend::token_word_refs(&tokens).join(" ")
+            ))
+        })?;
+        return Ok(AnthemCountExpression::CreatureTypesAmong(filter));
+    }
+
     if let Some(attached_idx) = anthem_token_offset(rest, |token| token.is_word("attached")) {
         let filter_tokens = &rest[..attached_idx];
         let tail_words = crate::runtime_backend::token_word_refs(&rest[attached_idx + 1..]);
@@ -2372,6 +2385,9 @@ pub(crate) fn parse_anthem_clause(
                 }
                 Value::BasicLandTypesAmong(filter) => {
                     AnthemCountExpression::BasicLandTypesAmong(filter)
+                }
+                Value::CreatureTypesAmong(filter) => {
+                    AnthemCountExpression::CreatureTypesAmong(filter)
                 }
                 _ => {
                     return Err(CardTextError::ParseError(format!(

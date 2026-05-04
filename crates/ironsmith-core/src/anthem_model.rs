@@ -7,6 +7,7 @@ pub enum AnthemCountExpression {
     AttachedToAffected(ObjectFilter),
     CountersOnSource(CounterType),
     BasicLandTypesAmong(ObjectFilter),
+    CreatureTypesAmong(ObjectFilter),
     CommanderCastCount(PlayerFilter),
 }
 

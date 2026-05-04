@@ -336,6 +336,7 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)

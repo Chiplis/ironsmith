@@ -38,6 +38,7 @@ use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 fn card_type_word(card_type: crate::types::CardType) -> &'static str {
     card_type.name()
@@ -60,6 +61,28 @@ fn indefinite_article(text: &str) -> &'static str {
         Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
         _ => "a",
     }
+}
+
+fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
+    let unhinted = count.unhinted();
+    if matches!(
+        unhinted,
+        Value::Fixed(_) | Value::X | Value::ColorsOfManaSpentToCastThisSpell
+    ) {
+        return None;
+    }
+
+    let prefers_where_x = count.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        || matches!(
+            unhinted,
+            Value::TotalPower(_)
+                | Value::TotalToughness(_)
+                | Value::TotalManaValue(_)
+                | Value::GreatestPower(_)
+                | Value::GreatestToughness(_)
+                | Value::GreatestManaValue(_)
+        );
+    prefers_where_x.then(|| describe_value(count))
 }
 
 fn describe_discard_filter_card_phrase(filter: &ObjectFilter) -> String {
@@ -903,6 +926,12 @@ impl StaticAbilityKind for EntersWithCounters {
 
     fn display(&self) -> String {
         let counter = self.counter_type.description().into_owned();
+        if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
+            return format!(
+                "Enters the battlefield with X {counter} counters on it, where X is {where_x_value}"
+            );
+        }
+
         match &self.count {
             Value::Fixed(v) => {
                 if *v == 1 {

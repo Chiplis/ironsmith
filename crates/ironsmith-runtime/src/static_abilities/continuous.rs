@@ -590,6 +590,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
         }
+        AnthemCountExpression::CreatureTypesAmong(filter) => {
+            format!("creature type among {}", pluralized_subject_text(filter))
+        }
         AnthemCountExpression::CommanderCastCount(player) => match player {
             crate::target::PlayerFilter::You => {
                 "times you've cast your commander from the command zone this game".to_string()
@@ -634,6 +637,10 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }
+        AnthemCountExpression::CreatureTypesAmong(filter) => Some(format!(
+            "creature type among {}",
+            pluralized_subject_text(filter)
+        )),
         AnthemCountExpression::CommanderCastCount(player) => Some(match player {
             crate::target::PlayerFilter::You => {
                 "time you've cast your commander from the command zone this game".to_string()
@@ -1044,6 +1051,23 @@ pub(crate) fn resolve_anthem_count_expression(
                             | Subtype::Forest
                     ) {
                         seen.insert(subtype.clone());
+                    }
+                }
+            }
+            seen.len() as i32
+        }
+        AnthemCountExpression::CreatureTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let mut seen = HashSet::new();
+            for obj in all_game_object_ids(game)
+                .into_iter()
+                .filter_map(|id| game.object(id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            {
+                for subtype in SubtypeFamily::Creature.all_subtypes() {
+                    if obj.has_subtype(*subtype) {
+                        seen.insert(*subtype);
                     }
                 }
             }
@@ -4023,6 +4047,54 @@ mod tests {
             AnthemValue::scaled(
                 1,
                 AnthemCountExpression::BasicLandTypesAmong(ObjectFilter::land().you_control()),
+            ),
+            AnthemValue::Fixed(0),
+        );
+        let effects = anthem.generate_effects(source, alice, &game);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            effects[0].modification,
+            Modification::ModifyPowerToughness {
+                power: 2,
+                toughness: 0
+            }
+        ));
+    }
+
+    #[test]
+    fn test_anthem_count_expression_counts_distinct_creature_types() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::new(), "Kindred Scout")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+
+        let warrior = CardBuilder::new(CardId::new(), "Warrior Ally")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Warrior])
+            .build();
+        let second_elf = CardBuilder::new(CardId::new(), "Second Elf")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .build();
+        let goblin = CardBuilder::new(CardId::new(), "Opponent Goblin")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Goblin])
+            .build();
+
+        game.create_object_from_card(&warrior, alice, Zone::Battlefield);
+        game.create_object_from_card(&second_elf, alice, Zone::Battlefield);
+        game.create_object_from_card(&goblin, bob, Zone::Battlefield);
+
+        let anthem = Anthem::for_source(0, 0).with_values(
+            AnthemValue::scaled(
+                1,
+                AnthemCountExpression::CreatureTypesAmong(ObjectFilter::creature().you_control()),
             ),
             AnthemValue::Fixed(0),
         );

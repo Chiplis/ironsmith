@@ -17566,6 +17566,27 @@ fn render_kembas_banner_equipped_bonus_uses_for_each_wording() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn render_static_bonus_preserves_creature_type_among_scope() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kindred Scout Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("This creature gets +1/+1 for each creature type among creatures you control.")
+        .expect("creature-type static bonus should parse");
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "this creature gets +1/+1 for each creature type among creatures you control"
+        ),
+        "expected creature-type among scope to be preserved, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_allies_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Allied Teamwork Variant")
         .parse_text("Allies you control get +1/+1.")
@@ -19334,6 +19355,25 @@ fn render_put_counter_on_each_of_up_to_targets_uses_each_of() {
     assert!(
         joined.contains("on each of up to two target creatures"),
         "expected each-of wording for counted target counters, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn render_put_counter_on_up_to_one_target_omits_each_of() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Yawgmoth Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Put a -1/-1 counter on up to one target creature.")
+        .expect("parse optional single-target counter clause");
+
+    let joined = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        joined.contains("Put a -1/-1 counter on up to one target creature"),
+        "expected optional single-target counter wording, got {joined}"
+    );
+    assert!(
+        !joined.contains("each of up to one target creature"),
+        "optional single-target counter wording should not use each-of, got {joined}"
     );
 }
 
@@ -29187,6 +29227,31 @@ fn parse_oracle_skanos_dragonheart_greatest_power_regression() {
             && rendered.contains("other dragons you control")
             && rendered.contains("dragon cards in your graveyard"),
         "expected Skanos Dragonheart to render its greatest-power explanation, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_ambitious_dragonborn_where_x_enters_counters_regression() {
+    let def = parse_oracle_card_definition("Ambitious Dragonborn");
+
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("SurfaceHinted") && raw.contains("WhereXIs") && raw.contains("GreatestPower"),
+        "expected Ambitious Dragonborn to retain a where-X greatest-power counter value, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "this creature enters with x +1/+1 counters on it, where x is the greatest power among creatures you control and creature cards in your graveyard"
+        ),
+        "expected Ambitious Dragonborn to render the where-X counter clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("creatures you control or creature cards in your graveyard"),
+        "expected domain-union wording to use 'and', got {rendered}"
     );
 }
 

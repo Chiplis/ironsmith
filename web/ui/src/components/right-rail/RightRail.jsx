@@ -572,7 +572,11 @@ export default function RightRail({
             )
         );
       const safeBottom = anchorExpandedInlineToTop
-        ? hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
+        ? (
+          inlineDockPlacement === "top" && dockRect
+            ? dockRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
+            : hostRect.bottom - INLINE_EXPANDED_BOTTOM_GAP
+        )
         : (
           inlineDockPlacement === "top"
             ? ((dockRect || railEl.getBoundingClientRect()).bottom - INLINE_EXPANDED_BOTTOM_GAP)

@@ -209,7 +209,10 @@ export default function TableCore({
   ) : null;
   const sharedMiddleElement = sharedMiddleControls ? (
     <div
-      className="table-shared-control-band relative z-20 min-h-0 overflow-visible"
+      className={cn(
+        "table-shared-control-band relative min-h-0 overflow-visible",
+        middleInspectorDock ? "z-[70]" : "z-20"
+      )}
       style={playerAccentStyle(playerAccent)}
     >
       <div className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible">

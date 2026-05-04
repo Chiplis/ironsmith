@@ -329,6 +329,17 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         return Some((Value::BasicLandTypesAmong(filter), used));
     }
 
+    if words_have_prefix(&words[idx..], &["creature", "type", "among"])
+        || words_have_prefix(&words[idx..], &["creature", "types", "among"])
+    {
+        let mut scope_start = idx + 3;
+        if matches!(words.get(scope_start).copied(), Some("the")) {
+            scope_start += 1;
+        }
+        let (filter, used) = parse_scope_filter(scope_start)?;
+        return Some((Value::CreatureTypesAmong(filter), used));
+    }
+
     if words_have_prefix(&words[idx..], &["color", "among"])
         || words_have_prefix(&words[idx..], &["colors", "among"])
     {

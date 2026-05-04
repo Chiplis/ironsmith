@@ -955,6 +955,7 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)

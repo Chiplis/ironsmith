@@ -84,6 +84,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::GreatestToughness(filter)
         | crate::effect::Value::GreatestManaValue(filter)
         | crate::effect::Value::BasicLandTypesAmong(filter)
+        | crate::effect::Value::CreatureTypesAmong(filter)
         | crate::effect::Value::CardTypesAmong(filter)
         | crate::effect::Value::ColorsAmong(filter)
         | crate::effect::Value::DistinctNames(filter)
