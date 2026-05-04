@@ -287,6 +287,49 @@ function buildObjectFamilyIds(state, objectIdNum) {
   return ids;
 }
 
+function inspectableZonesForPlayer(player) {
+  return [
+    player?.battlefield || [],
+    player?.hand_cards || [],
+    player?.graveyard_cards || [],
+    player?.exile_cards || [],
+    player?.command_cards || [],
+    player?.sideboard_cards || [],
+  ];
+}
+
+function cardSnapshotMatchesObjectId(card, objectIdNum) {
+  if (!card || !Number.isFinite(objectIdNum)) return false;
+  if (Number(card?.id) === objectIdNum) return true;
+  return Array.isArray(card?.member_ids)
+    && card.member_ids.some((memberId) => Number(memberId) === objectIdNum);
+}
+
+function findCardSnapshotForObjectId(state, objectIdNum) {
+  if (!Number.isFinite(objectIdNum)) return null;
+
+  for (const player of state?.players || []) {
+    for (const cards of inspectableZonesForPlayer(player)) {
+      const card = cards.find((candidate) => cardSnapshotMatchesObjectId(candidate, objectIdNum));
+      if (card) return card;
+    }
+  }
+
+  for (const card of state?.viewed_cards?.cards || []) {
+    if (cardSnapshotMatchesObjectId(card, objectIdNum)) return card;
+  }
+
+  return null;
+}
+
+function resolveObjectDetailsId(state, objectIdNum) {
+  if (!Number.isFinite(objectIdNum)) return null;
+  const card = findCardSnapshotForObjectId(state, objectIdNum);
+  const representativeId = Number(card?.id);
+  if (Number.isFinite(representativeId)) return representativeId;
+  return objectIdNum;
+}
+
 function InspectorArtImageLayers({
   imageUrl,
   objectName,
@@ -557,33 +600,42 @@ export default function HoverArtOverlay({
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
+  const detailsObjectIdNum = useMemo(
+    () => resolveObjectDetailsId(state, objectIdNum),
+    [objectIdNum, state]
+  );
+  const detailsObjectIdKey = Number.isFinite(detailsObjectIdNum) ? String(detailsObjectIdNum) : null;
   useEffect(() => {
-    if (!game || objectIdNum == null || !objectIdKey) return;
-    if (Object.prototype.hasOwnProperty.call(detailsCache, objectIdKey)) return;
+    if (!game || detailsObjectIdNum == null || !detailsObjectIdKey) return;
+    if (Object.prototype.hasOwnProperty.call(detailsCache, detailsObjectIdKey)) return;
 
     let active = true;
-    game.objectDetails(BigInt(objectIdNum))
+    game.objectDetails(BigInt(detailsObjectIdNum))
       .then((details) => {
         if (!active) return;
         setDetailsCache((prev) => {
-          if (Object.prototype.hasOwnProperty.call(prev, objectIdKey)) return prev;
-          return { ...prev, [objectIdKey]: details || null };
+          if (Object.prototype.hasOwnProperty.call(prev, detailsObjectIdKey)) return prev;
+          return { ...prev, [detailsObjectIdKey]: details || null };
         });
       })
       .catch(() => {
         if (!active) return;
         setDetailsCache((prev) => {
-          if (Object.prototype.hasOwnProperty.call(prev, objectIdKey)) return prev;
-          return { ...prev, [objectIdKey]: null };
+          if (Object.prototype.hasOwnProperty.call(prev, detailsObjectIdKey)) return prev;
+          return { ...prev, [detailsObjectIdKey]: null };
         });
       });
 
     return () => {
       active = false;
     };
-  }, [game, objectIdNum, objectIdKey, detailsCache]);
+  }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache]);
 
-  const details = objectIdKey ? (detailsCache[objectIdKey] || null) : null;
+  const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey] || null) : null;
+  const cardSnapshot = useMemo(
+    () => findCardSnapshotForObjectId(state, objectIdNum),
+    [objectIdNum, state]
+  );
   const hoveredStackObject = useMemo(
     () => getVisibleStackObjects(state).find((entry) => (
       String(entry.id) === String(objectIdNum)
@@ -613,19 +665,24 @@ export default function HoverArtOverlay({
 
   const objectName = details?.name
     || previewObjectName
+    || String(cardSnapshot?.name || "").trim()
     || (Number.isFinite(objectIdNum) ? objectNameById.get(objectIdNum) : null)
     || hoveredStackObject?.name
     || null;
   const oracleText = details?.oracle_text
+    || String(cardSnapshot?.oracle_text || cardSnapshot?.effect_text || cardSnapshot?.ability_text || "").trim()
     || previewOracleText
     || hoveredStackObject?.ability_text
     || hoveredStackObject?.effect_text
     || null;
-  const manaCost = details?.mana_cost || previewManaCost || hoveredStackObject?.mana_cost || null;
+  const manaCost = details?.mana_cost || cardSnapshot?.mana_cost || previewManaCost || hoveredStackObject?.mana_cost || null;
   const isBattle = String(details?.type_line || previewTypeLine || "").toLowerCase().includes("battle");
   const statsText = useMemo(() => {
     if (details?.power != null && details?.toughness != null) {
       return `${details.power}/${details.toughness}`;
+    }
+    if (cardSnapshot?.power_toughness) {
+      return String(cardSnapshot.power_toughness);
     }
     if (previewCard?.power != null && previewCard?.toughness != null) {
       return `${previewCard.power}/${previewCard.toughness}`;
@@ -641,11 +698,11 @@ export default function HoverArtOverlay({
       if (health != null) return `Health ${health}`;
     }
     return null;
-  }, [details, isBattle, oracleText, previewCard]);
+  }, [cardSnapshot?.power_toughness, details, isBattle, oracleText, previewCard]);
 
   const normalizedCounters = useMemo(
-    () => normalizeInspectorCounters(details?.counters || previewCard?.counters),
-    [details?.counters, previewCard?.counters]
+    () => normalizeInspectorCounters(details?.counters || cardSnapshot?.counters || previewCard?.counters),
+    [cardSnapshot?.counters, details?.counters, previewCard?.counters]
   );
 
   const typeLine = String(details?.type_line || previewTypeLine || hoveredStackObject?.type_line || "").trim() || null;

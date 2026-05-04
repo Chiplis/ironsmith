@@ -1755,6 +1755,56 @@ fn snapshot_perspective_hand_cards_are_not_truncated() {
         me.hand_cards.len() >= 20,
         "expected all 20 hand cards to be present in snapshot"
     );
+    assert!(
+        me.hand_cards
+            .iter()
+            .all(|card| card.oracle_text.contains("Flying")),
+        "visible hand card snapshots should include oracle text for inspector fallback"
+    );
+}
+
+#[test]
+fn snapshot_visible_zone_cards_include_oracle_text() {
+    let mut wasm = WasmGame::new();
+    let bob = PlayerId::from_index(1);
+    let bolt_id = wasm
+        .add_card_to_zone(
+            bob.0,
+            "Lightning Bolt".to_string(),
+            "graveyard".to_string(),
+            true,
+        )
+        .expect("adding Lightning Bolt to graveyard should succeed");
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        wasm.perspective,
+        wasm.pending_decision.as_ref(),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        wasm.active_viewed_cards.as_ref(),
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let bob_snapshot = snapshot
+        .players
+        .iter()
+        .find(|player| player.id == bob.0)
+        .expect("Bob snapshot should exist");
+    let bolt = bob_snapshot
+        .graveyard_cards
+        .iter()
+        .find(|card| card.id == bolt_id)
+        .expect("visible graveyard card should be in snapshot");
+
+    assert!(
+        bolt.oracle_text.contains("Lightning Bolt deals 3 damage"),
+        "visible zone card snapshots should include oracle text for inspector fallback"
+    );
 }
 
 #[test]

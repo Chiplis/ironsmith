@@ -612,6 +612,9 @@ fn build_zone_card_snapshot(
         mana_cost: visible
             .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
             .flatten(),
+        oracle_text: visible
+            .then(|| object.compiled_card_text.clone())
+            .unwrap_or_default(),
         power_toughness,
         loyalty: visible.then(|| object.loyalty()).flatten(),
         defense: visible.then(|| object.defense()).flatten(),
@@ -789,21 +792,32 @@ pub(super) struct ViewedCardSnapshot {
     pub(super) id: u64,
     pub(super) stable_id: u64,
     pub(super) name: String,
+    pub(super) oracle_text: String,
 }
 
-fn resolve_viewed_card(game: &GameState, id: ObjectId) -> (ObjectId, u64, String) {
+fn resolve_viewed_card(game: &GameState, id: ObjectId) -> (ObjectId, u64, String, String) {
     if let Some(obj) = game.object(id) {
-        return (id, obj.stable_id.0.0, obj.name.clone());
+        return (
+            id,
+            obj.stable_id.0.0,
+            obj.name.clone(),
+            obj.compiled_card_text.clone(),
+        );
     }
 
     let stable_id = StableId::from_raw(id.0);
     if let Some(current_id) = game.find_object_by_stable_id(stable_id)
         && let Some(obj) = game.object(current_id)
     {
-        return (current_id, obj.stable_id.0.0, obj.name.clone());
+        return (
+            current_id,
+            obj.stable_id.0.0,
+            obj.name.clone(),
+            obj.compiled_card_text.clone(),
+        );
     }
 
-    (id, stable_id.0.0, format!("Card #{}", id.0))
+    (id, stable_id.0.0, format!("Card #{}", id.0), String::new())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -812,6 +826,7 @@ pub(super) struct HandCardSnapshot {
     pub(super) stable_id: u64,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
+    pub(super) oracle_text: String,
     pub(super) power_toughness: Option<String>,
     pub(super) loyalty: Option<u32>,
     pub(super) defense: Option<u32>,
@@ -824,6 +839,7 @@ pub(super) struct ZoneCardSnapshot {
     pub(super) stable_id: u64,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
+    pub(super) oracle_text: String,
     pub(super) power_toughness: Option<String>,
     pub(super) loyalty: Option<u32>,
     pub(super) defense: Option<u32>,
@@ -902,6 +918,7 @@ impl GameSnapshot {
                                     stable_id: o.stable_id.0.0,
                                     name: o.name.clone(),
                                     mana_cost,
+                                    oracle_text: o.compiled_card_text.clone(),
                                     power_toughness,
                                     loyalty: o.loyalty(),
                                     defense: o.defense(),
@@ -1105,11 +1122,13 @@ impl GameSnapshot {
                         .cards
                         .iter()
                         .map(|id| {
-                            let (current_id, stable_id, name) = resolve_viewed_card(game, *id);
+                            let (current_id, stable_id, name, oracle_text) =
+                                resolve_viewed_card(game, *id);
                             ViewedCardSnapshot {
                                 id: current_id.0,
                                 stable_id,
                                 name,
+                                oracle_text,
                             }
                         })
                         .collect(),
@@ -1300,6 +1319,7 @@ mod tests {
     use super::*;
     use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
+    use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::cards::tokens::cursed_role_token_definition;
     use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectableObject};
     use ironsmith::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
@@ -1327,6 +1347,91 @@ mod tests {
                 ])),
                 exile_count: 2,
             });
+    }
+
+    #[test]
+    fn visible_hand_snapshots_include_oracle_text() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = CardDefinitionBuilder::new(CardId::from_raw(90_012), "Hand Flying Probe")
+            .card_types(vec![CardType::Creature])
+            .flying()
+            .build();
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let alice_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist");
+        let card = alice_snapshot
+            .hand_cards
+            .iter()
+            .find(|card| card.id == object_id.0)
+            .expect("visible hand card should be in snapshot");
+
+        assert!(
+            card.oracle_text.contains("Flying"),
+            "hand snapshots should carry oracle text for inspector fallback"
+        );
+    }
+
+    #[test]
+    fn visible_zone_snapshots_include_oracle_text() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let definition = CardDefinitionBuilder::new(CardId::from_raw(90_013), "Zone Flying Probe")
+            .card_types(vec![CardType::Creature])
+            .flying()
+            .build();
+        let object_id = game.create_object_from_definition(&definition, bob, Zone::Graveyard);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("Bob snapshot should exist");
+        let card = bob_snapshot
+            .graveyard_cards
+            .iter()
+            .find(|card| card.id == object_id.0)
+            .expect("visible graveyard card should be in snapshot");
+
+        assert!(
+            card.oracle_text.contains("Flying"),
+            "zone snapshots should carry oracle text for inspector fallback"
+        );
     }
 
     #[test]

@@ -808,25 +808,6 @@ export function usePeerLobby({
     [buildHostedSerializedGameState]
   );
 
-  const broadcastHostedStateMessage = useCallback(
-    async (payload) => {
-      const sends = [];
-      for (const conn of clientConnectionsRef.current.values()) {
-        sends.push(
-          sendHostedStateMessage(conn, payload).catch((err) => {
-            safeSend(conn, {
-              type: "action_error",
-              protocolVersion: PROTOCOL_VERSION,
-              reason: toErrorMessage(err, "Host could not serialize current match state"),
-            });
-          })
-        );
-      }
-      await Promise.all(sends);
-    },
-    [sendHostedStateMessage]
-  );
-
   const applyMatchStart = useCallback(
     async (payload) => {
       const currentGame = gameRef.current;
@@ -1443,10 +1424,9 @@ export function usePeerLobby({
         case "apply_action": {
           const nextSequence = Number(message.seq || 0);
           const session = multiplayerRef.current;
-          const serializedGameState = serializedGameStateFromMessage(message);
           if (awaitingStateResyncRef.current) return;
           if (nextSequence <= session.lastAppliedSequence) return;
-          if (!serializedGameState && nextSequence !== session.lastAppliedSequence + 1) {
+          if (nextSequence !== session.lastAppliedSequence + 1) {
             reportSyncFailure(
               `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`,
               "Multiplayer action order mismatch. Resyncing with host...",
@@ -1456,18 +1436,11 @@ export function usePeerLobby({
           }
 
           try {
-            if (serializedGameState && typeof applyAuthoritativeState === "function") {
-              await applyAuthoritativeState(serializedGameState, {
-                message: message.label || "",
-                clearViewedCards: true,
-              });
-              usingAuthoritativeHostStateRef.current = true;
-            } else {
-              await applySyncedCommand(message.command, message.label || "", {
-                actorIndex: message.actorIndex,
-                sequence: nextSequence,
-              });
-            }
+            await applySyncedCommand(message.command, message.label || "", {
+              actorIndex: message.actorIndex,
+              sequence: nextSequence,
+            });
+            usingAuthoritativeHostStateRef.current = false;
             actionHistoryRef.current = [
               ...actionHistoryRef.current,
               {
@@ -1502,14 +1475,12 @@ export function usePeerLobby({
       }
     },
     [
-      applyAuthoritativeState,
       applyMatchStart,
       applyStateResync,
       applySyncedCommand,
       leaveLobby,
       reportSyncFailure,
       requestResync,
-      serializedGameStateFromMessage,
       setStatus,
       updateMultiplayer,
     ]
@@ -1599,7 +1570,7 @@ export function usePeerLobby({
             lastAppliedSequence: nextSequence,
             submittingAction: false,
           }));
-          await broadcastHostedStateMessage({
+          broadcastToClients({
             type: "apply_action",
             protocolVersion: PROTOCOL_VERSION,
             seq: nextSequence,
@@ -1624,7 +1595,7 @@ export function usePeerLobby({
               lastAppliedSequence: nextSequence,
               submittingAction: false,
             }));
-            await broadcastHostedStateMessage({
+            broadcastToClients({
               type: "apply_action",
               protocolVersion: PROTOCOL_VERSION,
               seq: nextSequence,
@@ -1643,7 +1614,7 @@ export function usePeerLobby({
     ),
     [
       applySyncedCommand,
-      broadcastHostedStateMessage,
+      broadcastToClients,
       setStatus,
       updateMultiplayer,
       waitForPeerResyncs,
