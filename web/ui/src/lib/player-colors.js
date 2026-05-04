@@ -1,7 +1,7 @@
 const PLAYER_ACCENT_PALETTE = [
-  { hex: "#ff3b30", rgb: "255, 59, 48" },
+  { hex: "#f3b25a", rgb: "243, 178, 90" },
   { hex: "#3b82f6", rgb: "59, 130, 246" },
-  { hex: "#f4c430", rgb: "244, 196, 48" },
+  { hex: "#ff3b30", rgb: "255, 59, 48" },
   { hex: "#22c55e", rgb: "34, 197, 94" },
 ];
 

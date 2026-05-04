@@ -35,6 +35,7 @@ import { X } from "lucide-react";
 
 const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
 const MANA_PAYMENT_TAB_EXIT_MS = 320;
+const PRIORITY_ACTION_PRIMARY_CYCLE = 0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -597,7 +598,6 @@ function PriorityActionStrip({
   onActionHoverStart,
   onActionHoverEnd,
 }) {
-  const BASE_LOOP_CYCLES = 5;
   const viewportRef = useRef(null);
   const groupNodeRefs = useRef(new Map());
   const displayNodeRefs = useRef(new Map());
@@ -606,32 +606,23 @@ function PriorityActionStrip({
   const stripMotionRef = useRef(null);
   const [carouselResetByGroupKey, setCarouselResetByGroupKey] = useState({});
   const [isPointerInStrip, setIsPointerInStrip] = useState(false);
-  const [loopEnabled, setLoopEnabled] = useState(false);
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onActionHoverEnd,
   });
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
-  const effectiveLoopCycles = loopEnabled ? BASE_LOOP_CYCLES : 1;
-  const middleLoopIndex = Math.floor(effectiveLoopCycles / 2);
   const groupKeysSignature = useMemo(
     () => groups.map((group) => group.key).join("|"),
     [groups]
   );
-  const displayGroups = useMemo(() => {
-    if (!groups.length) return [];
-    const entries = [];
-    for (let cycle = 0; cycle < effectiveLoopCycles; cycle += 1) {
-      for (const group of groups) {
-        entries.push({
-          cycle,
-          group,
-          key: `${group.key}::${cycle}`,
-        });
-      }
-    }
-    return entries;
-  }, [effectiveLoopCycles, groups]);
+  const displayGroups = useMemo(
+    () => groups.map((group) => ({
+      cycle: PRIORITY_ACTION_PRIMARY_CYCLE,
+      group,
+      key: group.key,
+    })),
+    [groups]
+  );
 
   const isGroupHoveredLinked = useCallback((group) => {
     for (const linkedObjectId of group.linkedObjectIds) {
@@ -702,7 +693,7 @@ function PriorityActionStrip({
   useEffect(() => {
     groupNodeRefs.current = new Map();
     displayNodeRefs.current = new Map();
-  }, [groupKeysSignature, effectiveLoopCycles]);
+  }, [groupKeysSignature]);
 
   useLayoutEffect(() => {
     const nodes = displayGroups
@@ -724,92 +715,7 @@ function PriorityActionStrip({
       cancelMotion(stripMotionRef.current);
       stripMotionRef.current = null;
     };
-  }, [displayGroups, effectiveLoopCycles, groupKeysSignature]);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || !groups.length) return undefined;
-
-    const recomputeLoopEnabled = () => {
-      if (
-        typeof window !== "undefined"
-        && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches
-      ) {
-        setLoopEnabled((prev) => (prev ? false : prev));
-        return;
-      }
-      const cycleWidth = viewport.scrollWidth / effectiveLoopCycles;
-      if (!(cycleWidth > 0)) return;
-      const shouldLoop = cycleWidth > (viewport.clientWidth + 1);
-      setLoopEnabled((prev) => (prev === shouldLoop ? prev : shouldLoop));
-    };
-
-    const raf = window.requestAnimationFrame(recomputeLoopEnabled);
-    if (typeof ResizeObserver === "undefined") {
-      return () => window.cancelAnimationFrame(raf);
-    }
-
-    const observer = new ResizeObserver(() => recomputeLoopEnabled());
-    observer.observe(viewport);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, [effectiveLoopCycles, groupKeysSignature, groups.length]);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || !groups.length || !loopEnabled) return undefined;
-
-    const placeAtMiddleSegment = () => {
-      if (viewport.scrollWidth <= viewport.clientWidth + 1) return;
-      const cycleWidth = viewport.scrollWidth / effectiveLoopCycles;
-      if (!(cycleWidth > 0)) return;
-      const target = cycleWidth * middleLoopIndex;
-      if (Math.abs(viewport.scrollLeft - target) > 1) {
-        viewport.scrollLeft = target;
-      }
-    };
-
-    const raf = window.requestAnimationFrame(placeAtMiddleSegment);
-    return () => window.cancelAnimationFrame(raf);
-  }, [effectiveLoopCycles, groupKeysSignature, groups.length, loopEnabled, middleLoopIndex]);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || !groups.length || !loopEnabled) return undefined;
-
-    let raf = 0;
-    const normalizeScroll = () => {
-      raf = 0;
-      if (viewport.scrollWidth <= viewport.clientWidth + 1) return;
-      const cycleWidth = viewport.scrollWidth / effectiveLoopCycles;
-      if (!(cycleWidth > 0)) return;
-
-      const minBound = cycleWidth * 0.15;
-      const maxBound = Math.min(
-        Math.max(0, viewport.scrollWidth - viewport.clientWidth),
-        cycleWidth * (effectiveLoopCycles - 0.85)
-      );
-      if (viewport.scrollLeft < minBound) {
-        viewport.scrollLeft += cycleWidth;
-      } else if (viewport.scrollLeft > maxBound) {
-        viewport.scrollLeft -= cycleWidth;
-      }
-    };
-
-    const handleScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(normalizeScroll);
-    };
-
-    viewport.addEventListener("scroll", handleScroll, { passive: true });
-    normalizeScroll();
-    return () => {
-      if (raf) window.cancelAnimationFrame(raf);
-      viewport.removeEventListener("scroll", handleScroll);
-    };
-  }, [effectiveLoopCycles, groupKeysSignature, groups.length, loopEnabled]);
+  }, [displayGroups, groupKeysSignature]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -828,7 +734,7 @@ function PriorityActionStrip({
 
     const scrollFocusedGroupsIntoView = () => {
       const interactiveNodes = focusKeys
-        .map((key) => groupNodeRefs.current.get(key)?.[middleLoopIndex] || null)
+        .map((key) => groupNodeRefs.current.get(key)?.[PRIORITY_ACTION_PRIMARY_CYCLE] || null)
         .filter(Boolean);
       if (interactiveNodes.length === 0) return false;
 
@@ -860,7 +766,7 @@ function PriorityActionStrip({
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
     };
-  }, [groupKeysSignature, hasPinnedSelection, hoveredGroupKeys, isPointerInStrip, middleLoopIndex, selectedGroupKeys]);
+  }, [groupKeysSignature, hasPinnedSelection, hoveredGroupKeys, isPointerInStrip, selectedGroupKeys]);
 
   const handleViewportWheel = useCallback((event) => {
     const viewport = viewportRef.current;
@@ -917,7 +823,7 @@ function PriorityActionStrip({
     >
       <div className="flex w-max min-w-full min-h-[32px] items-stretch gap-1.5 pr-2">
         {displayGroups.map(({ key, cycle, group }) => {
-          const isPrimaryCycle = cycle === middleLoopIndex;
+          const isPrimaryCycle = cycle === PRIORITY_ACTION_PRIMARY_CYCLE;
           const linkedActive = isGroupHoveredLinked(group) || isGroupSelectedLinked(group);
           const highlightName = group.hoverObjectId != null
             ? objectNameById.get(String(group.hoverObjectId)) || ""

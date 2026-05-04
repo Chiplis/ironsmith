@@ -1904,7 +1904,7 @@ export default function HoverArtOverlay({
             <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
               <div
                 ref={oracleBodyRef}
-                className="space-y-1 w-full max-w-[min(92%,44rem)] self-center text-left"
+                className="space-y-1 w-full max-w-[min(92%,44rem)] self-start text-left"
                 style={oracleBodyStyle}
               >
                 {displayRulesLines.length > 0 && (

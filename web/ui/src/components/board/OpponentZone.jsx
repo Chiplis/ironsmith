@@ -467,7 +467,7 @@ function OpponentSlot({
         mobileBattleScene && "mobile-battle-opponent-slot"
       )}
       style={{
-        gridTemplateRows: "auto minmax(0,1fr)",
+        gridTemplateRows: mobileViewport ? "auto minmax(0,1fr)" : "auto minmax(0,1fr) auto",
         alignContent: "stretch",
         cursor: attackerArrowActive ? "crosshair" : undefined,
         "--player-accent": playerAccent?.hex || "#d8bf6a",
@@ -515,12 +515,6 @@ function OpponentSlot({
               </span>
               {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
             </span>
-            <ManaPool
-              pool={player.mana_pool}
-              alwaysVisible
-              compact
-              className="player-name-mana battlefield-header-mana"
-            />
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               <ZoneCountInline player={player} />
               {headerControls}
@@ -741,6 +735,16 @@ function OpponentSlot({
         ) : null}
         </div>
       </div>
+      {!mobileViewport ? (
+        <div className="opponent-battlefield-mana-row">
+          <ManaPool
+            pool={player.mana_pool}
+            alwaysVisible
+            compact
+            className="opponent-battlefield-mana"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1989,7 +1989,16 @@ pub(super) fn execute_pending_mana_ability(
     if !pending.mana_to_add.is_empty() {
         if let Some(player_obj) = game.player_mut(pending.activator) {
             for symbol in &pending.mana_to_add {
-                player_obj.mana_pool.add(*symbol, 1);
+                if pending.mana_usage_restrictions.is_empty() {
+                    player_obj.mana_pool.add(*symbol, 1);
+                } else {
+                    player_obj.add_restricted_mana(crate::ability::RestrictedManaUnit {
+                        symbol: *symbol,
+                        source: pending.source,
+                        source_chosen_creature_type: pending.mana_source_chosen_creature_type,
+                        restrictions: pending.mana_usage_restrictions.clone(),
+                    });
+                }
             }
         }
         let snapshot = game
@@ -2009,7 +2018,9 @@ pub(super) fn execute_pending_mana_ability(
     // Execute additional effects (for complex mana abilities)
     if !pending.effects.is_empty() {
         let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
-            .with_provenance(pending.provenance);
+            .with_provenance(pending.provenance)
+            .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
+            .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type);
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,
             &mut ctx,
@@ -4056,7 +4067,7 @@ mod priority_mana_tests {
     use crate::cards::tokens::treasure_token_definition;
     use crate::color::Color;
     use crate::cost::TotalCost;
-    use crate::decision::DecisionMaker;
+    use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
     use crate::game_state::Phase;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -4066,6 +4077,35 @@ mod priority_mana_tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn arena_style_land_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Arena Style Land")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{R}, {T}, Exert this land: Add {R}{R}. If that mana is spent on a creature spell, it gains haste until end of turn.",
+            )
+            .expect("Arena-style mana ability should parse")
+    }
+
+    fn restricted_mana_ability_index(game: &GameState, source: ObjectId) -> usize {
+        game.object(source)
+            .expect("source should exist")
+            .abilities
+            .iter()
+            .enumerate()
+            .find_map(|(idx, ability)| {
+                if matches!(
+                    &ability.kind,
+                    AbilityKind::Activated(activated)
+                        if !activated.mana_usage_restrictions.is_empty()
+                ) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .expect("source should have a restricted mana ability")
     }
 
     #[test]
@@ -4540,6 +4580,164 @@ mod priority_mana_tests {
         assert!(
             !game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
             "temporary haste grant should expire at end of turn"
+        );
+    }
+
+    #[test]
+    fn arena_style_exert_mana_grants_haste_through_cast_flow() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let arena = arena_style_land_definition();
+        let arena_id = game.create_object_from_definition(&arena, alice, Zone::Battlefield);
+        let arena_ability_index = restricted_mana_ability_index(&game, arena_id);
+
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut decision_maker = SelectFirstDecisionMaker;
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility {
+                source: arena_id,
+                ability_index: arena_ability_index,
+            }),
+            &mut decision_maker,
+        )
+        .expect("Arena-style mana ability should activate");
+
+        let restricted_red = game
+            .player(alice)
+            .expect("alice should exist")
+            .restricted_mana
+            .iter()
+            .filter(|unit| unit.symbol == ManaSymbol::Red)
+            .count();
+        assert_eq!(
+            restricted_red, 2,
+            "Arena-style ability should produce two restricted red mana"
+        );
+
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Arena-Funded Warrior")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
+
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+                spell_id: creature_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            }),
+            &mut decision_maker,
+        )
+        .expect("creature spell should be cast with Arena mana");
+
+        let stack_creature_id = game
+            .stack
+            .last()
+            .expect("creature spell should be on the stack")
+            .object_id;
+        assert!(
+            game.current_has_static_ability_id(stack_creature_id, StaticAbilityId::Haste),
+            "creature spell should gain haste while on the stack from Arena mana"
+        );
+
+        resolve_stack_entry(&mut game).expect("creature spell should resolve");
+        let permanent_id = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Arena-Funded Warrior")
+            })
+            .expect("creature should resolve to the battlefield");
+        assert!(
+            game.current_has_static_ability_id(permanent_id, StaticAbilityId::Haste),
+            "creature permanent should keep haste after resolving"
+        );
+    }
+
+    #[test]
+    fn arena_style_mana_paid_with_nested_mana_ability_keeps_restrictions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let mountain_id =
+            game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+        let arena = arena_style_land_definition();
+        let arena_id = game.create_object_from_definition(&arena, alice, Zone::Battlefield);
+        let arena_ability_index = restricted_mana_ability_index(&game, arena_id);
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut decision_maker = SelectFirstDecisionMaker;
+        let progress = apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility {
+                source: arena_id,
+                ability_index: arena_ability_index,
+            }),
+            &mut decision_maker,
+        )
+        .expect("Arena-style mana ability should ask how to pay its red activation cost");
+        assert!(
+            matches!(
+                progress,
+                GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectOptions(_)
+                )
+            ),
+            "Arena-style mana ability should need a mana-payment decision when no red is floating"
+        );
+
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::ManaPayment(0),
+            &mut decision_maker,
+        )
+        .expect("mountain mana should pay Arena's activation cost");
+
+        assert!(
+            game.is_tapped(mountain_id),
+            "nested mana ability should tap the Mountain used to pay Arena's activation cost"
+        );
+        let restricted_red = game
+            .player(alice)
+            .expect("alice should exist")
+            .restricted_mana
+            .iter()
+            .filter(|unit| unit.symbol == ManaSymbol::Red)
+            .count();
+        assert_eq!(
+            restricted_red, 2,
+            "Arena-style ability should still produce two restricted red mana after a nested mana-payment decision"
         );
     }
 

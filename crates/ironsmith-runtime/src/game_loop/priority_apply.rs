@@ -914,6 +914,8 @@ pub fn apply_priority_response_with_dm(
                 let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
                 let effects_to_run = mana_ability.effects.clone();
                 let base_cost = mana_ability.mana_cost.clone();
+                let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+                let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
                 let cost = crate::decision::calculate_effective_activation_total_cost(
                     game, player, *source, &base_cost,
                 );
@@ -972,7 +974,19 @@ pub fn apply_priority_response_with_dm(
                     if !mana_to_add.is_empty() {
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
-                                player_obj.mana_pool.add(*symbol, 1);
+                                if mana_usage_restrictions.is_empty() {
+                                    player_obj.mana_pool.add(*symbol, 1);
+                                } else {
+                                    player_obj.add_restricted_mana(
+                                        crate::ability::RestrictedManaUnit {
+                                            symbol: *symbol,
+                                            source: *source,
+                                            source_chosen_creature_type:
+                                                mana_source_chosen_creature_type,
+                                            restrictions: mana_usage_restrictions.clone(),
+                                        },
+                                    );
+                                }
                             }
                         }
                         let snapshot = game
@@ -992,7 +1006,11 @@ pub fn apply_priority_response_with_dm(
                     // Execute additional effects (for complex mana abilities)
                     if !effects_to_run.is_empty() {
                         let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
-                            .with_provenance(mana_ability_provenance);
+                            .with_provenance(mana_ability_provenance)
+                            .with_mana_usage_restrictions(mana_usage_restrictions.clone())
+                            .with_mana_source_chosen_creature_type(
+                                mana_source_chosen_creature_type,
+                            );
                         if let Some(x) = x_value_from_costs {
                             ctx = ctx.with_x(x);
                         }
@@ -1039,6 +1057,8 @@ pub fn apply_priority_response_with_dm(
                         other_costs,
                         mana_to_add,
                         effects: effects_to_run,
+                        mana_usage_restrictions,
+                        mana_source_chosen_creature_type,
                         undo_locked_by_mana: !mana_ability_is_undo_safe(
                             game,
                             *source,
