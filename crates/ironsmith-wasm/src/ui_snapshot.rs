@@ -8,7 +8,7 @@ use ironsmith::decisions::context::DecisionContext;
 use ironsmith::game_state::{
     GameState, Target, UiBattlefieldTransition, UiBattlefieldTransitionKind,
 };
-use ironsmith::ids::{ObjectId, PlayerId};
+use ironsmith::ids::{ObjectId, PlayerId, StableId};
 use ironsmith::object::AttachmentTarget;
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::types::{CardType, Subtype};
@@ -787,7 +787,23 @@ pub(super) struct ViewedCardsSnapshot {
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ViewedCardSnapshot {
     pub(super) id: u64,
+    pub(super) stable_id: u64,
     pub(super) name: String,
+}
+
+fn resolve_viewed_card(game: &GameState, id: ObjectId) -> (ObjectId, u64, String) {
+    if let Some(obj) = game.object(id) {
+        return (id, obj.stable_id.0.0, obj.name.clone());
+    }
+
+    let stable_id = StableId::from_raw(id.0);
+    if let Some(current_id) = game.find_object_by_stable_id(stable_id)
+        && let Some(obj) = game.object(current_id)
+    {
+        return (current_id, obj.stable_id.0.0, obj.name.clone());
+    }
+
+    (id, stable_id.0.0, format!("Card #{}", id.0))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1088,15 +1104,20 @@ impl GameSnapshot {
                     cards: view
                         .cards
                         .iter()
-                        .map(|id| ViewedCardSnapshot {
-                            id: id.0,
-                            name: game
-                                .object(*id)
-                                .map(|obj| obj.name.clone())
-                                .unwrap_or_else(|| format!("Card #{}", id.0)),
+                        .map(|id| {
+                            let (current_id, stable_id, name) = resolve_viewed_card(game, *id);
+                            ViewedCardSnapshot {
+                                id: current_id.0,
+                                stable_id,
+                                name,
+                            }
                         })
                         .collect(),
-                    card_ids: view.cards.iter().map(|id| id.0).collect(),
+                    card_ids: view
+                        .cards
+                        .iter()
+                        .map(|id| resolve_viewed_card(game, *id).0.0)
+                        .collect(),
                     source: view.source.map(|id| id.0),
                     description: view.description.clone(),
                 }),

@@ -19,7 +19,7 @@ export default function ManaPool({
       <span
         key={key}
         className={cn(
-          "mana-pool-chip inline-flex items-center gap-0.5 bg-[#0b121b] rounded-full px-1 py-px",
+          "mana-pool-chip inline-flex items-center gap-0.5 bg-background/70 rounded-full px-1 py-px",
           safeAmount <= 0 && "mana-pool-chip--empty",
           compact && "mana-pool-chip--compact"
         )}
@@ -27,7 +27,7 @@ export default function ManaPool({
         <span aria-label={`${safeAmount} ${label} mana in pool`} className="inline-flex items-center">
           <ManaSymbol sym={symbol} size={compact ? 12 : 14} />
         </span>
-        <span className="min-w-[7px] text-center text-[11px] leading-none font-bold text-[#d6e6fb]">
+        <span className="min-w-[7px] text-center text-[11px] leading-none font-bold text-foreground">
           {safeAmount}
         </span>
       </span>

@@ -1,0 +1,18 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="8" cy="8" r="7" fill="url(#rivet-outer)"/>
+  <circle cx="8" cy="8" r="5" fill="url(#rivet-inner)"/>
+  <circle cx="8" cy="8" r="2" fill="#3a2916"/>
+  <circle cx="6.5" cy="6.5" r="1.2" fill="#fff1cd" opacity="0.7"/>
+  <defs>
+    <radialGradient id="rivet-outer" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#d4a44a"/>
+      <stop offset="0.7" stop-color="#8a6a2d"/>
+      <stop offset="1" stop-color="#3a2916"/>
+    </radialGradient>
+    <radialGradient id="rivet-inner" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#f1e4c4"/>
+      <stop offset="0.5" stop-color="#a78240"/>
+      <stop offset="1" stop-color="#4a3520"/>
+    </radialGradient>
+  </defs>
+</svg>

@@ -1,0 +1,33 @@
+<svg width="80" height="96" viewBox="0 0 80 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M40 4 L72 12 Q72 56 40 92 Q8 56 8 12 Z" fill="url(#shield-body)"/>
+  <path d="M40 8 L68 15 Q68 54 40 86 Q12 54 12 15 Z" fill="url(#shield-inner)"/>
+  <path d="M40 8 L68 15 Q68 54 40 86 Q12 54 12 15 Z"
+        fill="none" stroke="#d4a44a" stroke-width="1.2" opacity="0.8"/>
+  <path d="M40 12 L62 18 Q62 50 40 80 Q18 50 18 18 Z"
+        fill="none" stroke="#8a6a2d" stroke-width="0.8" opacity="0.6"/>
+  <path d="M40 4 L72 12 L40 20 L8 12 Z" fill="url(#shield-top)" opacity="0.85"/>
+  <circle cx="40" cy="12" r="2.5" fill="url(#stud)"/>
+  <circle cx="14" cy="14" r="2" fill="url(#stud)"/>
+  <circle cx="66" cy="14" r="2" fill="url(#stud)"/>
+  <path d="M40 22 L40 70" stroke="#d4a44a" stroke-width="0.6" opacity="0.4"/>
+  <path d="M28 30 L52 30" stroke="#d4a44a" stroke-width="0.6" opacity="0.3"/>
+  <defs>
+    <linearGradient id="shield-body" x1="40" y1="4" x2="40" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6b4f2c"/>
+      <stop offset="0.4" stop-color="#4a3520"/>
+      <stop offset="1" stop-color="#1a120a"/>
+    </linearGradient>
+    <radialGradient id="shield-inner" cx="0.5" cy="0.35" r="0.6">
+      <stop stop-color="#3a2916"/>
+      <stop offset="1" stop-color="#1a120a"/>
+    </radialGradient>
+    <linearGradient id="shield-top" x1="40" y1="4" x2="40" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4a44a"/>
+      <stop offset="1" stop-color="#8a6a2d"/>
+    </linearGradient>
+    <radialGradient id="stud" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#f1e4c4"/>
+      <stop offset="1" stop-color="#6b4f2c"/>
+    </radialGradient>
+  </defs>
+</svg>

@@ -1,0 +1,29 @@
+<svg width="36" height="42" viewBox="0 0 36 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4 14 Q4 6 12 4 L24 4 Q32 6 32 14 L32 28 Q32 36 24 38 L12 38 Q4 36 4 28 Z"
+        fill="url(#socket-body)"/>
+  <path d="M7 15 Q7 9 13 7 L23 7 Q29 9 29 15 L29 27 Q29 33 23 35 L13 35 Q7 33 7 27 Z"
+        fill="url(#socket-inner)"/>
+  <path d="M10 14 Q10 10 14 9 L22 9 Q26 10 26 14 L26 28 Q26 32 22 33 L14 33 Q10 32 10 28 Z"
+        stroke="#d4a44a" stroke-width="0.8" fill="none" opacity="0.7"/>
+  <circle cx="6" cy="10" r="1.6" fill="url(#stud)"/>
+  <circle cx="30" cy="10" r="1.6" fill="url(#stud)"/>
+  <circle cx="6" cy="32" r="1.6" fill="url(#stud)"/>
+  <circle cx="30" cy="32" r="1.6" fill="url(#stud)"/>
+  <path d="M14 4 L18 1 L22 4" stroke="#d4a44a" stroke-width="1.2" fill="none" opacity="0.85"/>
+  <path d="M14 38 L18 41 L22 38" stroke="#8a6a2d" stroke-width="1.2" fill="none" opacity="0.85"/>
+  <defs>
+    <linearGradient id="socket-body" x1="18" y1="2" x2="18" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4a44a"/>
+      <stop offset="0.5" stop-color="#8a6a2d"/>
+      <stop offset="1" stop-color="#4a3520"/>
+    </linearGradient>
+    <radialGradient id="socket-inner" cx="0.5" cy="0.45" r="0.55">
+      <stop stop-color="#3a2916"/>
+      <stop offset="1" stop-color="#1a120a"/>
+    </radialGradient>
+    <radialGradient id="stud" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#f1e4c4"/>
+      <stop offset="1" stop-color="#6b4f2c"/>
+    </radialGradient>
+  </defs>
+</svg>

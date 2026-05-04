@@ -1375,7 +1375,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!showRematchSideboarding && !nonDesktopViewport && !puzzleSetupMode && (
+      {!showRematchSideboarding && !deckLoadingMode && !nonDesktopViewport && !puzzleSetupMode && (
         <div
           className="pointer-events-none fixed inset-x-0 bottom-2 z-30 flex items-end gap-1.5 overflow-visible px-2"
           style={{ height: `${HAND_PEEK_HEIGHT}px` }}

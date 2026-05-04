@@ -2130,16 +2130,19 @@ function PriorityControlStack({
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
   const checkboxLabelClass =
-    "action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
+    "priority-control-toggle action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
 
   return (
     <div className={cn("priority-control-stack flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
       {showActionCount && !compactLandscapeViewport && (
-        <div className="pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
-            {actionCount} actions
+        <div className="priority-control-count pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
+          <span className="priority-control-count-number">{actionCount}</span>
+          <span className="priority-control-count-label">
+            {actionCount === 1 ? "Action" : "Actions"}
+          </span>
         </div>
       )}
-      <div className="flex items-center gap-3">
+      <div className="priority-control-toggles flex items-center gap-3">
         <label className={checkboxLabelClass}>
           <Checkbox
             checked={holdEnabled}

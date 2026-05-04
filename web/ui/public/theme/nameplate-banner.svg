@@ -1,0 +1,30 @@
+<svg width="320" height="56" viewBox="0 0 320 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 8 L24 0 L296 0 L320 8 L320 40 L296 56 L24 56 L0 40 Z"
+        fill="url(#banner-body)"/>
+  <path d="M0 8 L24 0 L296 0 L320 8 L316 12 L294 4 L26 4 L4 12 Z"
+        fill="url(#banner-trim)" opacity="0.85"/>
+  <path d="M0 40 L24 56 L296 56 L320 40 L316 36 L294 52 L26 52 L4 36 Z"
+        fill="url(#banner-trim)" opacity="0.85"/>
+  <line x1="20" y1="6" x2="20" y2="50" stroke="#d4a44a" stroke-width="1.2" opacity="0.55"/>
+  <line x1="300" y1="6" x2="300" y2="50" stroke="#d4a44a" stroke-width="1.2" opacity="0.55"/>
+  <circle cx="14" cy="28" r="3" fill="url(#stud)"/>
+  <circle cx="306" cy="28" r="3" fill="url(#stud)"/>
+  <path d="M0 8 L4 12 L4 44 L0 40 Z" fill="#3a2916" opacity="0.6"/>
+  <path d="M320 8 L316 12 L316 44 L320 40 Z" fill="#3a2916" opacity="0.6"/>
+  <defs>
+    <linearGradient id="banner-body" x1="160" y1="0" x2="160" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3a2916"/>
+      <stop offset="0.5" stop-color="#2b1d10"/>
+      <stop offset="1" stop-color="#1a120a"/>
+    </linearGradient>
+    <linearGradient id="banner-trim" x1="160" y1="0" x2="160" y2="12" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4a44a"/>
+      <stop offset="1" stop-color="#8a6a2d"/>
+    </linearGradient>
+    <radialGradient id="stud" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#f1e4c4"/>
+      <stop offset="0.6" stop-color="#a78240"/>
+      <stop offset="1" stop-color="#3a2916"/>
+    </radialGradient>
+  </defs>
+</svg>

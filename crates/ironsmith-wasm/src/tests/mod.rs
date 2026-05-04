@@ -5594,6 +5594,58 @@ fn public_reveal_survives_replay_advance_to_next_prompt() {
 }
 
 #[test]
+fn public_reveal_resolves_stale_replay_ids_to_live_card_names() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let revealed_card = CardBuilder::new(CardId::from_raw(90_201), "Bob's Moving Top")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let revealed_id = wasm
+        .game
+        .create_object_from_card(&revealed_card, bob, Zone::Library);
+
+    let mut replay_dm = WasmReplayDecisionMaker::new(&[]);
+    let view_ctx = ViewCardsContext::new(alice, bob, None, Zone::Library, "Reveal consulted cards")
+        .with_public(true);
+    DecisionMaker::view_cards(&mut replay_dm, &wasm.game, alice, &[revealed_id], &view_ctx);
+    let (_, viewed_cards) = replay_dm.finish();
+    wasm.active_viewed_cards = viewed_cards;
+
+    let moved_id = wasm
+        .game
+        .move_object(
+            revealed_id,
+            Zone::Hand,
+            ironsmith::events::cause::EventCause::from_game_rule(),
+        )
+        .expect("card should move to hand");
+
+    let snapshot = GameSnapshot::from_game(
+        &wasm.game,
+        wasm.perspective,
+        wasm.pending_decision.as_ref(),
+        None,
+        wasm.game_over.as_ref(),
+        None,
+        wasm.active_resolving_stack_object.clone(),
+        Vec::new(),
+        wasm.active_viewed_cards.as_ref(),
+        wasm.is_cancelable(),
+        None,
+        0,
+    );
+    let viewed_cards = snapshot
+        .viewed_cards
+        .as_ref()
+        .expect("publicly revealed cards should still be surfaced");
+    assert_eq!(viewed_cards.card_ids, vec![moved_id.0]);
+    assert_eq!(viewed_cards.cards[0].id, moved_id.0);
+    assert_eq!(viewed_cards.cards[0].name, "Bob's Moving Top");
+}
+
+#[test]
 fn cultivator_colossus_snapshot_tracks_repeat_iteration_state() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);

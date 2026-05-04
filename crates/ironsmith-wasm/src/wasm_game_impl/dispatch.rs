@@ -717,7 +717,8 @@ impl WasmGame {
         self.finish_match_setup(7)
     }
 
-    /// Load explicit decks by card name. JS format: `string[][]`.
+    /// Load explicit decks by card name. JS format: `string[][]` or
+    /// `{ decks: string[][], sideboards?: string[][] }`.
     ///
     /// Deck list index maps to player index.
     /// Returns a JSON object with total and categorized failures:
@@ -725,12 +726,32 @@ impl WasmGame {
     /// Unknown cards are skipped rather than aborting the entire load.
     #[wasm_bindgen(js_name = loadDecks)]
     pub fn load_decks(&mut self, decks_js: JsValue) -> Result<JsValue, JsValue> {
-        let decks: Vec<Vec<String>> = serde_wasm_bindgen::from_value(decks_js)
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum DeckLoadPayload {
+            Decks(Vec<Vec<String>>),
+            Structured {
+                decks: Vec<Vec<String>>,
+                #[serde(default)]
+                sideboards: Vec<Vec<String>>,
+            },
+        }
+
+        let payload: DeckLoadPayload = serde_wasm_bindgen::from_value(decks_js)
             .map_err(|e| JsValue::from_str(&format!("invalid decks payload: {e}")))?;
+        let (decks, sideboards) = match payload {
+            DeckLoadPayload::Decks(decks) => (decks, Vec::new()),
+            DeckLoadPayload::Structured { decks, sideboards } => (decks, sideboards),
+        };
 
         if decks.len() != self.game.players.len() {
             return Err(JsValue::from_str(
                 "deck count must match number of players in game",
+            ));
+        }
+        if !sideboards.is_empty() && sideboards.len() != self.game.players.len() {
+            return Err(JsValue::from_str(
+                "sideboard count must match number of players in game",
             ));
         }
 
@@ -752,9 +773,13 @@ impl WasmGame {
         let mut failed_to_parse: Vec<String> = Vec::new();
 
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
-        for (&player_id, deck) in player_ids.iter().zip(decks.iter()) {
+        for (player_index, (&player_id, deck)) in player_ids.iter().zip(decks.iter()).enumerate() {
             self.registry
                 .ensure_cards_loaded(deck.iter().map(|name| name.as_str()));
+            if let Some(sideboard) = sideboards.get(player_index) {
+                self.registry
+                    .ensure_cards_loaded(sideboard.iter().map(|name| name.as_str()));
+            }
 
             for name in deck {
                 if let Some(definition) = self.find_card_definition(name).cloned() {
@@ -776,6 +801,31 @@ impl WasmGame {
                 } else {
                     failed.push(name.clone());
                     failed_to_parse.push(name.clone());
+                }
+            }
+
+            if let Some(sideboard) = sideboards.get(player_index) {
+                for name in sideboard {
+                    if let Some(definition) = self.find_card_definition(name).cloned() {
+                        if self.semantic_threshold > 0.0
+                            && let Some(score) = Self::semantic_score_for_name(definition.name())
+                            && score < self.semantic_threshold
+                        {
+                            failed.push(name.clone());
+                            failed_below_threshold.push(name.clone());
+                            continue;
+                        }
+                        self.game.create_object_from_catalog_definition(
+                            &definition,
+                            &self.registry,
+                            player_id,
+                            ironsmith::zone::Zone::OutsideGame,
+                        );
+                        loaded += 1;
+                    } else {
+                        failed.push(name.clone());
+                        failed_to_parse.push(name.clone());
+                    }
                 }
             }
 

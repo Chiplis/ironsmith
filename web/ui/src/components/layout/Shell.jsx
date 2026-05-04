@@ -254,7 +254,7 @@ export default function Shell() {
     });
   }, [game, multiplayer.mode, playerNames, refresh, runWasmInteraction, setStatus, startingLife]);
 
-  const handleLoadCustomDecks = useCallback(async (decks) => {
+  const handleLoadCustomDecks = useCallback(async (payload) => {
     return runWasmInteraction(async () => {
       if (!game) return;
       if (multiplayer.mode !== "idle") {
@@ -262,7 +262,7 @@ export default function Shell() {
         return;
       }
       try {
-        const result = await game.loadDecks(decks);
+        const result = await game.loadDecks(payload);
         setDeckLoadingMode(false);
         const loaded = result?.loaded ?? 0;
         const failed = Array.isArray(result?.failed) ? result.failed : [];

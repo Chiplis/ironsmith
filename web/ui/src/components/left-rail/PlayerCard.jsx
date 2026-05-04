@@ -19,9 +19,9 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
     <section
       className={cn(
         "p-2 grid gap-2 rounded",
-        "bg-gradient-to-b from-[#151e2a] to-[#101723]",
-        isActive && "shadow-[0_0_8px_rgba(88,214,166,0.25),0_0_0_1px_rgba(88,214,166,0.4)_inset]",
-        isPerspective && "shadow-[0_0_0_1px_rgba(100,169,255,0.35)_inset]",
+        "bg-gradient-to-b from-secondary to-card",
+        isActive && "shadow-[0_0_8px_rgba(127,184,106,0.30),0_0_0_1px_rgba(127,184,106,0.45)_inset]",
+        isPerspective && "shadow-[0_0_0_1px_rgba(212,164,74,0.40)_inset]",
       )}
       data-player-id={player.id}
     >
@@ -37,29 +37,29 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
         />
       </div>
 
-      <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd]">
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Library">
-          Lib <span className="font-bold text-[#d6e6fb]">{player.library_size}</span>
+      <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
+        <span className="bg-background/70 px-1.5 rounded-sm" title="Library">
+          Lib <span className="font-bold text-foreground">{player.library_size}</span>
         </span>
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
-          Hand <span className="font-bold text-[#d6e6fb]">{player.hand_size}</span>
+        <span className="bg-background/70 px-1.5 rounded-sm" title="Hand">
+          Hand <span className="font-bold text-foreground">{player.hand_size}</span>
         </span>
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="GY">
-          GY <span className="font-bold text-[#d6e6fb]">{player.graveyard_size}</span>
+        <span className="bg-background/70 px-1.5 rounded-sm" title="GY">
+          GY <span className="font-bold text-foreground">{player.graveyard_size}</span>
         </span>
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
-          Exl <span className="font-bold text-[#d6e6fb]">{exileCards.length}</span>
+        <span className="bg-background/70 px-1.5 rounded-sm" title="Exile">
+          Exl <span className="font-bold text-foreground">{exileCards.length}</span>
         </span>
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="CZ">
-          Cmd <span className="font-bold text-[#d6e6fb]">{player.command_size ?? commandCards.length}</span>
+        <span className="bg-background/70 px-1.5 rounded-sm" title="CZ">
+          Cmd <span className="font-bold text-foreground">{player.command_size ?? commandCards.length}</span>
         </span>
         {sideboardCards.length > 0 && (
-          <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Sideboard">
-            SB <span className="font-bold text-[#d6e6fb]">{sideboardCards.length}</span>
+          <span className="bg-background/70 px-1.5 rounded-sm" title="Sideboard">
+            SB <span className="font-bold text-foreground">{sideboardCards.length}</span>
           </span>
         )}
-        <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
-          BF <span className="font-bold text-[#d6e6fb]">{battlefieldCount}</span>
+        <span className="bg-background/70 px-1.5 rounded-sm" title="Battlefield">
+          BF <span className="font-bold text-foreground">{battlefieldCount}</span>
         </span>
       </div>
 

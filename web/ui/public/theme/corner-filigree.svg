@@ -1,0 +1,26 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 0 L96 0 L96 8 L24 8 Q12 8 8 16 Q4 24 4 36 L4 96 L0 96 Z"
+        fill="url(#brass-edge)" opacity="0.95"/>
+  <path d="M8 12 Q22 12 26 18 Q30 24 30 38 L30 60"
+        stroke="#d4a44a" stroke-width="1.6" fill="none" opacity="0.9"/>
+  <path d="M14 6 Q34 6 40 14 Q46 22 46 42"
+        stroke="#b88830" stroke-width="1.2" fill="none" opacity="0.7"/>
+  <circle cx="14" cy="14" r="3.5" fill="url(#rivet)"/>
+  <circle cx="14" cy="14" r="1.4" fill="#3a2916"/>
+  <path d="M30 30 Q38 30 42 34 Q46 38 46 46"
+        stroke="#e8a23a" stroke-width="1" fill="none" opacity="0.6"/>
+  <path d="M22 4 L24 10 L30 6 Z" fill="#d4a44a" opacity="0.85"/>
+  <path d="M4 22 L10 24 L6 30 Z" fill="#d4a44a" opacity="0.85"/>
+  <defs>
+    <linearGradient id="brass-edge" x1="0" y1="0" x2="0" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4a44a"/>
+      <stop offset="0.5" stop-color="#8a6a2d"/>
+      <stop offset="1" stop-color="#4a3520"/>
+    </linearGradient>
+    <radialGradient id="rivet" cx="0.5" cy="0.4" r="0.6">
+      <stop stop-color="#f1e4c4"/>
+      <stop offset="0.6" stop-color="#a78240"/>
+      <stop offset="1" stop-color="#3a2916"/>
+    </radialGradient>
+  </defs>
+</svg>
