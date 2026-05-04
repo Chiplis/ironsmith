@@ -270,6 +270,7 @@ pub(super) fn apply_trait_replacement(
                         Zone::Battlefield => "Battlefield",
                         Zone::Stack => "Stack",
                         Zone::Command => "Command zone",
+                        Zone::OutsideGame => "Outside the game",
                     };
                     crate::decisions::context::SelectableOption::new(idx, zone_name.to_string())
                 })
@@ -345,6 +346,7 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Stack => "the stack",
         Zone::Exile => "exile",
         Zone::Command => "the command zone",
+        Zone::OutsideGame => "outside the game",
     }
 }
 

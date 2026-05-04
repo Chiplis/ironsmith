@@ -188,6 +188,7 @@ pub(super) fn zone_name(zone: Zone) -> String {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::OutsideGame => "outside_game",
     }
     .to_string()
 }
@@ -368,6 +369,7 @@ pub(super) fn zone_display_name(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command zone",
+        Zone::OutsideGame => "outside the game",
     }
 }
 

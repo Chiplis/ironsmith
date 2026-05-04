@@ -10,6 +10,27 @@ pub(crate) fn strip_leading_trigger_intro(tokens: &[OwnedLexToken]) -> &[OwnedLe
     }
 }
 
+fn source_reference_surface_for_trigger_subject(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::SourceReferenceSurface> {
+    let word_view = ActivationRestrictionCompatWords::new(tokens);
+    let subject_words = word_view
+        .to_word_refs()
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    source_reference_surface_for_words(&subject_words)
+}
+
+fn this_enters_battlefield_trigger_spec(
+    surface: Option<crate::target::SourceReferenceSurface>,
+) -> TriggerSpec {
+    match surface {
+        Some(surface) => TriggerSpec::ThisEntersBattlefieldWithSurface(surface),
+        None => TriggerSpec::ThisEntersBattlefield,
+    }
+}
+
 pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         if !token.is_word("or") {
@@ -969,7 +990,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                             }
                         };
                         return Ok(TriggerSpec::Either(
-                            Box::new(TriggerSpec::ThisEntersBattlefield),
+                            Box::new(this_enters_battlefield_trigger_spec(
+                                source_reference_surface_for_trigger_subject(left_tokens),
+                            )),
                             Box::new(right_trigger),
                         ));
                     }
@@ -990,6 +1013,17 @@ pub(crate) fn parse_trigger_clause_lexed(
                 }
             } else {
                 TriggerSpec::ThisEntersBattlefield
+            });
+        }
+        if let Some(surface) = source_reference_surface_for_trigger_subject(subject_tokens) {
+            return Ok(if let Some((from, owner)) = enters_origin.clone() {
+                TriggerSpec::ThisEntersBattlefieldFromZone {
+                    subject_filter: ObjectFilter::default(),
+                    from,
+                    owner,
+                }
+            } else {
+                TriggerSpec::ThisEntersBattlefieldWithSurface(surface)
             });
         }
 

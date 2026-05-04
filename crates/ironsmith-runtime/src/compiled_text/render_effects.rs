@@ -19942,6 +19942,7 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
             Zone::Battlefield => Some("battlefield"),
             Zone::Command => Some("command zone"),
             Zone::Stack => Some("stack"),
+            Zone::OutsideGame => Some("outside the game"),
             Zone::Library => None,
         }
     }
@@ -19956,6 +19957,7 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
             Zone::Exile => "into exile".to_string(),
             Zone::Stack => "onto the stack".to_string(),
             Zone::Command => "into the command zone".to_string(),
+            Zone::OutsideGame => "outside the game".to_string(),
         }
     }
 
@@ -21379,6 +21381,7 @@ pub(super) fn describe_search_origin_zones(
         }
         [Zone::Graveyard] => format!("{owner_text} graveyard"),
         [Zone::Hand] => format!("{owner_text} hand"),
+        [Zone::OutsideGame] => "outside the game".to_string(),
         other => {
             let parts = other
                 .iter()
@@ -21390,6 +21393,7 @@ pub(super) fn describe_search_origin_zones(
                     Zone::Stack => "stack".to_string(),
                     Zone::Exile => "exile".to_string(),
                     Zone::Command => "command zone".to_string(),
+                    Zone::OutsideGame => "outside the game".to_string(),
                 })
                 .collect::<Vec<_>>();
             match parts.as_slice() {
@@ -23498,6 +23502,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Some(Zone::Stack) => ("the stack", "stack"),
             Some(Zone::Exile) => ("exile", "exile"),
             Some(Zone::Command) => ("the command zone", "command"),
+            Some(Zone::OutsideGame) => ("outside the game", "outside"),
             None => ("an unspecified zone", ""),
         };
         let filter_lower = filter_text.to_ascii_lowercase();
@@ -23751,6 +23756,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             Zone::Stack => format!("Put {target} on the stack"),
             Zone::Command => format!("Move {target} to the command zone"),
+            Zone::OutsideGame => format!("Move {target} outside the game"),
         };
     }
     let describe_library_top_position = |position: &crate::effect::Value| match position {
@@ -25299,6 +25305,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Exile => "into exile",
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
+            Zone::OutsideGame => "outside the game",
         };
         let mut display_filter = search_library.filter.clone();
         if display_filter.owner.as_ref() == Some(&search_library.player) {
@@ -25336,6 +25343,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Exile => "into exile",
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
+            Zone::OutsideGame => "outside the game",
         };
         let multi_zone = search_slots
             .slots
@@ -28332,6 +28340,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::zone::Zone::Battlefield => "onto the battlefield",
             crate::zone::Zone::Command => "into the command zone",
             crate::zone::Zone::Stack => "onto the stack",
+            crate::zone::Zone::OutsideGame => "outside the game",
         };
         return format!(
             "{} may put {} {}",

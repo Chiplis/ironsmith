@@ -124,6 +124,8 @@ pub struct ZoneChangeTrigger {
     pub count_mode: CountMode,
     /// If true, only trigger for the source object ("When ~ dies").
     pub this_object: bool,
+    /// Original source-reference surface for source-object trigger text.
+    pub this_object_surface: Option<crate::target::SourceReferenceSurface>,
 }
 
 impl Default for ZoneChangeTrigger {
@@ -136,6 +138,7 @@ impl Default for ZoneChangeTrigger {
             cause_filter: None,
             count_mode: CountMode::Each,
             this_object: false,
+            this_object_surface: None,
         }
     }
 }
@@ -191,6 +194,11 @@ impl ZoneChangeTrigger {
     /// Make this trigger only match the source object ("When ~ dies").
     pub fn this(mut self) -> Self {
         self.this_object = true;
+        self
+    }
+
+    pub fn this_surface(mut self, surface: crate::target::SourceReferenceSurface) -> Self {
+        self.this_object_surface = Some(surface);
         self
     }
 
@@ -316,41 +324,38 @@ impl ZoneChangeTrigger {
         }
 
         if self.this_object {
-            let battlefield_subject = self.this_subject("permanent");
-            let card_subject = self.this_subject("card");
+            let battlefield_subject = self.this_subject_text("permanent");
+            let card_subject = self.this_subject_text("card");
             if self.to == ZonePattern::Specific(Zone::Battlefield)
                 && let Some(origin_phrase) = enters_origin_phrase(self)
             {
-                return format!("When this {} enters {}", battlefield_subject, origin_phrase);
+                return format!("When {battlefield_subject} enters {origin_phrase}");
             }
             return match (&self.from, &self.to) {
                 (
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
                 ) if subject_is_always_creature(&self.object_filter) => {
-                    format!("When this {} dies", battlefield_subject)
+                    format!("When {battlefield_subject} dies")
                 }
                 (
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
-                ) => format!(
-                    "When this {} is put into a graveyard from the battlefield",
-                    card_subject
-                ),
+                ) => format!("When {card_subject} is put into a graveyard from the battlefield"),
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
-                    format!("When this {} enters the battlefield", battlefield_subject)
+                    format!("When {battlefield_subject} enters the battlefield")
                 }
                 (ZonePattern::Specific(Zone::Battlefield), _) => {
-                    format!("When this {} leaves the battlefield", battlefield_subject)
+                    format!("When {battlefield_subject} leaves the battlefield")
                 }
                 (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
-                    "When this card is discarded".to_string()
+                    format!("When {card_subject} is discarded")
                 }
                 (_, ZonePattern::Specific(Zone::Graveyard)) => {
-                    format!("When this {} is put into a graveyard", card_subject)
+                    format!("When {card_subject} is put into a graveyard")
                 }
                 (_, ZonePattern::Specific(Zone::Exile)) => {
-                    format!("When this {} is exiled", battlefield_subject)
+                    format!("When {battlefield_subject} is exiled")
                 }
                 _ => "When this object changes zones".to_string(),
             };
@@ -444,6 +449,15 @@ impl ZoneChangeTrigger {
             return self.object_filter.card_types[0].self_subject(fallback);
         }
         fallback
+    }
+
+    pub(crate) fn this_subject_text(&self, fallback: &'static str) -> String {
+        match &self.this_object_surface {
+            Some(crate::target::SourceReferenceSurface::FullName(text))
+            | Some(crate::target::SourceReferenceSurface::ShortName(text))
+            | Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) => text.clone(),
+            None => format!("this {}", self.this_subject(fallback)),
+        }
     }
 }
 

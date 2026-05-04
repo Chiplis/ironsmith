@@ -47,6 +47,14 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
 }
 
+/// Render a single ability using the same surface renderer as compiled oracle text.
+pub fn ability_surface_text(ability: &Ability) -> String {
+    if let Some(keyword) = self::render_effects::describe_keyword_ability(ability) {
+        return keyword;
+    }
+    self::render_effects::describe_inline_ability(ability)
+}
+
 fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
     let mut lines: Vec<String> = lines
         .into_iter()
@@ -777,8 +785,5 @@ mod tests {
 
 #[cfg(test)]
 pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> String {
-    if let Some(keyword) = self::render_effects::describe_keyword_ability(ability) {
-        return keyword;
-    }
-    self::render_effects::describe_inline_ability(ability)
+    ability_surface_text(ability)
 }

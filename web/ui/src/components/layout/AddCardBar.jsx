@@ -1,7 +1,9 @@
 import { useGame } from "@/context/GameContext";
+import { formatPhase, formatStep } from "@/lib/constants";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
+import { ComicTooltip } from "@/components/ui/comic-tooltip";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
@@ -26,19 +28,56 @@ export default function AddCardBar({
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
   const matchLocked = multiplayer.matchStarted;
+  const activePlayer = players.find((player) => player.id === state?.active_player) || null;
+  const priorityPlayer = players.find((player) => player.id === state?.priority_player) || null;
+  const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
 
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
-      <div className="add-card-toolbar-left">
-        {!compact ? (
+      <div className="topbar-phase-caption add-card-toolbar-phase-caption" aria-label="Current turn summary">
+        <span>{phaseSummary}</span>
+        <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+        <span>Turn {state?.turn_number ?? "-"}</span>
+        {activePlayer ? (
           <>
-            <span className="add-card-toolbar-separator" aria-hidden="true" />
-            <span
-              className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
-              title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+            <span>Active {activePlayer.name}</span>
+          </>
+        ) : null}
+        {priorityPlayer ? (
+          <>
+            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+            <span>Priority {priorityPlayer.name}</span>
+          </>
+        ) : null}
+      </div>
+
+      <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />
+
+      <div className="add-card-toolbar-zone-group">
+        <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
+      </div>
+
+      {!compact ? (
+        <>
+          <span className="add-card-toolbar-separator add-card-toolbar-fidelity-separator" aria-hidden="true" />
+          <div className="add-card-toolbar-fidelity-group">
+            <ComicTooltip
+              title="Fidelity"
+              description="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+              side="top"
+              align="start"
+              sideOffset={7}
+              contentClassName="max-w-[300px]"
             >
-              Fidelity
-            </span>
+              <button
+                type="button"
+                className="add-card-toolbar-meta add-card-toolbar-help-trigger text-[13px] uppercase whitespace-nowrap"
+                aria-label="Explain fidelity"
+              >
+                Fidelity
+              </button>
+            </ComicTooltip>
             <Slider
               className="w-20"
               min={0}
@@ -51,9 +90,13 @@ export default function AddCardBar({
               {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
               {" "}({cardsMeetingThreshold})
             </span>
-          </>
-        ) : null}
-        <span className="add-card-toolbar-separator" aria-hidden="true" />
+          </div>
+        </>
+      ) : null}
+
+      <span className="add-card-toolbar-separator add-card-toolbar-control-separator" aria-hidden="true" />
+
+      <div className="add-card-toolbar-control-group">
         <select
           className={selectPill}
           value={holdRule}
@@ -92,9 +135,6 @@ export default function AddCardBar({
             ))}
           </select>
         </label>
-      </div>
-      <div className="add-card-toolbar-right">
-        <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
       </div>
     </div>
   );

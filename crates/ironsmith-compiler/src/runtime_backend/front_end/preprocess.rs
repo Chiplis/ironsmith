@@ -144,6 +144,10 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
     let Some((label, value)) = str_split_once_char(trimmed, ':') else {
         return Ok(None);
     };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
 
     // Parse only the structural label token-first so metadata values such as `*/*`
     // can remain opaque here without falling back to post-lex string probing.
@@ -155,7 +159,7 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
         return Ok(None);
     };
 
-    let value = value.trim().to_string();
+    let value = value.to_string();
     let metadata = match spec.kind {
         MetadataLineKind::ManaCost => MetadataLine::ManaCost(value),
         MetadataLineKind::TypeLine => MetadataLine::TypeLine(value),
@@ -414,7 +418,17 @@ fn replace_names_with_map(
             || next.is_some_and(|word| {
                 matches!(
                     word,
-                    b"attack" | b"attacks" | b"deal" | b"deals" | b"power" | b"toughness"
+                    b"attack"
+                        | b"attacks"
+                        | b"become"
+                        | b"becomes"
+                        | b"becoming"
+                        | b"deal"
+                        | b"deals"
+                        | b"enter"
+                        | b"enters"
+                        | b"power"
+                        | b"toughness"
                 )
             })
     }
@@ -1190,6 +1204,8 @@ pub(crate) fn preprocess_document(
     let short_name = short_name_for_self_reference(front_face_name.as_str());
     let full_lower = normalize_card_name_for_self_reference(front_face_name.as_str());
     let short_lower = normalize_card_name_for_self_reference(short_name.as_str());
+    let source_surface_name_is_lexable = lex_line(full_lower.as_str(), 0).is_ok()
+        && (short_lower == full_lower || lex_line(short_lower.as_str(), 0).is_ok());
     let mut annotations = ParseAnnotations::default();
     let mut items = Vec::new();
 
@@ -1217,8 +1233,8 @@ pub(crate) fn preprocess_document(
         }
 
         for (split_index, split_line) in split_parse_line_variants(line).into_iter().enumerate() {
-            let preserve_source_surfaces =
-                builder
+            let preserve_source_surfaces = source_surface_name_is_lexable
+                && builder
                     .card_builder
                     .card_types_ref()
                     .iter()

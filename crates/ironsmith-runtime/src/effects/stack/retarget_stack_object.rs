@@ -165,6 +165,7 @@ fn resolve_retarget_objects(
                     .iter()
                     .flat_map(|p| p.hand.iter().copied())
                     .collect(),
+                Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
             };
 
             let filter_ctx = ctx.filter_context(game);

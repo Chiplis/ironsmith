@@ -54,6 +54,11 @@ fn matching_cost_candidate_count(
             .iter()
             .flat_map(|player| player.library.iter().copied())
             .collect(),
+        Some(Zone::OutsideGame) => game
+            .players
+            .iter()
+            .flat_map(|player| player.sideboard.iter().copied())
+            .collect(),
         Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
         Some(Zone::Exile) => game.exile.clone(),
         Some(Zone::Command) => game.command_zone.clone(),

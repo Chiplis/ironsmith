@@ -28574,8 +28574,133 @@ fn parse_oracle_sarkhan_dragon_ascendant_behold_regression() {
         "expected Sarkhan compiled text to preserve the behold clause, got {rendered}"
     );
     assert!(
+        rendered.contains("When Sarkhan enters"),
+        "expected Sarkhan's named ETB self-reference to survive trigger rendering, got {rendered}"
+    );
+    assert!(
         rendered_lower.contains("if you do, create a treasure token"),
         "expected Sarkhan to preserve the behold follow-up, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Sarkhan becomes a dragon in addition to its other types"),
+        "expected Sarkhan's named self-reference to survive continuous-effect rendering, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_nadaar_enters_or_attacks_surface_regression() {
+    let def = parse_oracle_card_definition("Nadaar, Selfless Paladin");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("Whenever Nadaar enters or attacks, venture into the dungeon."),
+        "expected Nadaar's source-name trigger branches to render as one oracle-style subject, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("or this creature attacks"),
+        "expected Nadaar not to mix named and generic source-reference surfaces, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_timeless_lotus_enters_tapped_surface_regression() {
+    let def = parse_oracle_card_definition("Timeless Lotus");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("This artifact enters tapped."),
+        "expected Timeless Lotus to render source ETB tapped with the card subject, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("source enter tapped"),
+        "expected Timeless Lotus not to compile named source as a filtered ETB-tapped ability, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_hyphenated_name_source_reference_regressions() {
+    let spider = parse_oracle_card_definition("Spider-Man, Miles Morales");
+    let spider_rendered = unprocessed_compiled_lines(&spider).join(" ");
+    assert!(
+        spider_rendered.contains("Whenever Spider-Man enters or attacks"),
+        "expected Spider-Man short-name source trigger to avoid Spider subtype parsing, got {spider_rendered}"
+    );
+    assert!(
+        !spider_rendered.contains("Whenever a Spider enters"),
+        "expected Spider-Man not to compile as a Spider subtype ETB trigger, got {spider_rendered}"
+    );
+
+    let commander = parse_oracle_card_definition("Commander Greven il-Vec");
+    let commander_rendered = unprocessed_compiled_lines(&commander).join(" ");
+    assert!(
+        commander_rendered.contains("When Commander Greven il-Vec enters"),
+        "expected full Commander Greven source name to avoid commander-filter parsing, got {commander_rendered}"
+    );
+    assert!(
+        !commander_rendered.contains("commander permanent enters"),
+        "expected Commander Greven not to compile as a commander-permanent ETB trigger, got {commander_rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_possessive_named_source_enters_tapped_regression() {
+    let def = parse_oracle_card_definition("Teferi's Isle");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("This land enters tapped."),
+        "expected Teferi's Isle to render as a source ETB-tapped ability, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Teferi enter tapped"),
+        "expected Teferi's Isle not to leak a name fragment into the ETB-tapped filter, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_named_source_metadata_surface_regressions() {
+    let hall = parse_oracle_card_definition("Hall of Triumph");
+    let hall_rendered = unprocessed_compiled_lines(&hall).join(" ");
+    assert!(
+        hall_rendered.contains("As this artifact enters, choose a color."),
+        "expected Hall of Triumph to keep artifact metadata through named-source parsing, got {hall_rendered}"
+    );
+    assert!(
+        !hall_rendered.contains("As this permanent enters"),
+        "expected Hall of Triumph not to fall back to oracle-only metadata loss, got {hall_rendered}"
+    );
+
+    let shaun = parse_oracle_card_definition("Shaun & Rebecca, Agents");
+    let shaun_rendered = unprocessed_compiled_lines(&shaun).join(" ");
+    assert!(
+        shaun_rendered.contains("When this creature enters"),
+        "expected ampersand source names to preserve creature metadata, got {shaun_rendered}"
+    );
+    assert!(
+        !shaun_rendered.contains("When this permanent enters"),
+        "expected Shaun & Rebecca not to fall back to oracle-only metadata loss, got {shaun_rendered}"
+    );
+
+    let splinter = parse_oracle_card_definition("Splinter & Leo, Father & Son");
+    let splinter_rendered = unprocessed_compiled_lines(&splinter).join(" ");
+    assert!(
+        splinter_rendered.contains("When this creature enters"),
+        "expected Splinter & Leo to preserve creature metadata despite ampersand source name, got {splinter_rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_polukranos_preserves_named_damage_recipient_regression() {
+    let def = parse_oracle_card_definition("Polukranos, World Eater");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains("deals damage equal to its power to Polukranos"),
+        "expected Polukranos reciprocal damage clause to keep the named recipient, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("deals damage equal to its power to this creature"),
+        "expected named-trigger fallback not to rewrite the effect body recipient, got {rendered}"
     );
 }
 

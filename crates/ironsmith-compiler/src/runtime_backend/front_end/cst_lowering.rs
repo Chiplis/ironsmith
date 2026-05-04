@@ -58,6 +58,14 @@ pub(crate) fn lower_non_metadata_rewrite_line_cst(
         RewriteLineCst::LevelHeader(level) => lower_level_header(level),
         RewriteLineCst::SagaChapter(saga) => lower_saga_chapter(saga),
         RewriteLineCst::Unsupported(unsupported) => {
+            crate::parse_loss::record(
+                "allow_unsupported_cst_line",
+                format!(
+                    "{} ({})",
+                    unsupported.info.raw_line.trim(),
+                    unsupported.reason_code
+                ),
+            );
             Ok(RewriteSemanticItem::Unsupported(RewriteUnsupportedLine {
                 info: unsupported.info,
                 reason_code: unsupported.reason_code,
@@ -74,6 +82,10 @@ fn lower_activated_line(
         Ok(cost) => cost,
         Err(err) => {
             if allow_unsupported {
+                crate::parse_loss::record(
+                    "allow_unsupported_activated_cost",
+                    format!("{} ({err:?})", activated.info.raw_line.trim()),
+                );
                 return Ok(RewriteSemanticItem::Unsupported(RewriteUnsupportedLine {
                     info: activated.info,
                     reason_code: "activated-cost-not-yet-supported",

@@ -131,6 +131,8 @@ impl EffectExecutor for CascadeEffect {
                         target_assignments: vec![],
                         x_value,
                         ability_effects: None,
+                        mana_usage_restrictions: Vec::new(),
+                        mana_source_chosen_creature_type: None,
                         is_ability: false,
                         casting_method: CastingMethod::PlayFrom {
                             source: ctx.source,

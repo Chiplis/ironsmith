@@ -930,6 +930,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_preserves_chosen_color_and_type_qualifiers() {
+        let color_tokens = tokenize_line("creatures you control of the chosen color", 0);
+        let color_filter =
+            parse_object_filter_lexed(&color_tokens, false).expect("object filter should parse");
+
+        assert!(color_filter.chosen_color);
+        assert_eq!(color_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(color_filter.card_types, vec![CardType::Creature]);
+
+        let type_tokens = tokenize_line("other creatures you control of the chosen type", 0);
+        let type_filter =
+            parse_object_filter_lexed(&type_tokens, false).expect("object filter should parse");
+
+        assert!(type_filter.other);
+        assert!(type_filter.chosen_creature_type);
+        assert_eq!(type_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(type_filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
     fn apply_parity_filter_phrases_detects_chosen_quality_and_odd_mana_value() {
         let mut filter = ObjectFilter::default();
 

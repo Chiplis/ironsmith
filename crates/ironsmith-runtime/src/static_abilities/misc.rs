@@ -96,6 +96,7 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Stack => "the stack",
         Zone::Exile => "exile",
         Zone::Command => "the command zone",
+        Zone::OutsideGame => "outside the game",
     }
 }
 

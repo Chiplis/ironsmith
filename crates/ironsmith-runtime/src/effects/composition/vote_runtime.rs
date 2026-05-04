@@ -116,6 +116,7 @@ fn candidate_object_ids_for_vote(
         Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
         Some(Zone::Exile) => game.exile.clone(),
         Some(Zone::Command) => game.command_zone.clone(),
+        Some(Zone::OutsideGame) => game.objects_in_zone(Zone::OutsideGame),
         None => game.battlefield.clone(),
     };
 

@@ -879,6 +879,15 @@ pub(super) fn parse_object_filter_inner(
                     saw_spell = true;
                 }
             }
+            "chosen" if all_words.get(idx + 1).copied() == Some("color") => {
+                filter.chosen_color = true;
+            }
+            "chosen" if all_words.get(idx + 1).copied() == Some("type") => {
+                filter.chosen_creature_type = true;
+            }
+            "nonchosen" if all_words.get(idx + 1).copied() == Some("type") => {
+                filter.excluded_chosen_creature_type = true;
+            }
             "token" | "tokens" => filter.token = true,
             "nontoken" => filter.nontoken = true,
             "other" => filter.other = true,

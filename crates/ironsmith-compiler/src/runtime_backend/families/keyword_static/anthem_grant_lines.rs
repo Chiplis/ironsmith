@@ -1299,12 +1299,15 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(!filter.excluded_static_abilities.is_empty()) * 2;
     score += usize::from(!filter.excluded_ability_markers.is_empty()) * 2;
     score += usize::from(filter.colors.is_some()) * 2;
+    score += usize::from(filter.chosen_color) * 3;
+    score += usize::from(filter.chosen_creature_type) * 3;
+    score += usize::from(filter.excluded_chosen_creature_type) * 3;
     score += usize::from(filter.power.is_some() || filter.toughness.is_some()) * 2;
     score
 }
 
 pub(crate) fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let mut best: Option<(usize, ObjectFilter)> = None;
+    let mut best: Option<(usize, usize, ObjectFilter)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
             continue;
@@ -1331,12 +1334,24 @@ pub(crate) fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Optio
         let score = object_filter_specificity_score(&filter);
         if best
             .as_ref()
-            .is_none_or(|(best_score, _)| score > *best_score)
+            .is_none_or(|(best_score, _, _)| score > *best_score)
         {
-            best = Some((score, filter));
+            best = Some((score, start, filter));
         }
     }
-    best.map(|(_, filter)| filter)
+    best.map(|(_, start, filter)| {
+        if start > 0 {
+            crate::parse_loss::record(
+                "suffix_object_filter_recovery",
+                format!(
+                    "parsed '{}' as suffix of '{}'",
+                    crate::runtime_backend::token_word_refs(&tokens[start..]).join(" "),
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                ),
+            );
+        }
+        filter
+    })
 }
 
 fn subject_branch_looks_type_like(filter: &ObjectFilter) -> bool {

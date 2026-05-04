@@ -198,6 +198,10 @@ pub(crate) fn push_unsupported_marker(
     raw_line: &str,
     reason: String,
 ) -> CardDefinitionBuilder {
+    crate::parse_loss::record(
+        "allow_unsupported_line",
+        format!("{} ({reason})", raw_line.trim()),
+    );
     builder.with_ability(Ability::static_ability(
         StaticAbility::unsupported_parser_line(raw_line.trim(), reason),
     ))

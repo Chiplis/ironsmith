@@ -261,6 +261,7 @@ pub(crate) enum TriggerSpec {
     BeginningOfPrecombatMain(PlayerFilter),
     BeginningOfPostcombatMain(PlayerFilter),
     ThisEntersBattlefield,
+    ThisEntersBattlefieldWithSurface(crate::target::SourceReferenceSurface),
     ThisEntersBattlefieldFromZone {
         subject_filter: ObjectFilter,
         from: Zone,

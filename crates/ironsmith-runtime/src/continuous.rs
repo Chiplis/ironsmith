@@ -3646,6 +3646,15 @@ fn for_each_zone_candidate(
                 }
             }
         }
+        Zone::OutsideGame => {
+            for player in &ctx.game.players {
+                for &id in &player.sideboard {
+                    if let Some(obj) = ctx.objects.get(&id) {
+                        visitor(obj);
+                    }
+                }
+            }
+        }
     }
 }
 

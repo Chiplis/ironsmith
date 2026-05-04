@@ -228,6 +228,23 @@ fn cost_candidate_count(
                         .count();
                 }
             }
+            Zone::OutsideGame => {
+                let mut hidden_zone_filter = effect.filter.clone();
+                hidden_zone_filter.owner = None;
+                let matches_hidden_filter = |obj: &crate::object::Object| {
+                    if effect.filter.other && obj.id == source {
+                        return false;
+                    }
+                    hidden_zone_filter.matches(obj, &filter_ctx, game)
+                };
+                total += hidden_zone_owner_ids(&effect.filter)
+                    .into_iter()
+                    .filter_map(|owner_id| game.player(owner_id))
+                    .flat_map(|player| player.sideboard.iter())
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| matches_hidden_filter(obj))
+                    .count();
+            }
             _ => {
                 total += game
                     .objects_in_zone(search_zone)
@@ -332,6 +349,7 @@ impl EffectExecutor for ChooseObjectsEffect {
         let zone_desc = match self.filter.zone.or(self.zone) {
             Some(Zone::Hand) => "from your hand",
             Some(Zone::Graveyard) => "from your graveyard",
+            Some(Zone::OutsideGame) => "from outside the game",
             Some(Zone::Battlefield) | None => "",
             _ => "",
         };

@@ -1357,6 +1357,7 @@ impl WasmGame {
         }
 
         let decks = config.decks.as_ref();
+        let sideboards = config.sideboards.as_ref();
         let commanders = config.commanders.as_ref();
 
         if let Some(decks) = decks
@@ -1371,6 +1372,13 @@ impl WasmGame {
         {
             return Err(JsValue::from_str(
                 "commander count must match number of players in game",
+            ));
+        }
+        if let Some(sideboards) = sideboards
+            && sideboards.len() != player_count
+        {
+            return Err(JsValue::from_str(
+                "sideboard count must match number of players in game",
             ));
         }
 
@@ -1426,6 +1434,19 @@ impl WasmGame {
                     &config.player_names[player_index],
                     "commander",
                     commander_list,
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        if let Some(sideboards) = sideboards {
+            for (player_index, sideboard) in sideboards.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index,
+                    &config.player_names[player_index],
+                    "sideboard",
+                    sideboard,
                     &mut cache,
                     &mut issues,
                 );

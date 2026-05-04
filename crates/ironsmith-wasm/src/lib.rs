@@ -604,26 +604,13 @@ fn stack_display_lines_from_abilities(
                     Some(format!("{trigger}: {effects}"))
                 }
             }
-            (ironsmith::ability::AbilityKind::Activated(activated), false) => {
-                let cost = activated.mana_cost.display();
-                let effects = if let Some(mana) = &activated.mana_output {
-                    if mana.is_empty() {
-                        ironsmith::compiled_text::compile_effect_list(&activated.effects)
-                    } else {
-                        format!(
-                            "Add {}",
-                            ironsmith::mana::ManaCost::from_symbols(mana.clone()).to_oracle()
-                        )
-                    }
+            (ironsmith::ability::AbilityKind::Activated(_), false) => {
+                let text = ironsmith::compiled_text::ability_surface_text(ability);
+                if text.trim().is_empty() {
+                    Some("Activated ability".to_string())
                 } else {
-                    ironsmith::compiled_text::compile_effect_list(&activated.effects)
-                };
-                Some(match (cost.trim().is_empty(), effects.trim().is_empty()) {
-                    (true, true) => "Activated ability".to_string(),
-                    (false, true) => cost,
-                    (true, false) => effects,
-                    (false, false) => format!("{cost}: {effects}"),
-                })
+                    Some(text)
+                }
             }
             _ => None,
         })
@@ -2260,7 +2247,7 @@ struct CustomCardSeedResult {
 
 static AUTOCOMPLETE_CARD_NAMES: OnceLock<Vec<(String, String)>> = OnceLock::new();
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MatchSetupInput {
     player_names: Vec<String>,
@@ -2270,6 +2257,8 @@ struct MatchSetupInput {
     format: MatchFormatInput,
     #[serde(default)]
     decks: Option<Vec<Vec<String>>>,
+    #[serde(default)]
+    sideboards: Option<Vec<Vec<String>>>,
     #[serde(default)]
     commanders: Option<Vec<Vec<String>>>,
     #[serde(default)]
@@ -2293,7 +2282,7 @@ struct MatchValidationResult {
     issues: Vec<MatchValidationIssue>,
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum MatchFormatInput {
     #[default]
@@ -2363,6 +2352,30 @@ impl PregameState {
 
 mod wasm_game_impl;
 use wasm_game_impl::*;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod native_tests {
+    use super::*;
+
+    #[test]
+    fn phyrexian_tower_action_surface_uses_compiled_cost_text() {
+        let definition = ironsmith_registry::cards::definitions::phyrexian_tower();
+        let lines = stack_display_lines_from_abilities(&definition.abilities, false);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Sacrifice a creature") && line.contains("Add {B}{B}")),
+            "Phyrexian Tower sacrifice mana line should use compiled oracle text: {lines:?}"
+        );
+        assert!(
+            lines.iter().all(|line| {
+                !line.contains("Exile a creature") && !line.contains("Sacrifice a permanent")
+            }),
+            "Phyrexian Tower action lines should not expose raw tagged costs: {lines:?}"
+        );
+    }
+}
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;

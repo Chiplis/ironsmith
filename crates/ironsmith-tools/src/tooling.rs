@@ -20,12 +20,14 @@ use ironsmith::cards::{
 use ironsmith::compiled_text::compiled_text_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
-use ironsmith_compiler::{CardDefinitionBuilder as CompilerCardDefinitionBuilder, parse_trace};
+use ironsmith_compiler::{
+    CardDefinitionBuilder as CompilerCardDefinitionBuilder, parse_loss, parse_trace,
+};
 
 pub const DEFAULT_DB_PATH: &str = "reports/engine-status.sqlite3";
 pub const SCRYFALL_TAGGER_TAGS_URL: &str = "https://scryfall.com/docs/tagger-tags";
 pub const TAGGER_BASE_URL: &str = "https://tagger.scryfall.com";
-const DB_SCHEMA_VERSION: i64 = 9;
+const DB_SCHEMA_VERSION: i64 = 10;
 const FIXED_SNAPSHOT_CARD_ID: u32 = 1;
 const SUPPORTED_PAPER_FORMATS: &[&str] = &["commander", "standard", "modern", "legacy", "vintage"];
 const TAGGER_FETCH_ORACLE_CARD_TAG_QUERY: &str = r#"
@@ -151,6 +153,7 @@ pub struct ParseAttempt {
     pub status: ParseStatus,
     pub parse_error: Option<String>,
     pub definition: Option<CardDefinition>,
+    pub parse_loss: parse_loss::ParseLossReport,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +172,9 @@ pub struct CompilationSnapshot {
     pub line_delta: isize,
     pub semantic_mismatch: bool,
     pub has_unimplemented: bool,
+    pub parse_lossy: bool,
+    pub parse_loss_reasons: String,
+    pub parse_loss_count: usize,
     pub content_hash: String,
 }
 
@@ -308,32 +314,32 @@ pub fn load_card_by_name(path: &str, name: &str) -> Result<Option<CardPayload>, 
 }
 
 pub fn parse_card_with_fallback(name: &str, parse_input: &str) -> ParseAttempt {
-    match parse_card(name, parse_input, false) {
-        ParseAttempt {
-            status: ParseStatus::StrictCompiled,
-            definition,
-            ..
-        } => ParseAttempt {
-            status: ParseStatus::StrictCompiled,
+    let strict_attempt = parse_card(name, parse_input, false);
+    if strict_attempt.status == ParseStatus::StrictCompiled {
+        return strict_attempt;
+    }
+    let strict_error = strict_attempt.parse_error.clone();
+    let allow_attempt = parse_card(name, parse_input, true);
+    if allow_attempt.status == ParseStatus::StrictCompiled {
+        let mut parse_loss = allow_attempt.parse_loss;
+        parse_loss.push_reason(
+            "allow_unsupported_fallback",
+            strict_error
+                .as_deref()
+                .unwrap_or("strict parse failed before allow-unsupported fallback"),
+        );
+        return ParseAttempt {
+            status: ParseStatus::CompiledWithAllowUnsupported,
             parse_error: None,
-            definition,
-        },
-        strict_failure => match parse_card(name, parse_input, true) {
-            ParseAttempt {
-                status: ParseStatus::StrictCompiled,
-                definition,
-                ..
-            } => ParseAttempt {
-                status: ParseStatus::CompiledWithAllowUnsupported,
-                parse_error: None,
-                definition,
-            },
-            _ => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: strict_failure.parse_error,
-                definition: None,
-            },
-        },
+            definition: allow_attempt.definition,
+            parse_loss,
+        };
+    }
+    ParseAttempt {
+        status: ParseStatus::ParseFailed,
+        parse_error: strict_error,
+        definition: None,
+        parse_loss: strict_attempt.parse_loss,
     }
 }
 
@@ -378,6 +384,7 @@ pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> C
         attempt.status,
         attempt.parse_error.clone(),
         attempt.definition.as_ref(),
+        &attempt.parse_loss,
     );
     snapshot.card_name = payload.name.clone();
     snapshot.raw_oracle_text = payload.raw_oracle_text.clone();
@@ -395,6 +402,7 @@ pub fn snapshot_from_payload_definition(
         ParseStatus::StrictCompiled,
         None,
         Some(definition),
+        &parse_loss::ParseLossReport::default(),
     );
     snapshot.card_name = payload.name.clone();
     snapshot.raw_oracle_text = payload.raw_oracle_text.clone();
@@ -409,6 +417,7 @@ impl CompilationSnapshot {
         parse_status: ParseStatus,
         parse_error: Option<String>,
         definition: Option<&CardDefinition>,
+        parse_loss: &parse_loss::ParseLossReport,
     ) -> Self {
         let stored_oracle_text = strip_parenthetical_text(oracle_text);
         let (
@@ -478,6 +487,9 @@ impl CompilationSnapshot {
             line_delta,
             semantic_mismatch,
             has_unimplemented,
+            parse_lossy: parse_loss.is_lossy(),
+            parse_loss_reasons: parse_loss.reasons_text(),
+            parse_loss_count: parse_loss.count(),
             content_hash: String::new(),
         };
         snapshot.content_hash = snapshot.compute_content_hash();
@@ -518,6 +530,12 @@ impl CompilationSnapshot {
         hasher.update((self.semantic_mismatch as u8).to_string().as_bytes());
         hasher.update([0]);
         hasher.update((self.has_unimplemented as u8).to_string().as_bytes());
+        hasher.update([0]);
+        hasher.update((self.parse_lossy as u8).to_string().as_bytes());
+        hasher.update([0]);
+        hasher.update(self.parse_loss_reasons.as_bytes());
+        hasher.update([0]);
+        hasher.update(self.parse_loss_count.to_string().as_bytes());
         let digest = hasher.finalize();
         let mut out = String::with_capacity(digest.len() * 2);
         for byte in digest {
@@ -583,6 +601,9 @@ impl CardStatusDb {
                 line_delta INTEGER NOT NULL,
                 semantic_mismatch INTEGER NOT NULL,
                 has_unimplemented INTEGER NOT NULL,
+                parse_lossy INTEGER NOT NULL DEFAULT 0,
+                parse_loss_reasons TEXT NOT NULL DEFAULT '',
+                parse_loss_count INTEGER NOT NULL DEFAULT 0,
                 compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 content_hash TEXT NOT NULL,
                 UNIQUE(card_name, content_hash)
@@ -679,6 +700,28 @@ impl CardStatusDb {
         Ok(())
     }
 
+    fn add_parse_loss_columns_if_needed(&self) -> Result<(), Box<dyn Error>> {
+        if !self.card_compilation_has_column("parse_lossy") {
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 ADD COLUMN parse_lossy INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        if !self.card_compilation_has_column("parse_loss_reasons") {
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 ADD COLUMN parse_loss_reasons TEXT NOT NULL DEFAULT '';",
+            )?;
+        }
+        if !self.card_compilation_has_column("parse_loss_count") {
+            self.conn.execute_batch(
+                "ALTER TABLE card_compilation
+                 ADD COLUMN parse_loss_count INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn initialize(&self) -> Result<(), Box<dyn Error>> {
         let version: i64 = self
             .conn
@@ -770,6 +813,9 @@ impl CardStatusDb {
                 line_delta INTEGER NOT NULL,
                 semantic_mismatch INTEGER NOT NULL,
                 has_unimplemented INTEGER NOT NULL,
+                parse_lossy INTEGER NOT NULL DEFAULT 0,
+                parse_loss_reasons TEXT NOT NULL DEFAULT '',
+                parse_loss_count INTEGER NOT NULL DEFAULT 0,
                 compiled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 content_hash TEXT NOT NULL,
                 UNIQUE(card_name, content_hash)
@@ -828,6 +874,15 @@ impl CardStatusDb {
              GROUP BY card_name",
             [],
         )?;
+        self.add_parse_loss_columns_if_needed()?;
+        self.conn.execute_batch(
+            "DROP VIEW IF EXISTS latest_card_compilation;
+             CREATE VIEW latest_card_compilation AS
+             SELECT cc.*, latest.agent_running
+             FROM latest_card_observation latest
+             JOIN card_compilation cc
+             ON cc.id = latest.compilation_id;",
+        )?;
         self.conn
             .pragma_update(None, "user_version", DB_SCHEMA_VERSION)?;
         Ok(())
@@ -864,8 +919,11 @@ impl CardStatusDb {
                 line_delta,
                 semantic_mismatch,
                 has_unimplemented,
+                parse_lossy,
+                parse_loss_reasons,
+                parse_loss_count,
                 content_hash
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 snapshot.card_name,
                 snapshot.oracle_text,
@@ -881,6 +939,9 @@ impl CardStatusDb {
                 snapshot.line_delta as i64,
                 snapshot.semantic_mismatch,
                 snapshot.has_unimplemented,
+                snapshot.parse_lossy,
+                snapshot.parse_loss_reasons,
+                snapshot.parse_loss_count as i64,
                 snapshot.content_hash,
             ],
         )?;
@@ -934,8 +995,11 @@ impl CardStatusDb {
                     line_delta,
                     semantic_mismatch,
                     has_unimplemented,
+                    parse_lossy,
+                    parse_loss_reasons,
+                    parse_loss_count,
                     content_hash
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             )?;
             let mut select_compilation_id = tx.prepare(
                 "SELECT id
@@ -972,6 +1036,9 @@ impl CardStatusDb {
                     snapshot.line_delta as i64,
                     snapshot.semantic_mismatch,
                     snapshot.has_unimplemented,
+                    snapshot.parse_lossy,
+                    snapshot.parse_loss_reasons.as_str(),
+                    snapshot.parse_loss_count as i64,
                     snapshot.content_hash.as_str(),
                 ])?;
 
@@ -1977,28 +2044,36 @@ fn parse_card(name: &str, parse_input: &str, allow_unsupported: bool) -> ParseAt
             allow_unsupported,
             parse_input.lines().count()
         ));
-        let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            ironsmith_registry::compile_builder_to_runtime_definition(
-                CompilerCardDefinitionBuilder::new(CardId::from_raw(FIXED_SNAPSHOT_CARD_ID), name),
-                parse_input.to_string(),
-                allow_unsupported,
-            )
-        }));
+        let (result, parse_loss) = parse_loss::capture(|| {
+            panic::catch_unwind(AssertUnwindSafe(|| {
+                ironsmith_registry::compile_builder_to_runtime_definition(
+                    CompilerCardDefinitionBuilder::new(
+                        CardId::from_raw(FIXED_SNAPSHOT_CARD_ID),
+                        name,
+                    ),
+                    parse_input.to_string(),
+                    allow_unsupported,
+                )
+            }))
+        });
         match result {
             Ok(Ok(definition)) => ParseAttempt {
                 status: ParseStatus::StrictCompiled,
                 parse_error: None,
                 definition: Some(definition),
+                parse_loss,
             },
             Ok(Err(err)) => ParseAttempt {
                 status: ParseStatus::ParseFailed,
                 parse_error: Some(format!("{err:?}")),
                 definition: None,
+                parse_loss,
             },
             Err(payload) => ParseAttempt {
                 status: ParseStatus::ParseFailed,
                 parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
                 definition: None,
+                parse_loss,
             },
         }
     })
@@ -2182,6 +2257,10 @@ fn definition_from_payload(
             parse_trace::event(format!(
                 "payload compile: parse_input failed: {parse_input_err}; trying oracle text"
             ));
+            parse_loss::record(
+                "oracle_only_fallback",
+                format!("parse input failed before oracle text fallback: {parse_input_err}"),
+            );
             ironsmith_registry::compile_builder_to_runtime_definition(
                 builder,
                 payload.oracle_text.clone(),
@@ -2198,56 +2277,61 @@ fn definition_from_payload(
 
 fn parse_card_payload(payload: &CardPayload, allow_unsupported: bool) -> ParseAttempt {
     with_allow_unsupported(allow_unsupported, || {
-        let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            definition_from_payload(payload, CardId::from_raw(FIXED_SNAPSHOT_CARD_ID))
-        }));
+        let (result, parse_loss) = parse_loss::capture(|| {
+            panic::catch_unwind(AssertUnwindSafe(|| {
+                definition_from_payload(payload, CardId::from_raw(FIXED_SNAPSHOT_CARD_ID))
+            }))
+        });
         match result {
             Ok(Ok(definition)) => ParseAttempt {
                 status: ParseStatus::StrictCompiled,
                 parse_error: None,
                 definition: Some(definition),
+                parse_loss,
             },
             Ok(Err(err)) => ParseAttempt {
                 status: ParseStatus::ParseFailed,
                 parse_error: Some(err),
                 definition: None,
+                parse_loss,
             },
             Err(payload) => ParseAttempt {
                 status: ParseStatus::ParseFailed,
                 parse_error: Some(format!("panic: {}", panic_payload_to_string(payload))),
                 definition: None,
+                parse_loss,
             },
         }
     })
 }
 
 fn parse_card_payload_with_fallback(payload: &CardPayload) -> ParseAttempt {
-    match parse_card_payload(payload, false) {
-        ParseAttempt {
-            status: ParseStatus::StrictCompiled,
-            definition,
-            ..
-        } => ParseAttempt {
-            status: ParseStatus::StrictCompiled,
+    let strict_attempt = parse_card_payload(payload, false);
+    if strict_attempt.status == ParseStatus::StrictCompiled {
+        return strict_attempt;
+    }
+    let strict_error = strict_attempt.parse_error.clone();
+    let allow_attempt = parse_card_payload(payload, true);
+    if allow_attempt.status == ParseStatus::StrictCompiled {
+        let mut parse_loss = allow_attempt.parse_loss;
+        parse_loss.push_reason(
+            "allow_unsupported_fallback",
+            strict_error
+                .as_deref()
+                .unwrap_or("strict parse failed before allow-unsupported fallback"),
+        );
+        return ParseAttempt {
+            status: ParseStatus::CompiledWithAllowUnsupported,
             parse_error: None,
-            definition,
-        },
-        strict_failure => match parse_card_payload(payload, true) {
-            ParseAttempt {
-                status: ParseStatus::StrictCompiled,
-                definition,
-                ..
-            } => ParseAttempt {
-                status: ParseStatus::CompiledWithAllowUnsupported,
-                parse_error: None,
-                definition,
-            },
-            _ => ParseAttempt {
-                status: ParseStatus::ParseFailed,
-                parse_error: strict_failure.parse_error,
-                definition: None,
-            },
-        },
+            definition: allow_attempt.definition,
+            parse_loss,
+        };
+    }
+    ParseAttempt {
+        status: ParseStatus::ParseFailed,
+        parse_error: strict_error,
+        definition: None,
+        parse_loss: strict_attempt.parse_loss,
     }
 }
 
@@ -2622,6 +2706,7 @@ CardDefinition {
             ParseStatus::StrictCompiled,
             None,
             Some(&definition),
+            &parse_loss::ParseLossReport::default(),
         );
         let (_oracle_cov, _compiled_cov, lexical_similarity, _delta, _mismatch) =
             compare_card_semantics_scored("House Cartographer", oracle, &compiled, None);
@@ -2656,6 +2741,7 @@ CardDefinition {
             ParseStatus::StrictCompiled,
             None,
             Some(&definition),
+            &parse_loss::ParseLossReport::default(),
         );
         let stored_text = snapshot
             .compiled_text
@@ -2687,6 +2773,7 @@ CardDefinition {
             ParseStatus::StrictCompiled,
             None,
             Some(&definition),
+            &parse_loss::ParseLossReport::default(),
         );
 
         assert_eq!(snapshot.oracle_text, "Flying\nCycling {2}");
@@ -2716,9 +2803,9 @@ CardDefinition {
         );
         db.connection()
             .prepare(
-                "SELECT normalized_oracle_text, compiled_text FROM latest_card_compilation LIMIT 0",
+                "SELECT normalized_oracle_text, compiled_text, parse_lossy, parse_loss_reasons, parse_loss_count FROM latest_card_compilation LIMIT 0",
             )
-            .expect("latest view should expose normalized oracle and compiled text");
+            .expect("latest view should expose normalized oracle, compiled text, and parse loss columns");
         assert!(
             db.connection()
                 .prepare("SELECT unprocessed_compiled_text FROM latest_card_compilation LIMIT 0")
@@ -2775,6 +2862,35 @@ CardDefinition {
             compiled,
             "Reach\nWhenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn."
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn db_persists_parse_loss_provenance() {
+        let path = unique_temp_path("parse-loss");
+        let db = CardStatusDb::open(&path).expect("open db");
+        let mut snapshot = compile_snapshot_from_payload(&lightning_bolt_payload());
+        snapshot.parse_lossy = true;
+        snapshot.parse_loss_reasons =
+            "suffix_object_filter_recovery: parsed suffix fixture".to_string();
+        snapshot.parse_loss_count = 1;
+        snapshot.content_hash = snapshot.compute_content_hash();
+
+        assert!(db.insert_snapshot_if_changed(&snapshot).expect("insert"));
+
+        let (parse_lossy, parse_loss_reasons, parse_loss_count): (bool, String, i64) = db
+            .connection()
+            .query_row(
+                "SELECT parse_lossy, parse_loss_reasons, parse_loss_count
+                 FROM latest_card_compilation
+                 WHERE card_name = ?1",
+                ["Lightning Bolt"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("stored parse loss provenance");
+        assert!(parse_lossy);
+        assert!(parse_loss_reasons.contains("suffix_object_filter_recovery"));
+        assert!(parse_loss_count >= 1);
         let _ = fs::remove_file(path);
     }
 

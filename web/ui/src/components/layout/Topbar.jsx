@@ -2,14 +2,10 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import PhaseTrack from "@/components/board/PhaseTrack";
-import { ChevronLeft, ChevronRight, Github } from "lucide-react";
+import { Bug, ChevronLeft, ChevronRight, Github, ScrollText } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
-
-const pill = "stone-pill text-[13px] uppercase cursor-pointer hover:brightness-110 transition-all select-none";
 
 function dispatchPlayerTargetChoice(player, legalTargetPlayerIds) {
   const directId = Number(player?.id);
@@ -53,7 +49,6 @@ export default function Topbar({
 
   const players = state?.players || [];
   const activePlayer = players.find((player) => player.id === state?.active_player) || null;
-  const priorityPlayer = players.find((player) => player.id === state?.priority_player) || null;
   const me = players.find((player) => player.id === state?.perspective) || players[0];
   const meIndex = players.findIndex((player) => player.id === me?.id);
   const orderedPlayers = meIndex >= 0
@@ -169,6 +164,70 @@ export default function Topbar({
   const showCenterLane = !nonDesktopViewport && !tabletCompactViewport;
   const showInlineControls = !nonDesktopViewport && !tabletCompactViewport;
   const viewportTier = largeDesktopViewport ? "large" : smallDesktopViewport ? "small" : tabletCompactViewport ? "tablet" : nonDesktopViewport ? "phone" : "desktop";
+  const utilityControls = (
+    <div className="topbar-minor-controls topbar-minor-controls--utility">
+      {showInlineControls ? (
+        <Button
+          variant="secondary"
+          size="icon-xs"
+          className="stone-pill topbar-github-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
+          asChild
+        >
+          <a
+            href="https://github.com/Chiplis/ironsmith"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open Ironsmith GitHub repository"
+            title="GitHub"
+          >
+            <Github className="size-3.5" />
+          </a>
+        </Button>
+      ) : null}
+      <TopbarMenuSheet
+        playerNames={playerNames}
+        setPlayerNames={setPlayerNames}
+        startingLife={startingLife}
+        setStartingLife={setStartingLife}
+        onReset={onReset}
+        onRefresh={onRefresh}
+        onToggleLog={onToggleLog}
+        onEnterDeckLoading={onEnterDeckLoading}
+        onOpenPuzzleSetup={onOpenPuzzleSetup}
+        onOpenLobby={onOpenLobby}
+        deckLoadingMode={deckLoadingMode}
+        puzzleSetupMode={puzzleSetupMode}
+        onAddCardNotice={onAddCardNotice}
+        triggerIcon={showInlineControls ? "settings" : "menu"}
+        showQuickActions={!showInlineControls}
+      />
+      {showInlineControls ? (
+        <>
+          <Button
+            variant="secondary"
+            size="icon-xs"
+            className="stone-pill topbar-log-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
+            onClick={onToggleLog}
+            aria-label="Toggle activity log"
+            title="Log"
+          >
+            <ScrollText className="size-3.5" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon-xs"
+            className={`stone-pill topbar-debug-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]${inspectorDebug ? " is-active" : ""}`}
+            onClick={() => setInspectorDebug(!inspectorDebug)}
+            aria-label={inspectorDebug ? "Disable debug overlay" : "Enable debug overlay"}
+            aria-pressed={inspectorDebug}
+            title={inspectorDebug ? "Debug enabled" : "Debug"}
+          >
+            <Bug className="size-3.5" />
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
 
   return (
     <header
@@ -179,6 +238,7 @@ export default function Topbar({
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
           Ironsmith
         </h1>
+        {showInlineControls ? utilityControls : null}
         {showCenterLane ? (
           <div className="topbar-phase-shell">
             <PhaseTrack compact={middleDocked} />
@@ -243,74 +303,13 @@ export default function Topbar({
             ) : null}
           </div>
         ) : null}
-        <div className="topbar-phase-caption topbar-phase-caption--inline">
-          <span>{phaseSummary}</span>
-          <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-          <span>Turn {state?.turn_number ?? "-"}</span>
-          {activePlayer ? (
-            <>
-              <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-              <span>Active {activePlayer.name}</span>
-            </>
-          ) : null}
-          {priorityPlayer ? (
-            <>
-              <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-              <span>Priority {priorityPlayer.name}</span>
-            </>
-          ) : null}
-        </div>
       </div>
 
-      <div className="topbar-side-cluster topbar-side-cluster--right">
-        <div className="topbar-minor-controls topbar-minor-controls--utility">
-          {showInlineControls ? (
-            <>
-              <label className="toolbar-checkbox toolbar-debug-toggle topbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer uppercase">
-                <Checkbox
-                  checked={inspectorDebug}
-                  onCheckedChange={(value) => setInspectorDebug(!!value)}
-                  className="h-3.5 w-3.5"
-                />
-                Debug
-              </label>
-              <Badge variant="secondary" className={pill} onClick={onToggleLog}>Log</Badge>
-              <Button
-                variant="secondary"
-                size="icon-xs"
-                className="stone-pill topbar-github-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
-                asChild
-              >
-                <a
-                  href="https://github.com/Chiplis/ironsmith"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open Ironsmith GitHub repository"
-                >
-                  <Github className="size-3.5" />
-                </a>
-              </Button>
-            </>
-          ) : null}
-          <TopbarMenuSheet
-            playerNames={playerNames}
-            setPlayerNames={setPlayerNames}
-            startingLife={startingLife}
-            setStartingLife={setStartingLife}
-            onReset={onReset}
-            onRefresh={onRefresh}
-            onToggleLog={onToggleLog}
-            onEnterDeckLoading={onEnterDeckLoading}
-            onOpenPuzzleSetup={onOpenPuzzleSetup}
-            onOpenLobby={onOpenLobby}
-            deckLoadingMode={deckLoadingMode}
-            puzzleSetupMode={puzzleSetupMode}
-            onAddCardNotice={onAddCardNotice}
-            triggerIcon={showInlineControls ? "settings" : "menu"}
-            showQuickActions={!showInlineControls}
-          />
+      {!showInlineControls ? (
+        <div className="topbar-side-cluster topbar-side-cluster--right">
+          {utilityControls}
         </div>
-      </div>
+      ) : null}
     </header>
   );
 }

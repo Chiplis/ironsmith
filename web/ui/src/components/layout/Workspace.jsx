@@ -6,6 +6,7 @@ import { useHoverActions } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
+import RematchSideboardingView from "@/components/board/RematchSideboardingView";
 import RightRail from "@/components/right-rail/RightRail";
 import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
@@ -495,6 +496,7 @@ export default function Workspace({
   const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
   const showSideDocks = !nonDesktopViewport && !tabletCompactViewport && !smallDesktopViewport;
   const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
+  const showRematchSideboarding = multiplayer?.rematch?.phase === "sideboarding";
 
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
@@ -1245,53 +1247,57 @@ export default function Workspace({
         </div>
       )}
       <div className="min-h-0 h-full overflow-visible">
-        <TableCore
-          selectedObjectId={selectedObjectId}
-          onInspect={handleInspectObject}
-          focusedStackObjectId={focusedStackObjectId}
-          onFocusStackObject={handleFocusStackObject}
-          zoneViews={effectiveZoneViews}
-          zoneActivityByPlayer={zoneActivityByPlayer}
-          deckLoadingMode={deckLoadingMode}
-          puzzleSetupMode={puzzleSetupMode}
-          onLoadDecks={onLoadDecks}
-          onCancelDeckLoading={onCancelDeckLoading}
-          onLoadPuzzle={onLoadPuzzle}
-          onCancelPuzzleSetup={onCancelPuzzleSetup}
-          legalTargetPlayerIds={legalTargetPlayerIds}
-          legalTargetObjectIds={legalTargetObjectIds}
-          myZoneHeaderControls={mobileZoneHeaderControls}
-          mobileOpponentIndex={mobileOpponentIndex}
-          setMobileOpponentIndex={setMobileOpponentIndex}
-          mobileViewMode={mobileViewMode}
-          setMobileViewMode={setMobileViewMode}
-          mobilePhaseStops={mobilePhaseStops}
-          setMobilePhaseStops={setMobilePhaseStops}
-          middleTopbar={middleTopbar}
-          middleAddCardBar={middleAddCardBar}
-          zoneActionControls={zoneActionControls}
-          middleInspectorDock={showMiddleInspectorDock ? (
-            <RightRail
-              pinnedObjectId={pinnedInspectorObjectId}
-              transientInspectorPreview={activeTransientInspectorPreview}
-              transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-              transientInspectorPreviewCount={transientInspectorPreviews.length}
-              onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-              onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-              onInspectObject={handleInspectObject}
-              suppressFallback={suppressFallbackInspector}
-              inline
-              inlineDockPlacement="top"
-              inlineExpandedAnchor="top"
-              inlineExpandedMaxHeight={232}
-              expandInlineToZoneViewer
-              allowTopInlinePlacement
-              inlineExpanded={inlineInspectorExpanded}
-            />
-          ) : null}
-        />
+        {showRematchSideboarding ? (
+          <RematchSideboardingView />
+        ) : (
+          <TableCore
+            selectedObjectId={selectedObjectId}
+            onInspect={handleInspectObject}
+            focusedStackObjectId={focusedStackObjectId}
+            onFocusStackObject={handleFocusStackObject}
+            zoneViews={effectiveZoneViews}
+            zoneActivityByPlayer={zoneActivityByPlayer}
+            deckLoadingMode={deckLoadingMode}
+            puzzleSetupMode={puzzleSetupMode}
+            onLoadDecks={onLoadDecks}
+            onCancelDeckLoading={onCancelDeckLoading}
+            onLoadPuzzle={onLoadPuzzle}
+            onCancelPuzzleSetup={onCancelPuzzleSetup}
+            legalTargetPlayerIds={legalTargetPlayerIds}
+            legalTargetObjectIds={legalTargetObjectIds}
+            myZoneHeaderControls={mobileZoneHeaderControls}
+            mobileOpponentIndex={mobileOpponentIndex}
+            setMobileOpponentIndex={setMobileOpponentIndex}
+            mobileViewMode={mobileViewMode}
+            setMobileViewMode={setMobileViewMode}
+            mobilePhaseStops={mobilePhaseStops}
+            setMobilePhaseStops={setMobilePhaseStops}
+            middleTopbar={middleTopbar}
+            middleAddCardBar={middleAddCardBar}
+            zoneActionControls={zoneActionControls}
+            middleInspectorDock={showMiddleInspectorDock ? (
+              <RightRail
+                pinnedObjectId={pinnedInspectorObjectId}
+                transientInspectorPreview={activeTransientInspectorPreview}
+                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
+                transientInspectorPreviewCount={transientInspectorPreviews.length}
+                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
+                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
+                onInspectObject={handleInspectObject}
+                suppressFallback={suppressFallbackInspector}
+                inline
+                inlineDockPlacement="top"
+                inlineExpandedAnchor="top"
+                inlineExpandedMaxHeight={232}
+                expandInlineToZoneViewer
+                allowTopInlinePlacement
+                inlineExpanded={inlineInspectorExpanded}
+              />
+            ) : null}
+          />
+        )}
       </div>
-      {!showMiddleInspectorDock && showTopLeftInspectorDock && (
+      {!showRematchSideboarding && !showMiddleInspectorDock && showTopLeftInspectorDock && (
         <div
           className="pointer-events-none fixed left-[6px] top-[6px] z-[70] flex items-start justify-start overflow-visible"
           style={{
@@ -1321,7 +1327,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!showMiddleInspectorDock && showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
+      {!showRematchSideboarding && !showMiddleInspectorDock && showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{
@@ -1369,7 +1375,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!nonDesktopViewport && !puzzleSetupMode && (
+      {!showRematchSideboarding && !nonDesktopViewport && !puzzleSetupMode && (
         <div
           className="pointer-events-none fixed inset-x-0 bottom-2 z-30 flex items-end gap-1.5 overflow-visible px-2"
           style={{ height: `${HAND_PEEK_HEIGHT}px` }}

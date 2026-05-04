@@ -833,6 +833,21 @@ fn normalize_named_source_trigger_for_builder(
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some((trigger_head, effect_body)) = str_split_once(lower.as_str(), ",") {
+        let rewritten_head =
+            normalize_named_source_trigger_head_for_builder(builder, trigger_head)?;
+        return Some(format!("{rewritten_head},{effect_body}"));
+    }
+
+    normalize_named_source_trigger_head_for_builder(builder, lower.as_str())
+}
+
+fn normalize_named_source_trigger_head_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim();
     let subject = if builder
         .card_builder
         .card_types_ref()
@@ -879,28 +894,26 @@ fn normalize_named_source_trigger_for_builder(
         "this permanent"
     };
 
-    let lower = trimmed.to_ascii_lowercase();
-
     let name = builder.card_builder.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
-        if let Some(remainder) = str_strip_prefix(lower.as_str(), &(name_lower + " ")) {
+        if let Some(remainder) = str_strip_prefix(trimmed, &(name_lower + " ")) {
             return Some(format!("{subject} {remainder}"));
         }
     }
 
     let names = source_name_aliases_for_builder(builder);
-    if !names.is_empty() && !lower.contains(" named ") {
-        let mut rewritten = lower.clone();
+    if !names.is_empty() && !trimmed.contains(" named ") {
+        let mut rewritten = trimmed.to_string();
         for name_lower in &names {
             rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
         }
-        if rewritten != lower {
+        if rewritten != trimmed {
             return Some(rewritten);
         }
     }
 
-    let (_, rest) = str_split_once(lower.as_str(), " enters ")?;
+    let (_, rest) = str_split_once(trimmed, " enters ")?;
     Some(format!("{subject} enters {rest}"))
 }
 

@@ -7,10 +7,11 @@ import {
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
+  parseSideboardList,
 } from "@/lib/decklists";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 
-const PROTOCOL_VERSION = 4;
+const PROTOCOL_VERSION = 5;
 const DEFAULT_OPENING_HAND_SIZE = 7;
 const PEER_OPEN_TIMEOUT_MS = 10000;
 const PEER_CONNECT_TIMEOUT_MS = 15000;
@@ -39,6 +40,7 @@ function createEmptyState() {
     localDeckCount: 0,
     localCommanderCount: 0,
     players: [],
+    rematch: null,
     matchStarted: false,
     lastAppliedSequence: 0,
     submittingAction: false,
@@ -84,7 +86,7 @@ function mixMatchSeedCardLists(hash, lists) {
   return next;
 }
 
-function createMatchSeed({ players, format, decks, commanders, startingLife, openingHandSize }) {
+function createMatchSeed({ players, format, decks, commanders, sideboards, startingLife, openingHandSize }) {
   let hash = MATCH_SEED_OFFSET;
   hash = mixMatchSeedString(hash, "ironsmith-match-seed-v1");
   hash = mixMatchSeedString(hash, format || MATCH_FORMAT_NORMAL);
@@ -97,6 +99,7 @@ function createMatchSeed({ players, format, decks, commanders, startingLife, ope
   }
   hash = mixMatchSeedCardLists(hash, decks);
   hash = mixMatchSeedCardLists(hash, commanders);
+  hash = mixMatchSeedCardLists(hash, sideboards);
 
   const seed = Number(hash & BigInt(Number.MAX_SAFE_INTEGER));
   return seed > 0 ? seed : 1;
@@ -253,10 +256,12 @@ function sanitizeCardList(cards) {
 
 function parseDeckSubmission(format, deckText, commanderText = "") {
   const deck = sanitizeCardList(parseDeckList(deckText));
+  const sideboard = sanitizeCardList(parseSideboardList(deckText));
   const commanders = sanitizeCardList(parseCommanderList(commanderText));
   const status = evaluateLobbyDeckSubmission(format, deck, commanders);
   return {
     deck,
+    sideboard,
     commanders,
     deckCount: status.deckCount,
     commanderCount: status.commanderCount,
@@ -264,9 +269,10 @@ function parseDeckSubmission(format, deckText, commanderText = "") {
   };
 }
 
-function withDeckState(player, format, deck, commanders = []) {
+function withDeckState(player, format, deck, commanders = [], sideboard = []) {
   const normalizedDeck = sanitizeCardList(deck);
   const normalizedCommanders = sanitizeCardList(commanders);
+  const normalizedSideboard = sanitizeCardList(sideboard);
   const status = evaluateLobbyDeckSubmission(
     format,
     normalizedDeck,
@@ -275,11 +281,43 @@ function withDeckState(player, format, deck, commanders = []) {
   return {
     ...player,
     deck: normalizedDeck,
+    sideboard: normalizedSideboard,
     commanders: normalizedCommanders,
     deckCount: status.deckCount,
     commanderCount: status.commanderCount,
     ready: status.ready,
   };
+}
+
+function buildRematchStateFromPayload(payload, localPeerId, readyOverrides = new Map()) {
+  const players = reindexPlayers(payload?.players || []).map((player) => {
+    const index = Number(player.index || 0);
+    const ready = readyOverrides.has(player.peerId)
+      ? Boolean(readyOverrides.get(player.peerId))
+      : false;
+    return {
+      ...player,
+      ready,
+      deck: sanitizeCardList(payload?.decks?.[index]),
+      sideboard: sanitizeCardList(payload?.sideboards?.[index]),
+      commanders: sanitizeCardList(payload?.commanders?.[index]),
+    };
+  });
+  const localPlayer = players.find((player) => player.peerId === localPeerId) || null;
+  return {
+    phase: "sideboarding",
+    players,
+    localDeck: sanitizeCardList(localPlayer?.deck),
+    localSideboard: sanitizeCardList(localPlayer?.sideboard),
+    localReady: Boolean(localPlayer?.ready),
+  };
+}
+
+function rematchPlayersReady(players) {
+  const entries = Array.isArray(players) ? players : [];
+  return entries.length > 0 && entries.every((player) => (
+    player.connected !== false && player.ready
+  ));
 }
 
 function reindexPlayers(players) {
@@ -427,7 +465,8 @@ function ensurePromotedLocalPlayer(players, session, lobbyId, localPlayerIndex) 
     },
     format,
     deckSubmission.deck,
-    deckSubmission.commanders
+    deckSubmission.commanders,
+    deckSubmission.sideboard
   );
 
   let matched = false;
@@ -447,7 +486,8 @@ function ensurePromotedLocalPlayer(players, session, lobbyId, localPlayerIndex) 
       },
       format,
       deckSubmission.deck,
-      deckSubmission.commanders
+      deckSubmission.commanders,
+      deckSubmission.sideboard
     );
   });
 
@@ -480,6 +520,7 @@ function toLobbyPlayer(player) {
   return {
     ...toPublicPlayer(player),
     deck: sanitizeCardList(player.deck),
+    sideboard: sanitizeCardList(player.sideboard),
     commanders: sanitizeCardList(player.commanders),
   };
 }
@@ -808,6 +849,7 @@ export function usePeerLobby({
         seed: payload.seed,
         format: payload.format,
         decks: payload.decks,
+        sideboards: payload.sideboards,
         commanders: payload.commanders,
         openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
       });
@@ -835,6 +877,7 @@ export function usePeerLobby({
         localCommanderCount:
           payload.commanders?.[localEntry.index]?.length ?? prev.localCommanderCount,
         players: payload.players,
+        rematch: null,
         matchStarted: true,
         lastAppliedSequence: 0,
         submittingAction: false,
@@ -983,6 +1026,7 @@ export function usePeerLobby({
     const players = reindexPlayers(session.players);
 
     const decks = players.map((player) => sanitizeCardList(player.deck));
+    const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const format = normalizeMatchFormat(session.format);
     const commanders =
       format === MATCH_FORMAT_COMMANDER
@@ -997,6 +1041,7 @@ export function usePeerLobby({
       players: players.map(toPublicPlayer),
       format,
       decks,
+      sideboards,
       commanders: commanders || undefined,
       startingLife: session.startingLife,
       openingHandSize: DEFAULT_OPENING_HAND_SIZE,
@@ -1036,6 +1081,233 @@ export function usePeerLobby({
       setStatus(`Match start failed: ${err}`, true);
     }
   }, [applyMatchStart, broadcastToClients, setStatus, updateMultiplayer]);
+
+  const broadcastRematchState = useCallback((rematch) => {
+    broadcastToClients({
+      type: "rematch_state",
+      protocolVersion: PROTOCOL_VERSION,
+      rematch: {
+        phase: rematch?.phase || "sideboarding",
+        players: (rematch?.players || []).map((player) => ({
+          ...toPublicPlayer(player),
+          ready: Boolean(player.ready),
+        })),
+      },
+    });
+  }, [broadcastToClients]);
+
+  const startRematchFromState = useCallback(async (rematch) => {
+    const session = multiplayerRef.current;
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.startMatch !== "function") {
+      setStatus("Game engine is not ready for multiplayer", true);
+      return;
+    }
+
+    const players = reindexPlayers(rematch?.players || []);
+    const format = normalizeMatchFormat(session.format);
+    const decks = players.map((player) => sanitizeCardList(player.deck));
+    const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
+    const commanders =
+      format === MATCH_FORMAT_COMMANDER
+        ? players.map((player) => sanitizeCardList(player.commanders))
+        : null;
+    const payload = {
+      type: "match_start",
+      protocolVersion: PROTOCOL_VERSION,
+      lobbyId: session.lobbyId,
+      hostPeerId: session.localPeerId,
+      players: players.map((player) => ({
+        ...toPublicPlayer(player),
+        ready: false,
+      })),
+      format,
+      decks,
+      sideboards,
+      commanders: commanders || undefined,
+      startingLife: session.startingLife,
+      openingHandSize: DEFAULT_OPENING_HAND_SIZE,
+    };
+    payload.seed = createMatchSeed(payload);
+
+    updateMultiplayer((prev) => ({
+      ...prev,
+      mode: "starting",
+      rematch: {
+        ...(prev.rematch || {}),
+        phase: "starting",
+        players,
+      },
+    }));
+
+    try {
+      if (typeof currentGame.validateMatchConfig === "function") {
+        const validation = await currentGame.validateMatchConfig({
+          playerNames: payload.players.map((player) => player.name),
+          startingLife: payload.startingLife,
+          seed: payload.seed,
+          format: payload.format,
+          decks: payload.decks,
+          commanders: payload.commanders,
+          openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
+        });
+        if (validation?.valid === false) {
+          const summary = summarizeMatchValidationIssues(validation.issues);
+          emitSyncFailureNotice("Rematch blocked", summary.notice);
+          updateMultiplayer((prev) => ({
+            ...prev,
+            mode: "in_match",
+            rematch: {
+              ...(prev.rematch || {}),
+              phase: "sideboarding",
+              players,
+            },
+          }));
+          setStatus(summary.status, true);
+          return;
+        }
+      }
+
+      await applyMatchStart(payload);
+      broadcastToClients(payload);
+    } catch (err) {
+      emitSyncFailureNotice(
+        "Rematch start failed",
+        err instanceof Error ? err.message : String(err)
+      );
+      updateMultiplayer((prev) => ({
+        ...prev,
+        mode: "in_match",
+        rematch: {
+          ...(prev.rematch || {}),
+          phase: "sideboarding",
+          players,
+        },
+      }));
+      setStatus(`Rematch start failed: ${err}`, true);
+    }
+  }, [applyMatchStart, broadcastToClients, setStatus, updateMultiplayer]);
+
+  const startRematchSideboarding = useCallback((source = "local") => {
+    const session = multiplayerRef.current;
+    const payload = matchStartPayloadRef.current;
+    if (!session.matchStarted || !payload) {
+      setStatus("No completed multiplayer match is available to replay", true);
+      return;
+    }
+
+    if (session.role !== "host") {
+      const conn = hostConnectionRef.current;
+      if (!conn || conn.open === false) {
+        setStatus("Host connection is not available", true);
+        return;
+      }
+      safeSend(conn, {
+        type: "rematch_request",
+        protocolVersion: PROTOCOL_VERSION,
+      });
+      setStatus("Waiting for host to open sideboarding");
+      return;
+    }
+
+    const rematch = buildRematchStateFromPayload(payload, session.localPeerId);
+    updateMultiplayer((prev) => ({
+      ...prev,
+      mode: "in_match",
+      rematch,
+    }));
+    broadcastToClients({
+      type: "rematch_start",
+      protocolVersion: PROTOCOL_VERSION,
+      match: payload,
+    });
+    setStatus(source === "remote" ? "Sideboarding opened for rematch" : "Sideboard for the next game");
+  }, [broadcastToClients, setStatus, updateMultiplayer]);
+
+  const updateRematchDecks = useCallback(({ deck, sideboard }) => {
+    updateMultiplayer((prev) => {
+      if (!prev.rematch || prev.rematch.phase !== "sideboarding") return prev;
+      return {
+        ...prev,
+        rematch: {
+          ...prev.rematch,
+          localDeck: sanitizeCardList(deck ?? prev.rematch.localDeck),
+          localSideboard: sanitizeCardList(sideboard ?? prev.rematch.localSideboard),
+          localReady: false,
+        },
+      };
+    });
+  }, [updateMultiplayer]);
+
+  const readyForRematch = useCallback(async () => {
+    const session = multiplayerRef.current;
+    const rematch = session.rematch;
+    if (!rematch || rematch.phase !== "sideboarding") {
+      setStatus("Sideboarding is not active", true);
+      return;
+    }
+    const localIndex = resolveLocalPlayerIndex(session);
+    if (localIndex == null) {
+      setStatus("Local player seat is not assigned", true);
+      return;
+    }
+
+    const localDeck = sanitizeCardList(rematch.localDeck);
+    const localSideboard = sanitizeCardList(rematch.localSideboard);
+
+    if (session.role !== "host") {
+      const conn = hostConnectionRef.current;
+      if (!conn || conn.open === false) {
+        setStatus("Host connection is not available", true);
+        return;
+      }
+      updateMultiplayer((prev) => ({
+        ...prev,
+        rematch: prev.rematch
+          ? { ...prev.rematch, localReady: true }
+          : prev.rematch,
+      }));
+      safeSend(conn, {
+        type: "rematch_ready",
+        protocolVersion: PROTOCOL_VERSION,
+        deck: localDeck,
+        sideboard: localSideboard,
+      });
+      setStatus("Ready for rematch");
+      return;
+    }
+
+    const nextSession = updateMultiplayer((prev) => {
+      if (!prev.rematch) return prev;
+      const players = reindexPlayers(prev.rematch.players || []).map((player) => (
+        Number(player.index) === localIndex
+          ? {
+              ...player,
+              deck: localDeck,
+              sideboard: localSideboard,
+              ready: true,
+            }
+          : player
+      ));
+      return {
+        ...prev,
+        rematch: {
+          ...prev.rematch,
+          players,
+          localDeck,
+          localSideboard,
+          localReady: true,
+        },
+      };
+    });
+
+    broadcastRematchState(nextSession.rematch);
+    if (rematchPlayersReady(nextSession.rematch?.players)) {
+      await startRematchFromState(nextSession.rematch);
+    } else {
+      setStatus("Ready for rematch; waiting for other players");
+    }
+  }, [broadcastRematchState, setStatus, startRematchFromState, updateMultiplayer]);
 
   const handleHostMessage = useCallback(
     async (message) => {
@@ -1114,6 +1386,47 @@ export function usePeerLobby({
           awaitingStateResyncRef.current = false;
           await applyMatchStart(message);
           return;
+        case "rematch_start": {
+          const rematch = buildRematchStateFromPayload(
+            message.match,
+            multiplayerRef.current.localPeerId
+          );
+          updateMultiplayer((prev) => ({
+            ...prev,
+            mode: "in_match",
+            rematch,
+          }));
+          setStatus("Sideboard for the next game");
+          return;
+        }
+        case "rematch_state": {
+          const readyByPeer = new Map(
+            (message.rematch?.players || []).map((player) => [
+              player.peerId,
+              Boolean(player.ready),
+            ])
+          );
+          updateMultiplayer((prev) => {
+            if (!prev.rematch) return prev;
+            const players = (prev.rematch.players || []).map((player) => ({
+              ...player,
+              ready: readyByPeer.has(player.peerId)
+                ? readyByPeer.get(player.peerId)
+                : Boolean(player.ready),
+            }));
+            const localPlayer = players.find((player) => player.peerId === prev.localPeerId);
+            return {
+              ...prev,
+              rematch: {
+                ...prev.rematch,
+                phase: message.rematch?.phase || prev.rematch.phase,
+                players,
+                localReady: Boolean(localPlayer?.ready),
+              },
+            };
+          });
+          return;
+        }
         case "state_resync":
           await applyStateResync(message);
           return;
@@ -1435,7 +1748,8 @@ export function usePeerLobby({
                   },
                   prev.format,
                   message.deck,
-                  message.commanders
+                  message.commanders,
+                  message.sideboard
                 );
             const replaced = existingSlot
               ? nextPlayers.map((player) =>
@@ -1570,13 +1884,85 @@ export function usePeerLobby({
                       player,
                       prev.format,
                       message.deck,
-                      message.commanders
+                      message.commanders,
+                      message.sideboard
                     )
                   : player
               )
             ),
           }));
           broadcastLobbyState();
+          return;
+        }
+        case "rematch_request": {
+          const session = multiplayerRef.current;
+          if (!session.matchStarted) {
+            safeSend(conn, {
+              type: "action_error",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "Match has not started",
+            });
+            return;
+          }
+          const actor = session.players.find((player) => player.peerId === conn.peer);
+          if (!actor) {
+            safeSend(conn, {
+              type: "action_error",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "This peer is not assigned to an active seat",
+            });
+            return;
+          }
+          startRematchSideboarding("remote");
+          return;
+        }
+        case "rematch_ready": {
+          const session = multiplayerRef.current;
+          const rematch = session.rematch;
+          if (!session.matchStarted || !rematch || rematch.phase !== "sideboarding") {
+            safeSend(conn, {
+              type: "action_error",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "Sideboarding is not active",
+            });
+            return;
+          }
+          const actor = rematch.players.find((player) => player.peerId === conn.peer);
+          if (!actor) {
+            safeSend(conn, {
+              type: "action_error",
+              protocolVersion: PROTOCOL_VERSION,
+              reason: "This peer is not assigned to an active seat",
+            });
+            return;
+          }
+
+          const nextSession = updateMultiplayer((prev) => {
+            if (!prev.rematch) return prev;
+            const players = reindexPlayers(prev.rematch.players || []).map((player) => (
+              player.peerId === conn.peer
+                ? {
+                    ...player,
+                    deck: sanitizeCardList(message.deck),
+                    sideboard: sanitizeCardList(message.sideboard),
+                    ready: true,
+                  }
+                : player
+            ));
+            return {
+              ...prev,
+              rematch: {
+                ...prev.rematch,
+                players,
+              },
+            };
+          });
+          broadcastRematchState(nextSession.rematch);
+          if (rematchPlayersReady(nextSession.rematch?.players)) {
+            await startRematchFromState(nextSession.rematch);
+          } else {
+            setStatus(`${actor.name} is ready for rematch`);
+          }
           return;
         }
         case "player_action":
@@ -1625,10 +2011,13 @@ export function usePeerLobby({
       buildHostedResyncPayload,
       broadcastMatchPresence,
       broadcastLobbyState,
+      broadcastRematchState,
       finishPeerResync,
       sendHostedStateMessage,
       sequenceHostedAction,
       setStatus,
+      startRematchFromState,
+      startRematchSideboarding,
       updateMultiplayer,
     ]
   );
@@ -1854,7 +2243,8 @@ export function usePeerLobby({
                       nextPlayer,
                       current.format,
                       currentDeck.deck,
-                      currentDeck.commanders
+                      currentDeck.commanders,
+                      currentDeck.sideboard
                     );
               }
               return {
@@ -2050,7 +2440,8 @@ export function usePeerLobby({
               },
               prev.format,
               currentDeck.deck,
-              currentDeck.commanders
+              currentDeck.commanders,
+              currentDeck.sideboard
             ),
           ],
         }));
@@ -2235,6 +2626,7 @@ export function usePeerLobby({
             protocolVersion: PROTOCOL_VERSION,
             name: localName,
             deck: currentDeck.deck,
+            sideboard: currentDeck.sideboard,
             commanders: currentDeck.commanders,
           };
           const requestedPlayerIndex = resolveReconnectPlayerIndex(session, targetLobby);
@@ -2408,7 +2800,8 @@ export function usePeerLobby({
                         player,
                         prev.format,
                         deckSubmission.deck,
-                        deckSubmission.commanders
+                        deckSubmission.commanders,
+                        deckSubmission.sideboard
                       )
                     : player
                 )
@@ -2427,6 +2820,7 @@ export function usePeerLobby({
           type: "deck_update",
           protocolVersion: PROTOCOL_VERSION,
           deck: deckSubmission.deck,
+          sideboard: deckSubmission.sideboard,
           commanders: deckSubmission.commanders,
         });
       }
@@ -2499,6 +2893,9 @@ export function usePeerLobby({
     leaveLobby,
     startHostedMatch,
     updateLobbyDeck,
+    startRematchSideboarding,
+    updateRematchDecks,
+    readyForRematch,
     submitMultiplayerCommand,
   };
 }

@@ -1878,7 +1878,19 @@ fn parse_as_enters_choice_subject_words<'a>(
         idx += 1;
         "it"
     } else {
-        return None;
+        let mut source_end = None;
+        let mut scan = idx + 1;
+        while scan < words.len() {
+            if words.get(scan) == Some(&"enters")
+                && source_reference_surface_for_words(&words[idx..scan]).is_some()
+            {
+                source_end = Some(scan);
+                break;
+            }
+            scan += 1;
+        }
+        idx = source_end?;
+        "this"
     };
 
     if words.get(idx) != Some(&"enters") {

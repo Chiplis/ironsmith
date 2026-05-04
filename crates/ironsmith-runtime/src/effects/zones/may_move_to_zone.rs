@@ -24,6 +24,7 @@ fn describe_move(zone: Zone, game: &GameState, object_id: crate::ids::ObjectId) 
         Zone::Battlefield => format!("Put {object_name} onto the battlefield?"),
         Zone::Command => format!("Put {object_name} into the command zone?"),
         Zone::Stack => format!("Move {object_name} to the stack?"),
+        Zone::OutsideGame => format!("Move {object_name} outside the game?"),
     }
 }
 

@@ -617,6 +617,7 @@ pub struct Player {
     pub library: Vec<ObjectId>,
     pub hand: Vec<ObjectId>,
     pub graveyard: Vec<ObjectId>,
+    pub sideboard: Vec<ObjectId>,
     pub attachments: Vec<ObjectId>,
 
     // Commander tracking
@@ -654,6 +655,7 @@ impl Player {
             library: Vec::new(),
             hand: Vec::new(),
             graveyard: Vec::new(),
+            sideboard: Vec::new(),
             attachments: Vec::new(),
             commanders: Vec::new(),
             commander_damage: HashMap::new(),

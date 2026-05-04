@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::cards::CardDefinition;
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
-use crate::parse_trace;
+use crate::{parse_loss, parse_trace};
 
 use super::model::SemanticDocument;
 use super::postpasses;
@@ -74,6 +74,7 @@ impl CardTextCompiler {
     ) -> CachedParseResult {
         let cache_key = ParseCacheKey::new(&builder, &text, policy.allow_unsupported);
         let tracing = parse_trace::is_enabled();
+        let capturing_loss = parse_loss::is_enabled();
         if tracing {
             parse_trace::event(format!(
                 "compile attempt: card=\"{}\" allow_unsupported={} source_lines={}",
@@ -81,7 +82,7 @@ impl CardTextCompiler {
                 policy.allow_unsupported,
                 text.lines().count()
             ));
-        } else if let Some(cached) = lookup_cached_parse(&cache_key) {
+        } else if !capturing_loss && let Some(cached) = lookup_cached_parse(&cache_key) {
             return cached;
         }
 
@@ -106,6 +107,8 @@ impl CardTextCompiler {
                 )),
                 Err(err) => parse_trace::event(format!("compile result: error {err:?}")),
             }
+            result
+        } else if capturing_loss {
             result
         } else {
             store_cached_parse(cache_key, result)

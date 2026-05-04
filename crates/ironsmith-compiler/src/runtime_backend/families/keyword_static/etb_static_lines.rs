@@ -1841,6 +1841,9 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         filter_end = find_suffix_cut(3);
     }
     let mut filter = parse_object_filter(&before_enter[..filter_end], false)?;
+    if controller_override.is_none() && filter.source {
+        return Ok(Some(StaticAbility::enters_tapped_ability()));
+    }
     if let Some(controller) = controller_override {
         filter.controller = Some(controller);
     }

@@ -7,6 +7,7 @@ pub enum Zone {
     Stack,
     Exile,
     Command,
+    OutsideGame,
 }
 
 impl Zone {
@@ -19,6 +20,7 @@ impl Zone {
             Zone::Stack => "stack",
             Zone::Exile => "exile",
             Zone::Command => "command",
+            Zone::OutsideGame => "outside the game",
         }
     }
 
@@ -32,7 +34,7 @@ impl Zone {
 
     /// Returns true if objects in this zone are hidden (private to owner).
     pub fn is_hidden(&self) -> bool {
-        matches!(self, Zone::Library | Zone::Hand)
+        matches!(self, Zone::Library | Zone::Hand | Zone::OutsideGame)
     }
 
     /// Returns true if cards in this zone are ordered (order matters).

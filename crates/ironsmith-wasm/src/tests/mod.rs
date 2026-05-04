@@ -13,8 +13,8 @@ use ironsmith::cards::CardRegistry;
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::cards::definitions::{
     basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
-    gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, polluted_delta, serum_powder,
-    urzas_saga, yawgmoth_thran_physician,
+    gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, phyrexian_tower, polluted_delta,
+    serum_powder, urzas_saga, yawgmoth_thran_physician,
 };
 use ironsmith::continuous::ContinuousEffect;
 use ironsmith::cost::OptionalCostsPaid;
@@ -79,6 +79,7 @@ fn validate_match_setup_accepts_loadable_normal_decks() {
             vec!["Lightning Bolt".to_string()],
             vec!["Ornithopter".to_string()],
         ]),
+        sideboards: None,
         commanders: None,
         opening_hand_size: Some(7),
     };
@@ -95,6 +96,43 @@ fn validate_match_setup_accepts_loadable_normal_decks() {
 }
 
 #[test]
+fn start_match_loads_sideboards_outside_the_game() {
+    let mut wasm = WasmGame::new();
+    let config = MatchSetupInput {
+        player_names: vec!["Alice".to_string(), "Bob".to_string()],
+        starting_life: 20,
+        seed: 1,
+        format: MatchFormatInput::Normal,
+        decks: Some(vec![
+            vec!["Island".to_string(); 60],
+            vec!["Mountain".to_string(); 60],
+        ]),
+        sideboards: Some(vec![
+            vec!["Ornithopter".to_string(), "Lightning Bolt".to_string()],
+            vec!["Grizzly Bears".to_string()],
+        ]),
+        commanders: None,
+        opening_hand_size: Some(0),
+    };
+
+    wasm.start_match(serde_wasm_bindgen::to_value(&config).expect("config should encode"))
+        .expect("match should start with sideboards");
+
+    let alice = wasm
+        .game
+        .player(PlayerId::from_index(0))
+        .expect("alice should exist");
+    assert_eq!(alice.sideboard.len(), 2);
+    assert!(
+        alice
+            .sideboard
+            .iter()
+            .filter_map(|id| wasm.game.object(*id))
+            .all(|object| object.zone == Zone::OutsideGame)
+    );
+}
+
+#[test]
 fn validate_match_setup_reports_invalid_cards() {
     let mut wasm = WasmGame::new();
     let config = MatchSetupInput {
@@ -106,6 +144,7 @@ fn validate_match_setup_reports_invalid_cards() {
             vec!["Definitely Not A Real Card".to_string()],
             vec!["Ornithopter".to_string()],
         ]),
+        sideboards: None,
         commanders: None,
         opening_hand_size: Some(7),
     };
@@ -1486,6 +1525,124 @@ fn snapshot_surfaces_undo_land_stable_id_for_reversible_land_tap() {
             .and_then(|kind| kind.as_str()),
         Some("untap_land"),
         "untap action should remain identifiable without relying on its index"
+    );
+}
+
+#[test]
+fn phyrexian_tower_sacrifice_mana_action_uses_selected_creature_without_rollback() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let tower_id =
+        wasm.game
+            .create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+    let bear_id =
+        wasm.game
+            .create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    let bear_stable_id = wasm
+        .game
+        .object(bear_id)
+        .expect("Grizzly Bears should exist")
+        .stable_id;
+    let thopter_id =
+        wasm.game
+            .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    let snapshot_json = wasm
+        .snapshot_json()
+        .expect("priority snapshot should render Phyrexian Tower actions");
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot json should parse");
+    let actions = snapshot["decision"]["actions"]
+        .as_array()
+        .expect("priority decision should expose actions");
+    let tower_sacrifice_action = actions
+        .iter()
+        .find(|action| {
+            action["action_ref"]["kind"] == "activate_mana_ability"
+                && action["action_ref"]["source"].as_u64() == Some(tower_id.0)
+                && action["action_ref"]["ability_index"].as_u64() == Some(1)
+        })
+        .expect("Tower sacrifice mana action should be present");
+    let label = tower_sacrifice_action["label"]
+        .as_str()
+        .expect("Tower action should have a label");
+    assert!(
+        label.contains("Sacrifice a creature"),
+        "Tower action label should use the compact oracle cost: {label}"
+    );
+    assert!(
+        !label.contains("Exile a creature") && !label.contains("Sacrifice a permanent"),
+        "Tower action label should not expose raw tagged cost components: {label}"
+    );
+
+    dispatch_matching_priority_action(&mut wasm, |action| {
+        matches!(
+            action,
+            LegalAction::ActivateManaAbility {
+                source,
+                ability_index
+            } if *source == tower_id && *ability_index == 1
+        )
+    });
+
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectObjects(ctx)) => {
+            let candidate_ids: Vec<ObjectId> = ctx.candidates.iter().map(|obj| obj.id).collect();
+            assert!(
+                candidate_ids.contains(&bear_id) && candidate_ids.contains(&thopter_id),
+                "Tower sacrifice prompt should offer Alice's creatures: {candidate_ids:?}"
+            );
+        }
+        other => panic!("expected Tower sacrifice prompt, got {other:?}"),
+    }
+
+    dispatch_select_objects(&mut wasm, &[bear_id.0]);
+
+    assert!(
+        !wasm.game.battlefield.contains(&bear_id),
+        "selected creature should be sacrificed, not restored by replay"
+    );
+    assert!(
+        wasm.game
+            .player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(
+                &wasm
+                    .game
+                    .find_object_by_stable_id(bear_stable_id)
+                    .expect("sacrificed creature should still be tracked by stable id")
+            ),
+        "selected creature should move to Alice's graveyard"
+    );
+    assert!(
+        wasm.game.is_tapped(tower_id),
+        "Tower should stay tapped after activation"
+    );
+    assert_eq!(
+        wasm.game
+            .player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .black,
+        2,
+        "Tower should add two black mana"
+    );
+    assert!(
+        wasm.pending_replay_action.is_none(),
+        "replay state should close after the sacrifice choice resolves"
     );
 }
 

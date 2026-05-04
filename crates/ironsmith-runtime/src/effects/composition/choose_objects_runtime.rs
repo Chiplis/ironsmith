@@ -410,7 +410,10 @@ fn collect_candidates_in_zone(
     };
     let top_only_limit = top_only_selection_limit(effect, ctx.x_value);
     let mut hidden_zone_filter = effect.filter.clone();
-    if matches!(search_zone, Zone::Hand | Zone::Graveyard | Zone::Library) {
+    if matches!(
+        search_zone,
+        Zone::Hand | Zone::Graveyard | Zone::Library | Zone::OutsideGame
+    ) {
         hidden_zone_filter.owner = None;
     }
 
@@ -507,6 +510,17 @@ fn collect_candidates_in_zone(
                     .map(|(id, _)| id)
                     .collect()
             }
+        }
+        Zone::OutsideGame => {
+            let owner_ids = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
+            owner_ids
+                .iter()
+                .filter_map(|owner_id| game.player(*owner_id))
+                .flat_map(|player| player.sideboard.iter())
+                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| hidden_zone_filter.matches(obj, &filter_ctx, game))
+                .map(|(id, _)| id)
+                .collect()
         }
         _ => game
             .objects_in_zone(search_zone)
@@ -1126,7 +1140,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::DecisionMaker;
     use crate::effect::ExecutionFact;
-    use crate::effects::ExecutionContext;
+    use crate::effects::{EffectExecutor, ExecutionContext};
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
     use crate::target::PlayerFilter;
@@ -1150,6 +1164,13 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Library)
     }
 
+    fn create_sideboard_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::OutsideGame)
+    }
+
     fn create_library_creature_with_power(
         game: &mut GameState,
         name: &str,
@@ -1161,6 +1182,29 @@ mod tests {
             .power_toughness(PowerToughness::fixed(power, 1))
             .build();
         game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    #[test]
+    fn choose_objects_can_select_owned_sideboard_cards_outside_the_game() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let sideboard_card = create_sideboard_card(&mut game, "Wish Target", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let filter = ObjectFilter::artifact()
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::OutsideGame);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "wished")
+            .as_optional_search()
+            .in_zone(Zone::OutsideGame);
+
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.objects(), Some([sideboard_card].as_slice()));
+        assert_eq!(
+            ctx.get_tagged("wished").map(|snapshot| snapshot.object_id),
+            Some(sideboard_card)
+        );
     }
 
     fn create_hand_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {

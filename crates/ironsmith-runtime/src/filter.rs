@@ -3105,7 +3105,8 @@ impl ObjectFilterExt for ObjectFilter {
                     | Some(Zone::Hand)
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
-                    | Some(Zone::Command) => "card",
+                    | Some(Zone::Command)
+                    | Some(Zone::OutsideGame) => "card",
                     _ => "source",
                 }
             } else {
@@ -3125,7 +3126,8 @@ impl ObjectFilterExt for ObjectFilter {
                     | Some(Zone::Hand)
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
-                    | Some(Zone::Command) => "card",
+                    | Some(Zone::Command)
+                    | Some(Zone::OutsideGame) => "card",
                 }
             };
             Some((false, default_noun.to_string()))
@@ -3367,6 +3369,7 @@ impl ObjectFilterExt for ObjectFilter {
                 Zone::Exile => Some("exile"),
                 Zone::Stack => None,
                 Zone::Command => Some("command zone"),
+                Zone::OutsideGame => Some("outside the game"),
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
                 // Keep wording compact: "card exiled with this permanent" is

@@ -89,13 +89,17 @@ fn record_source_reference_surface(span: Option<TextSpan>, surface: SourceRefere
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     let mut aliases = Vec::new();
     let mut push_alias = |raw: &str, surface: SourceReferenceSurface| {
-        let words = source_reference_words_from_text(raw);
-        if !words.is_empty()
-            && !aliases
-                .iter()
-                .any(|alias: &SourceReferenceAlias| alias.words == words)
-        {
-            aliases.push(SourceReferenceAlias { words, surface });
+        for words in source_reference_word_variants_from_text(raw) {
+            if !words.is_empty()
+                && !aliases
+                    .iter()
+                    .any(|alias: &SourceReferenceAlias| alias.words == words)
+            {
+                aliases.push(SourceReferenceAlias {
+                    words,
+                    surface: surface.clone(),
+                });
+            }
         }
     };
 
@@ -142,10 +146,45 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
 }
 
 fn source_reference_words_from_text(text: &str) -> Vec<String> {
-    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\'' || ch == '’' || ch == '-'))
+    let mut words = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        let normalized = match ch {
+            '’' | '‘' => '\'',
+            '−' => '-',
+            _ => ch,
+        };
+        if normalized.is_ascii_alphanumeric() {
+            current.push(normalized.to_ascii_lowercase());
+        } else if matches!(normalized, '\'') {
+            continue;
+        } else if !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+fn source_reference_word_variants_from_text(text: &str) -> Vec<Vec<String>> {
+    let parser_words = source_reference_words_from_text(text);
+    let token_words = text
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\'' || ch == '’' || ch == '-'))
         .filter(|word| !word.is_empty())
-        .map(|word| word.to_ascii_lowercase().replace('’', "'"))
-        .collect()
+        .map(|word| {
+            word.to_ascii_lowercase()
+                .replace('’', "'")
+                .replace('‘', "'")
+                .replace('−', "-")
+        })
+        .collect::<Vec<_>>();
+    if token_words == parser_words {
+        vec![parser_words]
+    } else {
+        vec![parser_words, token_words]
+    }
 }
 
 pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {

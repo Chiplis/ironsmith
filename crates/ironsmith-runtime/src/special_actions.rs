@@ -1417,11 +1417,10 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
             .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-        for cost in total_cost.costs() {
-            pay_cost_component_with_choice(game, cost, &mut cost_ctx)
+        let cost_summary =
+            pay_total_cost_without_preflight_with_choice(game, &total_cost, &mut cost_ctx)
                 .map_err(cost_error_to_action_error)?;
-        }
-        let x_value_from_costs = cost_ctx.x_value;
+        let x_value_from_costs = cost_summary.x_value;
         drop(cost_ctx);
 
         // Add mana to player's pool
@@ -1502,6 +1501,11 @@ pub(crate) fn pay_cost_component_with_choice(
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct CostPaymentSummary {
+    pub x_value: Option<u32>,
+}
+
 /// Pay a full TotalCost using the normal choice-aware cost-payment path.
 ///
 /// This preflights the whole cost before paying and restores the game state if
@@ -1533,6 +1537,29 @@ pub(crate) fn pay_total_cost_with_choice(
     }
 
     Ok(())
+}
+
+pub(crate) fn pay_total_cost_without_preflight_with_choice(
+    game: &mut GameState,
+    cost: &crate::cost::TotalCost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<CostPaymentSummary, CostPaymentError> {
+    let checkpoint = game.clone();
+    let x_checkpoint = cost_ctx.x_value;
+    let tags_checkpoint = cost_ctx.tagged_objects.clone();
+    let pre_chosen_checkpoint = cost_ctx.pre_chosen_cards.clone();
+
+    if let Err(err) = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx) {
+        *game = checkpoint;
+        cost_ctx.x_value = x_checkpoint;
+        cost_ctx.tagged_objects = tags_checkpoint;
+        cost_ctx.pre_chosen_cards = pre_chosen_checkpoint;
+        return Err(err);
+    }
+
+    Ok(CostPaymentSummary {
+        x_value: cost_ctx.x_value,
+    })
 }
 
 pub(crate) fn can_pay_total_cost_with_reason_in_context(
@@ -1621,8 +1648,21 @@ fn pay_total_cost_branch_without_execution_context(
 ) -> Result<(), CostPaymentError> {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
-            for component in costs {
-                pay_component_without_execution_context(game, component, cost_ctx)?;
+            let mut idx = 0usize;
+            while idx < costs.len() {
+                if let Some(choose) = costs[idx]
+                    .effect_ref()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+                    && let Some(next) = costs.get(idx + 1)
+                    && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+                {
+                    pay_activation_cost_step_without_execution_context(game, &step, cost_ctx)?;
+                    idx += 2;
+                    continue;
+                }
+
+                pay_component_without_execution_context(game, &costs[idx], cost_ctx)?;
+                idx += 1;
             }
             Ok(())
         }
@@ -1658,6 +1698,251 @@ fn pay_total_cost_branch_without_execution_context(
             pay_total_cost_branch_without_execution_context(game, &branches[branch_index], cost_ctx)
         }
     }
+}
+
+fn pay_activation_cost_step_without_execution_context(
+    game: &mut GameState,
+    step: &crate::game_loop::ActivationCostStep,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    match step {
+        crate::game_loop::ActivationCostStep::Cost(cost) => {
+            pay_component_without_execution_context(game, cost, cost_ctx)
+        }
+        crate::game_loop::ActivationCostStep::Sacrifice {
+            cost,
+            filter,
+            choice_tag,
+            ..
+        } => {
+            let candidates = legal_sacrifice_targets(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                filter,
+                cost_ctx.reason,
+            );
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose {} to sacrifice", describe_permanent_filter(filter)),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::NoValidSacrificeTarget);
+            };
+            pay_selected_cost_without_execution_context(
+                game,
+                cost,
+                target_id,
+                choice_tag.as_ref(),
+                cost_ctx,
+            )
+        }
+        crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+            pay_activation_card_choice_without_execution_context(game, choice, cost_ctx)
+        }
+    }
+}
+
+fn pay_activation_card_choice_without_execution_context(
+    game: &mut GameState,
+    choice: &crate::game_loop::ActivationCardCostChoice,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    match choice {
+        crate::game_loop::ActivationCardCostChoice::Discard {
+            cost,
+            card_types,
+            description,
+        } => {
+            let candidates = legal_discard_cards(game, cost_ctx.payer, cost_ctx.source, card_types);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose a card to discard: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::InsufficientCardsInHand);
+            };
+            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+        }
+        crate::game_loop::ActivationCardCostChoice::ExileFromHand {
+            cost,
+            color_filter,
+            description,
+        } => {
+            let candidates =
+                legal_exile_cards(game, cost_ctx.payer, cost_ctx.source, *color_filter);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose a card to exile: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::InsufficientCardsToExile);
+            };
+            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+        }
+        crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard {
+            cost,
+            card_type,
+            description,
+        } => {
+            let candidates = legal_exile_from_graveyard_cards(game, cost_ctx.payer, *card_type);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose a card to exile from your graveyard: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::InsufficientCardsInGraveyard);
+            };
+            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+        }
+        crate::game_loop::ActivationCardCostChoice::ExileChosenObject {
+            cost,
+            filter,
+            zone,
+            description,
+            choice_tag,
+        } => {
+            let candidates =
+                legal_cost_choice_objects(game, cost_ctx.payer, cost_ctx.source, filter, *zone);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose an object to exile: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::InsufficientCardsToExile);
+            };
+            pay_selected_cost_without_execution_context(
+                game,
+                cost,
+                target_id,
+                Some(choice_tag),
+                cost_ctx,
+            )
+        }
+        crate::game_loop::ActivationCardCostChoice::RevealFromHand {
+            cost,
+            card_type,
+            description,
+        } => {
+            let candidates = legal_reveal_cards(game, cost_ctx.payer, cost_ctx.source, *card_type);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose a card to reveal: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::InsufficientCardsToReveal);
+            };
+            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+        }
+        crate::game_loop::ActivationCardCostChoice::ReturnToHand {
+            cost,
+            filter,
+            description,
+            choice_tag,
+        } => {
+            let candidates = legal_return_targets(game, cost_ctx.payer, cost_ctx.source, filter);
+            let Some(target_id) = choose_single_cost_object(
+                game,
+                cost_ctx,
+                format!("Choose a permanent to return: {description}"),
+                candidates,
+            ) else {
+                return Err(CostPaymentError::NoValidReturnTarget);
+            };
+            pay_selected_cost_without_execution_context(
+                game,
+                cost,
+                target_id,
+                choice_tag.as_ref(),
+                cost_ctx,
+            )
+        }
+    }
+}
+
+fn choose_single_cost_object(
+    game: &mut GameState,
+    cost_ctx: &mut CostContext<'_>,
+    prompt: String,
+    candidates: Vec<ObjectId>,
+) -> Option<ObjectId> {
+    if candidates.is_empty() {
+        return None;
+    }
+    let spec = ChooseObjectsSpec::new(cost_ctx.source, prompt, candidates.clone(), 1, Some(1));
+    let chosen: Vec<ObjectId> = make_decision(
+        game,
+        cost_ctx.decision_maker,
+        cost_ctx.payer,
+        Some(cost_ctx.source),
+        spec,
+    );
+    normalize_selection(chosen, &candidates, 1).first().copied()
+}
+
+fn pay_selected_cost_without_execution_context(
+    game: &mut GameState,
+    cost: &crate::costs::Cost,
+    chosen_id: ObjectId,
+    choice_tag: Option<&crate::tag::TagKey>,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    let source = cost_ctx.source;
+    let payer = cost_ctx.payer;
+    let reason = cost_ctx.reason;
+    let provenance = cost_ctx.provenance;
+    let x_value = cost_ctx.x_value;
+    let mut tagged_objects = cost_ctx.tagged_objects.clone();
+    let effective_choice_tag = choice_tag
+        .cloned()
+        .or_else(|| match cost.processing_mode() {
+            crate::costs::CostProcessingMode::ExileFromHand { .. }
+            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. } => {
+                Some(crate::tag::TagKey::from("exile_cost"))
+            }
+            _ => None,
+        });
+
+    if let Some(tag) = effective_choice_tag.as_ref()
+        && let Some(snapshot) = game
+            .object(chosen_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, game))
+    {
+        tagged_objects
+            .entry(tag.clone())
+            .or_default()
+            .push(snapshot);
+    }
+
+    game.validate_cost_for_payment_reason(payer, source, cost, reason)?;
+
+    let (paid_x_value, paid_tags) = {
+        let mut selected_ctx = CostContext::new(source, payer, &mut *cost_ctx.decision_maker)
+            .with_reason(reason)
+            .with_pre_chosen_cards(vec![chosen_id])
+            .with_provenance(provenance);
+        selected_ctx.x_value = x_value;
+        selected_ctx.tagged_objects = tagged_objects;
+
+        match cost.pay(game, &mut selected_ctx)? {
+            CostPaymentResult::Paid => (selected_ctx.x_value, selected_ctx.tagged_objects),
+            CostPaymentResult::NeedsChoice(_) => {
+                return Err(CostPaymentError::Other(
+                    "Cost still needed a choice after preselection".to_string(),
+                ));
+            }
+        }
+    };
+
+    cost_ctx.x_value = paid_x_value;
+    cost_ctx.tagged_objects = paid_tags;
+    Ok(())
 }
 
 fn pay_total_cost_branch_in_context(
@@ -2325,6 +2610,45 @@ fn legal_return_targets(
         .filter(|&id| {
             game.object(id)
                 .is_some_and(|obj| filter.matches(obj, &ctx, game))
+        })
+        .collect()
+}
+
+fn legal_cost_choice_objects(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+    zone: Zone,
+) -> Vec<ObjectId> {
+    let ctx = FilterContext {
+        you: Some(payer),
+        source: Some(source),
+        ..Default::default()
+    };
+
+    let ids: Vec<ObjectId> = match zone {
+        Zone::Battlefield => game.battlefield.iter().copied().collect(),
+        Zone::Hand => game
+            .player(payer)
+            .map(|p| p.hand.iter().copied().collect())
+            .unwrap_or_default(),
+        Zone::Graveyard => game
+            .player(payer)
+            .map(|p| p.graveyard.iter().copied().collect())
+            .unwrap_or_default(),
+        Zone::Exile => game.exile.iter().copied().collect(),
+        _ => Vec::new(),
+    };
+
+    ids.into_iter()
+        .filter(|&id| {
+            game.object(id).is_some_and(|obj| {
+                if filter.other && obj.id == source {
+                    return false;
+                }
+                filter.matches(obj, &ctx, game)
+            })
         })
         .collect()
 }

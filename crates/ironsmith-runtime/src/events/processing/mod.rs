@@ -462,7 +462,7 @@ pub fn zone_allows_type_verification(zone: Zone) -> bool {
         // Public zones - cards are visible, characteristics can be verified
         Zone::Graveyard | Zone::Battlefield | Zone::Stack | Zone::Command => true,
         // Hidden zones - characteristics become undefined per rule 701.8c
-        Zone::Library | Zone::Hand => false,
+        Zone::Library | Zone::Hand | Zone::OutsideGame => false,
         // Exile is special - face-up cards can be verified, face-down cannot
         // For simplicity, we treat exile as verifiable since face-down exile
         // typically happens through specific effects, not discard replacement

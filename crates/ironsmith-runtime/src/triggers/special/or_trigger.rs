@@ -1,7 +1,8 @@
 //! Or trigger combinator - matches if any of the inner triggers match.
 
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
-use crate::triggers::{Trigger, TriggerEvent};
+use crate::triggers::{ThisAttacksTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern};
+use crate::zone::Zone;
 
 /// A trigger that matches if any of the inner triggers match.
 ///
@@ -32,6 +33,42 @@ impl OrTrigger {
     pub fn two(a: Trigger, b: Trigger) -> Self {
         Self::new(vec![a, b])
     }
+
+    fn self_enters_or_attacks_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (zone_change, attacks_first) = if let (Some(zone_change), Some(_)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<ThisAttacksTrigger>(),
+        ) {
+            (zone_change, false)
+        } else if let (Some(_), Some(zone_change)) = (
+            first.downcast_ref::<ThisAttacksTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            (zone_change, true)
+        } else {
+            return None;
+        };
+
+        if !zone_change.this_object
+            || zone_change.from != ZonePattern::Any
+            || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
+            || zone_change.player != crate::triggers::PlayerRelation::Any
+            || zone_change.cause_filter.is_some()
+        {
+            return None;
+        }
+
+        let subject = zone_change.this_subject_text("creature");
+        let action = if attacks_first {
+            "attacks or enters"
+        } else {
+            "enters or attacks"
+        };
+        Some(format!("Whenever {subject} {action}"))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -49,6 +86,9 @@ impl TriggerMatcher for OrTrigger {
         }
         if self.triggers.len() == 1 {
             return self.triggers[0].display();
+        }
+        if let Some(display) = self.self_enters_or_attacks_display() {
+            return display;
         }
         // Combine displays with "or", stripping leading "When"/"Whenever" from
         // subsequent triggers to avoid "When X or When Y" → "When X or Y".

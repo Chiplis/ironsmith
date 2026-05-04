@@ -441,6 +441,98 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     Ok(Some(vec![EffectAst::May { effects }]))
 }
 
+fn parse_reveal_from_outside_game_to_hand(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = trim_commas(tokens);
+    let lowered = words(&tokens);
+    if !lowered.iter().any(|word| *word == "outside") || !lowered.iter().any(|word| *word == "game")
+    {
+        return Ok(None);
+    }
+    let Some(reveal_idx) = lowered.iter().position(|word| *word == "reveal") else {
+        return Ok(None);
+    };
+    let Some(from_idx) = lowered.iter().position(|word| *word == "from") else {
+        return Ok(None);
+    };
+    if from_idx <= reveal_idx + 1 {
+        return Ok(None);
+    }
+
+    let put_tail = &["and", "put", "it", "into", "your", "hand"];
+    let Some(put_idx) = lowered
+        .windows(put_tail.len())
+        .position(|window| window == put_tail)
+    else {
+        return Ok(None);
+    };
+    if put_idx <= from_idx {
+        return Ok(None);
+    }
+
+    let mut filter_tokens = trim_commas(&tokens[reveal_idx + 1..from_idx]).to_vec();
+    if filter_tokens
+        .windows(2)
+        .position(|window| window[0].is_word("you") && window[1].is_word("own"))
+        .is_none()
+        && !lowered[from_idx..put_idx]
+            .windows(2)
+            .any(|window| window == ["you", "own"])
+    {
+        return Ok(None);
+    }
+    while filter_tokens
+        .last()
+        .is_some_and(|token| token.is_word("you") || token.is_word("own"))
+    {
+        filter_tokens.pop();
+    }
+
+    let mut filter = parse_object_filter_lexed(&filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported outside-game wish filter in clause '{}'",
+            lowered.join(" ")
+        ))
+    })?;
+    filter.owner = Some(PlayerFilter::You);
+    filter.zone = Some(Zone::OutsideGame);
+
+    let wish_tag = TagKey::from("searched_outside_game");
+    let effects = vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: wish_tag.clone(),
+            zones: vec![Zone::OutsideGame],
+            search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+        },
+        EffectAst::subject_verb_reveal_tagged(wish_tag.clone()),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(wish_tag, span_from_tokens(&tokens)),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+    ];
+    let mut outer = vec![EffectAst::May { effects }];
+    if lowered[put_idx + put_tail.len()..]
+        .iter()
+        .any(|word| *word == "exile")
+    {
+        outer.push(EffectAst::subject_verb_exile(
+            TargetAst::Source(None),
+            false,
+        ));
+    }
+
+    Ok(Some(outer))
+}
+
 fn parse_choose_objects_then_for_each_of_those_bundle(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
@@ -1327,6 +1419,9 @@ fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    if let Ok(Some(effects)) = parse_reveal_from_outside_game_to_hand(tokens) {
+        return Some(effects);
+    }
     if let Some(effects) = parse_tap_lands_then_empty_mana_pool_bundle(tokens) {
         return Some(effects);
     }

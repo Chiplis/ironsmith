@@ -12574,6 +12574,119 @@ fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn phyrexian_tower_direct_mana_activation_pays_selected_sacrifice_cost() {
+    use crate::PriorityResponse;
+    use crate::cards::definitions::{grizzly_bears, ornithopter, phyrexian_tower};
+    use crate::decision::LegalAction;
+    use crate::game_loop::{PriorityLoopState, apply_priority_response_with_dm};
+
+    struct ChooseTowerSacrificeDecisionMaker {
+        desired: ObjectId,
+        seen_candidates: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseTowerSacrificeDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.seen_candidates = ctx
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id)
+                .collect();
+            vec![self.desired]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let tower_id = game.create_object_from_definition(&phyrexian_tower(), alice, Zone::Battlefield);
+    let bear_id = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+    let thopter_id = game.create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+    let bear_stable_id = game
+        .object(bear_id)
+        .expect("Grizzly Bears should exist")
+        .stable_id;
+
+    let ability_index = game
+        .object(tower_id)
+        .expect("Phyrexian Tower should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Activated(activated)
+                    if activated.mana_output.as_ref().is_some_and(|mana| {
+                        mana.iter().filter(|symbol| **symbol == ManaSymbol::Black).count() == 2
+                    })
+            )
+        })
+        .expect("Phyrexian Tower should have its sacrifice mana ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = ChooseTowerSacrificeDecisionMaker {
+        desired: bear_id,
+        seen_candidates: Vec::new(),
+    };
+    let response = PriorityResponse::PriorityAction(LegalAction::ActivateManaAbility {
+        source: tower_id,
+        ability_index,
+    });
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &response,
+        &mut dm,
+    )
+    .expect("Phyrexian Tower sacrifice mana ability should resolve");
+
+    assert!(
+        dm.seen_candidates.contains(&bear_id) && dm.seen_candidates.contains(&thopter_id),
+        "Tower sacrifice prompt should offer Alice's creatures: {:?}",
+        dm.seen_candidates
+    );
+    assert!(
+        !game.battlefield.contains(&bear_id),
+        "selected creature should be sacrificed"
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(
+                &game
+                    .find_object_by_stable_id(bear_stable_id)
+                    .expect("sacrificed creature should still be tracked by stable id")
+            ),
+        "selected creature should move to Alice's graveyard"
+    );
+    assert!(
+        game.is_tapped(tower_id),
+        "Phyrexian Tower should tap as part of the activation cost"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .black,
+        2,
+        "Phyrexian Tower should add two black mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_yawgmoth_proliferate_activation_prompts_discard_choice() {
     use crate::decision::{GameProgress, LegalAction};
     use crate::mana::ManaSymbol;

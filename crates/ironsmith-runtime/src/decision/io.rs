@@ -2324,6 +2324,7 @@ fn zone_label(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command zone",
+        Zone::OutsideGame => "outside the game",
     }
 }
 

@@ -152,6 +152,8 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 target_assignments: vec![],
                 x_value,
                 ability_effects: None,
+                mana_usage_restrictions: Vec::new(),
+                mana_source_chosen_creature_type: None,
                 is_ability: false,
                 casting_method: CastingMethod::Alternative(miracle_index),
                 optional_costs_paid: OptionalCostsPaid::default(),

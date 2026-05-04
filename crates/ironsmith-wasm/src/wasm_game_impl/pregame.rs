@@ -35,6 +35,27 @@ impl WasmGame {
         Ok(())
     }
 
+    fn populate_explicit_sideboards(&mut self, sideboards: &[Vec<String>]) -> Result<(), JsValue> {
+        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for (&player_id, sideboard) in player_ids.iter().zip(sideboards.iter()) {
+            self.registry
+                .ensure_cards_loaded(sideboard.iter().map(|name| name.as_str()));
+
+            for name in sideboard {
+                let Some(definition) = self.find_card_definition(name).cloned() else {
+                    return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                };
+                self.game.create_object_from_catalog_definition(
+                    &definition,
+                    &self.registry,
+                    player_id,
+                    ironsmith::zone::Zone::OutsideGame,
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn populate_explicit_commanders(&mut self, commanders: &[Vec<String>]) -> Result<(), JsValue> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, commander_names) in player_ids.iter().zip(commanders.iter()) {

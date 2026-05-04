@@ -10436,6 +10436,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     Zone::Battlefield => zone_phrases.push("on the battlefield".to_string()),
                     Zone::Stack => zone_phrases.push("on the stack".to_string()),
                     Zone::Command => zone_phrases.push("in the command zone".to_string()),
+                    Zone::OutsideGame => zone_phrases.push("outside the game".to_string()),
                 }
             }
             let zones_text = join_with_and(&zone_phrases);
@@ -10507,6 +10508,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             Zone::Library => "this card is in your library".to_string(),
             Zone::Exile => "this card is in exile".to_string(),
             Zone::Command => "this card is in the command zone".to_string(),
+            Zone::OutsideGame => "this card is outside the game".to_string(),
             Zone::Battlefield => "this object is on the battlefield".to_string(),
             Zone::Stack => "this object is on the stack".to_string(),
         },

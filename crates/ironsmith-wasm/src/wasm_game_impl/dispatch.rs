@@ -202,6 +202,15 @@ impl WasmGame {
             self.populate_demo_libraries()?;
         }
 
+        if let Some(sideboards) = config.sideboards {
+            if sideboards.len() != self.game.players.len() {
+                return Err(JsValue::from_str(
+                    "sideboard count must match number of players in game",
+                ));
+            }
+            self.populate_explicit_sideboards(&sideboards)?;
+        }
+
         if let Some(commanders) = config.commanders {
             if commanders.len() != self.game.players.len() {
                 return Err(JsValue::from_str(
@@ -625,6 +634,7 @@ impl WasmGame {
             "exile" => ironsmith::zone::Zone::Exile,
             "library" => ironsmith::zone::Zone::Library,
             "command" => ironsmith::zone::Zone::Command,
+            "sideboard" | "outside_game" | "outside the game" => ironsmith::zone::Zone::OutsideGame,
             other => {
                 return Err(JsValue::from_str(&format!("unknown zone: {other}")));
             }
@@ -827,6 +837,7 @@ impl WasmGame {
             "exile" => ironsmith::zone::Zone::Exile,
             "library" => ironsmith::zone::Zone::Library,
             "command" => ironsmith::zone::Zone::Command,
+            "sideboard" | "outside_game" | "outside the game" => ironsmith::zone::Zone::OutsideGame,
             other => {
                 return Err(JsValue::from_str(&format!("unknown zone: {other}")));
             }

@@ -4340,6 +4340,69 @@ mod priority_mana_tests {
     }
 
     #[test]
+    fn stacked_activated_ability_preserves_mana_usage_restrictions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source = CardDefinitionBuilder::new(CardId::new(), "Sarkhan Test")
+            .card_types(vec![CardType::Planeswalker])
+            .build();
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+        let restriction = ManaUsageRestriction::CastSpellMatching {
+            filter: ObjectFilter::default().with_subtype(Subtype::Dragon),
+            restrict_to_matching_spell: true,
+            grant_uncounterable: false,
+            enters_with_counters: vec![],
+            granted_abilities: vec![],
+        };
+        let entry = StackEntry::ability(
+            source_id,
+            alice,
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::add_mana_of_any_color_restricted(
+                    crate::effect::Value::Fixed(2),
+                    crate::color::Color::ALL.to_vec(),
+                ),
+            ]),
+        )
+        .with_mana_usage_restrictions(vec![restriction], None);
+        game.push_to_stack(entry);
+
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        resolve_stack_entry_with(&mut game, &mut dm)
+            .expect("stacked loyalty-style mana ability should resolve");
+
+        let restricted_units = game
+            .player(alice)
+            .expect("player should exist")
+            .restricted_mana
+            .clone();
+        assert_eq!(restricted_units.len(), 2);
+        let produced_symbol = restricted_units[0].symbol;
+
+        let dragon_spell = CardDefinitionBuilder::new(CardId::new(), "Dragon Spell")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Dragon])
+            .build();
+        let dragon_spell_id = game.create_object_from_definition(&dragon_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, produced_symbol, Some(dragon_spell_id)).is_some(),
+            "restricted mana produced by the stacked ability should pay for Dragon spells"
+        );
+
+        let elf_spell = CardDefinitionBuilder::new(CardId::new(), "Elf Spell")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .build();
+        let elf_spell_id = game.create_object_from_definition(&elf_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, produced_symbol, Some(elf_spell_id)).is_none(),
+            "restricted mana produced by the stacked ability should reject non-Dragon spells"
+        );
+    }
+
+    #[test]
     fn test_bonus_mana_can_still_pay_noncreature_spells_but_only_buffs_matching_creatures() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

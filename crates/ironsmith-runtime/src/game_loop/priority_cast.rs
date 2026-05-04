@@ -2863,6 +2863,10 @@ pub(super) fn continue_activation(
                     .with_provenance(pending.provenance)
                     .with_source_info(pending.source_stable_id, pending.source_name.clone())
                     .with_source_snapshot(pending.source_snapshot.clone())
+                    .with_mana_usage_restrictions(
+                        pending.mana_usage_restrictions.clone(),
+                        pending.mana_source_chosen_creature_type,
+                    )
                     .with_tagged_objects(pending.tagged_objects.clone());
             entry.targets = pending.chosen_targets.clone();
             entry.target_assignments = pending.chosen_target_assignments.clone();

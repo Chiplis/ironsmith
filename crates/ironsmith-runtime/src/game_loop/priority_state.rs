@@ -629,6 +629,10 @@ pub struct PendingActivation {
     pub source_name: String,
     /// The chosen X value for abilities with X in cost.
     pub x_value: Option<usize>,
+    /// Spending restrictions for mana produced as this activated ability resolves.
+    pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    /// Chosen creature type snapshot for restricted mana produced by the source.
+    pub mana_source_chosen_creature_type: Option<crate::types::Subtype>,
     /// Hybrid/Phyrexian mana choices made during AnnouncingCost stage (per MTG rule 601.2b via 602.2b).
     /// Each element is (pip_index, chosen_symbol).
     pub hybrid_choices: Vec<(usize, crate::mana::ManaSymbol)>,
@@ -659,6 +663,8 @@ impl PendingActivation {
         source_snapshot: ObjectSnapshot,
         source_name: String,
         x_value: Option<usize>,
+        mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
+        mana_source_chosen_creature_type: Option<crate::types::Subtype>,
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     ) -> Self {
         Self {
@@ -684,6 +690,8 @@ impl PendingActivation {
             source_snapshot,
             source_name,
             x_value,
+            mana_usage_restrictions,
+            mana_source_chosen_creature_type,
             hybrid_choices: Vec::new(),
             pending_hybrid_pips,
             pending_remove_counters_among: None,

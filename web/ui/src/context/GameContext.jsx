@@ -1265,6 +1265,9 @@ export function GameProvider({ children }) {
     leaveLobby,
     startHostedMatch: rawStartHostedMatch,
     updateLobbyDeck,
+    startRematchSideboarding,
+    updateRematchDecks,
+    readyForRematch,
     submitMultiplayerCommand,
   } = usePeerLobby({
     game,
@@ -1701,6 +1704,9 @@ export function GameProvider({ children }) {
       leaveLobby,
       startHostedMatch,
       updateLobbyDeck,
+      startRematchSideboarding,
+      updateRematchDecks,
+      readyForRematch,
       setExternalAutoPassGate,
     }),
     [
@@ -1720,6 +1726,7 @@ export function GameProvider({ children }) {
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
+      startRematchSideboarding, updateRematchDecks, readyForRematch,
       setExternalAutoPassGate,
     ]
   );

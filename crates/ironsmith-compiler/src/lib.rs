@@ -27,6 +27,7 @@ pub mod mana;
 pub mod model;
 pub mod object;
 pub mod oracle_grammar;
+pub mod parse_loss;
 pub mod parse_trace;
 pub mod payload;
 pub mod pipeline;

@@ -1414,6 +1414,10 @@ pub struct StackEntry {
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
+    /// Spending restrictions for mana produced while resolving this stack entry.
+    pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    /// Chosen creature type snapshot for restricted mana produced by this entry.
+    pub mana_source_chosen_creature_type: Option<crate::types::Subtype>,
     /// Whether this is an ability (triggered or activated) vs a spell.
     pub is_ability: bool,
     /// The casting method used (normal or alternative like flashback).
@@ -1488,6 +1492,8 @@ impl StackEntry {
             target_assignments: Vec::new(),
             x_value: None,
             ability_effects: None,
+            mana_usage_restrictions: Vec::new(),
+            mana_source_chosen_creature_type: None,
             is_ability: false,
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1522,6 +1528,8 @@ impl StackEntry {
             target_assignments: Vec::new(),
             x_value: None,
             ability_effects: Some(effects.into()),
+            mana_usage_restrictions: Vec::new(),
+            mana_source_chosen_creature_type: None,
             is_ability: true,
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1597,6 +1605,16 @@ impl StackEntry {
     /// Set the source snapshot for source-LKI lookups during resolution.
     pub fn with_source_snapshot(mut self, snapshot: crate::snapshot::ObjectSnapshot) -> Self {
         self.source_snapshot = Some(snapshot);
+        self
+    }
+
+    pub fn with_mana_usage_restrictions(
+        mut self,
+        restrictions: Vec<crate::ability::ManaUsageRestriction>,
+        source_chosen_creature_type: Option<crate::types::Subtype>,
+    ) -> Self {
+        self.mana_usage_restrictions = restrictions;
+        self.mana_source_chosen_creature_type = source_chosen_creature_type;
         self
     }
 
@@ -2649,6 +2667,11 @@ impl GameState {
                     player.graveyard.push(id);
                 }
             }
+            Zone::OutsideGame => {
+                if let Some(player) = self.player_mut(owner) {
+                    player.sideboard.push(id);
+                }
+            }
             Zone::Stack => {
                 // Stack entries are managed separately via StackEntry
             }
@@ -3635,6 +3658,11 @@ impl GameState {
                     player.graveyard.retain(|&x| x != id);
                 }
             }
+            Zone::OutsideGame => {
+                if let Some(player) = self.player_mut(owner) {
+                    player.sideboard.retain(|&x| x != id);
+                }
+            }
             Zone::Stack => {}
         }
     }
@@ -3797,6 +3825,30 @@ impl GameState {
                     None => {
                         return Err(format!(
                             "Object #{} in {}'s graveyard doesn't exist in objects",
+                            id.0, player.name
+                        ));
+                    }
+                }
+            }
+
+            // Sideboard / outside the game
+            for &id in &player.sideboard {
+                if seen_ids.contains(&id) {
+                    return Err(format!("Object #{} appears in multiple zone indexes", id.0));
+                }
+                seen_ids.insert(id);
+
+                match self.objects.get(&id) {
+                    Some(obj) if obj.zone == Zone::OutsideGame => {}
+                    Some(obj) => {
+                        return Err(format!(
+                            "Object #{} in {}'s sideboard has zone {}",
+                            id.0, player.name, obj.zone
+                        ));
+                    }
+                    None => {
+                        return Err(format!(
+                            "Object #{} in {}'s sideboard doesn't exist in objects",
                             id.0, player.name
                         ));
                     }
@@ -5528,6 +5580,11 @@ impl GameState {
                 .players
                 .iter()
                 .flat_map(|player| player.library.iter().copied())
+                .collect(),
+            Zone::OutsideGame => self
+                .players
+                .iter()
+                .flat_map(|player| player.sideboard.iter().copied())
                 .collect(),
             Zone::Stack => self.stack.iter().map(|entry| entry.object_id).collect(),
             Zone::Exile => self.exile.clone(),

@@ -88,6 +88,7 @@ function objectExistsInState(state, objectId) {
       player?.graveyard_cards || [],
       player?.exile_cards || [],
       player?.command_cards || [],
+      player?.sideboard_cards || [],
     ];
     for (const cards of zones) {
       for (const card of cards) {
@@ -136,6 +137,7 @@ function locateObjectInState(state, objectId) {
     ["graveyard", (player) => player?.graveyard_cards || []],
     ["exile", (player) => player?.exile_cards || []],
     ["command", (player) => player?.command_cards || []],
+    ["sideboard", (player) => player?.sideboard_cards || []],
   ];
 
   for (const player of players) {
@@ -195,7 +197,12 @@ function linkedInspectorLocationPriority(location) {
   if (location.viewVisibility === "private") return 5;
   if (location.zone === "hand" && location.side === "self") return 4;
   if (location.zone === "battlefield") return 3;
-  if (location.zone === "graveyard" || location.zone === "exile" || location.zone === "command") return 2;
+  if (
+    location.zone === "graveyard"
+    || location.zone === "exile"
+    || location.zone === "command"
+    || location.zone === "sideboard"
+  ) return 2;
   if (location.zone === "stack") return 0;
   return 1;
 }

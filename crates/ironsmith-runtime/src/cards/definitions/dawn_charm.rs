@@ -87,6 +87,8 @@ mod tests {
             target_assignments: vec![],
             x_value: None,
             ability_effects: None,
+            mana_usage_restrictions: Vec::new(),
+            mana_source_chosen_creature_type: None,
             casting_method: crate::alternative_cast::CastingMethod::Normal,
             optional_costs_paid: Default::default(),
             defending_player: None,

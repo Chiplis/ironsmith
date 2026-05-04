@@ -114,12 +114,26 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
 }
 
 export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
-  const { state, dispatch, cancelDecision, holdRule, setHoldRule } = useGame();
+  const {
+    state,
+    dispatch,
+    cancelDecision,
+    holdRule,
+    setHoldRule,
+    multiplayer,
+    startRematchSideboarding,
+    readyForRematch,
+  } = useGame();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
   const [visibleHoverGroups, setVisibleHoverGroups] = useState([]);
   const hideHoverGroupsTimerRef = useRef(null);
   const decision = state?.decision;
+  const gameOver = state?.game_over || null;
+  const rematch = multiplayer?.rematch || null;
+  const rematchSideboarding = rematch?.phase === "sideboarding";
+  const rematchReady = Boolean(rematch?.localReady);
+  const showRematchControls = Boolean(multiplayer?.matchStarted && gameOver);
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const canAct = decision && decision.player === perspective;
@@ -128,9 +142,17 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     ? players.find((p) => p.id === decision.player)
     : null;
 
-  const metaText = decision
+  const gameOverText = gameOver?.kind === "winner"
+    ? `${gameOver.name || `Player ${Number(gameOver.player || 0) + 1}`} wins`
+    : gameOver?.kind === "draw"
+      ? "The game is a draw"
+      : gameOver?.kind === "remaining"
+        ? "Game complete"
+        : "";
+
+  const metaText = gameOverText || (decision
     ? `${decisionPlayer?.name || "?"} · ${decision.reason || decision.kind}`
-    : "No pending action";
+    : "No pending action");
 
   const isPriorityDecision = decision?.kind === "priority";
   const passAction = isPriorityDecision
@@ -199,6 +221,21 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     }, 350);
   }, [cancelDecision]);
 
+  const handleRematchClick = useCallback(() => {
+    if (!showRematchControls) return;
+    if (rematchSideboarding) {
+      if (!rematchReady) readyForRematch?.();
+      return;
+    }
+    startRematchSideboarding?.();
+  }, [
+    readyForRematch,
+    rematchReady,
+    rematchSideboarding,
+    showRematchControls,
+    startRematchSideboarding,
+  ]);
+
   return (
     <KeywordHelpersProvider enabled={false}>
       <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[rgba(128,107,78,0.46)] bg-[linear-gradient(180deg,rgba(41,35,31,0.98),rgba(15,14,14,0.98))] backdrop-blur-[1.5px]">
@@ -215,7 +252,25 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           className="w-full min-h-0 flex-1 overflow-visible px-1.5 pt-1.5"
           style={cancelling ? { animation: "cancel-slide-out 350ms ease-in forwards" } : undefined}
         >
-          {decision ? (
+          {showRematchControls ? (
+            <div className="flex h-full min-h-[110px] flex-col justify-center gap-2 px-2 py-2">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#8ec4ff]">
+                Game Over
+              </div>
+              <div className="text-[16px] font-bold leading-tight text-[#f2d9a3]">
+                {gameOverText}
+              </div>
+              {rematchSideboarding ? (
+                <div className="text-[12px] leading-snug text-muted-foreground">
+                  Sideboard for the next game, then mark yourself ready.
+                </div>
+              ) : (
+                <div className="text-[12px] leading-snug text-muted-foreground">
+                  Start a rematch with the same seats.
+                </div>
+              )}
+            </div>
+          ) : decision ? (
             <DecisionRouter
               decision={decision}
               canAct={canAct}
@@ -265,7 +320,24 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             </div>
           )}
 
-          {isPriorityDecision && passAction && (
+          {showRematchControls && (
+            <div className="pb-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="decision-neon-button decision-main-button pass-priority-btn h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
+                aria-disabled={rematchSideboarding && rematchReady}
+                disabled={rematchSideboarding && rematchReady}
+                onClick={handleRematchClick}
+              >
+                {rematchSideboarding
+                  ? rematchReady ? "Waiting for players" : "Ready"
+                  : "Play again"}
+              </Button>
+            </div>
+          )}
+
+          {!showRematchControls && isPriorityDecision && passAction && (
             <div className="pb-1">
               <div className="relative">
                 <Button

@@ -33,6 +33,9 @@ export function buildObjectNameById(state) {
     for (const card of player?.command_cards || []) {
       registerName(map, card?.id, card?.name);
     }
+    for (const card of player?.sideboard_cards || []) {
+      registerName(map, card?.id, card?.name);
+    }
     for (const card of player?.battlefield || []) {
       registerName(map, card?.id, card?.name);
       for (const memberId of card?.member_ids || []) {
@@ -62,6 +65,7 @@ export function buildObjectControllerById(state) {
       player?.graveyard_cards || [],
       player?.exile_cards || [],
       player?.command_cards || [],
+      player?.sideboard_cards || [],
     ]) {
       for (const card of zone) {
         registerController(map, card?.id, player?.id);
@@ -102,6 +106,7 @@ export function buildInspectableObjectIdSet(state) {
       player?.graveyard_cards || [],
       player?.exile_cards || [],
       player?.command_cards || [],
+      player?.sideboard_cards || [],
     ]) {
       for (const card of zone) {
         if (card?.id != null) {

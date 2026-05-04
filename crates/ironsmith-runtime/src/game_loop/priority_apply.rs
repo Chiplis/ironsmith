@@ -723,11 +723,14 @@ pub fn apply_priority_response_with_dm(
                 source_stable_id,
                 source_name,
                 source_snapshot,
+                mana_usage_restrictions,
+                mana_source_chosen_creature_type,
             ) = if let Some(obj) = game.object(*source) {
                 let stable_id = obj.stable_id;
                 let name = obj.name.clone();
                 let snapshot =
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
+                let chosen_creature_type = game.chosen_creature_type(*source);
                 if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
                         let is_turn_capped = activated.max_activations_per_turn().is_some();
@@ -738,6 +741,8 @@ pub fn apply_priority_response_with_dm(
                             stable_id,
                             name,
                             snapshot,
+                            activated.mana_usage_restrictions.clone(),
+                            chosen_creature_type,
                         )
                     } else {
                         (
@@ -747,6 +752,8 @@ pub fn apply_priority_response_with_dm(
                             stable_id,
                             name,
                             snapshot,
+                            Vec::new(),
+                            chosen_creature_type,
                         )
                     }
                 } else {
@@ -757,6 +764,8 @@ pub fn apply_priority_response_with_dm(
                         stable_id,
                         name,
                         snapshot,
+                        Vec::new(),
+                        chosen_creature_type,
                     )
                 }
             } else {
@@ -852,6 +861,8 @@ pub fn apply_priority_response_with_dm(
                     source_snapshot,
                     source_name,
                     None,
+                    mana_usage_restrictions,
+                    mana_source_chosen_creature_type,
                     pips_to_announce,
                 );
 
@@ -865,6 +876,10 @@ pub fn apply_priority_response_with_dm(
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
                     .with_source_info(source_stable_id, source_name)
                     .with_source_snapshot(source_snapshot)
+                    .with_mana_usage_restrictions(
+                        mana_usage_restrictions,
+                        mana_source_chosen_creature_type,
+                    )
                     .with_tagged_objects(std::collections::HashMap::new());
                 game.push_to_stack(entry);
                 queue_ability_activated_event(
@@ -939,33 +954,18 @@ pub fn apply_priority_response_with_dm(
                     let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
                         .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
                         .with_provenance(mana_ability_provenance);
-
-                    // Pay mana cost first
-                    if let Some(ref mc) = mana_cost
-                        && !game.try_pay_mana_cost_with_reason(
-                            player,
-                            Some(*source),
-                            mc,
-                            0,
-                            crate::costs::PaymentReason::ActivateManaAbility,
-                        )
-                    {
-                        return Err(GameLoopError::InvalidState(
-                            "Failed to pay mana cost".to_string(),
-                        ));
-                    }
-
-                    // Pay other costs from TotalCost
-                    for c in &other_costs {
-                        crate::special_actions::pay_cost_component_with_choice(
+                    let cost_summary =
+                        crate::special_actions::pay_total_cost_without_preflight_with_choice(
                             game,
-                            c,
+                            &cost,
                             &mut cost_ctx,
                         )
                         .map_err(|e| {
                             GameLoopError::InvalidState(format!("Failed to pay cost: {e}"))
                         })?;
-                    }
+                    let x_value_from_costs = cost_summary.x_value;
+                    drop(cost_ctx);
+
                     drain_pending_trigger_events(game, trigger_queue);
 
                     // Add fixed mana to player's pool
@@ -993,6 +993,9 @@ pub fn apply_priority_response_with_dm(
                     if !effects_to_run.is_empty() {
                         let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
                             .with_provenance(mana_ability_provenance);
+                        if let Some(x) = x_value_from_costs {
+                            ctx = ctx.with_x(x);
+                        }
                         let mut emitted_events = Vec::new();
 
                         for effect in &effects_to_run {

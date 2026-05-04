@@ -37,7 +37,8 @@ use super::util::{
     is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_non_type, parse_number, parse_number_word_u32,
     parse_subject, parse_target_count_range_prefix, parse_target_phrase, parse_value_expr_words,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    source_reference_surface_for_words, span_from_tokens, token_index_for_word_index, trim_commas,
+    words,
 };
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};

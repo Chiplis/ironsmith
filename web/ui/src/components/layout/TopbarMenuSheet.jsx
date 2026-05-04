@@ -147,6 +147,7 @@ export default function TopbarMenuSheet({
           size="icon-xs"
           className="stone-pill topbar-menu-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
           aria-label={triggerIcon === "menu" ? "Open navigation menu" : "Open game menu"}
+          title={triggerIcon === "menu" ? "Menu" : "Settings"}
         >
           {triggerGlyph}
         </Button>

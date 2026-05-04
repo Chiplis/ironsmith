@@ -1,6 +1,6 @@
 use crate::{
-    CauseFilter, ChooseSpec, CounterType, KeywordActionKind, ObjectFilter, PlayerFilter, Zone,
-    filter_model::Comparison,
+    CauseFilter, ChooseSpec, CounterType, KeywordActionKind, ObjectFilter, PlayerFilter,
+    SourceReferenceSurface, Zone, filter_model::Comparison,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -913,6 +913,7 @@ pub struct ZoneChangeTrigger {
     pub to: Option<Zone>,
     pub filter: Option<ObjectFilter>,
     pub this: bool,
+    pub this_surface: Option<SourceReferenceSurface>,
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
 }
@@ -924,6 +925,7 @@ impl ZoneChangeTrigger {
             to: None,
             filter: None,
             this: false,
+            this_surface: None,
             count: CountMode::One,
             cause_filter: None,
         }
@@ -951,6 +953,11 @@ impl ZoneChangeTrigger {
 
     pub fn this(mut self) -> Self {
         self.this = true;
+        self
+    }
+
+    pub fn this_surface(mut self, surface: SourceReferenceSurface) -> Self {
+        self.this_surface = Some(surface);
         self
     }
 

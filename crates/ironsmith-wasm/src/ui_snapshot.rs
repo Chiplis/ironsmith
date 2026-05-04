@@ -765,6 +765,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) graveyard_cards: Vec<ZoneCardSnapshot>,
     pub(super) exile_cards: Vec<ZoneCardSnapshot>,
     pub(super) command_cards: Vec<ZoneCardSnapshot>,
+    pub(super) sideboard_cards: Vec<ZoneCardSnapshot>,
     pub(super) library_top: Option<String>,
     pub(super) graveyard_top: Option<String>,
     pub(super) battlefield: Vec<PermanentSnapshot>,
@@ -946,6 +947,24 @@ impl GameSnapshot {
                             )
                         })
                         .collect(),
+                    sideboard_cards: if is_perspective_player {
+                        p.sideboard
+                            .iter()
+                            .rev()
+                            .filter_map(|id| game.object(*id))
+                            .map(|o| {
+                                build_zone_card_snapshot(
+                                    game,
+                                    perspective,
+                                    viewed_cards,
+                                    o,
+                                    Zone::OutsideGame,
+                                )
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                     library_top: can_view_library_top
                         .then(|| {
                             p.library
@@ -1250,6 +1269,7 @@ fn zone_label(zone: Zone) -> String {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::OutsideGame => "outside_game",
     }
     .to_string()
 }

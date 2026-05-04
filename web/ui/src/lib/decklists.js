@@ -109,6 +109,42 @@ export function parseDeckList(text) {
   return cards;
 }
 
+export function parseSideboardList(text) {
+  const cards = [];
+  let parsingSideboard = false;
+
+  for (const line of String(text || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+
+    if (MAIN_DECK_HEADER.test(trimmed) || COMMANDER_HEADER.test(trimmed)) {
+      parsingSideboard = false;
+      continue;
+    }
+
+    if (EXTRA_DECK_HEADER.test(trimmed)) {
+      parsingSideboard = true;
+      continue;
+    }
+
+    if (!parsingSideboard) continue;
+
+    const match = trimmed.match(CARD_LINE);
+    if (!match) {
+      cards.push(normalizeCardName(trimmed));
+      continue;
+    }
+
+    const count = parseInt(match[1], 10);
+    const name = normalizeCardName(match[2]);
+    for (let i = 0; i < count; i += 1) {
+      cards.push(name);
+    }
+  }
+
+  return cards;
+}
+
 export function parseCommanderList(text) {
   const cards = [];
 

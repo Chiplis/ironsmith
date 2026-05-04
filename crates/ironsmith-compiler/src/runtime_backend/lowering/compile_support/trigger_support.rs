@@ -237,6 +237,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_postcombat_main_phase(player)
         }
         TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
+        TriggerSpec::ThisEntersBattlefieldWithSurface(surface) => Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .to(crate::zone::Zone::Battlefield)
+                .this()
+                .this_surface(surface.clone()),
+        ),
         TriggerSpec::ThisEntersBattlefieldFromZone {
             mut subject_filter,
             from,

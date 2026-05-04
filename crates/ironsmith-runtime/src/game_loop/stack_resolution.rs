@@ -296,6 +296,8 @@ pub(super) fn resolve_stack_entry_full(
     let mut ctx = ExecutionContext::new(execution_source, entry.controller, decision_maker)
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
         .with_casting_method(entry.casting_method.clone())
+        .with_mana_usage_restrictions(entry.mana_usage_restrictions.clone())
+        .with_mana_source_chosen_creature_type(entry.mana_source_chosen_creature_type)
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller))
         .with_provenance(entry.provenance);
     if let Some(x) = entry.x_value {

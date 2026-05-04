@@ -38,6 +38,9 @@ fn convert_zone_change_trigger(
     if trigger.this {
         out = out.this();
     }
+    if let Some(surface) = trigger.this_surface {
+        out = out.this_surface(surface);
+    }
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
     crate::triggers::Trigger::new(out)
