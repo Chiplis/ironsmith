@@ -451,6 +451,7 @@ export function GameProvider({ children }) {
   const multiplayerActiveRef = useRef(false);
   const multiplayerAutoPassAttemptRef = useRef("");
   const stickyViewedCardsRef = useRef(null);
+  const stickyGameOverRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
   const recentTargetSubmitRef = useRef({
     inFlight: false,
@@ -973,21 +974,36 @@ export function GameProvider({ children }) {
 
   const applyStickyViewedCards = useCallback((nextState, { clear = false } = {}) => {
     if (!nextState) {
-      if (clear) stickyViewedCardsRef.current = null;
+      if (clear) {
+        stickyViewedCardsRef.current = null;
+        stickyGameOverRef.current = null;
+      }
       return nextState;
     }
 
     if (clear) {
       stickyViewedCardsRef.current = null;
+      stickyGameOverRef.current = null;
     }
 
+    if (nextState.game_over) {
+      stickyGameOverRef.current = nextState.game_over;
+    } else if (nextState.decision) {
+      stickyGameOverRef.current = null;
+    }
+
+    let visibleState = nextState;
     if (nextState.viewed_cards) {
       stickyViewedCardsRef.current = nextState.viewed_cards;
-      return nextState;
+    } else if (stickyViewedCardsRef.current) {
+      visibleState = { ...visibleState, viewed_cards: stickyViewedCardsRef.current };
     }
 
-    if (!stickyViewedCardsRef.current) return nextState;
-    return { ...nextState, viewed_cards: stickyViewedCardsRef.current };
+    if (!visibleState.game_over && !visibleState.decision && stickyGameOverRef.current) {
+      visibleState = { ...visibleState, game_over: stickyGameOverRef.current };
+    }
+
+    return visibleState;
   }, []);
 
   const finalizeState = useCallback(

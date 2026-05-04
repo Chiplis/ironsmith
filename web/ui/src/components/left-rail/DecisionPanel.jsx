@@ -133,7 +133,12 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const rematch = multiplayer?.rematch || null;
   const rematchSideboarding = rematch?.phase === "sideboarding";
   const rematchReady = Boolean(rematch?.localReady);
-  const showRematchControls = Boolean(multiplayer?.matchStarted && gameOver);
+  const showGameOverPanel = Boolean(gameOver);
+  const canPlayAgain = Boolean(
+    gameOver
+    && (multiplayer?.matchStarted || multiplayer?.mode === "in_match")
+    && typeof startRematchSideboarding === "function"
+  );
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const canAct = decision && decision.player === perspective;
@@ -222,7 +227,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   }, [cancelDecision]);
 
   const handleRematchClick = useCallback(() => {
-    if (!showRematchControls) return;
+    if (!canPlayAgain) return;
     if (rematchSideboarding) {
       if (!rematchReady) readyForRematch?.();
       return;
@@ -230,9 +235,9 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     startRematchSideboarding?.();
   }, [
     readyForRematch,
+    canPlayAgain,
     rematchReady,
     rematchSideboarding,
-    showRematchControls,
     startRematchSideboarding,
   ]);
 
@@ -252,9 +257,9 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           className="w-full min-h-0 flex-1 overflow-visible px-1.5 pt-1.5"
           style={cancelling ? { animation: "cancel-slide-out 350ms ease-in forwards" } : undefined}
         >
-          {showRematchControls ? (
+          {showGameOverPanel ? (
             <div className="flex h-full min-h-[110px] flex-col justify-center gap-2 px-2 py-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#8ec4ff]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#d8bf7a]">
                 Game Over
               </div>
               <div className="text-[16px] font-bold leading-tight text-[#f2d9a3]">
@@ -266,7 +271,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 </div>
               ) : (
                 <div className="text-[12px] leading-snug text-muted-foreground">
-                  Start a rematch with the same seats.
+                  {canPlayAgain ? "Start a rematch with the same seats." : "The game has ended."}
                 </div>
               )}
             </div>
@@ -320,7 +325,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             </div>
           )}
 
-          {showRematchControls && (
+          {showGameOverPanel && canPlayAgain && (
             <div className="pb-1">
               <Button
                 variant="ghost"
@@ -337,7 +342,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             </div>
           )}
 
-          {!showRematchControls && isPriorityDecision && passAction && (
+          {!showGameOverPanel && isPriorityDecision && passAction && (
             <div className="pb-1">
               <div className="relative">
                 <Button
