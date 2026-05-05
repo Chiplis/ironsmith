@@ -588,6 +588,7 @@ function PriorityActionStrip({
   canAct,
   players,
   perspective,
+  className = "",
   hasPinnedSelection = false,
   objectNameById,
   objectControllerById,
@@ -797,7 +798,7 @@ function PriorityActionStrip({
 
   if (!canAct) {
     return (
-      <div className="action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap">
+      <div className={cn("action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>
         Waiting for opponent
       </div>
     );
@@ -805,7 +806,7 @@ function PriorityActionStrip({
 
   if (!groups.length) {
     return (
-      <div className="action-strip-empty-state action-strip-empty-state--empty flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap">
+      <div className={cn("action-strip-empty-state action-strip-empty-state--empty flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>
         No actions available
       </div>
     );
@@ -817,7 +818,7 @@ function PriorityActionStrip({
         viewportRef.current = node;
         attachScrollableRef(node);
       }}
-      className="action-strip-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap"
+      className={cn("action-strip-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap", className)}
       onMouseEnter={() => setIsPointerInStrip(true)}
       onMouseLeave={() => setIsPointerInStrip(false)}
     >
@@ -1007,6 +1008,7 @@ function ViewedCardsStrip({
   cards = [],
   players = [],
   perspective = null,
+  className = "",
   objectControllerById = new Map(),
   hoveredObjectId = null,
   selectedObjectId = null,
@@ -1093,7 +1095,7 @@ function ViewedCardsStrip({
   );
 
   return (
-    <div className="viewed-cards-strip min-w-0 flex-1 overflow-hidden px-1 py-1">
+    <div className={cn("viewed-cards-strip min-w-0 flex-1 overflow-hidden px-1 py-1", className)}>
       {compact ? (
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-[200px] max-w-[360px] shrink-0">
@@ -2112,10 +2114,16 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const showPriorityAdvanceButton = !!passAction;
   const canCancelDecision = canAct && !!state?.cancelable;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
-  const passAdvanceLabel = holdRule === "always" || hasCustomPassLabel
-    ? (passAction?.label || "Pass priority")
-    : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`;
-  const passCurrentLabel = currentPriorityPhaseLabel(state?.phase, state?.step);
+  const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
+  const passAdvanceLabel = resolvingStackPriority
+    ? ""
+    : (holdRule === "always" || hasCustomPassLabel
+        ? (passAction?.label || "Pass priority")
+        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
+  const passCurrentLabel = resolvingStackPriority
+    ? "Resolve"
+    : currentPriorityPhaseLabel(state?.phase, state?.step);
+  const passHelpAdvanceLabel = resolvingStackPriority ? "Resolve" : passAdvanceLabel;
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
     [state?.players]
@@ -2348,39 +2356,45 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       <div
         ref={inlineRootRef}
         className={cn(
-          "pointer-events-none absolute inset-0 z-[120] flex items-start pt-0.5",
-          compactLandscapeViewport ? "px-0" : "px-2"
+          "pointer-events-none absolute inset-0 z-[120] flex",
+          isPriorityDecision ? "items-stretch pt-0" : "items-start pt-0.5",
+          compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
         )}
       >
         <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} />
         <div
           className={cn(
             "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
-            compactLandscapeViewport ? "px-0" : "px-2"
+            isPriorityDecision && "priority-inline-panel--segmented",
+            compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
           )}
         >
           {isPriorityDecision ? (
             showViewedCardsStep ? (
-              <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="decision-neon-button decision-main-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                  style={decisionButtonStyle}
-                  data-local-action={localDecisionButton ? "true" : "false"}
-                  disabled={!canAdvanceViewedCardsStep}
-                  onPointerDown={(event) => {
-                    if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                    event.preventDefault();
-                    completeViewedCardsStep();
-                  }}
-                  onClick={(event) => {
-                    if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                    completeViewedCardsStep();
-                  }}
-                >
-                  Done
-                </Button>
+              <div
+                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
+                style={decisionButtonStyle}
+              >
+                <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                    data-local-action={localDecisionButton ? "true" : "false"}
+                    disabled={!canAdvanceViewedCardsStep}
+                    onPointerDown={(event) => {
+                      if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                      event.preventDefault();
+                      completeViewedCardsStep();
+                    }}
+                    onClick={(event) => {
+                      if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                      completeViewedCardsStep();
+                    }}
+                  >
+                    Done
+                  </Button>
+                </div>
                 <ViewedCardsStrip
                   label={viewedCardsLabel}
                   description={viewedCards?.description || ""}
@@ -2388,6 +2402,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   cards={viewedCardEntries}
                   players={state?.players || []}
                   perspective={state?.perspective}
+                  className="action-strip-options-region self-stretch"
                   objectControllerById={objectControllerById}
                   hoveredObjectId={hoveredObjectId}
                   selectedObjectId={selectedObjectId}
@@ -2397,14 +2412,16 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 />
               </div>
             ) : (
-              <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
+              <div
+                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
+                style={decisionButtonStyle}
+              >
                 {showPriorityAdvanceButton && (
-                  <div className="relative h-full w-[176px] shrink-0 self-stretch">
+                  <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
-                      style={decisionButtonStyle}
                       data-local-action={localDecisionButton ? "true" : "false"}
                       aria-disabled={!canAct}
                       onClick={() => triggerPriorityAction(passAction)}
@@ -2417,7 +2434,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
-                      advanceLabel={passAdvanceLabel}
+                      advanceLabel={passHelpAdvanceLabel}
                       className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                     />
                   </div>
@@ -2427,6 +2444,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   canAct={canAct}
                   players={state?.players || []}
                   perspective={state?.perspective}
+                  className="action-strip-options-region self-stretch"
                   hasPinnedSelection={selectedObjectId != null}
                   objectNameById={objectNameById}
                   objectControllerById={objectControllerById}
@@ -2588,37 +2606,40 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
         "priority-inline-panel pointer-events-auto relative py-0",
         compactLandscapeViewport ? "px-0" : "px-2"
       )}>
-        <div className="action-strip-layout flex min-h-[46px] items-start gap-2">
+        <div
+          className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-start gap-2"
+          style={isPriorityDecision ? decisionButtonStyle : undefined}
+        >
           {isPriorityDecision ? (
             showViewedCardsStep ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-main-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                style={decisionButtonStyle}
-                data-local-action={localDecisionButton ? "true" : "false"}
-                disabled={!canAdvanceViewedCardsStep}
-                onPointerDown={(event) => {
-                  if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                  event.preventDefault();
-                  completeViewedCardsStep();
-                }}
-                onClick={(event) => {
-                  if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                  completeViewedCardsStep();
-                }}
-              >
-                Done
-              </Button>
+              <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                  data-local-action={localDecisionButton ? "true" : "false"}
+                  disabled={!canAdvanceViewedCardsStep}
+                  onPointerDown={(event) => {
+                    if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                    event.preventDefault();
+                    completeViewedCardsStep();
+                  }}
+                  onClick={(event) => {
+                    if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                    completeViewedCardsStep();
+                  }}
+                >
+                  Done
+                </Button>
+              </div>
             ) : (
               <>
                 {showPriorityAdvanceButton && (
-                  <div className="relative h-full w-[176px] shrink-0 self-stretch">
+                  <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
-                      style={decisionButtonStyle}
                       data-local-action={localDecisionButton ? "true" : "false"}
                       aria-disabled={!canAct}
                       onClick={() => triggerPriorityAction(passAction)}
@@ -2631,7 +2652,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
-                      advanceLabel={passAdvanceLabel}
+                      advanceLabel={passHelpAdvanceLabel}
                       className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                     />
                   </div>

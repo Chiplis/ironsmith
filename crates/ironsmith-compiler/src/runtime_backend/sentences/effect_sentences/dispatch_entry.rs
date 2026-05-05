@@ -521,14 +521,43 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
     let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
 
     if str_contains(&normalized, "countered this way")
-        && str_contains(&normalized, "instead of putting it into")
+        && str_contains(&normalized, "instead of")
         && str_contains(&normalized, "graveyard")
+        && str_contains(&normalized, "exile")
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target,
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if str_contains(&normalized, "countered this way")
+        && str_contains(&normalized, "instead of")
+        && str_contains(&normalized, "graveyard")
+        && str_contains(&normalized, "hand")
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            target,
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Hand,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if str_contains(&normalized, "countered this way")
+        && str_contains(&normalized, "instead of")
+        && str_contains(&normalized, "graveyard")
+        && str_contains(&normalized, "library")
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            target,
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Library,
             ZoneReplacementDurationAst::OneShot,
         ));
     }
@@ -1103,12 +1132,82 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
+    let destroyed_this_way_subject = words.starts_with(&["creature", "destroyed", "this", "way"])
+        || words.starts_with(&["creatures", "destroyed", "this", "way"])
+        || words.starts_with(&["a", "creature", "destroyed", "this", "way"]);
+    if destroyed_this_way_subject
+        && words.ends_with(&["be", "regenerated"])
+        && (words
+            .iter()
+            .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
+            || words
+                .windows(4)
+                .any(|window| window == ["can", "t", "be", "regenerated"]))
+    {
+        return true;
+    }
     matches!(
         words.as_slice(),
         ["it", "cant", "be", "regenerated"]
             | ["it", "cant", "be", "regenerated", "this", "turn"]
             | ["they", "cant", "be", "regenerated"]
             | ["they", "cant", "be", "regenerated", "this", "turn"]
+            | [
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated"
+            ]
+            | [
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated"
+            ]
+            | [
+                "creatures",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated"
+            ]
+            | [
+                "creatures",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated"
+            ]
+            | [
+                "a",
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated"
+            ]
+            | [
+                "a",
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated"
+            ]
     )
 }
 

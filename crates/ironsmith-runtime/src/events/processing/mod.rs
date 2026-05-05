@@ -190,6 +190,7 @@ fn process_event_direct(
             effect_id,
             object_id,
             filter,
+            destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
             redirect_zone,
@@ -198,6 +199,7 @@ fn process_event_direct(
             event: Box::new(event),
             filter,
             life_cost,
+            destinations,
         },
     }
 }
@@ -280,6 +282,7 @@ enum InteractiveReplacementResponse {
     Accept,
     Decline,
     Objects(Vec<crate::ids::ObjectId>),
+    Options(Vec<usize>),
 }
 
 fn continue_interactive_replacement(
@@ -290,6 +293,7 @@ fn continue_interactive_replacement(
     filter: Option<&crate::target::ObjectFilter>,
     redirect_zone: Zone,
     life_cost: Option<u32>,
+    destinations: Option<&[Zone]>,
     provenance: crate::provenance::ProvNodeId,
     decision_maker: &mut dyn DecisionMaker,
 ) -> InteractiveReplacementResult {
@@ -310,6 +314,18 @@ fn continue_interactive_replacement(
     // Handle pay-life-or-enter-tapped (shock land pattern)
     if let Some(cost) = life_cost {
         return handle_pay_life_or_enter_tapped(game, response, controller, cost);
+    }
+
+    if let Some(destinations) = destinations {
+        let selected_zone = match response {
+            InteractiveReplacementResponse::Options(selected) => selected
+                .first()
+                .and_then(|idx| destinations.get(*idx))
+                .copied()
+                .unwrap_or(redirect_zone),
+            _ => redirect_zone,
+        };
+        return InteractiveReplacementResult::redirected(selected_zone);
     }
 
     // Fallback: redirect
@@ -356,7 +372,9 @@ fn handle_discard_or_redirect(
                 InteractiveReplacementResult::redirected(redirect_zone)
             }
         }
-        InteractiveReplacementResponse::Decline | InteractiveReplacementResponse::Accept => {
+        InteractiveReplacementResponse::Decline
+        | InteractiveReplacementResponse::Accept
+        | InteractiveReplacementResponse::Options(_) => {
             // Player chose not to discard, redirect
             InteractiveReplacementResult::redirected(redirect_zone)
         }
@@ -387,7 +405,9 @@ fn handle_pay_life_or_enter_tapped(
                 InteractiveReplacementResult::enters_tapped()
             }
         }
-        InteractiveReplacementResponse::Decline | InteractiveReplacementResponse::Objects(_) => {
+        InteractiveReplacementResponse::Decline
+        | InteractiveReplacementResponse::Objects(_)
+        | InteractiveReplacementResponse::Options(_) => {
             // Player chose not to pay life - permanent enters tapped
             InteractiveReplacementResult::enters_tapped()
         }
@@ -571,6 +591,7 @@ pub fn execute_discard(
         TraitEventResult::NeedsInteraction {
             decision_ctx,
             redirect_zone,
+            destinations,
             event: _original_event,
             ..
         } => {
@@ -584,13 +605,11 @@ pub fn execute_discard(
                     // Map the selection back to a zone
                     // The options are indexed by position in the destinations list
                     let chosen_zone = if let Some(&idx) = selected.first() {
-                        // Extract destinations from the original event context
-                        // For Library of Leng: [Graveyard, Library]
-                        match idx {
-                            0 => Zone::Graveyard,
-                            1 => Zone::Library,
-                            _ => redirect_zone,
-                        }
+                        destinations
+                            .as_deref()
+                            .and_then(|zones| zones.get(idx))
+                            .copied()
+                            .unwrap_or(redirect_zone)
                     } else {
                         redirect_zone
                     };
@@ -689,6 +708,8 @@ enum TraitApplyResult {
         object_id: crate::ids::ObjectId,
         /// The filter for discarding (for InteractiveDiscardOrRedirect).
         filter: Option<crate::target::ObjectFilter>,
+        /// Destination options for InteractiveChooseDestination.
+        destinations: Option<Vec<Zone>>,
     },
 }
 
@@ -813,6 +834,8 @@ pub enum TraitEventResult {
         filter: Option<crate::target::ObjectFilter>,
         /// The life cost (for InteractivePayLifeOrEnterTapped).
         life_cost: Option<u32>,
+        /// Destination options for InteractiveChooseDestination.
+        destinations: Option<Vec<Zone>>,
     },
 }
 
@@ -1259,12 +1282,29 @@ fn process_zone_change_inner(
             );
             EventOutcome::Prevented
         }
-        // Interactive replacements don't apply to zone change events directly
-        // (they're handled at the ETB level)
+        TraitEventResult::NeedsInteraction {
+            decision_ctx,
+            redirect_zone,
+            destinations: Some(destinations),
+            ..
+        } => {
+            let chosen_zone = match decision_ctx {
+                crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
+                    let selected = dm.decide_options(game, &ctx);
+                    selected
+                        .first()
+                        .and_then(|idx| destinations.get(*idx))
+                        .copied()
+                        .unwrap_or(redirect_zone)
+                }
+                _ => redirect_zone,
+            };
+            EventOutcome::Proceed(chosen_zone)
+        }
         TraitEventResult::NeedsInteraction { .. } => {
             debug_assert!(
                 false,
-                "interactive replacement unexpectedly matched zone change event"
+                "non-destination interactive replacement unexpectedly matched zone change event"
             );
             EventOutcome::Prevented
         }
@@ -1438,6 +1478,7 @@ fn process_with_dm_and_additional_effects(
                         effect_id,
                         object_id,
                         filter,
+                        destinations,
                     } => {
                         return TraitEventResult::NeedsInteraction {
                             decision_ctx,
@@ -1452,6 +1493,7 @@ fn process_with_dm_and_additional_effects(
                                 } => Some(*life_cost),
                                 _ => None,
                             },
+                            destinations,
                         };
                     }
                 }
@@ -2271,6 +2313,7 @@ pub fn process_etb_with_event_and_dm(
                         effect_id,
                         object_id,
                         filter,
+                        destinations,
                     } => {
                         let life_cost = match &chosen_effect.replacement {
                             ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost } => {
@@ -2295,6 +2338,11 @@ pub fn process_etb_with_event_and_dm(
                                     dm.decide_objects(game, &ctx),
                                 )
                             }
+                            crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
+                                InteractiveReplacementResponse::Options(
+                                    dm.decide_options(game, &ctx),
+                                )
+                            }
                             _ => InteractiveReplacementResponse::Decline,
                         };
                         state.mark_applied(effect_id);
@@ -2306,6 +2354,7 @@ pub fn process_etb_with_event_and_dm(
                             filter.as_ref(),
                             redirect_zone,
                             life_cost,
+                            destinations.as_deref(),
                             current_event.provenance(),
                             dm,
                         );
@@ -2332,6 +2381,7 @@ pub fn process_etb_with_event_and_dm(
                 event,
                 filter,
                 life_cost,
+                destinations,
             } => {
                 let controller = game
                     .object(object_id)
@@ -2348,6 +2398,9 @@ pub fn process_etb_with_event_and_dm(
                     crate::decisions::context::DecisionContext::SelectObjects(ctx) => {
                         InteractiveReplacementResponse::Objects(dm.decide_objects(game, &ctx))
                     }
+                    crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
+                        InteractiveReplacementResponse::Options(dm.decide_options(game, &ctx))
+                    }
                     _ => InteractiveReplacementResponse::Decline,
                 };
                 state.mark_applied(effect_id);
@@ -2359,6 +2412,7 @@ pub fn process_etb_with_event_and_dm(
                     filter.as_ref(),
                     redirect_zone,
                     life_cost,
+                    destinations.as_deref(),
                     event.provenance(),
                     dm,
                 );
@@ -2562,6 +2616,7 @@ pub fn process_event_with_chosen_replacement_trait(
             effect_id,
             object_id,
             filter,
+            destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
             redirect_zone,
@@ -2575,6 +2630,7 @@ pub fn process_event_with_chosen_replacement_trait(
                 }
                 _ => None,
             },
+            destinations,
         },
     }
 }

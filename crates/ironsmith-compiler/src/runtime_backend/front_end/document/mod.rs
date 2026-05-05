@@ -515,7 +515,9 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
         builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type;
     is_nonpermanent_spell
         && (token_words_have_any_prefix(tokens, &[&["each"], &["all"]])
-            || token_words_have_sequence(tokens, &["until", "end", "of", "turn"]))
+            || token_words_have_sequence(tokens, &["until", "end", "of", "turn"])
+            || (token_words_have_any_prefix(tokens, &[&["if"]])
+                && token_words_have_sequence(tokens, &["instead"])))
 }
 
 fn looks_like_activation_cost_prefix(raw: &str) -> bool {

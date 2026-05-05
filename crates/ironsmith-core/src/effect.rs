@@ -3205,6 +3205,8 @@ pub struct RegisterZoneReplacementEffect {
     pub to_zone: Option<crate::zone::Zone>,
     pub replacement_zone: crate::zone::Zone,
     pub mode: ReplacementApplyMode,
+    pub optional: bool,
+    pub choice_description: Option<String>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -3221,7 +3223,15 @@ impl RegisterZoneReplacementEffect {
             to_zone,
             replacement_zone,
             mode,
+            optional: false,
+            choice_description: None,
         }
+    }
+
+    pub fn optional(mut self, description: impl Into<String>) -> Self {
+        self.optional = true;
+        self.choice_description = Some(description.into());
+        self
     }
 }
 

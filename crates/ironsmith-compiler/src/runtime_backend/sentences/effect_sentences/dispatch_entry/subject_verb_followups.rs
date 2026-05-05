@@ -838,7 +838,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "cant-be-regenerated",
         priority: 30,
-        heads: &["it", "they"],
+        heads: &["it", "they", "creature", "creatures", "a"],
         run: pre_rule_cant_be_regenerated_followup,
     },
     SubjectVerbFollowupRuleDef {

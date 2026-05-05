@@ -65,6 +65,22 @@ fn retarget_replacement_effects(
         .collect()
 }
 
+fn unwrap_matching_conditional_replacement_effects(
+    effects: Vec<crate::effect::Effect>,
+    condition: &crate::effect::Condition,
+) -> Vec<crate::effect::Effect> {
+    let [effect] = effects.as_slice() else {
+        return effects;
+    };
+    let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() else {
+        return effects;
+    };
+    if conditional.condition != *condition || !conditional.if_false.is_empty() {
+        return effects;
+    }
+    conditional.if_true.clone()
+}
+
 fn compile_trailing_instead_if_condition(
     normalized_line: &str,
     line_index: usize,
@@ -95,6 +111,236 @@ fn compile_trailing_instead_if_condition(
         prepared.imports.last_object_tag.as_ref(),
     )
     .map(Some)
+}
+
+fn optional_zone_rewrite_effect(
+    effect: crate::effect::Effect,
+    target: ChooseSpec,
+    from_zone: Zone,
+    to_zone: Zone,
+    replacement_zone: Zone,
+    choice_description: &str,
+) -> crate::effect::Effect {
+    let mut replacement = crate::effects::RegisterZoneReplacementEffect::new(
+        target,
+        Some(from_zone),
+        Some(to_zone),
+        replacement_zone,
+        crate::effects::ReplacementApplyMode::OneShot,
+    );
+    replacement.optional = true;
+    replacement.choice_description = Some(choice_description.to_string());
+    crate::effect::Effect::new(crate::effects::LocalRewriteEffect::new(
+        effect,
+        vec![replacement],
+    ))
+}
+
+fn search_to_hand_replacement_target(effect: &crate::effect::Effect) -> Option<ChooseSpec> {
+    if let Some(search) = effect.as_search()
+        && search.destination == Zone::Hand
+    {
+        return Some(ChooseSpec::Object(search.filter.clone()));
+    }
+    if let Some(search_slots) = effect.as_search_slots()
+        && search_slots.destination == Zone::Hand
+        && search_slots.slots.len() == 1
+    {
+        return Some(ChooseSpec::Object(search_slots.slots[0].filter.clone()));
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choose.is_search
+        && choose.zone == Some(Zone::Library)
+    {
+        return Some(ChooseSpec::Object(choose.filter.clone()));
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence
+            .effects
+            .iter()
+            .find_map(search_to_hand_replacement_target);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return search_to_hand_replacement_target(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return search_to_hand_replacement_target(&with_id.effect);
+    }
+    None
+}
+
+fn optional_search_to_battlefield_rewrite(
+    effect: &crate::effect::Effect,
+) -> Option<crate::effect::Effect> {
+    let target = search_to_hand_replacement_target(effect)?;
+    Some(optional_zone_rewrite_effect(
+        effect.clone(),
+        target,
+        Zone::Library,
+        Zone::Hand,
+        Zone::Battlefield,
+        "Put that card onto the battlefield instead of into your hand",
+    ))
+}
+
+fn attach_morbid_search_to_battlefield_self_replacement(
+    builder: &mut CardDefinitionBuilder,
+    normalized_line: &str,
+) -> bool {
+    if !normalized_line
+        .contains("put that card onto the battlefield instead of putting it into your hand")
+        || !normalized_line.contains("creature died this turn")
+    {
+        return false;
+    }
+    let Some(existing) = builder.spell_effect.as_mut() else {
+        return false;
+    };
+    let Some(segment) = existing.last_segment_mut() else {
+        return false;
+    };
+    let replacement_effects = segment
+        .default_effects
+        .iter()
+        .map(optional_search_to_battlefield_rewrite)
+        .collect::<Option<Vec<_>>>();
+    let Some(replacement_effects) = replacement_effects else {
+        return false;
+    };
+    segment
+        .self_replacements
+        .push(crate::resolution::SelfReplacementBranch::new(
+            crate::effect::Condition::CreatureDiedThisTurn,
+            replacement_effects,
+        ));
+    true
+}
+
+fn back_for_seconds_style_replacement_program(
+    compiled: &[crate::effect::Effect],
+    normalized_line: &str,
+) -> Option<crate::resolution::ResolutionProgram> {
+    if !normalized_line.contains("if this spell was bargained")
+        || !normalized_line.contains("one of those cards with mana value 4 or less")
+        || !normalized_line.contains("onto the battlefield instead of putting it into your hand")
+    {
+        return None;
+    }
+    let [return_effect, _followup] = compiled else {
+        return None;
+    };
+    let target = ChooseSpec::Object(
+        crate::target::ObjectFilter::creature()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_mana_value(crate::target::Comparison::LessThanOrEqual(4)),
+    );
+    let replacement_effect = optional_zone_rewrite_effect(
+        return_effect.clone(),
+        target,
+        Zone::Graveyard,
+        Zone::Hand,
+        Zone::Battlefield,
+        "Put one returned card with mana value 4 or less onto the battlefield",
+    );
+    let mut program =
+        crate::resolution::ResolutionProgram::from_effects(vec![return_effect.clone()]);
+    let segment = program.last_segment_mut()?;
+    segment
+        .self_replacements
+        .push(crate::resolution::SelfReplacementBranch::new(
+            crate::effect::Condition::ThisSpellPaidLabel("Bargain".to_string()),
+            vec![replacement_effect],
+        ));
+    Some(program)
+}
+
+fn kicked_count_override_self_replacement_program(
+    compiled: &[crate::effect::Effect],
+    normalized_line: &str,
+) -> Option<crate::resolution::ResolutionProgram> {
+    if !normalized_line.contains("put two of those cards into your hand instead")
+        || !normalized_line.contains("put one of those cards into your hand")
+    {
+        return None;
+    }
+    let [look_effect, conditional_effect] = compiled else {
+        return None;
+    };
+    if look_effect
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .is_none()
+    {
+        return None;
+    }
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.condition != crate::effect::Condition::ThisSpellWasKicked
+        || conditional.if_true.is_empty()
+        || conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let mut default_effects = vec![look_effect.clone()];
+    default_effects.extend(conditional.if_false.clone());
+    let mut replacement_effects = vec![look_effect.clone()];
+    replacement_effects.extend(conditional.if_true.clone());
+    let mut program = crate::resolution::ResolutionProgram::from_effects(default_effects);
+    let segment = program.last_segment_mut()?;
+    segment
+        .self_replacements
+        .push(crate::resolution::SelfReplacementBranch::new(
+            conditional.condition.clone(),
+            replacement_effects,
+        ));
+    Some(program)
+}
+
+fn clash_win_optional_top_replacement_program(
+    compiled: &[crate::effect::Effect],
+    normalized_line: &str,
+) -> Option<crate::resolution::ResolutionProgram> {
+    if !normalized_line.contains("clash with an opponent")
+        || !normalized_line.contains("if you win")
+        || !normalized_line.contains("on top of its owner's library instead")
+    {
+        return None;
+    }
+    let [clash_effect, return_with_id_effect, followup] = compiled else {
+        return None;
+    };
+    if clash_effect
+        .downcast_ref::<crate::effects::ClashEffect>()
+        .is_none()
+    {
+        return None;
+    }
+    let return_with_id = return_with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let followup = followup.downcast_ref::<crate::effects::IfEffect>()?;
+    if followup.condition != return_with_id.id
+        || followup.predicate != crate::effect::EffectPredicate::Happened
+    {
+        return None;
+    }
+    let target = ChooseSpec::Tagged(crate::tag::TagKey::from("returned_0"));
+    let return_effect = (*return_with_id.effect).clone();
+    let replacement_return = optional_zone_rewrite_effect(
+        return_effect.clone(),
+        target,
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Library,
+        "Put that creature on top of its owner's library instead of into its owner's hand",
+    );
+    let clash_id = return_with_id.id;
+    Some(crate::resolution::ResolutionProgram::from_effects(vec![
+        crate::effect::Effect::with_id(clash_id.0, clash_effect.clone()),
+        crate::effect::Effect::new(crate::effects::IfEffect::new(
+            clash_id,
+            crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
+            vec![replacement_return],
+            vec![return_effect],
+        )),
+    ]))
 }
 
 pub(super) fn rewrite_apply_line_ast(
@@ -505,6 +751,23 @@ fn lower_statement_chunk(
     } else {
         None
     };
+    if let Some(program) = back_for_seconds_style_replacement_program(&compiled, &normalized_line) {
+        builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if let Some(program) =
+        kicked_count_override_self_replacement_program(&compiled, &normalized_line)
+    {
+        builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if let Some(program) = clash_win_optional_top_replacement_program(&compiled, &normalized_line) {
+        builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if attach_morbid_search_to_battlefield_self_replacement(&mut builder, &normalized_line) {
+        return Ok(builder);
+    }
     if matches!(
         instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
@@ -569,6 +832,36 @@ fn lower_statement_chunk(
         instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 2
+        && builder.spell_effect.is_none()
+        && let Some(condition) = trailing_instead_if_condition
+    {
+        let previous = compiled[0].clone();
+        let mut replacement_effects = vec![compiled[1].clone()];
+        if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
+            replacement_effects =
+                retarget_replacement_effects(replacement_effects, &previous_target);
+        }
+        replacement_effects =
+            unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
+        let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(vec![previous]);
+        let Some(segment) = spell_effect.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for inline plain instead-if follow-up"
+                    .to_string(),
+            ));
+        };
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                condition,
+                replacement_effects,
+            ));
+        builder.spell_effect = Some(spell_effect);
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && compiled.len() == 2
         && let Some(ref mut existing) = builder.spell_effect
         && !existing.is_empty()
         && let Some(condition) = trailing_instead_if_condition
@@ -582,9 +875,42 @@ fn lower_statement_chunk(
             replacement_effects =
                 retarget_replacement_effects(replacement_effects, &previous_target);
         }
+        replacement_effects =
+            unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
         let Some(segment) = existing.last_segment_mut() else {
             return Err(CardTextError::InvariantViolation(
                 "expected previous spell resolution segment for plain instead-if follow-up"
+                    .to_string(),
+            ));
+        };
+        segment
+            .self_replacements
+            .push(crate::resolution::SelfReplacementBranch::new(
+                condition,
+                replacement_effects,
+            ));
+        return Ok(builder);
+    } else if matches!(
+        instead_semantics,
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    ) && compiled.len() == 1
+        && let Some(ref mut existing) = builder.spell_effect
+        && !existing.is_empty()
+        && let Some(condition) = trailing_instead_if_condition
+    {
+        let mut replacement_effects = vec![compiled[0].clone()];
+        if let Some(previous_target) = existing
+            .last()
+            .and_then(super::extract_previous_replacement_target)
+        {
+            replacement_effects =
+                retarget_replacement_effects(replacement_effects, &previous_target);
+        }
+        replacement_effects =
+            unwrap_matching_conditional_replacement_effects(replacement_effects, &condition);
+        let Some(segment) = existing.last_segment_mut() else {
+            return Err(CardTextError::InvariantViolation(
+                "expected previous spell resolution segment for single-effect instead-if follow-up"
                     .to_string(),
             ));
         };

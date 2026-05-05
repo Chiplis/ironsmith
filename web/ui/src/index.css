@@ -13606,6 +13606,21 @@ select::-ms-expand {
   padding-bottom: 5px;
 }
 
+.priority-inline-panel.priority-inline-panel--segmented {
+  height: 100%;
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  overflow: hidden;
+}
+
+.priority-inline-panel.priority-inline-panel--segmented::before,
+.priority-inline-panel.priority-inline-panel--segmented::after {
+  display: none !important;
+}
+
 .action-strip-layout {
   align-items: center;
   min-height: 100% !important;
@@ -13646,6 +13661,113 @@ select::-ms-expand {
     0 12px 20px rgba(0, 0, 0, 0.3) !important;
 }
 
+.action-strip-layout--segmented {
+  --decision-edge-text: #160f06;
+  --decision-edge-text-shadow:
+    0 1px 0 rgba(255, 244, 210, 0.34),
+    0 0 1px rgba(255, 244, 210, 0.28);
+  gap: 0 !important;
+  height: 100%;
+  min-height: 100% !important;
+  padding: 0 !important;
+  align-items: stretch !important;
+}
+
+.action-strip-main-region {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  height: 100%;
+  min-height: 100%;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 228, 0.22), rgba(255, 249, 228, 0.04) 38%, rgba(8, 6, 4, 0.08) 100%),
+    linear-gradient(90deg, rgba(var(--decision-main-rgb, 214, 164, 74), 0.96), rgba(var(--decision-main-rgb, 214, 164, 74), 0.72)) !important;
+  box-shadow: none !important;
+}
+
+.action-strip-main-region .decision-main-button {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  font-weight: 900 !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 100% !important;
+  height: 100% !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.action-strip-main-region .decision-main-button > * {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  font-weight: 900 !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+}
+
+.action-strip-main-region .decision-main-button:hover:not(:disabled) {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+  border-width: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.action-strip-main-region:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 249, 228, 0.28), rgba(255, 249, 228, 0.06) 36%, rgba(8, 6, 4, 0.06) 100%),
+    linear-gradient(90deg, rgba(var(--decision-main-rgb, 214, 164, 74), 1), rgba(var(--decision-main-rgb, 214, 164, 74), 0.8)) !important;
+}
+
+.action-strip-options-region {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1 1 0%;
+  min-height: 100%;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(48, 42, 36, 0.9), rgba(20, 17, 15, 0.96)) !important;
+  box-shadow: none !important;
+}
+
+.action-strip-options-region.action-strip-scroll,
+.action-strip-options-region.viewed-cards-strip {
+  height: 100%;
+  padding: 0;
+}
+
+.action-strip-options-region > .action-strip-scroll {
+  height: 100%;
+  padding: 0;
+}
+
+.action-strip-options-region.action-strip-scroll > div,
+.action-strip-options-region > .action-strip-scroll > div {
+  min-height: 100% !important;
+  padding-left: 8px;
+}
+
+.action-strip-options-region + .priority-control-stack {
+  margin-left: 8px !important;
+  margin-right: 0 !important;
+}
+
 .action-strip-scroll {
   padding: 1px 0;
 }
@@ -13653,6 +13775,76 @@ select::-ms-expand {
 .action-strip-scroll > div {
   min-height: 42px !important;
   gap: 6px !important;
+}
+
+.action-strip-layout--segmented .action-strip-pill {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.action-strip-layout--segmented .action-strip-pill.is-interactive:hover,
+.action-strip-layout--segmented .action-strip-pill.is-linked-active {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.action-strip-main-region .decision-phase-help-button {
+  border: 0 !important;
+  background: rgba(27, 19, 8, 0.11) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
+}
+
+.action-strip-main-region .decision-phase-help-button:hover,
+.action-strip-main-region .decision-phase-help-button:focus-visible {
+  border: 0 !important;
+  background: rgba(27, 19, 8, 0.16) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
+}
+
+.action-strip-layout--segmented > .priority-control-stack {
+  align-self: stretch !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  color: var(--decision-edge-text) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 228, 0.22), rgba(255, 249, 228, 0.04) 38%, rgba(8, 6, 4, 0.08) 100%),
+    linear-gradient(270deg, rgba(var(--decision-main-rgb, 214, 164, 74), 0.96), rgba(var(--decision-main-rgb, 214, 164, 74), 0.72)) !important;
+  box-shadow: none !important;
+}
+
+.action-strip-layout--segmented > .priority-control-stack .priority-control-count,
+.action-strip-layout--segmented > .priority-control-stack .priority-control-count-number,
+.action-strip-layout--segmented > .priority-control-stack .priority-control-count-label,
+.action-strip-layout--segmented > .priority-control-stack .priority-control-toggle,
+.action-strip-layout--segmented > .priority-control-stack .priority-control-toggle:hover {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  font-weight: 900 !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+}
+
+.action-strip-layout--segmented > .priority-control-stack .priority-control-toggles {
+  border-left: 0 !important;
+}
+
+.action-strip-layout--segmented > .priority-control-stack [data-slot="checkbox"] {
+  border-color: rgba(27, 19, 8, 0.5) !important;
+  background: rgba(27, 19, 8, 0.08) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
+}
+
+.action-strip-layout--segmented > .priority-control-stack [data-slot="checkbox"][data-state="checked"] {
+  border-color: rgba(27, 19, 8, 0.72) !important;
+  background: rgba(27, 19, 8, 0.16) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
 }
 
 .action-strip-pill {

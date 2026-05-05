@@ -761,6 +761,8 @@ pub(crate) enum SubjectVerbActionAst {
         to_zone: Option<Zone>,
         replacement_zone: Zone,
         duration: ZoneReplacementDurationAst,
+        optional: bool,
+        choice_description: Option<String>,
     },
     ExileInsteadOfGraveyardThisTurn,
     ControlCombatChoicesThisTurn {
@@ -1716,6 +1718,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 to_zone,
                 replacement_zone,
                 duration,
+                optional,
+                choice_description,
             } => f
                 .debug_struct("RegisterZoneReplacement")
                 .field("target", target)
@@ -1723,6 +1727,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("to_zone", to_zone)
                 .field("replacement_zone", replacement_zone)
                 .field("duration", duration)
+                .field("optional", optional)
+                .field("choice_description", choice_description)
                 .finish(),
             Self::ExileInsteadOfGraveyardThisTurn => f.write_str("ExileInsteadOfGraveyardThisTurn"),
             Self::ControlCombatChoicesThisTurn {
@@ -4138,6 +4144,8 @@ impl EffectAst {
                 to_zone,
                 replacement_zone,
                 duration,
+                optional: false,
+                choice_description: None,
             },
         )
     }

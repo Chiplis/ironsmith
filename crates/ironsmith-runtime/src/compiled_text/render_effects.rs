@@ -2277,6 +2277,54 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         effect
     }
 
+    fn describe_clash_win_optional_top_replacement(effects: &[&Effect]) -> Option<String> {
+        let [clash_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let clash_with_id = clash_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        if clash_with_id
+            .effect
+            .downcast_ref::<crate::effects::ClashEffect>()
+            .is_none()
+        {
+            return None;
+        }
+        let conditional = conditional_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        if conditional.condition != clash_with_id.id
+            || conditional.predicate
+                != crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+            || conditional.then.len() != 1
+            || conditional.else_.len() != 1
+        {
+            return None;
+        }
+        let local = conditional.then[0].downcast_ref::<crate::effects::LocalRewriteEffect>()?;
+        let replacement = local.zone_replacements.first()?;
+        if !replacement.optional
+            || replacement.from_zone != Some(Zone::Battlefield)
+            || replacement.to_zone != Some(Zone::Hand)
+            || replacement.replacement_zone != Zone::Library
+        {
+            return None;
+        }
+        let return_text = describe_effect(&local.effect);
+        if return_text != describe_effect(&conditional.else_[0])
+            || !return_text
+                .to_ascii_lowercase()
+                .starts_with("return target creature")
+        {
+            return None;
+        }
+        Some(format!(
+            "Clash with an opponent, then {}. If you win, you may put that creature on top of its owner's library instead",
+            lowercase_first(&return_text)
+        ))
+    }
+
+    if let Some(compact) = describe_clash_win_optional_top_replacement(&raw_effects) {
+        return compact;
+    }
+
     fn describe_energy_then_pay_any_then_destroy(effects: &[&Effect]) -> Option<String> {
         let [energy_effect, may_effect, destroy_effect] = effects else {
             return None;
@@ -27791,11 +27839,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     .map(|zone| format!(" into {zone:?}"))
                     .unwrap_or_default()
                     .to_ascii_lowercase();
-                format!(
-                    "If {referent} would go{from}{to}, it goes to {:?} instead",
-                    register.replacement_zone
-                )
-                .to_ascii_lowercase()
+                let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+                if register.optional {
+                    format!(
+                        "If {referent} would go{from}{to}, you may put it into {replacement} instead"
+                    )
+                } else {
+                    format!("If {referent} would go{from}{to}, it goes to {replacement} instead")
+                }
             })
             .collect::<Vec<_>>();
         if followups.is_empty() {
@@ -27820,11 +27871,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
+        let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        if register.optional {
+            return format!(
+                "If {target} would go{from}{to}{duration}, you may put it into {replacement} instead"
+            );
+        }
         return format!(
-            "If {target} would go{from}{to}{duration}, it goes to {:?} instead",
-            register.replacement_zone
-        )
-        .to_ascii_lowercase();
+            "If {target} would go{from}{to}{duration}, it goes to {replacement} instead"
+        );
     }
     if let Some(additional_land_plays) =
         effect.downcast_ref::<crate::effects::AdditionalLandPlaysEffect>()

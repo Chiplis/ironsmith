@@ -764,6 +764,201 @@ fn parse_search_library_slots_to_hand_bundle(
     ]))
 }
 
+fn search_library_slots_to_hand_effect_from_items(
+    filter_items: Vec<Vec<OwnedLexToken>>,
+) -> Result<EffectAst, CardTextError> {
+    let mut slots = Vec::new();
+    for item in filter_items {
+        let mut filter = parse_object_filter_lexed(&item, false)?;
+        filter.zone = Some(Zone::Library);
+        if filter.owner.is_none() {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        slots.push(crate::cards::builders::SearchLibrarySlotAst {
+            filter,
+            optional: true,
+        });
+    }
+
+    Ok(EffectAst::subject_verb_search_library_slots_to_hand(
+        PlayerAst::You,
+        slots,
+        true,
+        TagKey::from("search_library_slots_progress"),
+    ))
+}
+
+fn parse_kicked_search_library_slots_replacement_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 3 {
+        return Ok(None);
+    }
+
+    let first_words = parser_words(sentences[0]);
+    let second_words = parser_words(sentences[1]);
+    let third_words = parser_words(sentences[2]);
+    if first_words.as_slice()
+        != [
+            "search", "your", "library", "for", "a", "basic", "land", "card",
+        ]
+    {
+        return Ok(None);
+    }
+    if !second_words.iter().take(10).map(String::as_str).eq([
+        "if", "this", "spell", "was", "kicked", "instead", "search", "your", "library", "for",
+    ]) {
+        return Ok(None);
+    }
+    if third_words.as_slice()
+        != [
+            "reveal", "those", "cards", "put", "them", "into", "your", "hand", "then", "shuffle",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let Some(first_for_idx) = find_index(sentences[0], |token| token.is_word("for")) else {
+        return Ok(None);
+    };
+    let Some(second_for_idx) = find_index(sentences[1], |token| token.is_word("for")) else {
+        return Ok(None);
+    };
+    let default_item = trim_commas(&sentences[0][first_for_idx + 1..]);
+    let replacement_items = split_search_library_slot_filter_items_lexed(&trim_commas(
+        &sentences[1][second_for_idx + 1..],
+    ))
+    .ok_or_else(|| {
+        CardTextError::ParseError(
+            "expected replacement search-library slot filters after kicked instead clause"
+                .to_string(),
+        )
+    })?;
+
+    Ok(Some(vec![EffectAst::SelfReplacement {
+        predicate: PredicateAst::ThisSpellWasKicked,
+        if_true: vec![search_library_slots_to_hand_effect_from_items(
+            replacement_items,
+        )?],
+        if_false: vec![search_library_slots_to_hand_effect_from_items(vec![
+            default_item,
+        ])?],
+    }]))
+}
+
+fn search_library_and_graveyard_doctors_effects(destination: Zone) -> Vec<EffectAst> {
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let mut filter = ObjectFilter::default();
+    filter.owner = Some(PlayerFilter::You);
+    filter.subtypes = vec![Subtype::Doctor];
+
+    vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::up_to(5),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: searched_tag.clone(),
+            zones: vec![Zone::Library, Zone::Graveyard],
+            search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+        },
+        EffectAst::subject_verb_reveal_tagged(searched_tag.clone()),
+        EffectAst::ForEachTagged {
+            tag: searched_tag.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(searched_tag, None),
+                destination,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ),
+    ]
+}
+
+fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 3 {
+        return None;
+    }
+
+    let first_words = parser_words(sentences[0]);
+    let second_words = parser_words(sentences[1]);
+    let third_words = parser_words(sentences[2]);
+
+    if first_words.as_slice()
+        != [
+            "search",
+            "your",
+            "library",
+            "and/or",
+            "graveyard",
+            "for",
+            "up",
+            "to",
+            "five",
+            "doctor",
+            "cards",
+            "reveal",
+            "them",
+            "and",
+            "put",
+            "them",
+            "into",
+            "your",
+            "hand",
+        ]
+    {
+        return None;
+    }
+    if second_words.as_slice()
+        != [
+            "if", "you", "search", "your", "library", "this", "way", "shuffle",
+        ]
+    {
+        return None;
+    }
+    if third_words.as_slice()
+        != [
+            "if",
+            "this",
+            "spell",
+            "was",
+            "kicked",
+            "put",
+            "those",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "instead",
+            "of",
+            "putting",
+            "them",
+            "into",
+            "your",
+            "hand",
+        ]
+    {
+        return None;
+    }
+
+    Some(vec![EffectAst::SelfReplacement {
+        predicate: PredicateAst::ThisSpellWasKicked,
+        if_true: search_library_and_graveyard_doctors_effects(Zone::Battlefield),
+        if_false: search_library_and_graveyard_doctors_effects(Zone::Hand),
+    }])
+}
+
 fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() != 3 {
@@ -1526,6 +1721,13 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         )];
         combined.append(&mut effects);
         return Some(combined);
+    }
+    if let Ok(Some(effects)) = parse_kicked_search_library_slots_replacement_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(tokens)
+    {
+        return Some(effects);
     }
     if let Ok(Some(effects)) = parse_search_library_slots_to_hand_bundle(tokens) {
         return Some(effects);

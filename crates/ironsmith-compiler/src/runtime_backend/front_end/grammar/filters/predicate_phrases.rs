@@ -1654,9 +1654,47 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             "battlefield",
             "this",
             "turn"
+        ] | [
+            "creature",
+            "left",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "creatures",
+            "left",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
         ]
     ) {
         return Ok(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        [
+            "nonland",
+            "permanent",
+            "left",
+            "battlefield",
+            "this",
+            "turn",
+            "or",
+            "spell",
+            "was",
+            "warped",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::PermanentLeftBattlefieldThisTurn);
     }
 
     if matches!(

@@ -424,8 +424,20 @@ pub(crate) fn classify_instead_followup_text(
     }
 
     if str_contains(normalized.as_str(), " would ")
-        || str_contains(normalized.as_str(), " instead of ")
         || str_contains(normalized.as_str(), "the next time")
+    {
+        return crate::cards::builders::InsteadSemantics::FutureReplacement;
+    }
+
+    if str_contains(normalized.as_str(), "countered this way")
+        && str_contains(normalized.as_str(), "instead of")
+        && str_contains(normalized.as_str(), "graveyard")
+    {
+        return crate::cards::builders::InsteadSemantics::FutureReplacement;
+    }
+
+    if str_contains(normalized.as_str(), "instead of putting it into")
+        || str_contains(normalized.as_str(), "instead of putting them into")
     {
         return crate::cards::builders::InsteadSemantics::FutureReplacement;
     }

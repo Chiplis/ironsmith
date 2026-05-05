@@ -1067,15 +1067,18 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RegisterZoneReplacementEffect>(&effect)
     {
-        return Ok(Effect::new(
-            crate::effects::RegisterZoneReplacementEffect::new(
-                payload.target.clone(),
-                payload.from_zone,
-                payload.to_zone,
-                payload.replacement_zone,
-                payload.mode,
-            ),
-        ));
+        let mut converted = crate::effects::RegisterZoneReplacementEffect::new(
+            payload.target.clone(),
+            payload.from_zone,
+            payload.to_zone,
+            payload.replacement_zone,
+            payload.mode,
+        );
+        if payload.optional {
+            converted.optional = true;
+            converted.choice_description = payload.choice_description.clone();
+        }
+        return Ok(Effect::new(converted));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ExileInsteadOfGraveyardEffect>(&effect)

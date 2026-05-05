@@ -216,6 +216,7 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: Some(filter.clone()),
+                    destinations: None,
                 }
             }
         }
@@ -250,6 +251,7 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: None,
+                    destinations: None,
                 }
             }
         }
@@ -296,6 +298,7 @@ pub(super) fn apply_trait_replacement(
                 effect_id: effect.id,
                 object_id: effect.source,
                 filter: None,
+                destinations: Some(destinations.clone()),
             }
         }
     }

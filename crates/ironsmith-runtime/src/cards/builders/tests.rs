@@ -31358,6 +31358,100 @@ fn parse_consult_the_star_charts_kicker_count_override() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_aangs_journey_kicked_search_slots_as_self_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Aang's Journey Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {2} (You may pay an additional {2} as you cast this spell.)\nSearch your library for a basic land card. If this spell was kicked, instead search your library for a basic land card and a Shrine card. Reveal those cards, put them into your hand, then shuffle.\nYou gain 2 life.",
+        )
+        .expect("kicked search-slot replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("ThisSpellWasKicked")
+            && debug.contains("SearchLibrarySlotsEffect"),
+        "expected kicked search-slot override to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_kicked_multi_zone_search_to_battlefield_as_self_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Five Doctors Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {5} (You may pay an additional {5} as you cast this spell.)\nSearch your library and/or graveyard for up to five Doctor cards, reveal them, and put them into your hand. If you search your library this way, shuffle. If this spell was kicked, put those cards onto the battlefield instead of putting them into your hand.",
+        )
+        .expect("kicked multi-zone search replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("ThisSpellWasKicked")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Battlefield"),
+        "expected kicked multi-zone search override to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_kirtars_wrath_threshold_destroy_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kirtar's Wrath Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy all creatures. They can't be regenerated.\nThreshold \u{2014} If there are seven or more cards in your graveyard, instead destroy all creatures, then create two 1/1 white Spirit creature tokens with flying. Creatures destroyed this way can't be regenerated.",
+        )
+        .expect("threshold destroy replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("PlayerHasCardTypesInGraveyardOrMore")
+            && debug.contains("CreateTokenEffect"),
+        "expected threshold destroy upgrade to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_revolt_counter_upgrade_reuses_trailing_instead_if_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "That's Rough Buddy Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Put a +1/+1 counter on target creature. Put two +1/+1 counters on that creature instead if a creature left the battlefield under your control this turn.\nDraw a card.",
+        )
+        .expect("revolt counter replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("PermanentLeftBattlefieldUnderYourControlThisTurn"),
+        "expected counter upgrade to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_void_pump_upgrade_as_self_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tragic Trajectory Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target creature gets -2/-2 until end of turn.\nVoid \u{2014} That creature gets -10/-10 until end of turn instead if a nonland permanent left the battlefield this turn or a spell was warped this turn.",
+        )
+        .expect("void pump replacement should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("PermanentLeftBattlefieldThisTurn"),
+        "expected void pump upgrade to lower as self-replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn consult_the_star_charts_kicker_override_with_extra_tail_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Consult Variant")
         .card_types(vec![CardType::Instant])

@@ -166,10 +166,16 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const stackSize = state?.stack_size || 0;
   const holdingPriority = holdRule === "always";
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
-  const passAdvanceLabel = holdingPriority || hasCustomPassLabel
-    ? passAction?.label || "Pass priority"
-    : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`;
-  const passCurrentLabel = currentPriorityPhaseLabel(state?.phase, state?.step);
+  const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
+  const passAdvanceLabel = resolvingStackPriority
+    ? ""
+    : (holdingPriority || hasCustomPassLabel
+        ? passAction?.label || "Pass priority"
+        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
+  const passCurrentLabel = resolvingStackPriority
+    ? "Resolve"
+    : currentPriorityPhaseLabel(state?.phase, state?.step);
+  const passHelpAdvanceLabel = resolvingStackPriority ? "Resolve" : passAdvanceLabel;
   const decisionButtonStyle = decisionButtonAccentVars(state, decision);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 
@@ -368,7 +374,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 <PhaseHelpPopover
                   state={state}
                   decision={decision}
-                  advanceLabel={passAdvanceLabel}
+                  advanceLabel={passHelpAdvanceLabel}
                   className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                 />
               </div>

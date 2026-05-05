@@ -4,7 +4,7 @@ use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::ReplacementPriority;
 use crate::game_state::GameState;
-use crate::replacement::{ReplacementAction, ReplacementEffect};
+use crate::replacement::ReplacementEffect;
 use crate::target::ObjectFilter;
 
 /// Execute an effect while temporary replacement effects are scoped to that execution.
@@ -35,7 +35,12 @@ fn resolve_zone_replacements(
                     replacement.from_zone,
                     replacement.to_zone,
                 ),
-                ReplacementAction::ChangeDestination(replacement.replacement_zone),
+                crate::effects::replacement::zone_replacement_action(
+                    replacement.to_zone,
+                    replacement.replacement_zone,
+                    replacement.optional,
+                    replacement.choice_description.clone(),
+                ),
             )
         })
         .collect())

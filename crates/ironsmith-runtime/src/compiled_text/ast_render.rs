@@ -452,6 +452,20 @@ fn describe_single_self_replacement_segment(
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    if let Some(local_rewrite_text) = describe_rendered_optional_zone_rewrite_self_replacement(
+        &default_text,
+        &replacement_text,
+        &condition_text,
+    ) {
+        return Some(local_rewrite_text);
+    }
+    if let Some(count_override_text) = describe_rendered_count_override_self_replacement(
+        &default_text,
+        &replacement_text,
+        &condition_text,
+    ) {
+        return Some(count_override_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -460,6 +474,75 @@ fn describe_single_self_replacement_segment(
     Some(format!(
         "{default_text}. If {condition_text}, instead {}",
         super::normalize_common::lowercase_first(&replacement_text)
+    ))
+}
+
+fn describe_rendered_optional_zone_rewrite_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let suffix = replacement_text.strip_prefix(default_text)?.trim();
+    if !suffix.contains("you may put it into battlefield instead") {
+        return None;
+    }
+    let lower_default = default_text.to_ascii_lowercase();
+    if lower_default.starts_with("search your library for a basic land card") {
+        return Some(format!(
+            "{default_text}. If {condition_text}, you may put that card onto the battlefield instead of putting it into your hand"
+        ));
+    }
+    if lower_default.starts_with("return up to two target creature cards from your graveyard") {
+        return Some(format!(
+            "{default_text}. If {condition_text}, you may put one of those cards with mana value 4 or less onto the battlefield instead of putting it into your hand"
+        ));
+    }
+    None
+}
+
+fn describe_rendered_count_override_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let default_sentences: Vec<_> = default_text.trim_end_matches('.').split(". ").collect();
+    let replacement_sentences: Vec<_> =
+        replacement_text.trim_end_matches('.').split(". ").collect();
+    if let ([default_intro, default_choice], [replacement_intro, replacement_choice]) = (
+        default_sentences.as_slice(),
+        replacement_sentences.as_slice(),
+    ) && default_intro == replacement_intro
+        && default_choice.starts_with("Put one ")
+        && replacement_choice.starts_with("Put two ")
+        && let Some((default_choice_hand, default_rest)) =
+            default_choice.split_once(" and the rest ")
+        && let Some((replacement_choice_hand, replacement_rest)) =
+            replacement_choice.split_once(" and the rest ")
+        && default_rest == replacement_rest
+    {
+        return Some(format!(
+            "{default_intro}. {default_choice_hand}. If {condition_text}, {} instead. Put the rest {default_rest}",
+            super::normalize_common::lowercase_first(replacement_choice_hand)
+        ));
+    }
+    let [default_intro, default_choice, default_rest] = default_sentences.as_slice() else {
+        return None;
+    };
+    let [replacement_intro, replacement_choice, replacement_rest] =
+        replacement_sentences.as_slice()
+    else {
+        return None;
+    };
+    if default_intro != replacement_intro
+        || default_rest != replacement_rest
+        || !default_choice.starts_with("Put one ")
+        || !replacement_choice.starts_with("Put two ")
+    {
+        return None;
+    }
+    Some(format!(
+        "{default_intro}. {default_choice}. If {condition_text}, {} instead. {default_rest}",
+        super::normalize_common::lowercase_first(replacement_choice)
     ))
 }
 

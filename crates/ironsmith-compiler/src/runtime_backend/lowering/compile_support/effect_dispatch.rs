@@ -824,6 +824,8 @@ fn compile_subject_verb_effect(
             to_zone,
             replacement_zone,
             duration,
+            optional,
+            choice_description,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -832,13 +834,18 @@ fn compile_subject_verb_effect(
                     crate::effects::ReplacementApplyMode::OneShot
                 }
             };
-            let effect = Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+            let mut replacement = crate::effects::RegisterZoneReplacementEffect::new(
                 spec,
                 *from_zone,
                 *to_zone,
                 *replacement_zone,
                 mode,
-            ));
+            );
+            if *optional {
+                replacement.optional = true;
+                replacement.choice_description = choice_description.clone();
+            }
+            let effect = Effect::new(replacement);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn => {

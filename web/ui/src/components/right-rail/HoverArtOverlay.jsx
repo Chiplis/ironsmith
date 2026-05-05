@@ -18,7 +18,6 @@ const METADATA_TEXT_STYLE = {
 const INSPECTOR_ART_SWAP_MS = 240;
 const MIN_INSPECTOR_TEXT_SCALE = 0.74;
 const MIN_INSPECTOR_TITLE_SCALE = 0.5;
-const MIN_HEADER_METADATA_SCALE = 0.36;
 const INSPECTOR_TITLE_FONT_SIZE = 22;
 const COMPACT_INSPECTOR_TITLE_FONT_SIZE = 22;
 const INSPECTOR_STATS_FONT_SIZE = 20;
@@ -594,7 +593,6 @@ export default function HoverArtOverlay({
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
-  const [headerMetadataScaleSession, setHeaderMetadataScaleSession] = useState({ key: null, scale: 1 });
   const detailsObjectIdNum = useMemo(
     () => resolveObjectDetailsId(state, objectIdNum),
     [objectIdNum, state]
@@ -893,20 +891,6 @@ export default function HoverArtOverlay({
     ),
     [compact, displayMode, displayObjectName, groupedCardCount, objectIdKey]
   );
-  const headerMetadataScaleSessionKey = useMemo(
-    () => (
-      compact || displayMode !== "inspector"
-        ? null
-        : [
-          objectIdKey || "none",
-          displayMode,
-          displayObjectName || "",
-          displayTopLeftDetailLines.join(" "),
-          displayTopLeftZoneLines.join(" "),
-        ].join("|")
-    ),
-    [compact, displayMode, displayObjectName, displayTopLeftDetailLines, displayTopLeftZoneLines, objectIdKey]
-  );
   const ruleLineWidths = useMemo(() => {
     if (displayRulesLines.length === 0 || typeof document === "undefined") return [];
 
@@ -950,13 +934,6 @@ export default function HoverArtOverlay({
     : (
       inspectorTitleScaleSession.key === inspectorTitleScaleSessionKey
         ? inspectorTitleScaleSession.scale
-        : 1
-    );
-  const activeHeaderMetadataScale = compact || displayMode !== "inspector"
-    ? 1
-    : (
-      headerMetadataScaleSession.key === headerMetadataScaleSessionKey
-        ? headerMetadataScaleSession.scale
         : 1
     );
   const topStackMatchesInspectorObject = useMemo(() => {
@@ -1116,12 +1093,13 @@ export default function HoverArtOverlay({
       const rowWidth = Math.floor((titleRow || titleHost).clientWidth);
       const metadataContent = headerMetadataContentRef.current;
       const metadataNaturalWidth = hasTopLeftInlineMetadata && metadataContent
-        ? metadataContent.scrollWidth / Math.max(activeHeaderMetadataScale, 0.01)
+        ? metadataContent.scrollWidth
         : 0;
       const metadataMinimumWidth = hasTopLeftInlineMetadata
-        ? (metadataNaturalWidth * MIN_HEADER_METADATA_SCALE) + 8
+        ? metadataNaturalWidth + 8
         : 0;
-      const availableWidth = Math.max(0, rowWidth - metadataMinimumWidth - 2);
+      const headerChromeWidth = compact ? 30 : 36;
+      const availableWidth = Math.max(0, rowWidth - metadataMinimumWidth - headerChromeWidth);
 
       if (!Number.isFinite(naturalWidth) || naturalWidth <= 0 || availableWidth <= 0) {
         return;
@@ -1173,80 +1151,13 @@ export default function HoverArtOverlay({
       window.removeEventListener("resize", scheduleScale);
     };
   }, [
-    activeHeaderMetadataScale,
     activeInspectorTitleScale,
+    compact,
     displayMode,
     hasTopLeftInlineMetadata,
     inspectorTitleScaleSessionKey,
     displayObjectName,
     minInspectorTitleScale,
-  ]);
-
-  useLayoutEffect(() => {
-    if (compact || displayMode !== "inspector" || !hasTopLeftInlineMetadata) return undefined;
-
-    const host = headerMetadataRef.current;
-    const content = headerMetadataContentRef.current;
-    if (!host || !content || !headerMetadataScaleSessionKey) return undefined;
-
-    let rafId = null;
-    const publishScale = () => {
-      const currentScale = Math.max(activeHeaderMetadataScale, 0.01);
-      const naturalWidth = content.scrollWidth / currentScale;
-      const availableWidth = Math.max(0, Math.floor(host.clientWidth) - 2);
-
-      if (!Number.isFinite(naturalWidth) || naturalWidth <= 0 || availableWidth <= 0) {
-        return;
-      }
-
-      const nextScale = clampNumber(
-        (availableWidth / naturalWidth) * 0.985,
-        MIN_HEADER_METADATA_SCALE,
-        1
-      );
-
-      setHeaderMetadataScaleSession((currentSession) => {
-        const sessionScale = currentSession.key === headerMetadataScaleSessionKey
-          ? currentSession.scale
-          : 1;
-        if (
-          currentSession.key === headerMetadataScaleSessionKey
-          && Math.abs(sessionScale - nextScale) < 0.01
-        ) {
-          return currentSession;
-        }
-        return {
-          key: headerMetadataScaleSessionKey,
-          scale: nextScale,
-        };
-      });
-    };
-
-    const scheduleScale = () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        publishScale();
-      });
-    };
-
-    scheduleScale();
-    const observer = new ResizeObserver(scheduleScale);
-    observer.observe(host);
-    observer.observe(content);
-    window.addEventListener("resize", scheduleScale);
-
-    return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      observer.disconnect();
-      window.removeEventListener("resize", scheduleScale);
-    };
-  }, [
-    activeHeaderMetadataScale,
-    compact,
-    displayMode,
-    hasTopLeftInlineMetadata,
-    headerMetadataScaleSessionKey,
   ]);
 
   useLayoutEffect(() => {
@@ -1491,6 +1402,11 @@ export default function HoverArtOverlay({
 
   const inspectorScale = activeInspectorTextScale;
   const inspectorTitleScale = activeInspectorTitleScale;
+  const headerMetadataFontSize = (
+    (compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE)
+    * inspectorTitleScale
+    * 0.5
+  );
   const oracleContainerClass = compact
     ? "relative z-10 flex flex-col items-center px-2.5"
     : "relative z-10 min-h-full flex flex-col items-start justify-start";
@@ -1508,7 +1424,7 @@ export default function HoverArtOverlay({
   const inspectorHeaderMetadataReserve = headerInlineMetadataBlockCount > 0
     ? (
       headerInlineMetadataBlockCount
-        * (((INSPECTOR_METADATA_FONT_SIZE - 1) * inspectorScale * activeHeaderMetadataScale * 1.18) + (8 * inspectorScale * activeHeaderMetadataScale))
+        * (headerMetadataFontSize * 1.08)
       + ((headerInlineMetadataBlockCount - 1) * 2)
     )
     : 0;
@@ -1556,9 +1472,13 @@ export default function HoverArtOverlay({
     : "text-white font-semibold text-left";
   const inspectorTitleStyle = {
     fontSize: `${(compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE) * inspectorTitleScale}px`,
-    padding: compact
-      ? `${4 * inspectorTitleScale}px ${10 * inspectorTitleScale}px`
-      : `${6 * inspectorTitleScale}px ${12 * inspectorTitleScale}px`,
+  };
+  const inspectorIdentityHeaderStyle = compact ? {
+    ...METADATA_TEXT_STYLE,
+    padding: `${4 * inspectorTitleScale}px ${10 * inspectorTitleScale}px`,
+  } : {
+    ...METADATA_TEXT_STYLE,
+    padding: `${6 * inspectorTitleScale}px ${12 * inspectorTitleScale}px`,
   };
   const inspectorTopMetaStyle = compact ? undefined : {
     padding: `${4 * inspectorScale}px ${10 * inspectorScale}px`,
@@ -1566,12 +1486,12 @@ export default function HoverArtOverlay({
   };
   const headerInlineMetadataStyle = compact ? {
     ...METADATA_TEXT_STYLE,
-    padding: `${4 * activeHeaderMetadataScale}px ${10 * activeHeaderMetadataScale}px`,
-    fontSize: `${10 * activeHeaderMetadataScale}px`,
+    fontSize: `${headerMetadataFontSize}px`,
+    lineHeight: 1.05,
   } : {
     ...METADATA_TEXT_STYLE,
-    padding: `${4 * inspectorScale * activeHeaderMetadataScale}px ${10 * inspectorScale * activeHeaderMetadataScale}px`,
-    fontSize: `${(INSPECTOR_METADATA_FONT_SIZE - 1) * inspectorScale * activeHeaderMetadataScale}px`,
+    fontSize: `${headerMetadataFontSize}px`,
+    lineHeight: 1.05,
   };
   const inspectorStatsStyle = compact ? undefined : {
     padding: `${4 * inspectorScale}px ${10 * inspectorScale}px`,
@@ -1797,13 +1717,17 @@ export default function HoverArtOverlay({
           <div className="pointer-events-auto absolute inset-0 z-[60] grid grid-cols-[minmax(0,1fr)_minmax(11rem,32%)] gap-2 p-2">
             <div ref={topHeaderRef} className="flex min-h-0 min-w-0 flex-col items-start gap-1 overflow-hidden">
               <div className="flex w-full max-w-full min-w-0 items-start gap-1">
-                <div className="min-w-0 max-w-full shrink-0">
-                  {displayObjectName && (
-                    <div
-                      ref={inspectorTitleRef}
-                      className="inspector-banner inspector-banner--title w-max max-w-full overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] px-2.5 py-1 text-[16px] font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff] backdrop-blur-[2px]"
-                      style={inspectorTitleStyle}
-                    >
+                {(displayObjectName || hasTopLeftInlineMetadata) && (
+                  <div
+                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-start gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
+                    style={inspectorIdentityHeaderStyle}
+                  >
+                    {displayObjectName && (
+                      <div
+                        ref={inspectorTitleRef}
+                        className="min-w-0 shrink-0 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
+                        style={inspectorTitleStyle}
+                      >
                       <span className="inline-flex items-center gap-2 whitespace-nowrap">
                         {groupedCardCount > 1 && (
                           <span className="inspector-chip-count inline-flex h-4 min-w-4 items-center justify-center rounded-none border border-[#f5d08b]/70 bg-[rgba(0,0,0,0.45)] px-1 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
@@ -1812,31 +1736,32 @@ export default function HoverArtOverlay({
                         )}
                         <span>{displayObjectName}</span>
                       </span>
-                    </div>
-                  )}
-                </div>
-                {hasTopLeftInlineMetadata && (
-                  <div ref={headerMetadataRef} className="ml-auto flex min-w-0 flex-1 shrink items-start justify-end overflow-visible">
-                    <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-end gap-0.5">
-                      <InspectorMetadataBlock
-                        lines={displayTopLeftDetailLines}
-                        className={cn(
-                          "inspector-banner inspector-banner--meta w-max max-w-none self-end rounded-none bg-[rgba(0,0,0,0.48)] text-right backdrop-blur-[1.8px]",
-                          topMetadataTextClassName
-                        )}
-                        lineClassName="whitespace-nowrap text-right leading-none"
-                        style={headerInlineMetadataStyle}
-                      />
-                      <InspectorMetadataBlock
-                        lines={displayTopLeftZoneLines}
-                        className={cn(
-                          "inspector-banner inspector-banner--meta w-max max-w-none self-end rounded-none bg-[rgba(0,0,0,0.48)] text-right backdrop-blur-[1.8px]",
-                          topMetadataTextClassName
-                        )}
-                        lineClassName="whitespace-nowrap text-right leading-none"
-                        style={headerInlineMetadataStyle}
-                      />
-                    </div>
+                      </div>
+                    )}
+                    {hasTopLeftInlineMetadata && (
+                      <div ref={headerMetadataRef} className="flex min-w-0 shrink items-start overflow-visible pt-[1px]">
+                        <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-start gap-0.5">
+                          <InspectorMetadataBlock
+                            lines={displayTopLeftDetailLines}
+                            className={cn(
+                              "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
+                              topMetadataTextClassName
+                            )}
+                            lineClassName="whitespace-nowrap text-left leading-none"
+                            style={headerInlineMetadataStyle}
+                          />
+                          <InspectorMetadataBlock
+                            lines={displayTopLeftZoneLines}
+                            className={cn(
+                              "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
+                              topMetadataTextClassName
+                            )}
+                            lineClassName="whitespace-nowrap text-left leading-none"
+                            style={headerInlineMetadataStyle}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1959,14 +1884,14 @@ export default function HoverArtOverlay({
               )}
               {!lowProfileInspector && (displayObjectName || hasTopLeftInlineMetadata) && (
                 <div className="flex w-full min-w-0 max-w-full items-start gap-1">
-                  <div className="min-w-0 max-w-full shrink-0">
+                  <div
+                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-start gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
+                    style={inspectorIdentityHeaderStyle}
+                  >
                     {displayObjectName && (
                       <div
                         ref={inspectorTitleRef}
-                        className={cn(
-                          "inspector-banner inspector-banner--title w-max max-w-full overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] px-3 py-1.5 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff] backdrop-blur-[2px]",
-                          compact ? "text-[17px]" : "text-[22px]"
-                        )}
+                        className="min-w-0 shrink-0 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
                         style={inspectorTitleStyle}
                       >
                         <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -1979,31 +1904,31 @@ export default function HoverArtOverlay({
                         </span>
                       </div>
                     )}
-                  </div>
-                  {hasTopLeftInlineMetadata && (
-                    <div ref={headerMetadataRef} className="ml-auto flex min-w-0 flex-1 shrink items-start justify-end overflow-visible">
-                      <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-end gap-0.5">
+                    {hasTopLeftInlineMetadata && (
+                      <div ref={headerMetadataRef} className="flex min-w-0 shrink items-start overflow-visible pt-[2px]">
+                        <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-start gap-0.5">
                         <InspectorMetadataBlock
                           lines={displayTopLeftDetailLines}
                           className={cn(
-                            "inspector-banner inspector-banner--meta w-max max-w-none self-end rounded-none bg-[rgba(0,0,0,0.48)] text-right backdrop-blur-[1.8px]",
+                            "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
                             topMetadataTextClassName
                           )}
-                          lineClassName="whitespace-nowrap text-right leading-none"
+                          lineClassName="whitespace-nowrap text-left leading-none"
                           style={headerInlineMetadataStyle}
                         />
                         <InspectorMetadataBlock
                           lines={displayTopLeftZoneLines}
                           className={cn(
-                            "inspector-banner inspector-banner--meta w-max max-w-none self-end rounded-none bg-[rgba(0,0,0,0.48)] text-right backdrop-blur-[1.8px]",
+                            "w-max max-w-none self-start text-left font-semibold leading-none text-[#d1e2f6]",
                             topMetadataTextClassName
                           )}
-                          lineClassName="whitespace-nowrap text-right leading-none"
+                          lineClassName="whitespace-nowrap text-left leading-none"
                           style={headerInlineMetadataStyle}
                         />
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
               {!lowProfileInspector && displayTypeLineBadges.length > 0 && (

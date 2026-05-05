@@ -15,6 +15,8 @@ pub struct RegisterZoneReplacementEffect {
     pub to_zone: Option<Zone>,
     pub replacement_zone: Zone,
     pub mode: ReplacementApplyMode,
+    pub optional: bool,
+    pub choice_description: Option<String>,
 }
 
 impl RegisterZoneReplacementEffect {
@@ -31,7 +33,15 @@ impl RegisterZoneReplacementEffect {
             to_zone,
             replacement_zone,
             mode,
+            optional: false,
+            choice_description: None,
         }
+    }
+
+    pub fn optional(mut self, description: impl Into<String>) -> Self {
+        self.optional = true;
+        self.choice_description = Some(description.into());
+        self
     }
 
     pub fn resolve_replacements(
@@ -47,6 +57,12 @@ impl RegisterZoneReplacementEffect {
         Ok(object_ids
             .into_iter()
             .map(|object_id| {
+                let replacement = zone_replacement_action(
+                    self.to_zone,
+                    self.replacement_zone,
+                    self.optional,
+                    self.choice_description.clone(),
+                );
                 ReplacementEffect::with_matcher(
                     ctx.source,
                     ctx.controller,
@@ -55,11 +71,34 @@ impl RegisterZoneReplacementEffect {
                         self.from_zone,
                         self.to_zone,
                     ),
-                    ReplacementAction::ChangeDestination(self.replacement_zone),
+                    replacement,
                 )
             })
             .collect())
     }
+}
+
+pub(crate) fn zone_replacement_action(
+    original_zone: Option<Zone>,
+    replacement_zone: Zone,
+    optional: bool,
+    choice_description: Option<String>,
+) -> ReplacementAction {
+    if optional {
+        let mut destinations = Vec::new();
+        if let Some(zone) = original_zone {
+            destinations.push(zone);
+        }
+        if !destinations.contains(&replacement_zone) {
+            destinations.push(replacement_zone);
+        }
+        return ReplacementAction::InteractiveChooseDestination {
+            destinations,
+            description: choice_description.unwrap_or_else(|| "Choose a destination".to_string()),
+        };
+    }
+
+    ReplacementAction::ChangeDestination(replacement_zone)
 }
 
 impl EffectExecutor for RegisterZoneReplacementEffect {
