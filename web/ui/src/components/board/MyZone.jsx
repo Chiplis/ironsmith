@@ -660,7 +660,7 @@ export default function MyZone({
               )}
               <div
                 className={cn(
-                  "ml-auto flex min-w-0 items-center gap-2",
+                  "battlefield-header-zone-counts ml-auto flex min-w-0 items-center gap-2",
                   !mergedMobileHeader && "flex-1 justify-end"
                 )}
               >

@@ -6573,6 +6573,18 @@ textarea,
   scrollbar-width: none;
 }
 
+.battlefield-panel-header .battlefield-header-zone-counts,
+.table-shared-player-header .battlefield-header-zone-counts {
+  padding-left: clamp(8px, 0.85cqw, 14px) !important;
+}
+
+[data-my-zone] .battlefield-panel-header .battlefield-header-zone-counts,
+.table-shared-player-header .battlefield-header-zone-counts {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
 .battlefield-panel-header .player-name-mana .mana-pool-chip--compact,
 .table-shared-player-header .player-name-mana .mana-pool-chip--compact {
   gap: 0.1rem;
@@ -13739,8 +13751,8 @@ select::-ms-expand {
   flex: 1 1 0%;
   min-height: 100%;
   overflow: hidden;
-  border: 0 !important;
-  border-radius: 0;
+  border: 1px solid var(--decision-main-accent, var(--player-accent, #d4a44a)) !important;
+  border-radius: 0 !important;
   background:
     linear-gradient(180deg, rgba(48, 42, 36, 0.9), rgba(20, 17, 15, 0.96)) !important;
   box-shadow: none !important;
@@ -13764,7 +13776,7 @@ select::-ms-expand {
 }
 
 .action-strip-options-region + .priority-control-stack {
-  margin-left: 8px !important;
+  margin-left: 0 !important;
   margin-right: 0 !important;
 }
 
@@ -13851,7 +13863,7 @@ select::-ms-expand {
   min-height: 40px;
   min-width: 88px;
   justify-content: center;
-  border-radius: 7px !important;
+  border-radius: 0 !important;
   border-color: rgba(160, 138, 104, 0.38) !important;
   letter-spacing: 0 !important;
   background:
@@ -13953,7 +13965,7 @@ select::-ms-expand {
   .action-strip-pill {
     min-height: 22px;
     min-width: 54px;
-    border-radius: 5px !important;
+    border-radius: 0 !important;
   }
 
   .priority-control-stack {
@@ -13980,4 +13992,11 @@ select::-ms-expand {
     padding: 0 8px !important;
     border-radius: 5px !important;
   }
+}
+
+.action-strip-options-region.action-strip-scroll button.action-strip-pill,
+.action-strip-options-region .action-strip-scroll button.action-strip-pill,
+.action-strip-options-region .action-strip-pill {
+  border-radius: 0 !important;
+  clip-path: none !important;
 }

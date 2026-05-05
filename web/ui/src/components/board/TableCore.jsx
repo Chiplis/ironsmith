@@ -194,7 +194,7 @@ export default function TableCore({
           compact
           className="player-name-mana battlefield-header-mana"
         />
-        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+        <div className="battlefield-header-zone-counts ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
           <ZoneCountInline player={me} />
         </div>
       </div>
