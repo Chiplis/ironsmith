@@ -57,9 +57,9 @@ const STEP_KEYS = {
 
 const PHASE_LABELS = {
   Beginning: "Beginning",
-  FirstMain: "Precombat Main",
+  FirstMain: "Main I",
   Combat: "Combat",
-  NextMain: "Postcombat Main",
+  NextMain: "Main II",
   Ending: "Ending",
 };
 

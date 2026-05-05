@@ -437,7 +437,6 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
-  const [confirmEnabled, setConfirmEnabled] = useState(false);
   const [inspectorDebug, setInspectorDebug] = useState(false);
   const [triggerOrderingState, setTriggerOrderingState] = useState({ key: "", order: [] });
   const [semanticThreshold, setSemanticThresholdRaw] = useState(96);
@@ -1682,8 +1681,6 @@ export function GameProvider({ children }) {
       setAutoPassEnabled,
       holdRule,
       setHoldRule,
-      confirmEnabled,
-      setConfirmEnabled,
       inspectorDebug,
       setInspectorDebug,
       triggerOrderingState: activeTriggerOrderingState,
@@ -1717,7 +1714,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, confirmEnabled, inspectorDebug,
+      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, inspectorDebug,
       activeTriggerOrderingState, moveTriggerOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,

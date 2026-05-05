@@ -423,6 +423,7 @@ function PriorityActionPillLabel({
   text,
   viewportRef,
   carouselResetVersion = 0,
+  isHovered = false,
   highlightText = "",
   highlightColor = null,
 }) {
@@ -502,7 +503,7 @@ function PriorityActionPillLabel({
     };
   }, [recomputeVisibility, text, viewportRef]);
 
-  const shouldAnimate = isOverflowing && isVisible;
+  const shouldAnimate = isHovered && isOverflowing && isVisible;
 
   useEffect(() => {
     const marqueeEl = marqueeRef.current;
@@ -520,15 +521,23 @@ function PriorityActionPillLabel({
       x: -travelDistance,
       ease: "linear",
       duration: travelDuration * 1000,
-      delay: 750,
+      delay: 0,
       loop: true,
     });
     marqueeAnimationRef.current = animation;
 
     return () => {
       cancelMotion(animation);
+      marqueeEl.style.transform = "translateX(0px)";
     };
   }, [carouselResetVersion, shouldAnimate, travelDistance, travelDuration]);
+
+  useEffect(() => {
+    if (shouldAnimate) return;
+    const marqueeEl = marqueeRef.current;
+    if (!marqueeEl) return;
+    marqueeEl.style.transform = "translateX(0px)";
+  }, [shouldAnimate]);
 
   if (!shouldAnimate) {
     return (
@@ -607,6 +616,7 @@ function PriorityActionStrip({
   const stripMotionRef = useRef(null);
   const [carouselResetByGroupKey, setCarouselResetByGroupKey] = useState({});
   const [isPointerInStrip, setIsPointerInStrip] = useState(false);
+  const [hoveredPillKey, setHoveredPillKey] = useState(null);
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onActionHoverEnd,
   });
@@ -820,7 +830,10 @@ function PriorityActionStrip({
       }}
       className={cn("action-strip-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap", className)}
       onMouseEnter={() => setIsPointerInStrip(true)}
-      onMouseLeave={() => setIsPointerInStrip(false)}
+      onMouseLeave={() => {
+        setIsPointerInStrip(false);
+        setHoveredPillKey(null);
+      }}
     >
       <div className="flex w-max min-w-full min-h-[32px] items-stretch gap-1.5 pr-2">
         {displayGroups.map(({ key, cycle, group }) => {
@@ -869,6 +882,7 @@ function PriorityActionStrip({
                 text={compactActionLabel(group.label)}
                 viewportRef={viewportRef}
                 carouselResetVersion={carouselResetByGroupKey[group.key] || 0}
+                isHovered={hoveredPillKey === key}
                 highlightText={highlightName}
                 highlightColor={accent?.hex || null}
               />
@@ -899,9 +913,16 @@ function PriorityActionStrip({
               }}
               onMouseEnter={() => {
                 if (hoverSuppressed) return;
+                setHoveredPillKey(key);
                 onActionHoverStart(group);
               }}
-              onMouseLeave={onActionHoverEnd}
+              onMouseLeave={() => {
+                setHoveredPillKey((currentKey) => (currentKey === key ? null : currentKey));
+                onActionHoverEnd();
+              }}
+              onPointerLeave={() => {
+                setHoveredPillKey((currentKey) => (currentKey === key ? null : currentKey));
+              }}
             >
               {pillContent}
             </button>
@@ -2029,9 +2050,7 @@ function MobileBattleDecisionLayer({
 function PriorityControlStack({
   actionCount = 0,
   holdEnabled = false,
-  confirmEnabled = false,
   onHoldChange,
-  onConfirmChange,
   showActionCount = true,
   className = "",
 }) {
@@ -2059,14 +2078,6 @@ function PriorityControlStack({
           />
           <span title="Hold">{compactLandscapeViewport ? "H" : "Hold"}</span>
         </label>
-        <label className={checkboxLabelClass}>
-          <Checkbox
-            checked={confirmEnabled}
-            onCheckedChange={(value) => onConfirmChange?.(Boolean(value))}
-            className="h-3 w-3"
-          />
-          <span title="Confirm">{compactLandscapeViewport ? "C" : "Confirm"}</span>
-        </label>
       </div>
     </div>
   );
@@ -2078,8 +2089,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     dispatch,
     holdRule,
     setHoldRule,
-    confirmEnabled,
-    setConfirmEnabled,
     cancelDecision,
     triggerOrderingState,
   } = useGame();
@@ -2375,25 +2384,27 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
                 style={decisionButtonStyle}
               >
-                <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
-                    data-local-action={localDecisionButton ? "true" : "false"}
-                    disabled={!canAdvanceViewedCardsStep}
-                    onPointerDown={(event) => {
-                      if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                      event.preventDefault();
-                      completeViewedCardsStep();
-                    }}
-                    onClick={(event) => {
-                      if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                      completeViewedCardsStep();
-                    }}
-                  >
-                    Done
-                  </Button>
+                <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
+                  <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="decision-neon-button decision-main-button decision-submit-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                      data-local-action={localDecisionButton ? "true" : "false"}
+                      disabled={!canAdvanceViewedCardsStep}
+                      onPointerDown={(event) => {
+                        if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                        event.preventDefault();
+                        completeViewedCardsStep();
+                      }}
+                      onClick={(event) => {
+                        if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                        completeViewedCardsStep();
+                      }}
+                    >
+                      Done
+                    </Button>
+                  </div>
                 </div>
                 <ViewedCardsStrip
                   label={viewedCardsLabel}
@@ -2416,29 +2427,44 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
                 style={decisionButtonStyle}
               >
-                {showPriorityAdvanceButton && (
-                  <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
-                      data-local-action={localDecisionButton ? "true" : "false"}
-                      aria-disabled={!canAct}
-                      onClick={() => triggerPriorityAction(passAction)}
-                    >
-                      <PriorityPassButtonLabel
-                        currentLabel={passCurrentLabel}
-                        advanceLabel={passAdvanceLabel}
+                <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
+                  {showPriorityAdvanceButton && (
+                    <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
+                        data-local-action={localDecisionButton ? "true" : "false"}
+                        aria-disabled={!canAct}
+                        onClick={() => triggerPriorityAction(passAction)}
+                      >
+                        <PriorityPassButtonLabel
+                          currentLabel={passCurrentLabel}
+                          advanceLabel={passAdvanceLabel}
+                          className="action-strip-main-label"
+                        />
+                      </Button>
+                      <div
+                        className="action-strip-main-controls absolute bottom-2 left-3 z-20"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <PriorityControlStack
+                          actionCount={priorityActionCount}
+                          holdEnabled={holdRule === "always"}
+                          onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                          showActionCount={false}
+                        />
+                      </div>
+                      <PhaseHelpPopover
+                        state={state}
+                        decision={decision}
+                        advanceLabel={passHelpAdvanceLabel}
+                        className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
                       />
-                    </Button>
-                    <PhaseHelpPopover
-                      state={state}
-                      decision={decision}
-                      advanceLabel={passHelpAdvanceLabel}
-                      className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
-                    />
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
                 <PriorityActionStrip
                   groups={visibleActionGroups}
                   canAct={canAct}
@@ -2454,15 +2480,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   onActionClick={triggerPriorityAction}
                   onActionHoverStart={handleActionHoverStart}
                   onActionHoverEnd={handleActionHoverEnd}
-                />
-                <PriorityControlStack
-                  actionCount={priorityActionCount}
-                  holdEnabled={holdRule === "always"}
-                  confirmEnabled={confirmEnabled}
-                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                  onConfirmChange={setConfirmEnabled}
-                  showActionCount={priorityActionCount > 0}
-                  className="ml-auto min-w-[104px]"
                 />
               </div>
             )
@@ -2542,9 +2559,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 </div>
                 <PriorityControlStack
                   holdEnabled={holdRule === "always"}
-                  confirmEnabled={confirmEnabled}
                   onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                  onConfirmChange={setConfirmEnabled}
                   showActionCount={false}
                   className="ml-auto min-w-[104px]"
                 />
@@ -2647,13 +2662,26 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       <PriorityPassButtonLabel
                         currentLabel={passCurrentLabel}
                         advanceLabel={passAdvanceLabel}
+                        className="action-strip-main-label"
                       />
                     </Button>
+                    <div
+                      className="action-strip-main-controls absolute bottom-2 left-3 z-20"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <PriorityControlStack
+                        actionCount={priorityActionCount}
+                        holdEnabled={holdRule === "always"}
+                        onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                        showActionCount={false}
+                      />
+                    </div>
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
                       advanceLabel={passHelpAdvanceLabel}
-                      className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
+                      className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
                     />
                   </div>
                 )}
@@ -2713,9 +2741,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   </Button>
                   <PriorityControlStack
                     holdEnabled={holdRule === "always"}
-                    confirmEnabled={confirmEnabled}
                     onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                    onConfirmChange={setConfirmEnabled}
                     showActionCount={false}
                     className="ml-auto min-w-[104px]"
                   />
@@ -2774,9 +2800,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               <PriorityControlStack
                 actionCount={priorityActionCount}
                 holdEnabled={holdRule === "always"}
-                confirmEnabled={confirmEnabled}
                 onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                onConfirmChange={setConfirmEnabled}
                 className="ml-auto min-w-[104px]"
               />
             </div>
@@ -2822,8 +2846,6 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     state,
     holdRule,
     setHoldRule,
-    confirmEnabled,
-    setConfirmEnabled,
     cancelDecision,
   } = useGame();
   const decisionIdentity = [
@@ -2919,9 +2941,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
         </div>
         <PriorityControlStack
           holdEnabled={holdRule === "always"}
-          confirmEnabled={confirmEnabled}
           onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-          onConfirmChange={setConfirmEnabled}
           showActionCount={false}
           className={cn(
             "min-w-[104px]",

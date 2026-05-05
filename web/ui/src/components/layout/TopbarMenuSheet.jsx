@@ -72,8 +72,6 @@ export default function TopbarMenuSheet({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
-    confirmEnabled,
-    setConfirmEnabled,
     inspectorDebug,
     setInspectorDebug,
     setStatus,
@@ -409,13 +407,6 @@ export default function TopbarMenuSheet({
                     onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
                   />
                   Auto-pass
-                </label>
-                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
-                  <Checkbox
-                    checked={confirmEnabled}
-                    onCheckedChange={(value) => setConfirmEnabled(Boolean(value))}
-                  />
-                  Confirm Stops
                 </label>
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox

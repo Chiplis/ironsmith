@@ -7641,6 +7641,16 @@ textarea,
   color: #fff0cf !important;
 }
 
+.decision-option-row--strip.is-selected,
+.decision-option-row--strip.is-selected:hover:not(:disabled) {
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 1px solid rgba(218, 188, 132, 0.9) !important;
+  border-left: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .decision-option-row.is-disabled {
   border-color: rgba(85, 74, 61, 0.42) !important;
   background:
@@ -13613,6 +13623,14 @@ select::-ms-expand {
     linear-gradient(90deg, rgba(38, 35, 32, 0.96), rgba(27, 23, 21, 0.98)) !important;
 }
 
+.table-action-bar:has(.priority-inline-panel--segmented) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .priority-inline-panel {
   padding-top: 5px;
   padding-bottom: 5px;
@@ -13621,6 +13639,8 @@ select::-ms-expand {
 .priority-inline-panel.priority-inline-panel--segmented {
   height: 100%;
   border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
   padding: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
@@ -13674,15 +13694,20 @@ select::-ms-expand {
 }
 
 .action-strip-layout--segmented {
-  --decision-edge-text: #160f06;
+  --decision-edge-text: #fff7e6;
   --decision-edge-text-shadow:
-    0 1px 0 rgba(255, 244, 210, 0.34),
-    0 0 1px rgba(255, 244, 210, 0.28);
+    0 1px 0 rgba(9, 6, 2, 0.28),
+    0 0 2px rgba(9, 6, 2, 0.34);
   gap: 0 !important;
   height: 100%;
   min-height: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
   padding: 0 !important;
   align-items: stretch !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .action-strip-main-region {
@@ -13707,7 +13732,7 @@ select::-ms-expand {
 .action-strip-main-region .decision-main-button {
   color: var(--decision-edge-text) !important;
   -webkit-text-fill-color: var(--decision-edge-text) !important;
-  font-weight: 900 !important;
+  font-weight: 600 !important;
   text-shadow: var(--decision-edge-text-shadow) !important;
   width: 100% !important;
   min-width: 0 !important;
@@ -13719,12 +13744,16 @@ select::-ms-expand {
   border-bottom-left-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  padding-top: 8px !important;
+  padding-bottom: 18px !important;
 }
 
 .action-strip-main-region .decision-main-button > * {
   color: var(--decision-edge-text) !important;
   -webkit-text-fill-color: var(--decision-edge-text) !important;
-  font-weight: 900 !important;
+  font-weight: 600 !important;
   text-shadow: var(--decision-edge-text-shadow) !important;
 }
 
@@ -13738,6 +13767,56 @@ select::-ms-expand {
   transform: none !important;
 }
 
+.action-strip-main-region .action-strip-main-label .priority-pass-label-current {
+  font-size: 1.5625em !important;
+  line-height: 1 !important;
+}
+
+.action-strip-main-region .action-strip-main-label .priority-pass-label-advance {
+  font-size: var(--priority-pass-advance-size, 0.515625em) !important;
+  line-height: 1 !important;
+}
+
+.action-strip-main-region .action-strip-main-controls .priority-control-stack {
+  flex-direction: row !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.action-strip-main-region .action-strip-main-controls .priority-control-toggles {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding-left: 0 !important;
+  border-left: 0 !important;
+}
+
+.action-strip-main-region .action-strip-main-controls .priority-control-toggle,
+.action-strip-main-region .action-strip-main-controls .priority-control-toggle:hover {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+}
+
+.action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] {
+  width: 11px !important;
+  height: 11px !important;
+  border-color: rgba(255, 247, 230, 0.58) !important;
+  background: rgba(27, 19, 8, 0.08) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
+}
+
 .action-strip-main-region:hover {
   background:
     linear-gradient(180deg, rgba(255, 249, 228, 0.28), rgba(255, 249, 228, 0.06) 36%, rgba(8, 6, 4, 0.06) 100%),
@@ -13749,12 +13828,12 @@ select::-ms-expand {
   align-items: stretch;
   min-width: 0;
   flex: 1 1 0%;
+  margin-left: 12px;
   min-height: 100%;
   overflow: hidden;
-  border: 1px solid var(--decision-main-accent, var(--player-accent, #d4a44a)) !important;
+  border: 0 !important;
   border-radius: 0 !important;
-  background:
-    linear-gradient(180deg, rgba(48, 42, 36, 0.9), rgba(20, 17, 15, 0.96)) !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
@@ -13762,22 +13841,91 @@ select::-ms-expand {
 .action-strip-options-region.viewed-cards-strip {
   height: 100%;
   padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .action-strip-options-region > .action-strip-scroll {
   height: 100%;
   padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .action-strip-options-region.action-strip-scroll > div,
 .action-strip-options-region > .action-strip-scroll > div {
   min-height: 100% !important;
-  padding-left: 8px;
+  align-items: center !important;
+  padding-left: 0;
 }
 
 .action-strip-options-region + .priority-control-stack {
   margin-left: 0 !important;
   margin-right: 0 !important;
+}
+
+.action-strip-command-region {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  min-height: 100%;
+  border-radius: 16px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 228, 0.22), rgba(255, 249, 228, 0.04) 38%, rgba(8, 6, 4, 0.08) 100%),
+    linear-gradient(90deg, rgba(var(--decision-main-rgb, 214, 164, 74), 0.96), rgba(var(--decision-main-rgb, 214, 164, 74), 0.72)) !important;
+  box-shadow: none !important;
+}
+
+.action-strip-command-region .action-strip-main-region,
+.action-strip-command-region > .priority-control-stack {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.action-strip-command-region > .priority-control-stack {
+  --decision-edge-text: #fff7e6;
+  --decision-edge-text-shadow:
+    0 1px 0 rgba(9, 6, 2, 0.28),
+    0 0 2px rgba(9, 6, 2, 0.34);
+  margin-left: 0 !important;
+  border-left: 1px solid rgba(27, 19, 8, 0.22) !important;
+}
+
+.action-strip-command-region > .priority-control-stack .priority-control-count,
+.action-strip-command-region > .priority-control-stack .priority-control-count-number,
+.action-strip-command-region > .priority-control-stack .priority-control-count-label,
+.action-strip-command-region > .priority-control-stack .priority-control-toggle,
+.action-strip-command-region > .priority-control-stack .priority-control-toggle:hover {
+  color: var(--decision-edge-text) !important;
+  -webkit-text-fill-color: var(--decision-edge-text) !important;
+  font-weight: 500 !important;
+  text-shadow: var(--decision-edge-text-shadow) !important;
+}
+
+.action-strip-command-region > .priority-control-stack .priority-control-toggles {
+  border-left: 0 !important;
+}
+
+.action-strip-command-region > .priority-control-stack [data-slot="checkbox"] {
+  border-color: rgba(27, 19, 8, 0.5) !important;
+  background: rgba(27, 19, 8, 0.08) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
+}
+
+.action-strip-command-region > .priority-control-stack [data-slot="checkbox"][data-state="checked"] {
+  border-color: rgba(27, 19, 8, 0.72) !important;
+  background: rgba(27, 19, 8, 0.16) !important;
+  box-shadow: none !important;
+  color: var(--decision-edge-text) !important;
 }
 
 .action-strip-scroll {
@@ -13941,6 +14089,35 @@ select::-ms-expand {
   color: #f0dfbc;
 }
 
+.action-strip-command-region > .priority-control-stack {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  min-width: 128px !important;
+  min-height: 100% !important;
+  gap: 2px !important;
+  padding: 6px 12px !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 1px solid rgba(27, 19, 8, 0.22) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.action-strip-command-region > .priority-control-stack .priority-control-count {
+  padding-left: 0 !important;
+}
+
+.action-strip-command-region > .priority-control-stack .priority-control-toggles {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 3px !important;
+  padding-left: 0 !important;
+  border-left: 0 !important;
+}
+
 @media (max-height: 480px) and (orientation: landscape) {
   .priority-inline-panel {
     padding-top: 0;
@@ -13976,6 +14153,14 @@ select::-ms-expand {
     border-radius: 5px !important;
   }
 
+  .action-strip-command-region > .priority-control-stack {
+    min-width: 120px !important;
+    min-height: 100% !important;
+    gap: 1px !important;
+    padding: 3px 8px !important;
+    border-radius: 0 !important;
+  }
+
   .priority-control-toggles {
     gap: 5px !important;
     padding-left: 0;
@@ -13997,6 +14182,38 @@ select::-ms-expand {
 .action-strip-options-region.action-strip-scroll button.action-strip-pill,
 .action-strip-options-region .action-strip-scroll button.action-strip-pill,
 .action-strip-options-region .action-strip-pill {
+  align-self: center !important;
+  height: auto !important;
+  border: 1px solid rgba(160, 138, 104, 0.38) !important;
   border-radius: 0 !important;
   clip-path: none !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 220, 0.07),
+    0 8px 14px rgba(0, 0, 0, 0.18) !important;
+  background:
+    linear-gradient(180deg, rgba(72, 65, 57, 0.88), rgba(28, 24, 21, 0.94)) !important;
+  padding: 4px 14px !important;
+}
+
+.action-strip-options-region.action-strip-scroll button.action-strip-pill.is-interactive:hover,
+.action-strip-options-region.action-strip-scroll button.action-strip-pill.is-linked-active,
+.action-strip-options-region .action-strip-scroll button.action-strip-pill.is-interactive:hover,
+.action-strip-options-region .action-strip-scroll button.action-strip-pill.is-linked-active,
+.action-strip-options-region .action-strip-pill.is-interactive:hover,
+.action-strip-options-region .action-strip-pill.is-linked-active {
+  border: 1px solid rgba(205, 178, 126, 0.58) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 245, 220, 0.1),
+    0 0 16px rgba(224, 190, 124, 0.12),
+    0 10px 16px rgba(0, 0, 0, 0.22) !important;
+  background:
+    linear-gradient(180deg, rgba(88, 75, 58, 0.92), rgba(34, 28, 22, 0.98)) !important;
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+  .action-strip-options-region.action-strip-scroll button.action-strip-pill,
+  .action-strip-options-region .action-strip-scroll button.action-strip-pill,
+  .action-strip-options-region .action-strip-pill {
+    padding: 2px 9px !important;
+  }
 }
