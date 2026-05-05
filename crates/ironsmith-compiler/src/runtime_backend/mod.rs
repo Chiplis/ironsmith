@@ -23,6 +23,8 @@ pub(crate) mod ast;
 pub(crate) mod clause_support;
 #[path = "lowering/compile_support.rs"]
 pub(crate) mod compile_support;
+#[path = "lowering/condition_antecedent.rs"]
+pub(crate) mod condition_antecedent;
 #[path = "front_end/cst.rs"]
 pub(crate) mod cst;
 #[path = "front_end/cst_lowering.rs"]

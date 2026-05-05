@@ -513,6 +513,11 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     });
     let is_nonpermanent_spell =
         builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type;
+    if crate::runtime_backend::grammar::abilities::is_shuffle_into_library_from_graveyard_line_lexed(
+        tokens,
+    ) {
+        return false;
+    }
     is_nonpermanent_spell
         && (token_words_have_any_prefix(tokens, &[&["each"], &["all"]])
             || token_words_have_sequence(tokens, &["until", "end", "of", "turn"])
@@ -826,6 +831,17 @@ fn normalize_named_source_sentence_for_builder(
         }
     }
 
+    let names = source_name_aliases_for_builder(builder);
+    if !names.is_empty() && !lower.contains(" named ") {
+        let mut rewritten = lower.clone();
+        for name_lower in &names {
+            rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
+        }
+        if rewritten != lower {
+            return Some(rewritten);
+        }
+    }
+
     let (_, rest) = str_split_once(lower.as_str(), " enters ")?;
     Some(format!("{subject} enters {rest}"))
 }
@@ -839,18 +855,25 @@ fn normalize_named_source_trigger_for_builder(
     if let Some((trigger_head, effect_body)) = str_split_once(lower.as_str(), ",") {
         let rewritten_head =
             normalize_named_source_trigger_head_for_builder(builder, trigger_head)?;
-        return Some(format!("{rewritten_head},{effect_body}"));
+        let names = source_name_aliases_for_builder(builder);
+        let mut rewritten_body = effect_body.to_string();
+        if !names.is_empty() && !rewritten_body.contains(" named ") {
+            let subject = named_source_subject_for_builder(builder);
+            for name_lower in &names {
+                if rewritten_body.contains(&format!("control of {name_lower}")) {
+                    rewritten_body =
+                        replace_named_source_aliases(&rewritten_body, name_lower, subject);
+                }
+            }
+        }
+        return Some(format!("{rewritten_head},{rewritten_body}"));
     }
 
     normalize_named_source_trigger_head_for_builder(builder, lower.as_str())
 }
 
-fn normalize_named_source_trigger_head_for_builder(
-    builder: &CardDefinitionBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let subject = if builder
+fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static str {
+    if builder
         .card_builder
         .card_types_ref()
         .iter()
@@ -894,7 +917,23 @@ fn normalize_named_source_trigger_head_for_builder(
         "this battle"
     } else {
         "this permanent"
-    };
+    }
+}
+
+fn normalized_line_mentions_source_alias(builder: &CardDefinitionBuilder, text: &str) -> bool {
+    let lower = text.trim().to_ascii_lowercase();
+    let subject = named_source_subject_for_builder(builder);
+    source_name_aliases_for_builder(builder)
+        .iter()
+        .any(|alias| replace_named_source_aliases(lower.as_str(), alias, subject) != lower)
+}
+
+fn normalize_named_source_trigger_head_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim();
+    let subject = named_source_subject_for_builder(builder);
 
     let name = builder.card_builder.name_ref();
     if !name.is_empty() {
@@ -960,12 +999,49 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
             aliases.push(alias);
         }
     };
-    push_alias(name);
-    if let Some((short_name, _)) = name.split_once(',') {
-        push_alias(short_name);
+
+    let mut full_names = Vec::new();
+    push_unique_source_name_alias(&mut full_names, name);
+    if let Some((front_face, _)) = name.split_once("//") {
+        push_unique_source_name_alias(&mut full_names, front_face);
+    }
+    let existing_full_names = full_names.clone();
+    for full_name in existing_full_names {
+        if let Some(stripped) = strip_leading_digital_variant_marker(full_name.as_str()) {
+            push_unique_source_name_alias(&mut full_names, stripped);
+        }
+    }
+
+    for full_name in &full_names {
+        push_alias(full_name);
+        if let Some((short_name, _)) = full_name.split_once(',') {
+            push_alias(short_name);
+            if let Some(stripped) = strip_leading_digital_variant_marker(short_name) {
+                push_alias(stripped);
+            }
+        }
     }
     aliases.sort_by_key(|alias| std::cmp::Reverse(alias.len()));
     aliases
+}
+
+fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
+    let raw = raw.trim();
+    if !raw.is_empty() && !aliases.iter().any(|existing| existing == raw) {
+        aliases.push(raw.to_string());
+    }
+}
+
+fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+        let rest = trimmed[2..].trim();
+        if !rest.is_empty() {
+            return Some(rest);
+        }
+    }
+    None
 }
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
@@ -2324,6 +2400,25 @@ fn try_parse_labeled_line_dispatch(
         )));
     }
 
+    if normalized_line_mentions_source_alias(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) {
+        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
+        if let Some(mut static_line) = parse_static_line_cst(&rewritten_body_line)? {
+            if preserve_as_choice_label {
+                static_line.chosen_option_label = Some(label.to_ascii_lowercase());
+            }
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Static(static_line),
+                idx + 1,
+            )));
+        }
+    }
+
     if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
         if preserve_as_choice_label {
             static_line.chosen_option_label = Some(label.to_ascii_lowercase());
@@ -2334,7 +2429,10 @@ fn try_parse_labeled_line_dispatch(
         )));
     }
 
-    if let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
+    if normalized_line_mentions_source_alias(
+        &preprocessed.builder,
+        body_line.info.normalized.normalized.as_str(),
+    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
         &preprocessed.builder,
         body_line.info.normalized.normalized.as_str(),
     ) {
@@ -2694,45 +2792,66 @@ pub(crate) fn parse_document_cst(
                     normalize_trailing_keyword_activation_sentence_lexed(&line.tokens)
                 {
                     let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
-                    if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
+                    let (prefix_statement, prefix_statement_error) =
+                        match parse_statement_line_cst(&prefix_line) {
+                            Ok(statement) => (statement, None),
+                            Err(err) => (None, Some(err)),
+                        };
+                    if let Some(statement_line) = prefix_statement {
                         let cst = RewriteLineCst::Statement(statement_line);
                         trace_cst_line(&cst);
                         lines.push(cst);
-                    } else if let Some(rewritten_prefix) =
-                        normalize_named_source_sentence_for_builder(
-                            &preprocessed.builder,
-                            prefix_line.info.normalized.normalized.as_str(),
-                        )
-                    {
-                        let rewritten_prefix_line =
-                            rewrite_line_normalized(line, rewritten_prefix.as_str())?;
-                        if let Some(statement_line) =
-                            parse_statement_line_cst(&rewritten_prefix_line)?
+                    } else {
+                        let mut parsed_raw_static_prefix = false;
+                        let prefix_static_error = match parse_static_line_cst(&prefix_line) {
+                            Ok(Some(static_line)) => {
+                                let cst = RewriteLineCst::Static(static_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                                parsed_raw_static_prefix = true;
+                                None
+                            }
+                            Ok(None) => None,
+                            Err(err) => Some(err),
+                        };
+                        if parsed_raw_static_prefix {
+                            // handled by the raw static parse above
+                        } else if let Some(rewritten_prefix) =
+                            normalize_named_source_sentence_for_builder(
+                                &preprocessed.builder,
+                                prefix_line.info.normalized.normalized.as_str(),
+                            )
                         {
-                            let cst = RewriteLineCst::Statement(statement_line);
-                            trace_cst_line(&cst);
-                            lines.push(cst);
-                        } else if let Some(static_line) =
-                            parse_static_line_cst(&rewritten_prefix_line)?
-                        {
-                            let cst = RewriteLineCst::Static(static_line);
-                            trace_cst_line(&cst);
-                            lines.push(cst);
+                            let rewritten_prefix_line =
+                                rewrite_line_normalized(line, rewritten_prefix.as_str())?;
+                            if let Some(statement_line) =
+                                parse_statement_line_cst(&rewritten_prefix_line)?
+                            {
+                                let cst = RewriteLineCst::Statement(statement_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                            } else if let Some(static_line) =
+                                parse_static_line_cst(&rewritten_prefix_line)?
+                            {
+                                let cst = RewriteLineCst::Static(static_line);
+                                trace_cst_line(&cst);
+                                lines.push(cst);
+                            } else {
+                                return Err(CardTextError::ParseError(format!(
+                                    "parser could not split leading sentence before keyword ability: '{}'",
+                                    line.info.raw_line
+                                )));
+                            }
+                        } else if let Some(err) = prefix_statement_error {
+                            return Err(err);
+                        } else if let Some(err) = prefix_static_error {
+                            return Err(err);
                         } else {
                             return Err(CardTextError::ParseError(format!(
                                 "parser could not split leading sentence before keyword ability: '{}'",
                                 line.info.raw_line
                             )));
                         }
-                    } else if let Some(static_line) = parse_static_line_cst(&prefix_line)? {
-                        let cst = RewriteLineCst::Static(static_line);
-                        trace_cst_line(&cst);
-                        lines.push(cst);
-                    } else {
-                        return Err(CardTextError::ParseError(format!(
-                            "parser could not split leading sentence before keyword ability: '{}'",
-                            line.info.raw_line
-                        )));
                     }
 
                     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
@@ -2771,6 +2890,22 @@ pub(crate) fn parse_document_cst(
                 {
                     idx += 1;
                     continue;
+                }
+                if normalized_line_mentions_source_alias(
+                    &preprocessed.builder,
+                    line.info.normalized.normalized.as_str(),
+                ) && let Some(rewritten) = normalize_named_source_sentence_for_builder(
+                    &preprocessed.builder,
+                    line.info.normalized.normalized.as_str(),
+                ) {
+                    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
+                    if let Some(static_line) = parse_static_line_cst(&rewritten_line)? {
+                        let cst = RewriteLineCst::Static(static_line);
+                        trace_cst_line(&cst);
+                        lines.push(cst);
+                        idx += 1;
+                        continue;
+                    }
                 }
                 if !allow_unsupported
                     && let Some(err) = diagnose_known_unsupported_rewrite_line(&line.tokens)

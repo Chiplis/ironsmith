@@ -107,42 +107,87 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     if trimmed.is_empty() {
         return aliases;
     }
-    push_alias(
-        trimmed,
-        SourceReferenceSurface::FullName(trimmed.to_string()),
-    );
-    for article in ["The ", "A ", "An "] {
-        if let Some(rest) = trimmed.strip_prefix(article) {
-            let rest = rest.trim();
-            if !rest.is_empty() {
-                push_alias(rest, SourceReferenceSurface::FullName(trimmed.to_string()));
+
+    let mut full_names = Vec::new();
+    push_unique_source_name_alias(&mut full_names, trimmed);
+    if let Some((front_face, _)) = trimmed.split_once("//") {
+        push_unique_source_name_alias(&mut full_names, front_face);
+    }
+    let existing_full_names = full_names.clone();
+    for full_name in existing_full_names {
+        if let Some(stripped) = strip_leading_digital_variant_marker(full_name.as_str()) {
+            push_unique_source_name_alias(&mut full_names, stripped);
+        }
+    }
+
+    for full_name in &full_names {
+        push_alias(
+            full_name,
+            SourceReferenceSurface::FullName(full_name.to_string()),
+        );
+        for article in ["The ", "A ", "An "] {
+            if let Some(rest) = full_name.strip_prefix(article) {
+                let rest = rest.trim();
+                if !rest.is_empty() {
+                    push_alias(
+                        rest,
+                        SourceReferenceSurface::FullName(full_name.to_string()),
+                    );
+                }
             }
         }
     }
-    if let Some((short_name, _)) = trimmed.split_once(',') {
-        let short_name = short_name.trim();
-        push_alias(
-            short_name,
-            SourceReferenceSurface::ShortName(short_name.to_string()),
-        );
-    } else if let Some(rest) = trimmed.strip_prefix("A-") {
-        let rest = rest.trim();
-        push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
-    } else if let Some((short_name, _)) = trimmed.split_once(' ') {
-        let short_name = short_name.trim();
-        let lower_short_name = short_name.to_ascii_lowercase();
-        if !matches!(lower_short_name.as_str(), "a" | "an" | "the")
-            && parse_card_type(&lower_short_name).is_none()
-            && parse_subtype_word(&lower_short_name).is_none()
-        {
+
+    for full_name in &full_names {
+        if let Some((short_name, _)) = full_name.split_once(',') {
+            let short_name = short_name.trim();
             push_alias(
                 short_name,
                 SourceReferenceSurface::ShortName(short_name.to_string()),
             );
+            if let Some(rest) = strip_leading_digital_variant_marker(short_name) {
+                push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
+            }
+        } else if let Some(rest) = strip_leading_digital_variant_marker(full_name) {
+            let rest = rest.trim();
+            if !rest.is_empty() {
+                push_alias(rest, SourceReferenceSurface::ShortName(rest.to_string()));
+            }
+        } else if let Some((short_name, _)) = full_name.split_once(' ') {
+            let short_name = short_name.trim();
+            let lower_short_name = short_name.to_ascii_lowercase();
+            if !matches!(lower_short_name.as_str(), "a" | "an" | "the")
+                && parse_card_type(&lower_short_name).is_none()
+                && parse_subtype_word(&lower_short_name).is_none()
+            {
+                push_alias(
+                    short_name,
+                    SourceReferenceSurface::ShortName(short_name.to_string()),
+                );
+            }
         }
     }
     aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
     aliases
+}
+
+fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
+    let raw = raw.trim();
+    if !raw.is_empty() && !aliases.iter().any(|existing| existing == raw) {
+        aliases.push(raw.to_string());
+    }
+}
+
+fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() > 2 && bytes[1] == b'-' && bytes[0].is_ascii_alphabetic() {
+        let rest = trimmed[2..].trim();
+        if !rest.is_empty() {
+            return Some(rest);
+        }
+    }
+    None
 }
 
 fn source_reference_words_from_text(text: &str) -> Vec<String> {

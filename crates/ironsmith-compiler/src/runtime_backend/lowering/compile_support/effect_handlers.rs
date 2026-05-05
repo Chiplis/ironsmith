@@ -1,4 +1,8 @@
 use super::*;
+use crate::runtime_backend::condition_antecedent::{
+    ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
+    predicate_object_filter_antecedent,
+};
 
 fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
@@ -340,130 +344,6 @@ pub(super) fn try_compile_destroy_and_exile_effect(
     Ok(None)
 }
 
-fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
-    match predicate {
-        PredicateAst::PlayerControls { filter, .. }
-        | PredicateAst::PlayerControlsAtLeast { filter, .. }
-        | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
-        | PredicateAst::PlayerControlsNo { filter, .. }
-        | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_object_filter_antecedent(left)
-                .or_else(|| predicate_object_filter_antecedent(right))
-        }
-        _ => None,
-    }
-}
-
-fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
-    if let Some(zone) = overlay.zone {
-        base.zone.get_or_insert(zone);
-    }
-    if base.controller.is_none() {
-        base.controller = overlay.controller;
-    }
-    if base.owner.is_none() {
-        base.owner = overlay.owner;
-    }
-    base.other |= overlay.other;
-    for card_type in overlay.card_types {
-        if !base.card_types.contains(&card_type) {
-            base.card_types.push(card_type);
-        }
-    }
-    for subtype in overlay.subtypes {
-        if !base.subtypes.contains(&subtype) {
-            base.subtypes.push(subtype);
-        }
-    }
-    if let Some(colors) = overlay.colors {
-        base.colors = Some(
-            base.colors
-                .map_or(colors, |existing| existing.intersection(colors)),
-        );
-    }
-}
-
-fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
-    let references_it = filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
-            && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-    });
-    if !references_it {
-        return;
-    }
-
-    let mut overlay = filter.clone();
-    overlay.tagged_constraints.retain(|constraint| {
-        !(constraint.tag.as_str() == IT_TAG
-            && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject))
-    });
-    let mut replacement = antecedent.clone();
-    merge_filter_overlay(&mut replacement, overlay);
-    *filter = replacement;
-}
-
-fn bind_condition_antecedent_in_target(target: &mut TargetAst, antecedent: &ObjectFilter) {
-    fn bind_random_those_filter(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
-        let mut replacement = antecedent.clone();
-        merge_filter_overlay(&mut replacement, filter.clone());
-        *filter = replacement;
-    }
-
-    match target {
-        TargetAst::Object(filter, _, _) => bind_condition_filter_antecedent(filter, antecedent),
-        TargetAst::WithCount(inner, count) => {
-            if count.random
-                && let TargetAst::Object(filter, _, _) = inner.as_mut()
-                && filter.tagged_constraints.is_empty()
-                && filter.with_counter.is_none()
-            {
-                bind_random_those_filter(filter, antecedent);
-            } else {
-                bind_condition_antecedent_in_target(inner, antecedent);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
-                bind_condition_antecedent_in_target(target, antecedent);
-            }
-            _ => {}
-        },
-        EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
-            bind_condition_filter_antecedent(filter, antecedent);
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        }
-        | EffectAst::SelfReplacement {
-            if_true, if_false, ..
-        } => {
-            bind_condition_antecedent_in_effects(if_true, antecedent);
-            bind_condition_antecedent_in_effects(if_false, antecedent);
-        }
-        _ => {}
-    }
-}
-
-fn bind_condition_antecedent_in_effects(effects: &mut [EffectAst], antecedent: &ObjectFilter) {
-    for effect in effects {
-        bind_condition_antecedent_in_effect(effect, antecedent);
-    }
-}
-
 pub(super) fn try_compile_stack_and_condition_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -499,7 +379,11 @@ pub(super) fn try_compile_stack_and_condition_effect(
         } => {
             let mut effective_if_true = if_true.clone();
             if let Some(antecedent) = predicate_object_filter_antecedent(predicate) {
-                bind_condition_antecedent_in_effects(&mut effective_if_true, &antecedent);
+                bind_condition_antecedent_in_effects(
+                    &mut effective_if_true,
+                    &antecedent,
+                    ConditionAntecedentBinding::IncludeRandomWithCountObjects,
+                );
             }
             let saved_last_tag = ctx.last_object_tag.clone();
             let saved_source_object_antecedent = ctx.source_object_antecedent;

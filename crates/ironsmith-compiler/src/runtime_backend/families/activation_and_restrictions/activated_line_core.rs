@@ -963,6 +963,12 @@ pub(crate) fn parse_enters_tapped_line(
             })?;
         let trailing_words =
             crate::runtime_backend::token_word_refs(&tokens[tapped_token_idx + 1..]);
+        if matches!(
+            trailing_words.as_slice(),
+            ["and", "attacking"] | ["attacking"]
+        ) {
+            return Ok(None);
+        }
         if !trailing_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing enters-tapped clause (clause: '{}')",

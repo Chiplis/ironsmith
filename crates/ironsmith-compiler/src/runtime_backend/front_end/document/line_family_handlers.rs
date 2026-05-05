@@ -193,30 +193,19 @@ fn try_parse_trailing_keyword_activation_dispatch(
     };
 
     let prefix_line = rewrite_line_tokens(line, &prefix_tokens);
-    let prefix_cst = if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
+    let (prefix_statement, prefix_statement_error) = match parse_statement_line_cst(&prefix_line) {
+        Ok(statement) => (statement, None),
+        Err(err) => (None, Some(err)),
+    };
+    let prefix_cst = if let Some(statement_line) = prefix_statement {
         RewriteLineCst::Statement(statement_line)
-    } else if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
-        builder,
-        prefix_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
-        if let Some(statement_line) = parse_statement_line_cst(&rewritten_prefix_line)? {
-            RewriteLineCst::Statement(statement_line)
-        } else if let Some(static_line) = parse_static_line_cst(&rewritten_prefix_line)? {
-            RewriteLineCst::Static(static_line)
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "parser could not split leading sentence before keyword ability: '{}'",
-                line.info.raw_line
-            )));
-        }
-    } else if let Some(static_line) = parse_static_line_cst(&prefix_line)? {
-        RewriteLineCst::Static(static_line)
     } else {
-        return Err(CardTextError::ParseError(format!(
-            "parser could not split leading sentence before keyword ability: '{}'",
-            line.info.raw_line
-        )));
+        parse_keyword_activation_prefix_static_or_rewrite(
+            builder,
+            line,
+            &prefix_line,
+            prefix_statement_error,
+        )?
     };
 
     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
@@ -248,4 +237,42 @@ fn try_parse_trailing_keyword_activation_dispatch(
         lines: vec![prefix_cst, activated],
         next_idx: idx + 1,
     }))
+}
+
+fn parse_keyword_activation_prefix_static_or_rewrite(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    prefix_line: &PreprocessedLine,
+    statement_error: Option<CardTextError>,
+) -> Result<RewriteLineCst, CardTextError> {
+    let static_error = match parse_static_line_cst(prefix_line) {
+        Ok(Some(static_line)) => return Ok(RewriteLineCst::Static(static_line)),
+        Ok(None) => None,
+        Err(err) => Some(err),
+    };
+
+    if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
+        builder,
+        prefix_line.info.normalized.normalized.as_str(),
+    ) {
+        let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
+        if let Some(statement_line) = parse_statement_line_cst(&rewritten_prefix_line)? {
+            return Ok(RewriteLineCst::Statement(statement_line));
+        }
+        if let Some(static_line) = parse_static_line_cst(&rewritten_prefix_line)? {
+            return Ok(RewriteLineCst::Static(static_line));
+        }
+    }
+
+    if let Some(err) = statement_error {
+        return Err(err);
+    }
+    if let Some(err) = static_error {
+        return Err(err);
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "parser could not split leading sentence before keyword ability: '{}'",
+        line.info.raw_line
+    )))
 }

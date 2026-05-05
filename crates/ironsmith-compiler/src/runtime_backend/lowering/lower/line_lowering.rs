@@ -136,6 +136,27 @@ fn optional_zone_rewrite_effect(
     ))
 }
 
+fn optional_returned_creature_to_battlefield_branch(
+    return_effect: crate::effect::Effect,
+    condition: crate::effect::Condition,
+) -> crate::resolution::SelfReplacementBranch {
+    let target = ChooseSpec::Object(
+        crate::target::ObjectFilter::creature()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_mana_value(crate::target::Comparison::LessThanOrEqual(4)),
+    );
+    let replacement_effect = optional_zone_rewrite_effect(
+        return_effect,
+        target,
+        Zone::Graveyard,
+        Zone::Hand,
+        Zone::Battlefield,
+        "Put one returned card with mana value 4 or less onto the battlefield",
+    );
+    crate::resolution::SelfReplacementBranch::new(condition, vec![replacement_effect])
+}
+
 fn search_to_hand_replacement_target(effect: &crate::effect::Effect) -> Option<ChooseSpec> {
     if let Some(search) = effect.as_search()
         && search.destination == Zone::Hand
@@ -226,33 +247,82 @@ fn back_for_seconds_style_replacement_program(
     {
         return None;
     }
-    let [return_effect, _followup] = compiled else {
-        return None;
+    let (default_effects, return_effect, condition) = match compiled {
+        [return_effect, followup] => {
+            let conditional = conditional_self_replacement_followup(followup)?;
+            if !conditional.if_false.is_empty() {
+                return None;
+            }
+            (
+                vec![return_effect.clone()],
+                return_effect.clone(),
+                conditional.condition,
+            )
+        }
+        [target_only, return_effect, followup]
+            if target_only
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some() =>
+        {
+            let conditional = conditional_self_replacement_followup(followup)?;
+            if !conditional.if_false.is_empty() {
+                return None;
+            }
+            (
+                vec![target_only.clone(), return_effect.clone()],
+                return_effect.clone(),
+                conditional.condition,
+            )
+        }
+        _ => return None,
     };
-    let target = ChooseSpec::Object(
-        crate::target::ObjectFilter::creature()
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You)
-            .with_mana_value(crate::target::Comparison::LessThanOrEqual(4)),
-    );
-    let replacement_effect = optional_zone_rewrite_effect(
-        return_effect.clone(),
-        target,
-        Zone::Graveyard,
-        Zone::Hand,
-        Zone::Battlefield,
-        "Put one returned card with mana value 4 or less onto the battlefield",
-    );
-    let mut program =
-        crate::resolution::ResolutionProgram::from_effects(vec![return_effect.clone()]);
+    let mut program = crate::resolution::ResolutionProgram::from_effects(default_effects);
     let segment = program.last_segment_mut()?;
     segment
         .self_replacements
-        .push(crate::resolution::SelfReplacementBranch::new(
-            crate::effect::Condition::ThisSpellPaidLabel("Bargain".to_string()),
-            vec![replacement_effect],
+        .push(optional_returned_creature_to_battlefield_branch(
+            return_effect,
+            condition,
         ));
     Some(program)
+}
+
+fn attach_back_for_seconds_style_replacement(
+    builder: &mut CardDefinitionBuilder,
+    compiled: &[crate::effect::Effect],
+    normalized_line: &str,
+) -> bool {
+    if !normalized_line.contains("if this spell was bargained")
+        || !normalized_line.contains("one of those cards with mana value 4 or less")
+        || !normalized_line.contains("onto the battlefield instead of putting it into your hand")
+    {
+        return false;
+    }
+    let [followup] = compiled else {
+        return false;
+    };
+    let Some(conditional) = conditional_self_replacement_followup(followup) else {
+        return false;
+    };
+    if !conditional.if_false.is_empty() {
+        return false;
+    }
+    let Some(existing) = builder.spell_effect.as_mut() else {
+        return false;
+    };
+    let Some(segment) = existing.last_segment_mut() else {
+        return false;
+    };
+    let [return_effect] = segment.default_effects.as_slice() else {
+        return false;
+    };
+    segment
+        .self_replacements
+        .push(optional_returned_creature_to_battlefield_branch(
+            return_effect.clone(),
+            conditional.condition,
+        ));
+    true
 }
 
 fn kicked_count_override_self_replacement_program(
@@ -753,6 +823,9 @@ fn lower_statement_chunk(
     };
     if let Some(program) = back_for_seconds_style_replacement_program(&compiled, &normalized_line) {
         builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if attach_back_for_seconds_style_replacement(&mut builder, &compiled, &normalized_line) {
         return Ok(builder);
     }
     if let Some(program) =

@@ -1,67 +1,9 @@
 use super::*;
-use crate::cards::builders::SubjectVerbEffectAst;
-
-fn predicate_contains_source_match(predicate: &PredicateAst) -> bool {
-    match predicate {
-        PredicateAst::SourceMatches(_) => true,
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_contains_source_match(left) || predicate_contains_source_match(right)
-        }
-        PredicateAst::Not(inner) => predicate_contains_source_match(inner),
-        _ => false,
-    }
-}
-
-fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
-    match predicate {
-        PredicateAst::PlayerControls { filter, .. }
-        | PredicateAst::PlayerControlsAtLeast { filter, .. }
-        | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
-        | PredicateAst::PlayerControlsNo { filter, .. }
-        | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
-        PredicateAst::ValueComparison {
-            left: crate::effect::Value::Count(filter),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            ..
-        } => Some(filter.clone()),
-        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
-            predicate_object_filter_antecedent(left)
-                .or_else(|| predicate_object_filter_antecedent(right))
-        }
-        PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
-        _ => None,
-    }
-}
-
-fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
-    if let Some(zone) = overlay.zone {
-        base.zone.get_or_insert(zone);
-    }
-    if base.controller.is_none() {
-        base.controller = overlay.controller;
-    }
-    if base.owner.is_none() {
-        base.owner = overlay.owner;
-    }
-    base.other |= overlay.other;
-    for card_type in overlay.card_types {
-        if !base.card_types.contains(&card_type) {
-            base.card_types.push(card_type);
-        }
-    }
-    for subtype in overlay.subtypes {
-        if !base.subtypes.contains(&subtype) {
-            base.subtypes.push(subtype);
-        }
-    }
-    if let Some(colors) = overlay.colors {
-        base.colors = Some(
-            base.colors
-                .map_or(colors, |existing| existing.intersection(colors)),
-        );
-    }
-}
+use crate::runtime_backend::condition_antecedent::{
+    ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
+    predicate_contains_source_match, predicate_object_filter_antecedent,
+    retarget_it_animations_to_source,
+};
 
 fn merge_optional_predicates(
     left: Option<PredicateAst>,
@@ -228,134 +170,6 @@ fn absorb_single_conditional_effect_into_trigger(
             }
         }
         other => (trigger, vec![other]),
-    }
-}
-
-fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
-    let references_it = filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
-            && matches!(
-                constraint.relation,
-                crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            )
-    });
-    if !references_it {
-        return;
-    }
-
-    let mut overlay = filter.clone();
-    overlay.tagged_constraints.retain(|constraint| {
-        !(constraint.tag.as_str() == IT_TAG
-            && matches!(
-                constraint.relation,
-                crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            ))
-    });
-    let mut replacement = antecedent.clone();
-    merge_filter_overlay(&mut replacement, overlay);
-    *filter = replacement;
-}
-
-fn bind_condition_target_antecedent(target: &mut TargetAst, antecedent: &ObjectFilter) {
-    match target {
-        TargetAst::Object(filter, _, _) => bind_condition_filter_antecedent(filter, antecedent),
-        TargetAst::WithCount(inner, _) => bind_condition_target_antecedent(inner, antecedent),
-        _ => {}
-    }
-}
-
-fn bind_condition_antecedent_in_effect(effect: &mut EffectAst, antecedent: &ObjectFilter) {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
-                bind_condition_target_antecedent(target, antecedent);
-            }
-            _ => {}
-        },
-        EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
-            bind_condition_filter_antecedent(filter, antecedent);
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        }
-        | EffectAst::SelfReplacement {
-            if_true, if_false, ..
-        } => {
-            bind_condition_antecedent_in_effects(if_true, antecedent);
-            bind_condition_antecedent_in_effects(if_false, antecedent);
-        }
-        _ => {}
-    }
-}
-
-fn bind_condition_antecedent_in_effects(effects: &mut [EffectAst], antecedent: &ObjectFilter) {
-    for effect in effects {
-        bind_condition_antecedent_in_effect(effect, antecedent);
-    }
-}
-
-fn retarget_it_animation_to_source(effect: EffectAst) -> EffectAst {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::BecomeBasePtCreature {
-                    power,
-                    toughness,
-                    target,
-                    card_types,
-                    subtypes,
-                    colors,
-                    abilities,
-                    granted_abilities,
-                    duration,
-                },
-            ..
-        }) => {
-            let target = match target {
-                TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => TargetAst::Source(span),
-                other => other,
-            };
-            EffectAst::subject_verb_become_base_pt_creature(
-                power,
-                toughness,
-                target,
-                card_types,
-                subtypes,
-                colors,
-                abilities,
-                granted_abilities,
-                duration,
-            )
-        }
-        EffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false,
-        } => EffectAst::Conditional {
-            predicate,
-            if_true: if_true
-                .into_iter()
-                .map(retarget_it_animation_to_source)
-                .collect(),
-            if_false: if_false
-                .into_iter()
-                .map(retarget_it_animation_to_source)
-                .collect(),
-        },
-        EffectAst::IfResult { predicate, effects } => EffectAst::IfResult {
-            predicate,
-            effects: effects
-                .into_iter()
-                .map(retarget_it_animation_to_source)
-                .collect(),
-        },
-        other => other,
     }
 }
 
@@ -709,13 +523,14 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
             };
             let mut effects = effects;
             if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
-                bind_condition_antecedent_in_effects(&mut effects, &antecedent);
+                bind_condition_antecedent_in_effects(
+                    &mut effects,
+                    &antecedent,
+                    ConditionAntecedentBinding::TaggedItOnly,
+                );
             }
             if predicate_contains_source_match(&predicate) {
-                effects = effects
-                    .into_iter()
-                    .map(retarget_it_animation_to_source)
-                    .collect();
+                retarget_it_animations_to_source(&mut effects);
             }
             if matches!(
                 effects.as_slice(),
@@ -743,13 +558,14 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                 parsed.reference_imports.source_object_antecedent |=
                     predicate.establishes_source_object_antecedent();
                 if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
-                    bind_condition_antecedent_in_effects(&mut effects_ast, &antecedent);
+                    bind_condition_antecedent_in_effects(
+                        &mut effects_ast,
+                        &antecedent,
+                        ConditionAntecedentBinding::TaggedItOnly,
+                    );
                 }
                 if predicate_contains_source_match(&predicate) {
-                    effects_ast = effects_ast
-                        .into_iter()
-                        .map(retarget_it_animation_to_source)
-                        .collect();
+                    retarget_it_animations_to_source(&mut effects_ast);
                 }
                 parsed.effects_ast = Some(effects_ast);
             }

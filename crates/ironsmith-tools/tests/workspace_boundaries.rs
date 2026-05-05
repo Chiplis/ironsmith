@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,13 @@ fn read_repo_file(root: &Path, relative: &str) -> String {
     let path = root.join(relative);
     fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+}
+
+fn repo_relative(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) {
@@ -512,5 +520,178 @@ fn runtime_code_does_not_import_legacy_executor_module_paths() {
     assert!(
         offenders.is_empty(),
         "runtime source should not import legacy executor module paths: {offenders:?}"
+    );
+}
+
+#[test]
+fn parser_lowering_dry_checklist_is_kept_in_repo() {
+    let root = workspace_root();
+    let checklist = read_repo_file(&root, "architecture/parser-lowering-dry.md");
+
+    for required in [
+        "Surface text recognition belongs in the front end.",
+        "Parser facts that change behavior must be typed.",
+        "Recursive `EffectAst` walks should use the shared traversal helpers",
+        "New parser special cases should be named rules",
+    ] {
+        assert!(
+            checklist.contains(required),
+            "parser/lowering DRY checklist is missing required guidance: {required}"
+        );
+    }
+}
+
+#[test]
+fn parse_annotations_stay_diagnostic_only() {
+    let root = workspace_root();
+    let diagnostics = read_repo_file(&root, "crates/ironsmith-compiler/src/diagnostics.rs");
+    let struct_start = diagnostics
+        .find("pub struct ParseAnnotations {")
+        .expect("ParseAnnotations struct");
+    let struct_rest = &diagnostics[struct_start..];
+    let struct_end = struct_rest
+        .find("\n}\n")
+        .expect("ParseAnnotations struct end");
+    let struct_body = &struct_rest[..struct_end];
+
+    let fields = struct_body
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("pub ")
+                .and_then(|field| field.split_once(':').map(|(name, _)| name.to_string()))
+        })
+        .collect::<BTreeSet<_>>();
+    let expected = [
+        "normalized_char_maps",
+        "normalized_lines",
+        "original_lines",
+        "tag_spans",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect::<BTreeSet<_>>();
+    assert_eq!(
+        fields, expected,
+        "ParseAnnotations should stay limited to diagnostics/source mapping"
+    );
+
+    for forbidden in [
+        "ability",
+        "chosen",
+        "effect",
+        "lowering",
+        "predicate",
+        "runtime",
+        "semantic",
+    ] {
+        assert!(
+            !struct_body.to_ascii_lowercase().contains(forbidden),
+            "ParseAnnotations must not grow semantic parser/lowering facts: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn condition_antecedent_binding_has_single_lowering_owner() {
+    let root = workspace_root();
+    let lowering_root = root.join("crates/ironsmith-compiler/src/runtime_backend/lowering");
+    let owner = lowering_root.join("condition_antecedent.rs");
+    let mut files = Vec::new();
+    collect_rust_files(&lowering_root, &mut files);
+
+    let forbidden_helpers = [
+        "fn predicate_contains_source_match",
+        "fn predicate_object_filter_antecedent",
+        "fn merge_filter_overlay",
+        "fn bind_condition_filter_antecedent",
+        "fn bind_condition_antecedent_in_effect",
+        "fn retarget_it_animation_to_source",
+    ];
+
+    let offenders = files
+        .into_iter()
+        .filter(|path| *path != owner)
+        .filter_map(|path| {
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            let hits = forbidden_helpers
+                .iter()
+                .filter(|helper| content.contains(**helper))
+                .copied()
+                .collect::<Vec<_>>();
+            (!hits.is_empty()).then(|| format!("{} -> {hits:?}", repo_relative(&root, &path)))
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        offenders.is_empty(),
+        "condition antecedent binding/traversal should stay centralized: {offenders:?}"
+    );
+}
+
+fn non_test_contains_literals(content: &str) -> Vec<String> {
+    let mut literals = Vec::new();
+    for line in content.lines() {
+        if line.contains("debug.contains(") {
+            continue;
+        }
+
+        let mut rest = line;
+        while let Some(start) = rest.find(".contains(\"") {
+            rest = &rest[start + ".contains(\"".len()..];
+            let Some(end) = rest.find('"') else {
+                break;
+            };
+            literals.push(rest[..end].to_string());
+            rest = &rest[end + 1..];
+        }
+    }
+    literals
+}
+
+#[test]
+fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
+    let root = workspace_root();
+    let lower_root = root.join("crates/ironsmith-compiler/src/runtime_backend/lowering/lower");
+    let mut files = Vec::new();
+    collect_rust_files(&lower_root, &mut files);
+
+    let actual = files
+        .into_iter()
+        .flat_map(|path| {
+            let relative = repo_relative(&root, &path);
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            non_test_contains_literals(&content)
+                .into_iter()
+                .map(move |literal| format!("{relative} -> {literal}"))
+        })
+        .collect::<BTreeSet<_>>();
+
+    let expected = [
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> clash with an opponent",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> creature died this turn",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> do this only once each turn",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> do this only twice each turn",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> if this spell was bargained",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> if you win",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> on top of its owner's library instead",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> one of those cards with mana value 4 or less",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> onto the battlefield instead of putting it into your hand",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put one of those cards into your hand",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put that card onto the battlefield instead of putting it into your hand",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put two of those cards into your hand instead",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only once each turn",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only twice each turn",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs ->  rather than pay the equip cost of the first equip ability you activate",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        actual, expected,
+        "new raw text checks in lowering/lower need a typed parser handoff or an explicit legacy allowlist update"
     );
 }

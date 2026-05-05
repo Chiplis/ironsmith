@@ -9212,14 +9212,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             }
 
             let owner = describe_possessive_player_filter(&look_at_top.player);
-            let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+            let (count_text, noun, count_where_clause) =
+                describe_top_count_noun_and_where_clause(&look_at_top.count);
             let kicked_count_text = small_number_word(kicked_count)
                 .map(str::to_string)
                 .unwrap_or_else(|| kicked_count.to_string());
 
             Some((
                 format!(
-                    "Look at the top {count_text} {noun} of {owner} library. Put one of those cards into {owner} hand. If this spell was kicked, put {kicked_count_text} of those cards into {owner} hand instead. Put the rest on the bottom of {owner} library"
+                    "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. Put one of those cards into {owner} hand. If this spell was kicked, put {kicked_count_text} of those cards into {owner} hand instead. Put the rest on the bottom of {owner} library"
                 ),
                 2,
             ))
@@ -12317,8 +12318,58 @@ fn describe_triggered_inline_ability(
         _ => {}
     }
 
+    line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
     apply_triggered_presentation_label(triggered, line)
+}
+
+fn normalize_redundant_short_name_etb_surface(
+    line: String,
+    triggered: &crate::ability::TriggeredAbility,
+    subject: &str,
+) -> String {
+    let Some(zone_trigger) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+    else {
+        return line;
+    };
+    if !zone_trigger.this_object
+        || zone_trigger.to
+            != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+    {
+        return line;
+    }
+    let Some(crate::target::SourceReferenceSurface::ShortName(surface)) =
+        &zone_trigger.this_object_surface
+    else {
+        return line;
+    };
+
+    let Some((start, prefix_len)) = [
+        format!("When {surface} enters,"),
+        format!("When {surface} enters the battlefield,"),
+    ]
+    .into_iter()
+    .find_map(|prefix| {
+        line.find(prefix.as_str())
+            .filter(|start| *start == 0 || line[..*start].ends_with(": "))
+            .map(|start| (start, prefix.len()))
+    }) else {
+        return line;
+    };
+    let rest = &line[start + prefix_len..];
+    let rest_lower = rest.to_ascii_lowercase();
+    if rest_lower.contains("behold ") {
+        return line;
+    }
+    if rest
+        .to_ascii_lowercase()
+        .contains(surface.to_ascii_lowercase().as_str())
+    {
+        return line;
+    }
+    format!("{}When {subject} enters,{rest}", &line[..start])
 }
 
 fn normalize_spellcast_trigger_mana_value_surface(
@@ -19102,7 +19153,8 @@ pub(super) fn describe_look_at_top_then_put_chosen_hand_rest_bottom_from_for_eac
 
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&choose.chooser);
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, count_where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
     let chosen = match exact_count {
         1 => "one of them".to_string(),
         n => format!(
@@ -19113,7 +19165,7 @@ pub(super) fn describe_look_at_top_then_put_chosen_hand_rest_bottom_from_for_eac
         ),
     };
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library. Put {chosen} into {hand} hand and the rest on the bottom of {owner} library"
+        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. Put {chosen} into {hand} hand and the rest on the bottom of {owner} library"
     ))
 }
 
@@ -19486,6 +19538,11 @@ pub(super) fn describe_look_count_and_noun(count: &Value) -> (String, &'static s
 
 fn describe_top_count_noun_and_where_clause(count: &Value) -> (String, &'static str, String) {
     match count {
+        Value::SurfaceHinted { value, .. } if value_prefers_where_x(count) => (
+            "X".to_string(),
+            "cards",
+            format!(", where X is {}", describe_value(value)),
+        ),
         Value::SourcePower => (
             "X".to_string(),
             "cards",
@@ -31117,6 +31174,7 @@ pub(super) fn describe_ability(
                 _ => {}
             }
             line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
+            line = normalize_redundant_short_name_etb_surface(line, triggered, subject);
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);

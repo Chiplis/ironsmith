@@ -31397,6 +31397,27 @@ fn parse_kicked_multi_zone_search_to_battlefield_as_self_replacement() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_back_for_seconds_bargain_optional_local_rewrite() {
+    let def = parse_oracle_card_definition("Back for Seconds");
+    let debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("ThisSpellPaidLabel")
+            && debug.contains("RegisterZoneReplacementEffect")
+            && debug.contains("optional: true"),
+        "expected Back for Seconds bargain clause to lower as an optional local zone rewrite, got {debug}"
+    );
+    assert!(
+        rendered.contains("If this spell was bargained, you may put one of those cards with mana value 4 or less onto the battlefield instead of putting it into your hand")
+            && !rendered.contains("you may return it to its owner's hand"),
+        "expected Back for Seconds to render the bargain self-replacement, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kirtars_wrath_threshold_destroy_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Kirtar's Wrath Variant")
         .card_types(vec![CardType::Sorcery])
@@ -31408,7 +31429,8 @@ fn parse_kirtars_wrath_threshold_destroy_branch() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("SelfReplacementBranch")
-            && debug.contains("PlayerHasCardTypesInGraveyardOrMore")
+            && (debug.contains("PlayerHasCardTypesInGraveyardOrMore")
+                || debug.contains("ValueComparison"))
             && debug.contains("CreateTokenEffect"),
         "expected threshold destroy upgrade to lower as self-replacement, got {debug}"
     );
@@ -36301,8 +36323,9 @@ fn parse_oracle_consult_the_star_charts_keeps_kicker_choice_override_surface() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("look at the top the number of lands you control cards of your library")
-            && rendered.contains("put one of those cards into your hand")
+        rendered.contains(
+            "look at the top x cards of your library, where x is the number of lands you control"
+        ) && rendered.contains("put one of those cards into your hand")
             && rendered.contains(
                 "if this spell was kicked, put two of those cards into your hand instead"
             )

@@ -520,9 +520,11 @@ fn describe_rendered_count_override_self_replacement(
             replacement_choice.split_once(" and the rest ")
         && default_rest == replacement_rest
     {
+        let default_choice_hand = default_choice_hand.replace("of them", "of those cards");
+        let replacement_choice_hand = replacement_choice_hand.replace("of them", "of those cards");
         return Some(format!(
             "{default_intro}. {default_choice_hand}. If {condition_text}, {} instead. Put the rest {default_rest}",
-            super::normalize_common::lowercase_first(replacement_choice_hand)
+            super::normalize_common::lowercase_first(&replacement_choice_hand)
         ));
     }
     let [default_intro, default_choice, default_rest] = default_sentences.as_slice() else {
