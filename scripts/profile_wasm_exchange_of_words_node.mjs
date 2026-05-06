@@ -156,7 +156,7 @@ function advancePregameToFirstMain(game, steps) {
 
 function firstResolvablePregameOrPassAction(state) {
   const actions = state?.decision?.actions || [];
-  const preferred = ["Keep hand", "Continue", "Begin game", "Pass priority"];
+  const preferred = ["Keep hand", "Pregame", "Continue", "Begin game", "Pass priority"];
   for (const label of preferred) {
     const match = actions.find((action) => action.label === label);
     if (match) return match;

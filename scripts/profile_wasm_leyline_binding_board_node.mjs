@@ -254,7 +254,7 @@ function advanceToFirstMain(game) {
 
   let safety = 0;
   while (!(state.phase === "first main phase" && state.priority_player === 0 && state.decision?.kind === "priority")) {
-    const action = firstAction(state, ["Keep hand", "Continue", "Begin game", "Pass priority"]);
+    const action = firstAction(state, ["Keep hand", "Pregame", "Continue", "Begin game", "Pass priority"]);
     state = game.dispatch({ type: "priority_action", action_index: action.index });
     safety += 1;
     if (safety > 32) {
