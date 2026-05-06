@@ -2145,6 +2145,39 @@ impl<D> CreateTokenEffect<D> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct IncubateEffect {
+    pub amount: Value,
+    pub count: Value,
+    pub controller: PlayerFilter,
+    pub controller_target: Option<ChooseSpec>,
+}
+
+impl IncubateEffect {
+    pub fn new(
+        amount: impl Into<Value>,
+        count: impl Into<Value>,
+        controller: PlayerFilter,
+    ) -> Self {
+        let controller_target = match &controller {
+            PlayerFilter::Target(filter) => {
+                Some(ChooseSpec::target(ChooseSpec::Player((**filter).clone())))
+            }
+            _ => None,
+        };
+        Self {
+            amount: amount.into(),
+            count: count.into().without_surface_hint(ValueSurfaceHint::ForEach),
+            controller,
+            controller_target,
+        }
+    }
+
+    pub fn you(amount: impl Into<Value>, count: impl Into<Value>) -> Self {
+        Self::new(amount, count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CopyPtAdjustment {
     HalfRoundUp,
 }
@@ -3271,6 +3304,42 @@ impl GainLifeEffect {
 
     pub fn target_player(amount: impl Into<Value>) -> Self {
         Self::new(amount, ChooseSpec::target_player())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IncreaseSpeedEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+}
+
+impl IncreaseSpeedEffect {
+    pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+        }
+    }
+
+    pub fn you(amount: impl Into<Value>) -> Self {
+        Self::new(amount, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReduceSpeedEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+    pub minimum: u8,
+}
+
+impl ReduceSpeedEffect {
+    pub fn new(amount: impl Into<Value>, player: PlayerFilter, minimum: u8) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            minimum,
+        }
     }
 }
 

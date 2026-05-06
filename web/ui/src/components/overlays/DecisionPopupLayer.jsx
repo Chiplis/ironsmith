@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
-import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
@@ -39,6 +38,21 @@ const PRIORITY_ACTION_PRIMARY_CYCLE = 0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function compactPriorityControlAdvanceLabel(label) {
+  const raw = String(label || "").trim();
+  if (!raw) return "";
+
+  const arrowPrefix = raw.match(/^(?:→|->)\s*/)?.[0] || "";
+  const body = raw.slice(arrowPrefix.length).trim();
+  const compactBody = body
+    .replace(/^Main Phase$/i, "Main")
+    .replace(/^End Combat$/i, "End Combat")
+    .replace(/^End Step$/i, "End")
+    .replace(/^Next Turn$/i, "Next");
+
+  return arrowPrefix ? `→ ${compactBody}` : compactBody;
 }
 
 function renderMobileBattlePortal(content, target = null) {
@@ -2051,6 +2065,7 @@ function PriorityControlStack({
   actionCount = 0,
   holdEnabled = false,
   onHoldChange,
+  advanceControlLabel = "",
   showActionCount = true,
   className = "",
 }) {
@@ -2070,6 +2085,11 @@ function PriorityControlStack({
         </div>
       )}
       <div className="priority-control-toggles flex items-center gap-3">
+        {advanceControlLabel ? (
+          <span className="priority-control-advance-label" title={advanceControlLabel}>
+            {advanceControlLabel}
+          </span>
+        ) : null}
         <label className={checkboxLabelClass}>
           <Checkbox
             checked={holdEnabled}
@@ -2080,6 +2100,42 @@ function PriorityControlStack({
         </label>
       </div>
     </div>
+  );
+}
+
+function ActionStripMainTitleText({ children }) {
+  const textRef = useRef(null);
+
+  const fitText = useCallback(() => {
+    const textElement = textRef.current;
+    const container = textElement?.parentElement;
+    if (!textElement || !container) return;
+
+    textElement.style.removeProperty("--action-strip-main-title-size");
+    const availableWidth = Math.max(1, container.clientWidth);
+    const naturalWidth = Math.max(1, textElement.scrollWidth);
+    const baseSize = 14;
+    const minSize = 8.5;
+    const nextSize = Math.max(minSize, Math.min(baseSize, baseSize * (availableWidth / naturalWidth)));
+    textElement.style.setProperty("--action-strip-main-title-size", `${nextSize}px`);
+  }, []);
+
+  useLayoutEffect(() => {
+    fitText();
+    if (typeof ResizeObserver === "undefined") return undefined;
+
+    const textElement = textRef.current;
+    const container = textElement?.parentElement;
+    const observer = new ResizeObserver(() => fitText());
+    if (container) observer.observe(container);
+    if (textElement) observer.observe(textElement);
+    return () => observer.disconnect();
+  }, [children, fitText]);
+
+  return (
+    <span ref={textRef} className="action-strip-main-title-text">
+      {children}
+    </span>
   );
 }
 
@@ -2129,6 +2185,11 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     : (holdRule === "always" || hasCustomPassLabel
         ? (passAction?.label || "Pass priority")
         : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
+  const passControlAdvanceLabel = resolvingStackPriority
+    ? ""
+    : (hasCustomPassLabel
+        ? compactPriorityControlAdvanceLabel(passAdvanceLabel).toUpperCase()
+        : compactPriorityControlAdvanceLabel(`→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`));
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
     : currentPriorityPhaseLabel(state?.phase, state?.step);
@@ -2385,7 +2446,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 style={decisionButtonStyle}
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
-                  <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                  <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -2429,38 +2490,41 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
                   {showPriorityAdvanceButton && (
-                    <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                    <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
+                        className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         data-local-action={localDecisionButton ? "true" : "false"}
                         aria-disabled={!canAct}
+                        aria-label={passCurrentLabel}
                         onClick={() => triggerPriorityAction(passAction)}
                       >
-                        <PriorityPassButtonLabel
-                          currentLabel={passCurrentLabel}
-                          advanceLabel={passAdvanceLabel}
-                          className="action-strip-main-label"
-                        />
+                        <span className="sr-only">{passCurrentLabel}</span>
                       </Button>
-                      <div
-                        className="action-strip-main-controls absolute bottom-2 left-3 z-20"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <PriorityControlStack
-                          actionCount={priorityActionCount}
-                          holdEnabled={holdRule === "always"}
-                          onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                          showActionCount={false}
-                        />
+                      <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
+                        <div className="action-strip-main-title-row">
+                          <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                        </div>
+                        <div
+                          className="action-strip-main-controls"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <PriorityControlStack
+                            actionCount={priorityActionCount}
+                            holdEnabled={holdRule === "always"}
+                            onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                            advanceControlLabel={passControlAdvanceLabel}
+                            showActionCount={false}
+                          />
+                        </div>
                       </div>
                       <PhaseHelpPopover
                         state={state}
                         decision={decision}
                         advanceLabel={passHelpAdvanceLabel}
-                        className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
+                        className="action-strip-main-title-help absolute right-2 top-2 z-20"
                       />
                     </div>
                   )}
@@ -2627,7 +2691,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
         >
           {isPriorityDecision ? (
             showViewedCardsStep ? (
-              <div className="action-strip-main-region h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+              <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -2650,38 +2714,41 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             ) : (
               <>
                 {showPriorityAdvanceButton && (
-                  <div className="action-strip-main-region relative h-full w-[176px] shrink-0 self-stretch" style={decisionButtonStyle}>
+                  <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 pr-9 text-[14px] font-bold uppercase"
+                      className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                       data-local-action={localDecisionButton ? "true" : "false"}
                       aria-disabled={!canAct}
+                      aria-label={passCurrentLabel}
                       onClick={() => triggerPriorityAction(passAction)}
                     >
-                      <PriorityPassButtonLabel
-                        currentLabel={passCurrentLabel}
-                        advanceLabel={passAdvanceLabel}
-                        className="action-strip-main-label"
-                      />
+                      <span className="sr-only">{passCurrentLabel}</span>
                     </Button>
-                    <div
-                      className="action-strip-main-controls absolute bottom-2 left-3 z-20"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <PriorityControlStack
-                        actionCount={priorityActionCount}
-                        holdEnabled={holdRule === "always"}
-                        onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                        showActionCount={false}
-                      />
+                    <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
+                      <div className="action-strip-main-title-row">
+                        <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                      </div>
+                      <div
+                        className="action-strip-main-controls"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <PriorityControlStack
+                          actionCount={priorityActionCount}
+                          holdEnabled={holdRule === "always"}
+                          onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                          advanceControlLabel={passControlAdvanceLabel}
+                          showActionCount={false}
+                        />
+                      </div>
                     </div>
                     <PhaseHelpPopover
                       state={state}
                       decision={decision}
                       advanceLabel={passHelpAdvanceLabel}
-                      className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
+                      className="action-strip-main-title-help absolute right-2 top-2 z-20"
                     />
                   </div>
                 )}

@@ -96,6 +96,7 @@ pub enum ReplacementAction {
         counter_type: CounterType,
         count: Value,
         added_subtypes: Vec<Subtype>,
+        added_abilities: Vec<Ability>,
     },
 
     /// Enter tapped
@@ -640,6 +641,7 @@ impl ReplacementEffect {
                 counter_type,
                 count,
                 added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
             },
         )
     }

@@ -4826,6 +4826,43 @@ fn result_metric_dynamic_token_count_uses_prior_search_exile_effect() {
 }
 
 #[test]
+fn incubate_where_x_twice_lowers_to_amount_and_count_values() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glistening Dawn Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Incubate X twice, where X is the number of lands you control.")
+        .expect("incubate where-X amount should parse");
+
+    let debug = format!("{def:#?}");
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug.contains("IncubateEffect")
+            && compact.contains("count:Fixed(2")
+            && debug.contains("WhereXIs")
+            && compact.contains("card_types:[Land"),
+        "expected incubate amount to bind to land count and count to be twice, got {debug}"
+    );
+}
+
+#[test]
+fn incubate_its_controller_binds_controller_and_mana_value() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Excise Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target nonland permanent. Its controller incubates X, where X is its mana value.",
+        )
+        .expect("target controller incubate clause should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("IncubateEffect")
+            && debug.contains("controller: ControllerOf")
+            && debug.contains("ManaValueOf")
+            && debug.contains("WhereXIs"),
+        "expected incubate to use target controller and mana-value amount, got {debug}"
+    );
+}
+
+#[test]
 fn equal_to_dynamic_token_count_can_use_opponent_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Count Token Variant")
         .card_types(vec![CardType::Creature])

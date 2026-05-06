@@ -1,0 +1,36 @@
+<svg width="1000" height="600" viewBox="0 0 1000 600" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="brass" x1="0" y1="0" x2="1000" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f1d08a"/>
+      <stop offset="0.18" stop-color="#9a6f2e"/>
+      <stop offset="0.5" stop-color="#d2a04b"/>
+      <stop offset="0.82" stop-color="#7c5624"/>
+      <stop offset="1" stop-color="#f1d08a"/>
+    </linearGradient>
+    <radialGradient id="rivet" cx="0.45" cy="0.35" r="0.68">
+      <stop stop-color="#fff4cc"/>
+      <stop offset="0.52" stop-color="#b88735"/>
+      <stop offset="1" stop-color="#2a1a0a"/>
+    </radialGradient>
+    <g id="corner">
+      <path d="M4 46V18C4 10 10 4 18 4H54" stroke="url(#brass)" stroke-width="2.2" vector-effect="non-scaling-stroke" stroke-linecap="round"/>
+      <path d="M10 36C10 24 20 12 34 12H48" stroke="#e7b85c" stroke-width="1.05" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.68"/>
+      <path d="M18 48C18 32 32 20 50 20" stroke="#6d4719" stroke-width="1.05" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.58"/>
+      <path d="M8 22C20 24 28 18 31 8" stroke="#f4cf7d" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.78"/>
+      <path d="M29 29C38 29 44 35 45 44" stroke="#d5a64f" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.54"/>
+      <circle cx="18" cy="18" r="4.5" fill="url(#rivet)"/>
+      <circle cx="18" cy="18" r="1.5" fill="#1b1309" opacity="0.75"/>
+    </g>
+  </defs>
+
+  <rect x="4" y="4" width="992" height="592" rx="9" stroke="url(#brass)" stroke-width="1.4" vector-effect="non-scaling-stroke" opacity="0.78"/>
+  <rect x="9" y="9" width="982" height="582" rx="6" stroke="#2f2110" stroke-width="2" vector-effect="non-scaling-stroke" opacity="0.72"/>
+  <rect x="13" y="13" width="974" height="574" rx="4" stroke="#d7aa55" stroke-width="0.75" vector-effect="non-scaling-stroke" opacity="0.42"/>
+  <path d="M64 6H936M64 594H936" stroke="#f0c36d" stroke-width="0.85" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.42"/>
+  <path d="M6 64V536M994 64V536" stroke="#f0c36d" stroke-width="0.85" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity="0.32"/>
+
+  <use href="#corner"/>
+  <use href="#corner" transform="translate(1000 0) scale(-1 1)"/>
+  <use href="#corner" transform="translate(0 600) scale(1 -1)"/>
+  <use href="#corner" transform="translate(1000 600) scale(-1 -1)"/>
+</svg>

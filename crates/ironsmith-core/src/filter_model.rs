@@ -168,6 +168,10 @@ pub enum PlayerFilter {
         base: Box<PlayerFilter>,
         count: u32,
     },
+    MaxSpeed {
+        base: Box<PlayerFilter>,
+        has_max_speed: bool,
+    },
     ChosenPlayer,
     TaggedPlayer(TagKey),
     IteratedPlayer,
@@ -199,11 +203,26 @@ impl PlayerFilter {
         }
     }
 
+    pub fn with_max_speed(base: PlayerFilter) -> Self {
+        Self::MaxSpeed {
+            base: Box::new(base),
+            has_max_speed: true,
+        }
+    }
+
+    pub fn without_max_speed(base: PlayerFilter) -> Self {
+        Self::MaxSpeed {
+            base: Box::new(base),
+            has_max_speed: false,
+        }
+    }
+
     pub fn mentions_iterated_player(&self) -> bool {
         match self {
             Self::IteratedPlayer => true,
             Self::Target(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
+            Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
             }
@@ -263,6 +282,17 @@ impl PlayerFilter {
                     base.description(),
                     count_text
                 )
+            }
+            Self::MaxSpeed {
+                base,
+                has_max_speed,
+            } => {
+                let verb = if *has_max_speed {
+                    "has max speed"
+                } else {
+                    "doesn't have max speed"
+                };
+                format!("{} who {verb}", base.description())
             }
             Self::ChosenPlayer => "the chosen player".to_string(),
             Self::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
@@ -1137,6 +1167,9 @@ impl ObjectFilter {
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::MaxSpeed { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
                 PlayerFilter::TaggedPlayer(_) => parts.push("that player's".to_string()),
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
@@ -1206,6 +1239,9 @@ impl ObjectFilter {
                     card_type.to_string().to_ascii_lowercase()
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::MaxSpeed { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
@@ -2123,6 +2159,17 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => {
+            let verb = if *has_max_speed {
+                "has max speed"
+            } else {
+                "doesn't have max speed"
+            };
+            format!("{} who {verb}'s", describe_player_filter(base))
+        }
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
@@ -2179,6 +2226,17 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 "{} who has at least {count_text} more cards in hand than you do",
                 describe_player_filter(base)
             )
+        }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => {
+            let verb = if *has_max_speed {
+                "has max speed"
+            } else {
+                "doesn't have max speed"
+            };
+            format!("{} who {verb}", describe_player_filter(base))
         }
         PlayerFilter::ChosenPlayer => "chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
@@ -2332,7 +2390,15 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::LifeTotal(player) => format!("{player:?}'s life total"),
+            Value::LifeTotalDifference(player) => {
+                format!("difference between {player:?} players' life totals")
+            }
+            Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::ThisAbilityResolvedThisTurnCount => {
+                "the number of times this ability has resolved this turn".to_string()
+            }
             Value::CountersOnSource(counter_type) => {
                 format!(
                     "the number of {} counters on this",

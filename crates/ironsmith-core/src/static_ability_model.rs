@@ -343,6 +343,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         player: PlayerFilter,
         counter_type: CounterType,
     },
+    ModifyDamageAmountReplacement {
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        delta: i32,
+        display: String,
+    },
     CharacteristicDefiningPt {
         power: Value,
         toughness: Value,
@@ -384,6 +391,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         count: Value,
         condition: Condition,
         display: String,
+        added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     },
     EntersWithCountersValue {
         counter: CounterType,
@@ -1016,6 +1024,19 @@ where
                 player,
                 counter_type,
             },
+            StaticAbilityPayload::ModifyDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                delta,
+                display,
+            } => StaticAbilityPayload::ModifyDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                delta,
+                display,
+            },
             StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } => {
                 StaticAbilityPayload::CharacteristicDefiningPt { power, toughness }
             }
@@ -1087,11 +1108,16 @@ where
                 count,
                 condition,
                 display,
+                added_abilities,
             } => StaticAbilityPayload::EntersWithCountersIfCondition {
                 counter,
                 count,
                 condition,
                 display,
+                added_abilities: added_abilities
+                    .into_iter()
+                    .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                    .collect::<Result<Vec<_>, _>>()?,
             },
             StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbilityPayload::EntersWithCountersValue { counter, count }
@@ -1801,6 +1827,9 @@ impl<
     }
     pub fn partner() -> Self {
         Self::identified(StaticAbilityId::Partner, "partner")
+    }
+    pub fn start_your_engines() -> Self {
+        Self::identified(StaticAbilityId::StartYourEngines, "start your engines")
     }
     pub fn assist() -> Self {
         Self::identified(StaticAbilityId::Assist, "assist")
@@ -2773,6 +2802,26 @@ impl<
             },
         }
     }
+    pub fn modify_damage_amount_replacement(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        delta: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ModifyDamageAmountReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ModifyDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                delta,
+                display,
+            },
+        }
+    }
     pub fn discard_or_redirect_replacement(filter: ObjectFilter, redirect_zone: Zone) -> Self {
         Self {
             id: Some(StaticAbilityId::DiscardOrRedirectReplacement),
@@ -2821,6 +2870,22 @@ impl<
         condition: Condition,
         display: impl Into<String>,
     ) -> Self {
+        Self::enters_with_counters_and_abilities_if_condition(
+            counter,
+            count,
+            condition,
+            display,
+            Vec::new(),
+        )
+    }
+
+    pub fn enters_with_counters_and_abilities_if_condition(
+        counter: CounterType,
+        count: Value,
+        condition: Condition,
+        display: impl Into<String>,
+        added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::EnterWithCountersIfCondition),
@@ -2830,6 +2895,7 @@ impl<
                 count,
                 condition,
                 display,
+                added_abilities,
             },
         }
     }

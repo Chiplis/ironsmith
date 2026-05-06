@@ -91,6 +91,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Sacrifice => parse_sacrifice(tokens, subject, None),
         Verb::Create => parse_create(tokens, subject),
         Verb::Investigate => parse_investigate(tokens, subject),
+        Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => parse_tap(tokens),
         Verb::Attach => parse_attach(tokens),

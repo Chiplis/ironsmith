@@ -63,6 +63,7 @@ pub(crate) enum KeywordLineKindCst {
     Gift,
     Warp,
     ExertAttack,
+    Exploit,
 }
 
 #[derive(Debug, Clone)]

@@ -592,6 +592,10 @@ pub(crate) enum SubjectVerbActionAst {
     Investigate {
         count: Value,
     },
+    Incubate {
+        amount: Value,
+        count: Value,
+    },
     EmitKeywordAction {
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -631,6 +635,7 @@ pub(crate) enum SubjectVerbActionAst {
     Explore {
         target: TargetAst,
     },
+    Exploit,
     Connive {
         target: TargetAst,
         count: Value,
@@ -1522,6 +1527,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Surveil { count } => f.debug_tuple("Surveil").field(count).finish(),
             Self::Proliferate { count } => f.debug_tuple("Proliferate").field(count).finish(),
             Self::Investigate { count } => f.debug_tuple("Investigate").field(count).finish(),
+            Self::Incubate { amount, count } => f
+                .debug_struct("Incubate")
+                .field("amount", amount)
+                .field("count", count)
+                .finish(),
             Self::EmitKeywordAction { action, amount } => f
                 .debug_struct("EmitKeywordAction")
                 .field("action", action)
@@ -1540,6 +1550,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Fateseal { count } => f.debug_tuple("Fateseal").field(count).finish(),
             Self::Populate { count, .. } => f.debug_tuple("Populate").field(count).finish(),
             Self::Explore { target } => f.debug_tuple("Explore").field(target).finish(),
+            Self::Exploit => f.write_str("Exploit"),
             Self::Connive { target, count } => f
                 .debug_struct("Connive")
                 .field("target", target)
@@ -4215,6 +4226,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_incubate(player: PlayerAst, amount: Value, count: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::Incubate { amount, count },
+        )
+    }
+
     pub(crate) fn subject_verb_emit_keyword_action(
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -4304,6 +4323,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Explore { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_exploit() -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Exploit,
         )
     }
 

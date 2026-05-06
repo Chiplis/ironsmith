@@ -42,6 +42,7 @@ pub enum StaticAbilityId {
     Infect,
     Changeling,
     Partner,
+    StartYourEngines,
     DoctorsCompanion,
     Assist,
     SplitSecond,
@@ -201,6 +202,7 @@ pub enum StaticAbilityId {
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
+    ModifyDamageAmountReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
     SuppressMatchingTriggeredAbilities,
@@ -264,6 +266,7 @@ impl StaticAbilityId {
             | Infect
             | Changeling
             | Partner
+            | StartYourEngines
             | DoctorsCompanion
             | Assist
             | SplitSecond
@@ -423,6 +426,7 @@ impl StaticAbilityId {
             | LibraryOfLengDiscardReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard
+            | ModifyDamageAmountReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
             | SuppressMatchingTriggeredAbilities

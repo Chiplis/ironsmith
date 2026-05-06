@@ -591,6 +591,7 @@ fn cast_from_library_while_searching(
         source_name: Some(card_name),
         triggering_event: None,
         trigger_identity: None,
+        ability_index: None,
         intervening_if: None,
         keyword_payment_contributions: vec![],
         crew_contributors: vec![],

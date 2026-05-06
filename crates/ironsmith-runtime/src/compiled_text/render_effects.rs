@@ -2277,6 +2277,50 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         effect
     }
 
+    fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<String> {
+        let [exile_effect, incubate_effect] = effects else {
+            return None;
+        };
+        let with_id = exile_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let exile =
+            unwrap_wrapped_effect(&with_id.effect).downcast_ref::<crate::effects::ExileEffect>()?;
+        let incubate = unwrap_wrapped_effect(incubate_effect)
+            .downcast_ref::<crate::effects::IncubateEffect>()?;
+        if incubate.controller != PlayerFilter::You || incubate.count != Value::Fixed(1) {
+            return None;
+        }
+        let Value::EffectMetric {
+            effect_id,
+            source: crate::effect::EffectMetricSource::AffectedObjects,
+            metric: crate::effect::EffectMetric::Count | crate::effect::EffectMetric::AffectedCount,
+        } = incubate.amount.unhinted()
+        else {
+            return None;
+        };
+        if *effect_id != with_id.id {
+            return None;
+        }
+        let basis = match &exile.spec {
+            ChooseSpec::All(filter) => format!(
+                "the number of {} exiled this way",
+                pluralize_noun_phrase(&describe_for_each_count_filter(filter))
+            ),
+            ChooseSpec::Object(filter) => format!(
+                "the number of {} exiled this way",
+                pluralize_noun_phrase(&describe_for_each_count_filter(filter))
+            ),
+            _ => "the number of objects exiled this way".to_string(),
+        };
+        Some(format!(
+            "{}. Incubate X, where X is {basis}",
+            describe_effect(exile_effect)
+        ))
+    }
+
+    if let Some(compact) = describe_exile_then_incubate_count(&raw_effects) {
+        return compact;
+    }
+
     fn describe_clash_win_optional_top_replacement(effects: &[&Effect]) -> Option<String> {
         let [clash_effect, conditional_effect] = effects else {
             return None;
@@ -17084,6 +17128,15 @@ fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String 
         return format!("that creature's {attribute}");
     }
     match spec.base() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG => {
+            format!("the revealed card's {attribute}")
+        }
+        ChooseSpec::Tagged(tag)
+            if tag.as_str().starts_with("revealed_")
+                || crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed") =>
+        {
+            format!("the revealed card's {attribute}")
+        }
         ChooseSpec::Tagged(tag) if tag_action_from_name(tag.as_str()) == Some("sacrificed") => {
             format!("the sacrificed creature's {attribute}")
         }
@@ -23611,23 +23664,43 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 reveal_clause
             );
         }
-        let (zone_phrase, zone_keyword) = match choose_primary_zone(choose) {
-            Some(Zone::Battlefield) => ("the battlefield", "battlefield"),
-            Some(Zone::Hand) => ("a hand", "hand"),
-            Some(Zone::Graveyard) => ("a graveyard", "graveyard"),
-            Some(Zone::Library) => ("a library", "library"),
-            Some(Zone::Stack) => ("the stack", "stack"),
-            Some(Zone::Exile) => ("exile", "exile"),
-            Some(Zone::Command) => ("the command zone", "command"),
-            Some(Zone::OutsideGame) => ("outside the game", "outside"),
-            None => ("an unspecified zone", ""),
+        let zone_location = |zone| match zone {
+            Zone::Battlefield => ("on the battlefield", "battlefield"),
+            Zone::Hand => ("in a hand", "hand"),
+            Zone::Graveyard => ("in a graveyard", "graveyard"),
+            Zone::Library => ("in a library", "library"),
+            Zone::Stack => ("on the stack", "stack"),
+            Zone::Exile => ("in exile", "exile"),
+            Zone::Command => ("in the command zone", "command"),
+            Zone::OutsideGame => ("outside the game", "outside"),
         };
         let filter_lower = filter_text.to_ascii_lowercase();
-        let includes_zone_already = zone_keyword.is_empty() || filter_lower.contains(zone_keyword);
-        let location_suffix = if includes_zone_already {
-            String::new()
+        let location_suffix = if let Some(zones) = choose_search_zones(choose)
+            && zones.len() > 1
+        {
+            let parts = zones
+                .iter()
+                .filter_map(|zone| {
+                    let (phrase, keyword) = zone_location(*zone);
+                    (!filter_lower.contains(keyword)).then(|| phrase.to_string())
+                })
+                .collect::<Vec<_>>();
+            if parts.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", join_with_or(&parts))
+            }
         } else {
-            format!(" in {zone_phrase}")
+            let (zone_phrase, zone_keyword) = choose_primary_zone(choose)
+                .map(zone_location)
+                .unwrap_or(("in an unspecified zone", ""));
+            let includes_zone_already =
+                zone_keyword.is_empty() || filter_lower.contains(zone_keyword);
+            if includes_zone_already {
+                String::new()
+            } else {
+                format!(" {zone_phrase}")
+            }
         };
         return format!(
             "{} {} {}{}",
@@ -24630,6 +24703,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "{player} {} a card for each {}",
             player_verb(&player, "draw", "draws"),
             counted
+        );
+    }
+    if let Some(speed) = effect.downcast_ref::<crate::effects::IncreaseSpeedEffect>() {
+        return format!(
+            "{} speed increases by {}",
+            describe_possessive_player_filter(&speed.player),
+            describe_value(&speed.amount)
+        );
+    }
+    if let Some(speed) = effect.downcast_ref::<crate::effects::ReduceSpeedEffect>() {
+        return format!(
+            "{} speed decreases by {}",
+            describe_possessive_player_filter(&speed.player),
+            describe_value(&speed.amount)
         );
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
@@ -26004,6 +26091,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
         let then_text = describe_effect_list(&if_effect.then);
         let else_text = describe_effect_list(&if_effect.else_);
+        if then_text.trim().is_empty() && else_text.trim().is_empty() {
+            return String::new();
+        }
         if else_text.is_empty() {
             return format!(
                 "If effect #{} {}, {}",
@@ -26987,6 +27077,45 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_value(&investigate.count)
             ),
         };
+    }
+    if let Some(incubate) = effect.downcast_ref::<crate::effects::IncubateEffect>() {
+        let player = describe_player_filter(&incubate.controller);
+        let amount_uses_where = value_prefers_where_x(&incubate.amount);
+        let count_uses_where = value_prefers_where_x(&incubate.count);
+        let amount_text = if amount_uses_where {
+            "X".to_string()
+        } else {
+            describe_value(&incubate.amount)
+        };
+        let mut tail = amount_text;
+        match &incubate.count {
+            Value::Fixed(1) => {}
+            Value::Fixed(2) => tail.push_str(" twice"),
+            Value::Fixed(count) => {
+                tail.push_str(&format!(" {count} times"));
+            }
+            _ if count_uses_where => tail.push_str(" X times"),
+            other => {
+                tail.push_str(&format!(" {} times", describe_value(other)));
+            }
+        }
+        let where_clause = if amount_uses_where {
+            describe_where_x_basis(&incubate.amount)
+        } else if count_uses_where {
+            describe_where_x_basis(&incubate.count)
+        } else {
+            None
+        };
+        if let Some(where_x) = where_clause {
+            tail.push_str(&format!(", where X is {where_x}"));
+        }
+        if player == "you" {
+            return format!("Incubate {tail}");
+        }
+        return format!(
+            "{player} {} {tail}",
+            player_verb(&player, "incubate", "incubates")
+        );
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
         if let Some(subtype) = amass.subtype {
@@ -29079,6 +29208,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(crew);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(exploit) = describe_structural_exploit_keyword(triggered)
+    {
+        return Some(exploit);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(extort) = describe_structural_extort_keyword(triggered)
     {
         return Some(extort);
@@ -29599,6 +29733,52 @@ fn describe_structural_crew_keyword(
         return None;
     }
     Some(format!("Crew {crew_power}"))
+}
+
+fn describe_structural_exploit_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return None;
+    }
+
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [with_id_effect, if_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
+        return None;
+    }
+    let sacrifice = may.effects[0].downcast_ref::<crate::effects::SacrificeEffect>()?;
+    if sacrifice.player != PlayerFilter::You
+        || sacrifice.count != Value::Fixed(1)
+        || sacrifice.filter != ObjectFilter::creature()
+    {
+        return None;
+    }
+
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+        || if_effect.then.len() != 1
+    {
+        return None;
+    }
+    let emit = if_effect.then[0].downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
+    (emit.action == crate::events::KeywordActionKind::Exploit && emit.amount == 1)
+        .then(|| "Exploit".to_string())
 }
 
 fn describe_structural_extort_keyword(

@@ -503,6 +503,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::CreateTokenCopy { count, .. }
         | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
         | SubjectVerbActionAst::CreateTokenWithMods { count, .. } => Some(count),
+        SubjectVerbActionAst::Incubate { amount, .. } => Some(amount),
         SubjectVerbActionAst::Monstrosity { amount } => Some(amount),
         SubjectVerbActionAst::LoseLife { amount }
         | SubjectVerbActionAst::GainLife { amount }
@@ -548,6 +549,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Support { .. }
         | SubjectVerbActionAst::Adapt { .. }
         | SubjectVerbActionAst::Explore { .. }
+        | SubjectVerbActionAst::Exploit
         | SubjectVerbActionAst::ConniveIterated
         | SubjectVerbActionAst::OpenAttraction
         | SubjectVerbActionAst::ManifestTopCardOfLibrary

@@ -874,6 +874,7 @@ pub fn apply_priority_response_with_dm(
                 }
 
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
+                    .with_ability_index(*ability_index)
                     .with_source_info(source_stable_id, source_name)
                     .with_source_snapshot(source_snapshot)
                     .with_mana_usage_restrictions(

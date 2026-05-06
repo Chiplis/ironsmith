@@ -26,6 +26,16 @@ use super::Trigger;
 use super::TriggerEvent;
 use super::matcher_trait::TriggerContext;
 
+const SPEED_RULE_SOURCE_NAME: &str = "Start your engines";
+
+pub(crate) fn speed_rule_source_id() -> ObjectId {
+    ObjectId::from_raw(0)
+}
+
+pub(crate) fn is_speed_rule_trigger(entry: &TriggeredAbilityEntry) -> bool {
+    entry.source == speed_rule_source_id() && entry.source_name == SPEED_RULE_SOURCE_NAME
+}
+
 fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) -> Option<u32> {
     trigger_event
         .downcast::<crate::events::other::BecameMonstrousEvent>()
@@ -1099,10 +1109,64 @@ pub(crate) fn check_triggers_with_view(
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
+    add_speed_increase_triggers(game, trigger_event, &mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
 
     triggered
+}
+
+fn add_speed_increase_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    if trigger_event.kind() != crate::events::traits::EventKind::LifeLoss {
+        return;
+    }
+    let Some(loss) = trigger_event.downcast::<crate::events::LifeLossEvent>() else {
+        return;
+    };
+    if loss.amount == 0 {
+        return;
+    }
+
+    let controller = game.turn.active_player;
+    if loss.player == controller
+        || game.speed_increase_triggered_this_turn(controller)
+        || !matches!(game.player_speed(controller), Some(1..=3))
+    {
+        return;
+    }
+
+    let ability = TriggeredAbility {
+        trigger: Trigger::custom(
+            "speed-inherent",
+            "Whenever one or more opponents lose life during your turn".to_string(),
+        ),
+        effects: ResolutionProgram::from_effects(vec![Effect::increase_speed(
+            crate::effect::Value::Fixed(1),
+            PlayerFilter::You,
+        )]),
+        choices: vec![],
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let trigger_identity = compute_trigger_identity(&ability);
+    let source = speed_rule_source_id();
+
+    triggered.push(TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        ability,
+        triggering_event: trigger_event.clone(),
+        source_stable_id: StableId::from_raw(0),
+        source_name: SPEED_RULE_SOURCE_NAME.to_string(),
+        source_snapshot: None,
+        tagged_objects: HashMap::new(),
+        trigger_identity,
+    });
 }
 
 fn state_trigger_event(source: ObjectId) -> TriggerEvent {
@@ -1504,6 +1568,13 @@ pub fn player_filter_matches_with_context(
                     let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
                     candidate.hand.len() >= your_hand.saturating_add(*count as usize)
                 })
+        }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => {
+            player_filter_matches_with_context(base, player, controller, game, defending_player)
+                && game.has_max_speed(player) == *has_max_speed
         }
         PlayerFilter::CastCardTypeThisTurn(card_type) => game
             .turn_store

@@ -1134,6 +1134,23 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     }
     if primitives::words_match_prefix(
         tokens,
+        &["activate", "only", "if", "you", "have", "max", "speed"],
+    )
+    .is_some()
+        || primitives::words_match_prefix(
+            tokens,
+            &["activate", "only", "if", "you", "have", "maximum", "speed"],
+        )
+        .is_some()
+    {
+        return Some(ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        });
+    }
+    if primitives::words_match_prefix(
+        tokens,
         &[
             "activate",
             "only",

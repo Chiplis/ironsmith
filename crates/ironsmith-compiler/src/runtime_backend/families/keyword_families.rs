@@ -49,6 +49,7 @@ pub(super) enum KeywordDispatchHint {
     CastThisSpellOnly,
     Gift,
     Warp,
+    Exploit,
 }
 
 mod additional_costs {
@@ -225,6 +226,12 @@ mod spell_keywords {
             matches: registry::matches_exert_attack,
             lower: registry::lower_exert_attack,
         },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Exploit,
+            hints: &[KeywordDispatchHint::Exploit],
+            matches: registry::matches_exploit,
+            lower: registry::lower_exploit,
+        },
     ];
 }
 
@@ -285,6 +292,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                     .value(KeywordDispatchHint::CastThisSpellOnly),
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),
                 grammar::kw("warp").value(KeywordDispatchHint::Warp),
+                grammar::kw("exploit").value(KeywordDispatchHint::Exploit),
             )),
         )),
     )

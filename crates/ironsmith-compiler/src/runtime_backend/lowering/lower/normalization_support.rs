@@ -402,10 +402,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
         crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
     let combined_condition = match (chosen_option_label, max_condition.clone()) {
         (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
-            Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+            Box::new(condition_for_chosen_option_label(label)),
             Box::new(max),
         )),
-        (Some(label), None) => Some(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+        (Some(label), None) => Some(condition_for_chosen_option_label(label)),
         (None, Some(max)) => Some(max),
         (None, None) => None,
     };
@@ -426,12 +426,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 });
             let merged_condition = match (chosen_option_label, merged_max_condition) {
                 (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
-                    Box::new(crate::ConditionExpr::SourceChosenOption(label.to_string())),
+                    Box::new(condition_for_chosen_option_label(label)),
                     Box::new(max),
                 )),
-                (Some(label), None) => {
-                    Some(crate::ConditionExpr::SourceChosenOption(label.to_string()))
-                }
+                (Some(label), None) => Some(condition_for_chosen_option_label(label)),
                 (None, Some(max)) => Some(max),
                 (None, None) => None,
             };

@@ -2055,6 +2055,18 @@ pub fn process_etb_with_event_and_dm(
     from: Zone,
     dm: &mut dyn DecisionMaker,
 ) -> EtbEventResult {
+    process_etb_with_event_and_dm_with_initial_counters(game, object, from, dm, Vec::new())
+}
+
+/// Process an ETB event and fully resolve all replacement choices/interactions,
+/// including counters that are part of the original enter event.
+pub fn process_etb_with_event_and_dm_with_initial_counters(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    dm: &mut dyn DecisionMaker,
+    initial_enters_with_counters: Vec<(CounterType, u32)>,
+) -> EtbEventResult {
     use crate::ability::AbilityKind;
     use crate::decisions::{
         make_decision,
@@ -2066,7 +2078,7 @@ pub fn process_etb_with_event_and_dm(
 
     // Check the object's own abilities for ETB replacement effects.
     let enters_tapped = false;
-    let mut enters_with_counters: Vec<(CounterType, u32)> = Vec::new();
+    let mut enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
 
     // Gather ETB replacement effects from the object's abilities.
     let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();

@@ -96,6 +96,7 @@ pub enum KeywordAction {
     Enlist,
     Extort,
     Partner,
+    StartYourEngines,
     Assist,
     SplitSecond,
     Rebound,
@@ -196,6 +197,7 @@ impl KeywordAction {
                 | Self::Ninjutsu(_)
                 | Self::Extort
                 | Self::Partner
+                | Self::StartYourEngines
                 | Self::Assist
                 | Self::SplitSecond
                 | Self::Rebound
@@ -330,6 +332,7 @@ impl KeywordAction {
             Self::Enlist => "Enlist".to_string(),
             Self::Extort => "Extort".to_string(),
             Self::Partner => "Partner".to_string(),
+            Self::StartYourEngines => "Start your engines!".to_string(),
             Self::Assist => "Assist".to_string(),
             Self::SplitSecond => "Split second".to_string(),
             Self::Rebound => "Rebound".to_string(),

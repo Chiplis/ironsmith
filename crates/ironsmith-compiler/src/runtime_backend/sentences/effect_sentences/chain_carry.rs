@@ -2583,6 +2583,7 @@ pub(crate) enum Verb {
     Switch,
     Skip,
     Surveil,
+    Incubate,
     Shuffle,
     Reorder,
     Pay,

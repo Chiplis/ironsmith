@@ -928,6 +928,33 @@ pub fn resolve_value(
                 .ok_or(ExecutionError::PlayerNotFound(player_id))?;
             Ok(player.life)
         }
+        Value::LifeTotalDifference(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            if player_ids.len() < 2 {
+                return Err(ExecutionError::UnresolvableValue(
+                    "LifeTotalDifference requires at least two players".to_string(),
+                ));
+            }
+            let mut min_life: Option<i32> = None;
+            let mut max_life: Option<i32> = None;
+            for player_id in player_ids {
+                let life = game
+                    .player(player_id)
+                    .ok_or(ExecutionError::PlayerNotFound(player_id))?
+                    .life;
+                min_life = Some(min_life.map_or(life, |current| current.min(life)));
+                max_life = Some(max_life.map_or(life, |current| current.max(life)));
+            }
+            Ok(max_life.unwrap_or(0) - min_life.unwrap_or(0))
+        }
+        Value::Speed(player_spec) => {
+            let player_id = resolve_player_filter(game, player_spec, ctx)?;
+            let player = game
+                .player(player_id)
+                .ok_or(ExecutionError::PlayerNotFound(player_id))?;
+            Ok(player.speed.unwrap_or(0) as i32)
+        }
         Value::StartingLifeTotal(player_spec) => {
             let player_id = resolve_player_filter(game, player_spec, ctx)?;
             let player = game
@@ -1123,6 +1150,22 @@ pub fn resolve_value(
                 .into_iter()
                 .map(|player_id| game.commander_cast_count_for_player(player_id) as i32)
                 .sum())
+        }
+
+        Value::ThisAbilityResolvedThisTurnCount => {
+            if let Some(ability_index) = ctx.ability_index {
+                return Ok(game
+                    .activated_ability_resolution_count_this_turn(ctx.source, ability_index)
+                    as i32);
+            }
+            if let Some(trigger_identity) = ctx.trigger_identity {
+                return Ok(game
+                    .triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
+                    as i32);
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "this ability resolution count requires a resolving ability context".to_string(),
+            ))
         }
 
         Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
@@ -1804,7 +1847,8 @@ pub fn resolve_player_filter(
         PlayerFilter::MostLifeTied
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
-        | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+        | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
             players
@@ -2963,6 +3007,13 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
             .map(|player| player.id)
             .collect()),
+        PlayerFilter::MaxSpeed { .. } => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .filter(|player| player_filter_matches_game(filter, player.id, game, _filter_ctx))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::ChosenPlayer => ctx
             .combat
             .chosen_player
@@ -3449,6 +3500,24 @@ mod tests {
     }
 
     #[test]
+    fn resolve_this_ability_resolved_this_turn_count_for_activated_ability() {
+        let mut game = new_test_game();
+        let player_id = game.players[0].id;
+        let source_id = ObjectId(9001);
+        let ability_index = 2;
+        let ctx =
+            ExecutionContext::new_default(source_id, player_id).with_ability_index(ability_index);
+
+        game.record_activated_ability_resolved(source_id, ability_index);
+        game.record_activated_ability_resolved(source_id, ability_index);
+
+        assert_eq!(
+            resolve_value(&game, &Value::ThisAbilityResolvedThisTurnCount, &ctx).unwrap(),
+            2
+        );
+    }
+
+    #[test]
     fn test_resolve_x_times_value() {
         let mut game = new_test_game();
         let player_id = game.players[0].id;
@@ -3928,6 +3997,25 @@ mod tests {
             resolved,
             vec![alice, bob],
             "target-player lists should include every targeted player, preserving order"
+        );
+    }
+
+    #[test]
+    fn resolve_life_total_difference_uses_all_targeted_players() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        game.player_mut(alice).expect("alice exists").life = 7;
+        game.player_mut(bob).expect("bob exists").life = 24;
+        let ctx = ExecutionContext::new_default(ObjectId(999), alice).with_targets(vec![
+            ResolvedTarget::Player(alice),
+            ResolvedTarget::Player(bob),
+        ]);
+
+        let value = Value::LifeTotalDifference(PlayerFilter::target_player());
+        assert_eq!(
+            resolve_value(&game, &value, &ctx).expect("life difference should resolve"),
+            17
         );
     }
 

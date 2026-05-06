@@ -638,6 +638,35 @@ pub(crate) fn parse_deal_damage_with_amount(
             effects: vec![EffectAst::subject_verb_damage(amount.clone(), TargetAst::Player(PlayerFilter::IteratedPlayer, None),)],
         });
     }
+    let normalized_target_words =
+        crate::runtime_backend::lexer::parser_token_word_refs(target_tokens);
+    let each_player_max_speed_filter = matches!(normalized_target_words.first(), Some(&"each"))
+        && normalized_target_words
+            .iter()
+            .any(|word| matches!(*word, "player" | "players"))
+        && normalized_target_words
+            .windows(2)
+            .any(|window| window == ["max", "speed"]);
+    if each_player_max_speed_filter {
+        let has_max_speed = !(normalized_target_words
+            .iter()
+            .any(|word| matches!(*word, "does" | "doesnt" | "doesn" | "dont" | "not"))
+            || normalized_target_words
+                .windows(2)
+                .any(|window| window == ["does", "not"]));
+        let filter = if has_max_speed {
+            PlayerFilter::with_max_speed(PlayerFilter::Any)
+        } else {
+            PlayerFilter::without_max_speed(PlayerFilter::Any)
+        };
+        return Ok(EffectAst::ForEachPlayersFiltered {
+            filter,
+            effects: vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
+        });
+    }
     if target_words.as_slice() == ["each", "opponent"]
         || target_words.as_slice() == ["each", "opponents"]
     {

@@ -1462,6 +1462,10 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
                 resolve_effect_result_value(amount, state)?;
             }
+            SubjectVerbActionAst::Incubate { amount, count } => {
+                resolve_effect_result_value(amount, state)?;
+                resolve_effect_result_value(count, state)?;
+            }
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 resolve_effect_result_values_in_total_cost(cost, state)?;
             }
@@ -1482,6 +1486,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
@@ -1940,12 +1945,17 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Populate { count, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
+            SubjectVerbActionAst::Incubate { amount, count } => {
+                bind_unresolved_it_in_value(amount, seed_tag)
+                    + bind_unresolved_it_in_value(count, seed_tag)
+            }
             SubjectVerbActionAst::Monstrosity { amount } => {
                 bind_unresolved_it_in_value(amount, seed_tag)
             }
             SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::EmitKeywordAction { .. }
+            | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }

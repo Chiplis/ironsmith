@@ -300,6 +300,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::Infect
                 | StaticAbilityId::Changeling
                 | StaticAbilityId::Partner
+                | StaticAbilityId::StartYourEngines
                 | StaticAbilityId::DoctorsCompanion
                 | StaticAbilityId::Assist
                 | StaticAbilityId::SplitSecond
@@ -1104,6 +1105,19 @@ impl StaticAbilityModelInterpreter {
                 player.clone(),
                 *counter_type,
             ),
+            ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
+                source_filter,
+                target_player_filter,
+                target_object_filter,
+                delta,
+                display,
+            } => StaticAbility::modify_damage_amount_replacement(
+                source_filter.clone(),
+                target_player_filter.clone(),
+                target_object_filter.clone(),
+                *delta,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
                 power,
                 toughness,
@@ -1175,11 +1189,16 @@ impl StaticAbilityModelInterpreter {
                 count,
                 condition,
                 display,
-            } => StaticAbility::enters_with_counters_if_condition(
+                added_abilities,
+            } => StaticAbility::enters_with_counters_and_abilities_if_condition(
                 *counter,
                 count.clone(),
                 condition.clone(),
                 display.clone(),
+                added_abilities
+                    .iter()
+                    .map(Self::ability_from_model)
+                    .collect(),
             ),
             ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbility::enters_with_counters_value(*counter, count.clone())

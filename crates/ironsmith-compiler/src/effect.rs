@@ -553,6 +553,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::TransformEffect>() {
             return Some(&payload.target);
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::IncubateEffect>() {
+            return payload.controller_target.as_ref();
+        }
         None
     }
 
@@ -1482,6 +1485,18 @@ impl Effect {
             count.into().into_unhinted(),
             player,
         ))
+    }
+
+    pub fn incubate(amount: impl Into<Value>, count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::IncubateEffect::you(amount, count))
+    }
+
+    pub fn incubate_player(
+        amount: impl Into<Value>,
+        count: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::IncubateEffect::new(amount, count, player))
     }
 
     pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {

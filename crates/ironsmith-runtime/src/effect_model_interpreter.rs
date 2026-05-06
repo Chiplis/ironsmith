@@ -1201,6 +1201,13 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::IncreaseSpeedEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ReduceSpeedEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExchangeLifeTotalsEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ExchangeLifeTotalsEffect::new(
             payload.player1.clone(),
@@ -1380,6 +1387,7 @@ where
 
     clone_direct!(
         crate::effects::AmassEffect,
+        crate::effects::IncubateEffect,
         crate::effects::BecomeBasicLandTypeChoiceEffect,
         crate::effects::BecomeColorChoiceEffect,
         crate::effects::BecomeCreatureTypeChoiceEffect,

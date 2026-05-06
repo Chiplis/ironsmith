@@ -64,6 +64,9 @@ pub enum StateBasedAction {
 
     /// A commander in graveyard or exile returns to the command zone.
     CommanderReturnsToCommandZone(ObjectId),
+
+    /// A player controlling Start your engines gets speed 1.
+    StartEngines { player: PlayerId },
 }
 
 /// Reason why a player loses the game.
@@ -136,6 +139,7 @@ pub(crate) fn check_state_based_actions_with_context(
     // Check player state-based actions
     check_player_sbas(game, &mut actions);
     check_commander_zone_sbas(game, &mut actions);
+    check_start_engines_sbas_with_view(game, view, &mut actions);
 
     // Check permanent state-based actions
     check_permanent_sbas_with_view(game, view, context, &mut actions);
@@ -191,6 +195,30 @@ fn check_player_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
         }
 
         // Note: "drew from empty library" is tracked separately when draw happens
+    }
+}
+
+fn check_start_engines_sbas_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    for player in &game.players {
+        if !player.is_in_game() || player.speed.is_some() {
+            continue;
+        }
+
+        let controls_start_your_engines = game.battlefield.iter().copied().any(|obj_id| {
+            let Some(obj) = game.object(obj_id) else {
+                return false;
+            };
+            game.controller_of(obj) == player.id
+                && view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
+        });
+
+        if controls_start_your_engines {
+            actions.push(StateBasedAction::StartEngines { player: player.id });
+        }
     }
 }
 
@@ -746,6 +774,10 @@ fn apply_single_sba_with_snapshots(
             if let Some(p) = game.player_mut(player) {
                 p.has_lost = true;
             }
+        }
+
+        StateBasedAction::StartEngines { player } => {
+            game.start_engines(player);
         }
 
         StateBasedAction::LegendRuleViolation {

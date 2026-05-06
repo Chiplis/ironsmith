@@ -4039,6 +4039,8 @@ fn resolve_value_with_context(
         | Value::ToughnessOf(_)
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::LifeTotalDifference(_)
+        | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
@@ -4053,6 +4055,7 @@ fn resolve_value_with_context(
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::SpellsCastThisTurnMatching { .. }
+        | Value::ThisAbilityResolvedThisTurnCount
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)
         | Value::EffectValue(_)

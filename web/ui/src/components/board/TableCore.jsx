@@ -80,8 +80,8 @@ export default function TableCore({
   const compactDecisionBarHeight = portraitCompactViewport
     ? 236
     : (landscapeMobileViewport ? 92 : 112);
-  const desktopPriorityBarHeight = largeDesktopViewport ? 68 : (smallDesktopViewport ? 52 : 62);
-  const desktopDecisionBarHeight = largeDesktopViewport ? 132 : (smallDesktopViewport ? 100 : 124);
+  const desktopPriorityBarHeight = largeDesktopViewport ? 54 : (smallDesktopViewport ? 48 : 50);
+  const desktopDecisionBarHeight = largeDesktopViewport ? 118 : (smallDesktopViewport ? 94 : 108);
   const actionBarHeight = expandedActionBar
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
     : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
@@ -267,7 +267,7 @@ export default function TableCore({
         gridTemplateRows: mergeActionBarIntoMyZone
           ? "minmax(0,1fr) minmax(0,1fr)"
           : sharedMiddleElement
-            ? "minmax(0,1fr) auto minmax(0,1fr)"
+            ? "minmax(0,1.09fr) auto minmax(0,1fr)"
             : `minmax(0,1fr) ${actionBarHeight}px minmax(0,1fr)`,
       }}
     >

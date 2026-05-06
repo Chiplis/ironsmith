@@ -530,6 +530,7 @@ mod tests {
             temporary_static_ability_grants: vec![],
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
+            cast_tagged_objects: HashMap::new(),
             additional_cost: crate::cost::TotalCost::free(),
             bestow_cast_state: None,
             face_down_cast_state: None,

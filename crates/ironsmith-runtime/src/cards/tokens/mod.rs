@@ -2,6 +2,7 @@
 
 mod clue_token;
 mod gold_token;
+mod incubator_token;
 mod junk_token;
 mod lander_token;
 mod map_token;
@@ -12,6 +13,7 @@ mod walker_token;
 
 pub use clue_token::clue_token_definition;
 pub use gold_token::gold_token_definition;
+pub use incubator_token::{incubator_token_definition, incubator_token_definitions};
 pub use junk_token::junk_token_definition;
 pub use lander_token::lander_token_definition;
 pub use map_token::map_token_definition;

@@ -1540,6 +1540,10 @@ impl StaticAbility {
         Self::new(Partner)
     }
 
+    pub fn start_your_engines() -> Self {
+        Self::new(StartYourEngines)
+    }
+
     pub fn doctors_companion() -> Self {
         Self::new(DoctorsCompanion)
     }
@@ -1838,11 +1842,28 @@ impl StaticAbility {
         condition: crate::effect::Condition,
         condition_display: String,
     ) -> Self {
-        Self::new(EntersWithCountersIfCondition::new(
+        Self::enters_with_counters_and_abilities_if_condition(
             counter_type,
             count,
             condition,
             condition_display,
+            Vec::new(),
+        )
+    }
+
+    pub fn enters_with_counters_and_abilities_if_condition(
+        counter_type: crate::object::CounterType,
+        count: crate::effect::Value,
+        condition: crate::effect::Condition,
+        condition_display: String,
+        added_abilities: Vec<crate::ability::Ability>,
+    ) -> Self {
+        Self::new(EntersWithCountersIfCondition::new_with_abilities(
+            counter_type,
+            count,
+            condition,
+            condition_display,
+            added_abilities,
         ))
     }
 
@@ -2411,6 +2432,22 @@ impl StaticAbility {
 
     pub fn double_damage_from_sources_you_control_of_chosen_type(display: String) -> Self {
         Self::new(DoubleDamageFromSourcesYouControlOfChosenType::new(display))
+    }
+
+    pub fn modify_damage_amount_replacement(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        delta: i32,
+        display: String,
+    ) -> Self {
+        Self::new(ModifyDamageAmountReplacement::new(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            delta,
+            display,
+        ))
     }
 
     pub fn library_of_leng_discard_replacement() -> Self {

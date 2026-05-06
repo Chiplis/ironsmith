@@ -92,6 +92,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         ))),
         KeywordAction::Extort => Some(StaticAbility::keyword_marker("extort".to_string())),
         KeywordAction::Partner => Some(StaticAbility::partner()),
+        KeywordAction::StartYourEngines => Some(StaticAbility::start_your_engines()),
         KeywordAction::Assist => Some(StaticAbility::assist()),
         KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
         KeywordAction::Rebound => Some(StaticAbility::rebound()),

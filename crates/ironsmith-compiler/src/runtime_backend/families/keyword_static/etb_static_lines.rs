@@ -172,7 +172,15 @@ pub(crate) fn parse_enters_with_counters_line(
         etb_find_token_index(&clause_tokens, |token| token.is_word("with")).ok_or_else(|| {
             CardTextError::ParseError("missing 'with' in enters-with-counters clause".to_string())
         })?;
-    let after_with = &clause_tokens[with_idx + 1..];
+    let mut added_abilities: Vec<Ability> = Vec::new();
+    let mut after_with = &clause_tokens[with_idx + 1..];
+    if let Some(and_with_idx) = etb_find_token_word_sequence_index(after_with, &["and", "with"]) {
+        let ability_prefix = trim_commas(&after_with[..and_with_idx]);
+        if let Some(abilities) = parse_enters_with_added_abilities_prefix(&ability_prefix) {
+            added_abilities.extend(abilities);
+            after_with = &after_with[and_with_idx + 2..];
+        }
+    }
     let (mut count, used) = if after_with
         .first()
         .is_some_and(|token| token.is_word("a") || token.is_word("an"))
@@ -241,7 +249,9 @@ pub(crate) fn parse_enters_with_counters_line(
             Value::Fixed(multiplier) => scale_dynamic_cost_modifier_value(dynamic, *multiplier),
             _ => dynamic,
         };
-        if tail_words.first().copied() == Some("if") {
+        if let Some(abilities) = parse_enters_with_added_abilities_tail(&tail) {
+            added_abilities = abilities;
+        } else if tail_words.first().copied() == Some("if") {
             let condition_tokens = trim_commas(&tail[1..]);
             let parsed =
                 parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
@@ -415,11 +425,21 @@ pub(crate) fn parse_enters_with_counters_line(
     }
 
     if let Some((condition, display)) = condition {
-        return Ok(Some(StaticAbility::enters_with_counters_if_condition(
-            counter_type,
-            count,
-            condition,
-            display,
+        return Ok(Some(
+            StaticAbility::enters_with_counters_and_abilities_if_condition(
+                counter_type,
+                count,
+                condition,
+                display,
+                added_abilities,
+            ),
+        ));
+    }
+
+    if !added_abilities.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "self ETB counter granted abilities require a condition (clause: '{}')",
+            full_words.join(" ")
         )));
     }
 
@@ -427,6 +447,64 @@ pub(crate) fn parse_enters_with_counters_line(
         counter_type,
         count,
     )))
+}
+
+fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
+    let tail = trim_commas(tokens);
+    let words = etb_token_words(&tail);
+    let ability_tokens = if etb_word_slice_starts_with(&words, &["and", "with"]) {
+        &tail[2..]
+    } else if etb_word_slice_starts_with(&words, &["with"]) {
+        &tail[1..]
+    } else {
+        return None;
+    };
+    let ability_words = etb_token_words(ability_tokens);
+    if ability_words
+        == [
+            "this", "creature", "can", "attack", "as", "though", "it", "didnt", "have",
+            "defender",
+        ]
+        || ability_words
+            == [
+                "this", "creature", "can", "attack", "as", "though", "it", "didn't", "have",
+                "defender",
+            ]
+        || ability_words
+            == [
+                "this", "creature", "can", "attack", "as", "though", "it", "doesnt", "have",
+                "defender",
+            ]
+        || ability_words
+            == [
+                "this", "creature", "can", "attack", "as", "though", "it", "doesn't", "have",
+                "defender",
+            ]
+    {
+        return Some(vec![Ability::static_ability(
+            StaticAbility::can_attack_as_though_no_defender(),
+        )]);
+    }
+
+    let actions = parse_ability_line(ability_tokens)?;
+    let mut abilities = Vec::new();
+    for action in actions {
+        let static_ability =
+            super::static_ability_helpers::static_ability_for_keyword_action(action)?;
+        abilities.push(Ability::static_ability(static_ability));
+    }
+    (!abilities.is_empty()).then_some(abilities)
+}
+
+fn parse_enters_with_added_abilities_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
+    let actions = parse_ability_line(tokens)?;
+    let mut abilities = Vec::new();
+    for action in actions {
+        let static_ability =
+            super::static_ability_helpers::static_ability_for_keyword_action(action)?;
+        abilities.push(Ability::static_ability(static_ability));
+    }
+    (!abilities.is_empty()).then_some(abilities)
 }
 
 fn combine_enters_with_counter_conditions(
@@ -492,6 +570,13 @@ fn parse_enters_with_counter_condition_clause(
         || condition_words == ["you", "cast", "this", "spell"]
     {
         return Some(crate::ConditionExpr::SourceWasCast);
+    }
+    if condition_words == ["this", "spell", "was", "kicked"]
+        || condition_words == ["this", "creature", "was", "kicked"]
+        || condition_words == ["this", "permanent", "was", "kicked"]
+        || condition_words == ["it", "was", "kicked"]
+    {
+        return Some(crate::ConditionExpr::ThisSpellWasKicked);
     }
     if condition_words == ["a", "creature", "died", "this", "turn"]
         || condition_words == ["one", "or", "more", "creatures", "died", "this", "turn"]
@@ -738,7 +823,14 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
     }
 
     match words.get(3..) {
+        Some(["the", "number", "of", "times", "this", "ability", "has", "resolved", "this", "turn"])
+        | Some([
+            "number", "of", "times", "this", "ability", "has", "resolved", "this", "turn",
+        ]) => {
+            return Some(Value::ThisAbilityResolvedThisTurnCount);
+        }
         Some(["your", "life", "total"]) => return Some(Value::LifeTotal(PlayerFilter::You)),
+        Some(["your", "speed"]) => return Some(Value::Speed(PlayerFilter::You)),
         Some(["the", "number", "of", "opponents", "you", "have"])
         | Some(["number", "of", "opponents", "you", "have"])
         | Some(["the", "number", "of", "opponents"])
@@ -749,8 +841,25 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some(["target", "player", "life", "total"]) => {
             return Some(Value::LifeTotal(PlayerFilter::target_player()));
         }
+        Some(["the", "difference", "between", "those", "players", "life", "totals"])
+        | Some(["difference", "between", "those", "players", "life", "totals"])
+        | Some(["the", "difference", "between", "the", "target", "players", "life", "totals"])
+        | Some(["difference", "between", "the", "target", "players", "life", "totals"]) => {
+            return Some(Value::LifeTotalDifference(PlayerFilter::target_player()));
+        }
         Some(["that", "players", "life", "total"]) | Some(["that", "player", "life", "total"]) => {
             return Some(Value::LifeTotal(PlayerFilter::target_player()));
+        }
+        Some(["that", "players", "speed"]) | Some(["that", "player", "speed"]) => {
+            return Some(Value::Speed(PlayerFilter::target_player()));
+        }
+        Some(["the", "discarded", "cards", "mana", "value"])
+        | Some(["the", "discarded", "card", "mana", "value"])
+        | Some(["discarded", "cards", "mana", "value"])
+        | Some(["discarded", "card", "mana", "value"]) => {
+            return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                "discarded_cost",
+            )))));
         }
         _ => {}
     }
@@ -876,6 +985,13 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
 
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
+        return Some(value);
+    }
+
+    if let Some(tail) = words.get(3..)
+        && let Some((value, used)) = parse_value_expr_words(tail)
+        && used == tail.len()
+    {
         return Some(value);
     }
 
@@ -1683,6 +1799,12 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     let filter_start_idx = token_index_for_word_index(tokens, number_word_idx + 2)?;
     let filter_tokens = &tokens[filter_start_idx..];
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if let Some(counter_value) = parse_number_of_counters_on_source_value(&filter_words) {
+        return Some(Value::Add(
+            Box::new(Value::Fixed(fixed_value as i32)),
+            Box::new(counter_value),
+        ));
+    }
     if etb_word_slice_starts_with(&filter_words, &["basic", "land", "type", "among"])
         || etb_word_slice_starts_with(&filter_words, &["basic", "land", "types", "among"])
     {

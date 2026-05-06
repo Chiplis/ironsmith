@@ -264,6 +264,10 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
                 replace_modal_header_x_in_value(amount, replacement, clause)?
             }
+            SubjectVerbActionAst::Incubate { amount, count } => {
+                replace_modal_header_x_in_value(amount, replacement, clause)?;
+                replace_modal_header_x_in_value(count, replacement, clause)?;
+            }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
@@ -310,6 +314,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary

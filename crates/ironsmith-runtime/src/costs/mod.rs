@@ -239,11 +239,14 @@ impl Cost {
                 ..Default::default()
             })
         };
-        Self::validated_effect(crate::effect::Effect::discard_player_filtered(
-            count as i32,
-            crate::target::PlayerFilter::You,
-            false,
-            card_filter,
+        Self::validated_effect(crate::effect::Effect::new(
+            crate::effects::DiscardEffect::new_with_filter(
+                count as i32,
+                crate::target::PlayerFilter::You,
+                false,
+                card_filter,
+            )
+            .with_tag("discarded_cost"),
         ))
     }
 
@@ -614,6 +617,44 @@ mod tests {
             }
             other => panic!("expected discard processing mode, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn discard_cost_tags_discarded_card_for_cast_references() {
+        let alice = crate::ids::PlayerId::from_index(0);
+        let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+        let source_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9000), "Source")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let source = game.create_object_from_card(&source_card, alice, crate::zone::Zone::Stack);
+        let discarded_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9001), "Discarded Beast")
+                .mana_cost(crate::mana::ManaCost::from_pips(vec![
+                    vec![crate::mana::ManaSymbol::Generic(3)],
+                    vec![crate::mana::ManaSymbol::Green],
+                ]))
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        game.create_object_from_card(&discarded_card, alice, crate::zone::Zone::Hand);
+
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut decision_maker);
+        let cost = Cost::discard(1, Some(crate::types::CardType::Creature));
+
+        cost.pay(&mut game, &mut ctx)
+            .expect("discard cost should be payable");
+
+        let tagged = ctx
+            .tagged_objects
+            .get(&crate::tag::TagKey::from("discarded_cost"))
+            .expect("discard cost should tag the discarded card");
+        assert_eq!(tagged.len(), 1);
+        assert_eq!(tagged[0].name, "Discarded Beast");
+        assert_eq!(
+            tagged[0].mana_cost.as_ref().map(|cost| cost.mana_value()),
+            Some(4)
+        );
     }
 
     #[test]

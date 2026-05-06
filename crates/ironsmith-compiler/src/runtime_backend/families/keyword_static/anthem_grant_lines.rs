@@ -726,6 +726,13 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(Some(compiled));
     }
 
+    if crate::runtime_backend::token_word_refs(&keyword_tokens).as_slice() == ["exploit"] {
+        let subject = parse_anthem_subject(&subject_tokens)?;
+        return Ok(Some(vec![grant_exploit_for_anthem_subject(
+            &subject, condition,
+        )]));
+    }
+
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
         return Ok(None);
     };
@@ -1762,6 +1769,15 @@ pub(crate) fn parse_static_condition_clause(
             player: PlayerFilter::You,
         });
     }
+    if clause_words == ["you", "have", "max", "speed"]
+        || clause_words == ["you", "have", "maximum", "speed"]
+    {
+        return Ok(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        });
+    }
     if clause_words == ["youve", "completed", "a", "dungeon"]
         || clause_words == ["you", "have", "completed", "a", "dungeon"]
     {
@@ -2389,6 +2405,7 @@ pub(crate) fn parse_anthem_clause(
                 Value::CreatureTypesAmong(filter) => {
                     AnthemCountExpression::CreatureTypesAmong(filter)
                 }
+                Value::Speed(player) => AnthemCountExpression::PlayerSpeed(player),
                 _ => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported where-x anthem value (clause: '{}')",
@@ -3709,6 +3726,46 @@ fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
+    }
+}
+
+fn parsed_exploit_ability() -> ParsedAbility {
+    let effect_id = 0;
+    let ability = Ability::triggered(
+        Trigger::this_enters_battlefield(),
+        vec![
+            Effect::with_id(
+                effect_id,
+                Effect::may(vec![Effect::sacrifice(ObjectFilter::creature(), 1)]),
+            ),
+            Effect::if_then(
+                effect_id,
+                crate::effect::EffectPredicate::Happened,
+                vec![Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::Exploit,
+                    1,
+                )],
+            ),
+        ],
+    );
+    ParsedAbility {
+        ability: ability.into(),
+        text: Some("Exploit".to_string()),
+        effects_ast: None,
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield),
+    }
+}
+
+fn grant_exploit_for_anthem_subject(
+    subject: &AnthemSubjectAst,
+    condition: Option<crate::ConditionExpr>,
+) -> StaticAbilityAst {
+    StaticAbilityAst::GrantObjectAbility {
+        filter: anthem_subject_filter(subject),
+        ability: parsed_exploit_ability(),
+        display: "exploit".to_string(),
+        condition,
     }
 }
 

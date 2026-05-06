@@ -2106,6 +2106,45 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(exploit_word_idx) = find_index(&words, |word| {
+        matches!(
+            crate::events::KeywordActionKind::from_trigger_word(word),
+            Some(crate::events::KeywordActionKind::Exploit)
+        )
+    }) {
+        let subject_words = &words[..exploit_word_idx];
+        let tail_words = &words[exploit_word_idx + 1..];
+        if !is_source_reference_words(subject_words)
+            && (tail_words.is_empty()
+                || tail_words == ["a", "creature"]
+                || tail_words == ["creature"])
+        {
+            let subject_tokens = &tokens[..exploit_word_idx];
+            if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
+                return Ok(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::Exploit,
+                    player: PlayerFilter::Any,
+                    source_filter: Some(filter),
+                });
+            }
+        }
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["this", "creature", "exploits"]
+            | ["this", "creature", "exploits", "a", "creature"]
+            | ["this", "creature", "exploits", "creature"]
+            | ["this", "permanent", "exploits"]
+            | ["this", "permanent", "exploits", "a", "creature"]
+            | ["this", "permanent", "exploits", "creature"]
+    ) {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::Exploit,
+            player: PlayerFilter::You,
+        });
+    }
+
     if words == ["you", "complete", "a", "dungeon"]
         || words == ["you", "completed", "a", "dungeon"]
         || words == ["you", "completes", "a", "dungeon"]

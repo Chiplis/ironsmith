@@ -1642,6 +1642,43 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     };
 
     if let Some(used) = matching_prefix_len(&[
+        &[
+            "the", "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
+        &[
+            "number", "of", "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
+        &[
+            "the", "number", "of", "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+        ],
+        &[
+            "number", "of", "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+        ],
+        &[
+            "colors", "of", "mana", "spent", "to", "cast", "this", "spell",
+        ],
+        &[
+            "colors", "of", "mana", "used", "to", "cast", "this", "spell",
+        ],
+        &[
+            "the", "number", "of", "colors", "of", "mana", "spent", "to", "cast", "it",
+        ],
+        &[
+            "number", "of", "colors", "of", "mana", "spent", "to", "cast", "it",
+        ],
+        &[
+            "the", "number", "of", "colors", "of", "mana", "used", "to", "cast", "it",
+        ],
+        &[
+            "number", "of", "colors", "of", "mana", "used", "to", "cast", "it",
+        ],
+        &["colors", "of", "mana", "spent", "to", "cast", "it"],
+        &["colors", "of", "mana", "used", "to", "cast", "it"],
+    ]) {
+        return Some((Value::ColorsOfManaSpentToCastThisSpell, used));
+    }
+
+    if let Some(used) = matching_prefix_len(&[
         &["that", "creature", "power"],
         &["that", "creatures", "power"],
         &["that", "card", "power"],
@@ -1694,6 +1731,14 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "spells", "mana", "value"],
         &["that", "card", "mana", "value"],
         &["that", "cards", "mana", "value"],
+        &["the", "revealed", "card", "mana", "value"],
+        &["the", "revealed", "cards", "mana", "value"],
+        &["revealed", "card", "mana", "value"],
+        &["revealed", "cards", "mana", "value"],
+        &["the", "mana", "value", "of", "the", "revealed", "card"],
+        &["the", "mana", "value", "of", "the", "revealed", "cards"],
+        &["mana", "value", "of", "the", "revealed", "card"],
+        &["mana", "value", "of", "the", "revealed", "cards"],
         &["the", "exiled", "spell", "mana", "value"],
         &["the", "exiled", "spells", "mana", "value"],
         &["exiled", "spell", "mana", "value"],
@@ -1723,6 +1768,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
                 | Some(["exiled", "spells", "mana", "value"])
         ) {
             TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+        } else if matches!(
+            words.get(..used),
+            Some(["the", "revealed", "card", "mana", "value"])
+                | Some(["the", "revealed", "cards", "mana", "value"])
+                | Some(["revealed", "card", "mana", "value"])
+                | Some(["revealed", "cards", "mana", "value"])
+                | Some(["the", "mana", "value", "of", "the", "revealed", "card"])
+                | Some(["the", "mana", "value", "of", "the", "revealed", "cards"])
+                | Some(["mana", "value", "of", "the", "revealed", "card"])
+                | Some(["mana", "value", "of", "the", "revealed", "cards"])
+        ) {
+            TagKey::from("__public_revealed")
         } else {
             TagKey::from(IT_TAG)
         };
@@ -2506,13 +2563,18 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
     if remaining_words.as_slice() == ["equipped", "creature"]
-        || remaining_words.as_slice() == ["equipped", "creatures"]
-        || remaining_words.as_slice() == ["enchanted", "creature"]
-        || remaining_words.as_slice() == ["enchanted", "creatures"]
+        || remaining_words.as_slice() == ["equipped", "permanent"]
     {
-        let filter = parse_object_filter(tokens, false)?;
         return Ok(wrap_target_count(
-            TargetAst::Object(filter, None, None),
+            TargetAst::Tagged(TagKey::from("equipped"), span),
+            target_count,
+        ));
+    }
+    if remaining_words.as_slice() == ["enchanted", "creature"]
+        || remaining_words.as_slice() == ["enchanted", "permanent"]
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from("enchanted"), span),
             target_count,
         ));
     }
@@ -3591,6 +3653,8 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "equip"
             | "escape"
             | "flashback"
+            | "kicker"
+            | "multikicker"
             | "boast"
             | "modular"
             | "morph"
@@ -3842,7 +3906,13 @@ pub(crate) fn parse_optional_cost_keyword_line(
         return Ok(None);
     }
 
-    let tail = tokens.get(1..).unwrap_or_default();
+    let mut tail = tokens.get(1..).unwrap_or_default();
+    if matches!(
+        tail.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
+        tail = tail.get(1..).unwrap_or_default();
+    }
     if tail.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "{keyword} keyword missing cost"

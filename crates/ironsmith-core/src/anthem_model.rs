@@ -9,6 +9,7 @@ pub enum AnthemCountExpression {
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
     CommanderCastCount(PlayerFilter),
+    PlayerSpeed(PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]

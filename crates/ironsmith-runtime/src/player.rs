@@ -597,6 +597,7 @@ pub struct Player {
     pub poison_counters: u32,
     pub energy_counters: u32,
     pub experience_counters: u32,
+    pub speed: Option<u8>,
     pub ring_temptations: u32,
     pub ring_bearer: Option<ObjectId>,
     pub ring_legendary_added: Option<ObjectId>,
@@ -643,6 +644,7 @@ impl Player {
             poison_counters: 0,
             energy_counters: 0,
             experience_counters: 0,
+            speed: None,
             ring_temptations: 0,
             ring_bearer: None,
             ring_legendary_added: None,
@@ -719,6 +721,38 @@ impl Player {
     /// Loses life (different from damage - can't be prevented/redirected the same way).
     pub fn lose_life(&mut self, amount: u32) {
         self.life -= amount as i32;
+    }
+
+    pub fn start_engines(&mut self) -> bool {
+        if self.speed.is_some() {
+            return false;
+        }
+        self.speed = Some(1);
+        true
+    }
+
+    pub fn increase_speed(&mut self, amount: u32) -> u32 {
+        if amount == 0 {
+            return 0;
+        }
+        let old_speed = self.speed.unwrap_or(0);
+        let amount = amount.min(4) as u8;
+        let new_speed = (old_speed.saturating_add(amount)).min(4).max(1);
+        self.speed = Some(new_speed);
+        u32::from(new_speed.saturating_sub(old_speed))
+    }
+
+    pub fn reduce_speed(&mut self, amount: u32, minimum: u8) -> u32 {
+        let Some(old_speed) = self.speed else {
+            return 0;
+        };
+        if amount == 0 || old_speed <= minimum {
+            return 0;
+        }
+        let amount = amount.min(4) as u8;
+        let new_speed = old_speed.saturating_sub(amount).max(minimum);
+        self.speed = Some(new_speed);
+        u32::from(old_speed.saturating_sub(new_speed))
     }
 
     /// Adds poison counters. Returns the new total.

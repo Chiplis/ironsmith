@@ -2341,7 +2341,7 @@ fn resolve_condition_player_simple(
                 _ => None,
             }
         }
-        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
                     game.players

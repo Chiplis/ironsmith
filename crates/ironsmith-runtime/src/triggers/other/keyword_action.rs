@@ -120,6 +120,9 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => "Whenever a player cycles this card".to_string(),
             };
         }
+        if self.source_must_match && self.action == KeywordActionKind::Exploit {
+            return "Whenever this creature exploits a creature".to_string();
+        }
         if self.action == KeywordActionKind::Cycle
             && let Some(source_filter) = &self.source_filter
             && is_plain_other_card_filter(source_filter)
@@ -176,6 +179,24 @@ impl TriggerMatcher for KeywordActionTrigger {
                 source_filter.description(),
                 self.action.third_person()
             );
+        }
+        if self.action == KeywordActionKind::Exploit
+            && let Some(source_filter) = &self.source_filter
+        {
+            let description = source_filter.description();
+            let subject = if description.starts_with("a ")
+                || description.starts_with("an ")
+                || description.starts_with("the ")
+                || description.starts_with("this ")
+                || description.starts_with("that ")
+                || description.starts_with("each ")
+                || description.starts_with("another ")
+            {
+                description
+            } else {
+                format!("a {description}")
+            };
+            return format!("Whenever {subject} exploits a creature");
         }
 
         match &self.player {
@@ -347,6 +368,40 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever a creature you control explores"
+        );
+    }
+
+    #[test]
+    fn keyword_action_exploit_from_source_matches_and_displays_mechanic_phrase() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let trigger =
+            KeywordActionTrigger::from_source(KeywordActionKind::Exploit, PlayerFilter::You);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Exploit, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature exploits a creature"
+        );
+    }
+
+    #[test]
+    fn keyword_action_exploit_matching_creature_filter_displays_mechanic_phrase() {
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Exploit,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever a creature you control exploits a creature"
         );
     }
 

@@ -18,10 +18,10 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
   return (
     <section
       className={cn(
-        "p-2 grid gap-2 rounded",
+        "p-2 grid gap-2 rounded border border-transparent",
         "bg-gradient-to-b from-secondary to-card",
         isActive && "shadow-[0_0_8px_rgba(127,184,106,0.30),0_0_0_1px_rgba(127,184,106,0.45)_inset]",
-        isPerspective && "shadow-[0_0_0_1px_rgba(212,164,74,0.40)_inset]",
+        isPerspective && "border-[#4484d7] shadow-[inset_0_0_10px_rgba(68,132,215,0.34)]",
       )}
       data-player-id={player.id}
     >

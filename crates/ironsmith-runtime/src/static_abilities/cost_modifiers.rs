@@ -326,6 +326,15 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 )),
             )
         }
+        Value::Speed(player) => {
+            let phrase = match player {
+                PlayerFilter::You => "your speed".to_string(),
+                PlayerFilter::Opponent => "an opponent's speed".to_string(),
+                PlayerFilter::Any => "a player's speed".to_string(),
+                _ => "that player's speed".to_string(),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
         _ => ("{X}".to_string(), None),
     }
 }

@@ -1682,6 +1682,18 @@ impl Effect {
         Self::new(SetLifeTotalEffect::new(amount, player))
     }
 
+    /// Create an "increase speed by N" effect.
+    pub fn increase_speed(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::IncreaseSpeedEffect;
+        Self::new(IncreaseSpeedEffect::new(amount, player))
+    }
+
+    /// Create a "reduce speed by N" effect.
+    pub fn reduce_speed(amount: impl Into<Value>, player: PlayerFilter, minimum: u8) -> Self {
+        use crate::effects::ReduceSpeedEffect;
+        Self::new(ReduceSpeedEffect::new(amount, player, minimum))
+    }
+
     /// Create an effect that doubles each type of unspent mana a player has.
     pub fn double_mana_pool_player(player: PlayerFilter) -> Self {
         use crate::effects::DoubleManaPoolEffect;
@@ -2032,6 +2044,22 @@ impl Effect {
     pub fn investigate_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::InvestigateEffect;
         Self::new(InvestigateEffect::new(count, player))
+    }
+
+    /// Create an "incubate N" effect.
+    pub fn incubate(amount: impl Into<Value>, count: impl Into<Value>) -> Self {
+        use crate::effects::IncubateEffect;
+        Self::new(IncubateEffect::you(amount, count))
+    }
+
+    /// Create a "[player] incubates N" effect.
+    pub fn incubate_player(
+        amount: impl Into<Value>,
+        count: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::IncubateEffect;
+        Self::new(IncubateEffect::new(amount, count, player))
     }
 
     /// Create a cipher resolution effect.

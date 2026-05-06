@@ -315,6 +315,9 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
     }
+    if let Some(ability_index) = entry.ability_index {
+        ctx = ctx.with_ability_index(ability_index);
+    }
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
@@ -373,6 +376,9 @@ pub(super) fn resolve_stack_entry_full(
 
     if let Some(trigger_identity) = entry.trigger_identity {
         game.record_triggered_ability_resolved(execution_source, trigger_identity);
+    }
+    if let Some(ability_index) = entry.ability_index {
+        game.record_activated_ability_resolved(execution_source, ability_index);
     }
 
     // Check intervening-if condition at resolution time
@@ -464,6 +470,7 @@ pub(super) fn resolve_stack_entry_full(
                 // Copy optional_costs_paid to the permanent before moving to battlefield
                 if let Some(perm) = game.object_mut(entry.object_id) {
                     perm.optional_costs_paid = entry.optional_costs_paid.clone();
+                    perm.cast_tagged_objects = entry.tagged_objects.clone();
                 }
 
                 // Interactive replacement was already processed above - skip second ETB processing
@@ -517,6 +524,7 @@ pub(super) fn resolve_stack_entry_full(
             // (so ETB triggers can access kick count, etc.)
             if let Some(perm) = game.object_mut(entry.object_id) {
                 perm.optional_costs_paid = entry.optional_costs_paid.clone();
+                perm.cast_tagged_objects = entry.tagged_objects.clone();
                 // Preserve Convoke/Improvise contributors for later triggered ability resolution.
                 perm.keyword_payment_contributions_to_cast =
                     entry.keyword_payment_contributions.clone();

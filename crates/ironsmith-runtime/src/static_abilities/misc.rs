@@ -10,7 +10,7 @@ use super::{
     TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
-use crate::ability::LevelAbility;
+use crate::ability::{Ability, AbilityKind, LevelAbility};
 use crate::color::Color;
 use crate::compiled_text::describe_value;
 use crate::effect::{Condition, Effect, EventValueSpec, Value};
@@ -27,12 +27,14 @@ use crate::events::zones::matchers::{
     ThisWouldEnterBattlefieldMatcher, WouldEnterBattlefieldMatcher,
 };
 use crate::events::zones::{EnterBattlefieldEvent, ZoneChangeEvent};
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::game_state::GameState;
 use crate::grant::GrantSpec;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::replacement::{
-    RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect, ZoneReplacementSpec,
+    EventModification, RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect,
+    ZoneReplacementSpec,
 };
 use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -865,6 +867,7 @@ impl StaticAbilityKind for Bloodthirst {
                 counter_type: CounterType::PlusOnePlusOne,
                 count: Value::Fixed(self.amount as i32),
                 added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
             },
         ))
     }
@@ -997,6 +1000,7 @@ impl StaticAbilityKind for EntersWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
                 added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
             },
         ))
     }
@@ -1009,6 +1013,7 @@ pub struct EntersWithCountersIfCondition {
     pub count: Value,
     pub condition: Condition,
     pub condition_display: String,
+    pub added_abilities: Vec<Ability>,
 }
 
 impl EntersWithCountersIfCondition {
@@ -1018,11 +1023,28 @@ impl EntersWithCountersIfCondition {
         condition: Condition,
         condition_display: String,
     ) -> Self {
+        Self::new_with_abilities(
+            counter_type,
+            count,
+            condition,
+            condition_display,
+            Vec::new(),
+        )
+    }
+
+    pub fn new_with_abilities(
+        counter_type: CounterType,
+        count: Value,
+        condition: Condition,
+        condition_display: String,
+        added_abilities: Vec<Ability>,
+    ) -> Self {
         Self {
             counter_type,
             count,
             condition,
             condition_display: condition_display.trim().to_string(),
+            added_abilities,
         }
     }
 }
@@ -1033,7 +1055,23 @@ impl StaticAbilityKind for EntersWithCountersIfCondition {
     }
 
     fn display(&self) -> String {
-        let base = EntersWithCounters::new(self.counter_type, self.count.clone()).display();
+        let mut base = EntersWithCounters::new(self.counter_type, self.count.clone()).display();
+        if !self.added_abilities.is_empty() {
+            let ability_text = self
+                .added_abilities
+                .iter()
+                .filter_map(entered_ability_display)
+                .collect::<Vec<_>>()
+                .join(" and ");
+            if !ability_text.is_empty() {
+                let addition = format!(" and with {ability_text}");
+                if let Some((head, where_clause)) = base.split_once(", where X is ") {
+                    base = format!("{head}{addition}, where X is {where_clause}");
+                } else {
+                    base.push_str(&addition);
+                }
+            }
+        }
         let condition = self.condition_display.trim();
         if condition.is_empty() {
             base
@@ -1058,8 +1096,16 @@ impl StaticAbilityKind for EntersWithCountersIfCondition {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
                 added_subtypes: Vec::new(),
+                added_abilities: self.added_abilities.clone(),
             },
         ))
+    }
+}
+
+fn entered_ability_display(ability: &Ability) -> Option<String> {
+    match &ability.kind {
+        AbilityKind::Static(static_ability) => Some(static_ability.display().to_ascii_lowercase()),
+        _ => None,
     }
 }
 
@@ -2061,6 +2107,7 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
                 added_subtypes: self.added_subtypes.clone(),
+                added_abilities: Vec::new(),
             },
         ))
     }
@@ -2414,6 +2461,188 @@ impl StaticAbilityKind for DoubleDamageFromSourcesYouControlOfChosenType {
                 ability_source: source,
             },
             ReplacementAction::Double,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModifyDamageAmountReplacement {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub delta: i32,
+    pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl ModifyDamageAmountReplacement {
+    pub fn new(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        delta: i32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            delta,
+            display: display.into(),
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DamageAmountReplacementMatcher {
+    source_filter: ObjectFilter,
+    target_player_filter: Option<PlayerFilter>,
+    target_object_filter: Option<ObjectFilter>,
+    condition: Option<crate::ConditionExpr>,
+}
+
+impl DamageAmountReplacementMatcher {
+    fn source_matches(
+        &self,
+        damage: &DamageEvent,
+        ctx: &crate::events::context::EventContext<'_>,
+    ) -> bool {
+        let current = ctx.game.object(damage.source).is_some_and(|source| {
+            self.source_filter
+                .matches(source, &ctx.filter_ctx, ctx.game)
+        });
+        let lki = ctx
+            .event_source_snapshot
+            .filter(|snapshot| snapshot.object_id == damage.source)
+            .is_some_and(|snapshot| {
+                self.source_filter
+                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            });
+        current || lki
+    }
+
+    fn target_matches(
+        &self,
+        damage: &DamageEvent,
+        ctx: &crate::events::context::EventContext<'_>,
+    ) -> bool {
+        match damage.target {
+            crate::events::DamageTarget::Player(player) => self
+                .target_player_filter
+                .as_ref()
+                .is_some_and(|filter| filter.matches_player(player, &ctx.filter_ctx)),
+            crate::events::DamageTarget::Object(object_id) => {
+                let Some(filter) = &self.target_object_filter else {
+                    return false;
+                };
+                ctx.game
+                    .object(object_id)
+                    .is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game))
+            }
+        }
+    }
+
+    fn condition_matches(&self, ctx: &crate::events::context::EventContext<'_>) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: Some(source),
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
+    }
+}
+
+impl ReplacementMatcher for DamageAmountReplacementMatcher {
+    fn matches_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::EventContext<'_>,
+    ) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        self.condition_matches(ctx)
+            && self.source_matches(damage, ctx)
+            && self.target_matches(damage, ctx)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "If matching damage would be dealt".to_string()
+    }
+}
+
+impl StaticAbilityKind for ModifyDamageAmountReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ModifyDamageAmountReplacement
+    }
+
+    fn display(&self) -> String {
+        let Some(condition) = &self.condition else {
+            return self.display.clone();
+        };
+        let condition = super::describe_static_condition(condition);
+        if let Some(rest) = condition.strip_prefix("as long as ")
+            && let Some(if_tail) = self.display.strip_prefix("If ")
+        {
+            return format!("As long as {rest}, if {if_tail}");
+        }
+        format!("{} {}", self.display, condition)
+    }
+
+    fn with_static_condition(
+        &self,
+        condition: crate::ConditionExpr,
+    ) -> Option<super::StaticAbility> {
+        Some(super::StaticAbility::new(
+            self.clone().with_condition(condition),
+        ))
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        if self.delta == 0 {
+            return None;
+        }
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.source_filter.clone(),
+                target_player_filter: self.target_player_filter.clone(),
+                target_object_filter: self.target_object_filter.clone(),
+                condition: self.condition.clone(),
+            },
+            ReplacementAction::Modify(EventModification::Add(self.delta)),
         ))
     }
 }
@@ -3431,10 +3660,12 @@ impl StaticAbilityKind for UnsupportedParserLine {
 mod tests {
     use super::*;
     use crate::StaticAbility;
-    use crate::card::{CardBuilder, PowerToughness};
+    use crate::card::{CardBuilder, PowerToughness, PtValue};
     use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::events::EventContext;
+    use crate::events::cause::EventCause;
+    use crate::events::processing::process_damage_assignments_with_event;
     use crate::events::zones::ZoneChangeEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaCost;
@@ -3619,6 +3850,78 @@ mod tests {
             !choose_debug.contains("RevealTopEffect"),
             "draw replacement should not reveal the card, got {choose_debug}"
         );
+    }
+
+    #[test]
+    fn test_modify_damage_amount_replacement_respects_max_speed_condition() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+        let source_card = CardBuilder::new(CardId::from_raw(4300), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(2)))
+            .build();
+        let target_card = CardBuilder::new(CardId::from_raw(4301), "Bob Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let target = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+
+        let condition = crate::ConditionExpr::ValueComparison {
+            left: Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(4),
+        };
+        let ability = ModifyDamageAmountReplacement::new(
+            ObjectFilter::default().you_control(),
+            Some(PlayerFilter::Opponent),
+            Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+            1,
+            "If a source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus 1 instead.",
+        )
+        .with_condition(condition);
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("damage amount replacement should generate a replacement effect");
+        game.effect_store
+            .replacement_effects
+            .add_static_ability_effect(replacement);
+
+        let before_max_speed = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Player(bob),
+            2,
+            false,
+            EventCause::from_effect(source, alice),
+        );
+        assert_eq!(before_max_speed.assignments[0].amount, 2);
+
+        game.start_engines(alice);
+        for _ in 0..3 {
+            game.increase_speed(alice, 1);
+        }
+
+        let player_damage = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Player(bob),
+            2,
+            false,
+            EventCause::from_effect(source, alice),
+        );
+        assert_eq!(player_damage.assignments[0].amount, 3);
+
+        let permanent_damage = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Object(target),
+            4,
+            false,
+            EventCause::from_effect(source, alice),
+        );
+        assert_eq!(permanent_damage.assignments[0].amount, 5);
     }
 
     #[test]
@@ -3896,6 +4199,71 @@ mod tests {
             !matcher.matches_event(&event, &ctx),
             "conditional enters-with-counters should not match when condition is false"
         );
+    }
+
+    #[test]
+    fn enters_with_counters_if_kicked_uses_discarded_cost_card_mana_value() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let discarded_card = CardBuilder::new(CardId::from_raw(6100), "Discarded Baloth")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![crate::mana::ManaSymbol::Generic(3)],
+                vec![crate::mana::ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let discarded_id = game.create_object_from_card(&discarded_card, alice, Zone::Graveyard);
+        let discarded_snapshot = {
+            let discarded = game
+                .object(discarded_id)
+                .expect("discarded card should exist");
+            crate::snapshot::ObjectSnapshot::from_object(discarded, &game)
+        };
+
+        let source_card = CardBuilder::new(CardId::from_raw(6101), "Kicked Pet")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(2)))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+        let mut paid = crate::cost::OptionalCostsPaid::new(1);
+        paid.mark_label_paid("Kicker");
+        let enters = EntersWithCountersIfCondition::new_with_abilities(
+            CounterType::PlusOnePlusOne,
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::TagKey::from(
+                "discarded_cost",
+            )))),
+            Condition::ThisSpellWasKicked,
+            "this creature was kicked".to_string(),
+            vec![Ability::static_ability(StaticAbility::flying())],
+        );
+        {
+            let source_obj = game.object_mut(source).expect("source should exist");
+            source_obj.optional_costs_paid = paid;
+            source_obj.cast_tagged_objects.insert(
+                crate::tag::TagKey::from("discarded_cost"),
+                vec![discarded_snapshot],
+            );
+            source_obj
+                .abilities
+                .push(Ability::static_ability(StaticAbility::new(enters)));
+        }
+
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let result = game
+            .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+            .expect("source should enter the battlefield");
+
+        let permanent = game
+            .object(result.new_id)
+            .expect("permanent should exist on battlefield");
+        assert_eq!(
+            permanent
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied(),
+            Some(4)
+        );
+        assert!(game.object_has_ability(result.new_id, &StaticAbility::flying()));
     }
 
     #[test]

@@ -1,5 +1,18 @@
 use super::*;
 
+const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
+
+pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::ConditionExpr {
+    if label == MAX_SPEED_CONDITION_LABEL {
+        return crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        };
+    }
+    crate::ConditionExpr::SourceChosenOption(label.to_string())
+}
+
 pub(crate) fn strip_non_keyword_label_prefix_for_lowering_lexed(
     mut tokens: &[OwnedLexToken],
 ) -> &[OwnedLexToken] {
@@ -114,7 +127,7 @@ pub(crate) fn wrap_chosen_option_static_chunk(
     let Some(label) = chosen_option_label else {
         return Ok(chunk);
     };
-    let condition = crate::ConditionExpr::SourceChosenOption(label.to_string());
+    let condition = condition_for_chosen_option_label(label);
     Ok(match chunk {
         LineAst::StaticAbility(ability) => LineAst::StaticAbility(
             crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {

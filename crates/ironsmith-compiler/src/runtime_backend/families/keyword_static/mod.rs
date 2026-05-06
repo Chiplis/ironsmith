@@ -62,7 +62,8 @@ pub(crate) use super::grammar::values::parse_add_mana_equal_amount_value_lexed a
 use super::grammar::values::parse_max_cards_in_hand_value_lexed;
 use super::keyword_static_helpers::*;
 use super::lexer::{
-    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, trim_lexed_commas,
+    OwnedLexToken, TokenKind, parser_token_word_refs, render_token_slice, split_lexed_sentences,
+    trim_lexed_commas,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{
@@ -78,9 +79,10 @@ use super::token_primitives::{
 use super::util::{
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_flashback_keyword_line, parse_subtype_flexible, parse_value,
-    parse_zone_word, preserve_keyword_prefix_for_parse,
-    source_reference_surface_for_possessive_words, trim_commas, words,
+    parse_counter_type_word, parse_flashback_keyword_line, parse_number_word_i32,
+    parse_subtype_flexible, parse_value, parse_value_expr_words, parse_zone_word,
+    preserve_keyword_prefix_for_parse, source_reference_surface_for_possessive_words, trim_commas,
+    words,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
 use super::value_helpers::parse_commander_cast_count_player;
@@ -532,6 +534,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
+        single_static_ability_ast_rule!(parse_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
@@ -2396,6 +2399,61 @@ pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
             "Double all damage that sources you control of the chosen type would deal.".to_string(),
         ),
     ))
+}
+
+pub(crate) fn parse_damage_amount_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    let prefix = [
+        "if",
+        "a",
+        "source",
+        "you",
+        "control",
+        "would",
+        "deal",
+        "damage",
+        "to",
+        "an",
+        "opponent",
+        "or",
+        "a",
+        "permanent",
+        "an",
+        "opponent",
+        "controls",
+        "it",
+        "deals",
+        "that",
+        "much",
+        "damage",
+        "plus",
+    ];
+    if !words.starts_with(&prefix) {
+        return Ok(None);
+    }
+    let Some(delta_word) = words.get(prefix.len()) else {
+        return Ok(None);
+    };
+    let Some(delta) = parse_number_word_i32(delta_word) else {
+        return Ok(None);
+    };
+    if words.get(prefix.len() + 1) != Some(&"instead") || words.len() != prefix.len() + 2 {
+        return Ok(None);
+    }
+
+    let display = format!(
+        "If a source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus {delta} instead."
+    );
+    Ok(Some(StaticAbility::modify_damage_amount_replacement(
+        ObjectFilter::default().you_control(),
+        Some(PlayerFilter::Opponent),
+        Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+        delta,
+        display,
+    )))
 }
 
 pub(crate) fn parse_enter_as_copy_as_enters_line(

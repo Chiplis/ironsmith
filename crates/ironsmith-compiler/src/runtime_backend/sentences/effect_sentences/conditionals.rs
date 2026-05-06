@@ -296,6 +296,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "food" => Some(Subtype::Food),
         "fortification" => Some(Subtype::Fortification),
         "gold" => Some(Subtype::Gold),
+        "incubator" | "incubators" => Some(Subtype::Incubator),
         "junk" | "junks" => Some(Subtype::Junk),
         "lander" | "landers" => Some(Subtype::Lander),
         "map" | "maps" => Some(Subtype::Map),

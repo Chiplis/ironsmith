@@ -99,6 +99,7 @@ mod tests {
             source_name: Some(name.to_string()),
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
             intervening_if: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],

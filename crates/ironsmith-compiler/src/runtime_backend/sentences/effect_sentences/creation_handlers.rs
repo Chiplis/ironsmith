@@ -23,7 +23,7 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, parse_card_type, parse_color, parse_number, parse_target_phrase, parse_value,
-    token_index_for_word_index, trim_commas,
+    token_index_for_word_index, trim_commas, value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_subtype_word;
@@ -1366,4 +1366,79 @@ pub(crate) fn parse_investigate(
     }
 
     Ok(EffectAst::subject_verb_investigate(player, count))
+}
+
+pub(crate) fn parse_incubate(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (mut amount, used) = parse_value(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing incubate amount (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        ))
+    })?;
+    let mut count = Value::Fixed(1);
+
+    let mut trailing = trim_commas(&tokens[used..]).to_vec();
+    let mut trailing_words = token_word_refs(&trailing);
+    if trailing_words.first().is_some_and(|word| *word == "once") {
+        count = Value::Fixed(1);
+        trailing = trim_commas(&trailing[1..]).to_vec();
+        trailing_words = token_word_refs(&trailing);
+    } else if trailing_words.first().is_some_and(|word| *word == "twice") {
+        count = Value::Fixed(2);
+        trailing = trim_commas(&trailing[1..]).to_vec();
+        trailing_words = token_word_refs(&trailing);
+    } else if let Some((parsed_count, count_used)) = parse_value(&trailing) {
+        let count_tail = trim_commas(&trailing[count_used..]).to_vec();
+        let count_tail_words = token_word_refs(&count_tail);
+        if count_tail_words
+            .first()
+            .is_some_and(|word| *word == "time" || *word == "times")
+        {
+            count = parsed_count;
+            trailing = trim_commas(&count_tail[1..]).to_vec();
+            trailing_words = token_word_refs(&trailing);
+        }
+    } else if trailing_words
+        .first()
+        .is_some_and(|word| *word == "time" || *word == "times")
+    {
+        trailing = trim_commas(&trailing[1..]).to_vec();
+        trailing_words = token_word_refs(&trailing);
+    }
+
+    if let Some(where_word_idx) = trailing_words.iter().position(|word| *word == "where") {
+        let where_token_idx = token_index_for_word_index(&trailing, where_word_idx).unwrap_or(0);
+        let Some(where_value) = parse_value_binding_clause(&trailing[where_token_idx..]) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing incubate where clause (clause: '{}')",
+                token_word_refs(tokens).join(" ")
+            )));
+        };
+        let where_value = where_value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+        if value_contains_unbound_x(&amount) {
+            amount = where_value;
+        } else if value_contains_unbound_x(&count) {
+            count = where_value;
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "incubate where clause did not bind X (clause: '{}')",
+                token_word_refs(tokens).join(" ")
+            )));
+        }
+        trailing = trim_commas(&trailing[..where_token_idx]).to_vec();
+        trailing_words = token_word_refs(&trailing);
+    }
+
+    if !trailing_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing incubate clause (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    Ok(EffectAst::subject_verb_incubate(player, amount, count))
 }

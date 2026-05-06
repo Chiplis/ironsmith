@@ -65,6 +65,7 @@ pub(super) fn apply_trait_replacement(
             counter_type,
             count,
             added_subtypes,
+            added_abilities,
         } => {
             let resolved_count = resolve_value_for_etb(count, game, effect.source);
             let modified = apply_trait_enter_with_counters(
@@ -72,6 +73,7 @@ pub(super) fn apply_trait_replacement(
                 *counter_type,
                 resolved_count,
                 added_subtypes,
+                added_abilities,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -549,6 +551,7 @@ fn apply_trait_enter_with_counters(
     counter_type: CounterType,
     count: u32,
     added_subtypes: &[crate::types::Subtype],
+    added_abilities: &[crate::ability::Ability],
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
@@ -558,7 +561,8 @@ fn apply_trait_enter_with_counters(
             Some(
                 event.rewrap(
                     etb.with_counters(counter_type, count)
-                        .with_added_subtypes(added_subtypes),
+                        .with_added_subtypes(added_subtypes)
+                        .with_added_abilities(added_abilities),
                 ),
             )
         }
@@ -569,7 +573,8 @@ fn apply_trait_enter_with_counters(
                     event.rewrap(
                         EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
                             .with_counters(counter_type, count)
-                            .with_added_subtypes(added_subtypes),
+                            .with_added_subtypes(added_subtypes)
+                            .with_added_abilities(added_abilities),
                     ),
                 )
             } else {
@@ -725,6 +730,9 @@ fn resolve_value_for_etb(
 
     if let Some(source_obj) = game.object(source) {
         ctx.optional_costs_paid = source_obj.optional_costs_paid.clone();
+        if !source_obj.cast_tagged_objects.is_empty() {
+            ctx = ctx.with_tagged_objects(source_obj.cast_tagged_objects.clone());
+        }
     }
 
     crate::effects::helpers::resolve_value(game, count, &ctx)

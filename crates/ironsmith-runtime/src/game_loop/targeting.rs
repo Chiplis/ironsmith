@@ -55,6 +55,9 @@ pub(super) fn queue_triggers_for_event(
     let event = game.ensure_trigger_event_provenance(event);
     let triggers = check_triggers(game, &event);
     for trigger in triggers {
+        if crate::triggers::check::is_speed_rule_trigger(&trigger) {
+            game.mark_speed_increase_triggered_this_turn(trigger.controller);
+        }
         trigger_queue.add(trigger);
     }
 }
@@ -1136,6 +1139,13 @@ pub fn player_matches_filter_with_combat(
             let candidate_hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
             let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
             candidate_hand >= your_hand.saturating_add(*count as usize)
+        }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => {
+            player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                && game.has_max_speed(player_id) == *has_max_speed
         }
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,

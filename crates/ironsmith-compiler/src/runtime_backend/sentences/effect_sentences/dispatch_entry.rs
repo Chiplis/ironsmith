@@ -2076,6 +2076,10 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
                 replace_value(amount, replacement, clause)?;
             }
+            SubjectVerbActionAst::Incubate { amount, count } => {
+                replace_value(amount, replacement, clause)?;
+                replace_value(count, replacement, clause)?;
+            }
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 replace_values_in_total_cost(cost, replacement, clause)?;
             }
@@ -2124,6 +2128,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary

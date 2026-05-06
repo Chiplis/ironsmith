@@ -1,4 +1,4 @@
-use crate::cards::builders::{CardTextError, LineAst};
+use crate::cards::builders::{CardTextError, EffectAst, LineAst, TriggerSpec};
 use winnow::Parser;
 
 use super::activation_and_restrictions::{
@@ -437,6 +437,17 @@ pub(super) fn lower_exert_attack(
     lower_exert_attack_keyword_line(line, tokens)
 }
 
+pub(super) fn lower_exploit(
+    _line: &RewriteKeywordLine,
+    _tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::Triggered {
+        trigger: TriggerSpec::ThisEntersBattlefield,
+        effects: vec![EffectAst::subject_verb_exploit()],
+        max_triggers_per_turn: None,
+    })
+}
+
 pub(super) fn matches_additional_cost_choice(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
@@ -617,6 +628,13 @@ pub(super) fn matches_exert_attack(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(is_exert_attack_keyword_line(tokens))
+}
+
+pub(super) fn matches_exploit(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(token_words_have_prefix(tokens, &["exploit"]))
 }
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {

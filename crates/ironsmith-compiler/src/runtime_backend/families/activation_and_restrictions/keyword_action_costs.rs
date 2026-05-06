@@ -680,6 +680,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     let (head, second) = lexed_head_words(phrase_tokens).unwrap_or(("", None));
 
     match words.as_slice() {
+        ["start", "your", "engines"] => {
+            return Some(KeywordAction::StartYourEngines);
+        }
         ["landwalk"] => {
             return Some(KeywordAction::Landwalk(
                 crate::static_abilities::LandwalkKind::AnyLand,

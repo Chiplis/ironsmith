@@ -387,6 +387,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "switches" | "switch" => Verb::Switch,
             "skips" | "skip" => Verb::Skip,
             "surveils" | "surveil" => Verb::Surveil,
+            "incubates" | "incubate" => Verb::Incubate,
             "shuffles" | "shuffle" => Verb::Shuffle,
             "reorders" | "reorder" => Verb::Reorder,
             "pays" | "pay" => Verb::Pay,

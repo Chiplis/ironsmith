@@ -163,10 +163,11 @@ pub use player::{
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect,
     GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
-    GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayAnyEnergyEffect,
-    PayEnergyEffect, PoisonCountersEffect, RingTemptsYouEffect, RollDieEffect,
-    SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
+    PayAnyEnergyEffect, PayEnergyEffect, PoisonCountersEffect, ReduceSpeedEffect,
+    RingTemptsYouEffect, RollDieEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
@@ -177,7 +178,8 @@ pub use stack::{
     NewTargetRestriction, RetargetMode, RetargetStackObjectEffect,
 };
 pub use tokens::{
-    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
+    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
+    InvestigateEffect,
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,

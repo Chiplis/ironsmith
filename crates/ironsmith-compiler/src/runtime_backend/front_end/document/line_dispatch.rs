@@ -1,9 +1,9 @@
 use super::line_family_handlers::{
     run_activation_line_family, run_colon_nonactivation_statement_line_family,
     run_combined_static_line_family, run_keyword_line_family, run_labeled_line_family,
-    run_partner_with_keyword_line_family, run_statement_line_family,
-    run_statement_probe_line_family, run_static_line_family,
-    run_trailing_keyword_activation_line_family, run_triggered_line_family,
+    run_max_speed_labeled_line_family, run_partner_with_keyword_line_family,
+    run_start_your_engines_line_family, run_statement_line_family, run_statement_probe_line_family,
+    run_static_line_family, run_trailing_keyword_activation_line_family, run_triggered_line_family,
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
 };
 use super::*;
@@ -41,7 +41,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 12] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 14] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -55,6 +55,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 12] = [
         run: run_labeled_line_family,
     },
     LineFamilyRuleDef {
+        id: "max-speed-labeled-line",
+        priority: 18,
+        heads: &[],
+        run: run_max_speed_labeled_line_family,
+    },
+    LineFamilyRuleDef {
         id: "triggered-line",
         priority: 30,
         heads: &["when", "whenever", "at"],
@@ -65,6 +71,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 12] = [
         priority: 35,
         heads: &["partner"],
         run: run_partner_with_keyword_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "start-your-engines-line",
+        priority: 36,
+        heads: &["start"],
+        run: run_start_your_engines_line_family,
     },
     LineFamilyRuleDef {
         id: "keyword-line",

@@ -80,6 +80,8 @@ pub enum Value {
     ToughnessOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
     LifeTotal(PlayerFilter),
+    LifeTotalDifference(PlayerFilter),
+    Speed(PlayerFilter),
     StartingLifeTotal(PlayerFilter),
     HalfLifeTotalRoundedUp(PlayerFilter),
     HalfLifeTotalRoundedDown(PlayerFilter),
@@ -103,6 +105,7 @@ pub enum Value {
         exclude_source: bool,
     },
     CommanderCastCount(PlayerFilter),
+    ThisAbilityResolvedThisTurnCount,
     DamageDealtThisTurnByTaggedSpellCast(TagKey),
     CardTypesInGraveyard(PlayerFilter),
     Devotion {

@@ -10,7 +10,9 @@ use crate::filter::PlayerFilterExt;
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::player::ManaPool;
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
+use crate::tag::TagKey;
 use crate::target::FilterContext;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -205,6 +207,11 @@ pub struct Object {
     /// as a spell (e.g., Convoke/Improvise). Used by later resolution-time references like
     /// "each creature that convoked it".
     pub keyword_payment_contributions_to_cast: Vec<crate::decision::KeywordPaymentContribution>,
+    /// Object snapshots captured while paying costs for this spell cast.
+    ///
+    /// This lets replacement/trigger text on the resolving permanent reference cards or permanents
+    /// used to pay costs, such as "the discarded card's mana value".
+    pub cast_tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     /// Additional non-printed costs paid while casting this object as a spell.
     pub additional_cost: TotalCost,
     // Note: The following fields have been moved to GameState extension maps:
@@ -318,6 +325,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             additional_cost: TotalCost::free(),
         }
     }
@@ -510,6 +518,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             additional_cost: TotalCost::free(),
         }
     }
@@ -563,6 +572,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             // Cost effects are copiable
             additional_cost: source.additional_cost.clone(),
             // Saga fields - copiable (a token copy of a saga is also a saga)
@@ -621,6 +631,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             additional_cost: TotalCost::free(),
         };
         if let Some(loyalty) = snapshot.loyalty {
@@ -678,6 +689,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             additional_cost: TotalCost::free(),
         }
     }
@@ -1214,6 +1226,7 @@ impl Object {
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
+            cast_tagged_objects: HashMap::new(),
             additional_cost: def.additional_cost.clone(),
         }
     }

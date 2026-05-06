@@ -44,7 +44,7 @@ use super::super::value_helpers::{
     parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
 };
 use super::clause_pattern_helpers::extract_subject_player;
-use super::creation_handlers::{parse_create, parse_investigate};
+use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
 use super::subject_verb_primitives::try_build_unless;
 use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_transform};

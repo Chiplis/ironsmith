@@ -237,6 +237,24 @@ fn compile_subject_verb_effect(
             |count| Effect::investigate_player(count, PlayerFilter::You),
             Effect::investigate_player,
         ),
+        SubjectVerbActionAst::Incubate { amount, count } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let amount = subject.resolve_object_refs_and_bind_player_refs_in_value(amount, ctx)?;
+            let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
+            let you_amount = amount.clone();
+            let you_count = count.clone();
+            let (player_filter, choices) = subject.into_parts();
+            let amount = per_player_partition_value_for_filter(amount, &player_filter);
+            let count = per_player_partition_value_for_filter(count, &player_filter);
+            let you_amount = per_player_partition_value_for_filter(you_amount, &PlayerFilter::You);
+            let you_count = per_player_partition_value_for_filter(you_count, &PlayerFilter::You);
+            compile_player_effect_from_resolved_filter(
+                player_filter,
+                choices,
+                || Effect::incubate(you_amount, you_count),
+                |filter| Effect::incubate_player(amount, count, filter),
+            )
+        }
         SubjectVerbActionAst::EmitKeywordAction { action, amount } => {
             Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
         }
@@ -318,6 +336,26 @@ fn compile_subject_verb_effect(
             let effect =
                 tag_object_target_effect(Effect::explore(spec.clone()), &spec, ctx, "explored");
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Exploit => {
+            let id = ctx.next_effect_id();
+            Ok((
+                vec![
+                    Effect::with_id(id.0, Effect::may(vec![Effect::sacrifice(
+                        ObjectFilter::creature(),
+                        1,
+                    )])),
+                    Effect::if_then(
+                        id,
+                        EffectPredicate::Happened,
+                        vec![Effect::emit_keyword_action(
+                            crate::events::KeywordActionKind::Exploit,
+                            1,
+                        )],
+                    ),
+                ],
+                Vec::new(),
+            ))
         }
         SubjectVerbActionAst::Connive { target, count } => {
             let count = resolve_value_it_tag(count, &current_reference_env(ctx))?;

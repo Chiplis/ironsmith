@@ -353,6 +353,7 @@ where
                     card_type.to_string().to_ascii_lowercase()
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
+                PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
                 | PlayerFilter::IteratedPlayer

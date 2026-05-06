@@ -324,6 +324,13 @@ fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -
     format!("activated_ability:{}:{}", source.0, ability_index)
 }
 
+fn activated_ability_resolution_turn_counter_name(
+    source: ObjectId,
+    ability_index: usize,
+) -> String {
+    format!("activated_ability_resolved:{}:{}", source.0, ability_index)
+}
+
 fn triggered_ability_resolution_turn_counter_name(
     source: ObjectId,
     trigger_id: TriggerIdentity,
@@ -1447,6 +1454,8 @@ pub struct StackEntry {
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
     /// Structural identity of the triggered ability represented by this stack entry.
     pub trigger_identity: Option<TriggerIdentity>,
+    /// Index of the activated ability represented by this stack entry.
+    pub ability_index: Option<usize>,
     /// Intervening-if condition that must be true at resolution time (for triggered abilities).
     /// If this condition is false when the ability would resolve, the ability does nothing.
     pub intervening_if: Option<crate::ConditionExpr>,
@@ -1505,6 +1514,7 @@ impl StackEntry {
             source_name: None,
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
@@ -1541,6 +1551,7 @@ impl StackEntry {
             source_name: None,
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
@@ -1643,6 +1654,12 @@ impl StackEntry {
         self
     }
 
+    /// Set the activated ability index for this activated ability stack entry.
+    pub fn with_ability_index(mut self, ability_index: usize) -> Self {
+        self.ability_index = Some(ability_index);
+        self
+    }
+
     /// Set the intervening-if condition that must be true at resolution time.
     pub fn with_intervening_if(mut self, condition: crate::ConditionExpr) -> Self {
         self.intervening_if = Some(condition);
@@ -1740,6 +1757,9 @@ pub struct GameState {
     /// Combat-damage-to-player hits already processed in the current trigger batch.
     /// Used for "one or more ... deal combat damage to a player" trigger matching.
     pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
+
+    /// Players whose inherent speed trigger has already fired this turn.
+    pub speed_increase_triggered_this_turn: HashSet<PlayerId>,
 
     // =========================================================================
     // Battlefield State Extension Maps
@@ -1891,6 +1911,7 @@ impl GameState {
             soulbond_pairs: HashMap::new(),
             ninjutsu_attack_targets: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
+            speed_increase_triggered_this_turn: HashSet::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -3052,11 +3073,15 @@ impl GameState {
             new_zone == Zone::Battlefield && new_object.bestow_cast_state.is_some();
         let preserve_temporary_static_ability_grants =
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        let preserve_cast_tags = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         if !preserve_face_down_overlay && !preserve_bestow_overlay {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
             new_object.bestow_cast_state = None;
             new_object.face_down_cast_state = None;
+        }
+        if !preserve_cast_tags {
+            new_object.cast_tagged_objects.clear();
         }
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
@@ -3218,6 +3243,24 @@ impl GameState {
             cause,
             decision_maker,
             true,
+            Vec::new(),
+        )
+    }
+
+    pub fn move_object_with_etb_processing_with_initial_counters_with_dm(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
+        decision_maker: &mut impl crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            true,
+            initial_enters_with_counters,
         )
     }
 
@@ -3233,6 +3276,7 @@ impl GameState {
             crate::events::cause::EventCause::effect(),
             decision_maker,
             false,
+            Vec::new(),
         )
     }
 
@@ -3243,6 +3287,7 @@ impl GameState {
         cause: crate::events::cause::EventCause,
         decision_maker: &mut impl crate::decision::DecisionMaker,
         choose_aura_attachment: bool,
+        initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
 
@@ -3256,11 +3301,12 @@ impl GameState {
         }
 
         // Process through ETB replacement effects
-        let result = crate::events::processing::process_etb_with_event_and_dm(
+        let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters(
             self,
             old_id,
             old_zone,
             decision_maker,
+            initial_enters_with_counters,
         );
 
         // If ETB was prevented or redirected to a different zone
@@ -5230,6 +5276,39 @@ impl GameState {
         self.players.get_mut(id.index())
     }
 
+    pub fn player_speed(&self, id: PlayerId) -> Option<u8> {
+        self.player(id).and_then(|player| player.speed)
+    }
+
+    pub fn has_max_speed(&self, id: PlayerId) -> bool {
+        self.player_speed(id).is_some_and(|speed| speed >= 4)
+    }
+
+    pub fn start_engines(&mut self, id: PlayerId) -> bool {
+        self.player_mut(id)
+            .is_some_and(|player| player.start_engines())
+    }
+
+    pub fn increase_speed(&mut self, id: PlayerId, amount: u32) -> u32 {
+        self.player_mut(id)
+            .map(|player| player.increase_speed(amount))
+            .unwrap_or(0)
+    }
+
+    pub fn reduce_speed(&mut self, id: PlayerId, amount: u32, minimum: u8) -> u32 {
+        self.player_mut(id)
+            .map(|player| player.reduce_speed(amount, minimum))
+            .unwrap_or(0)
+    }
+
+    pub fn speed_increase_triggered_this_turn(&self, id: PlayerId) -> bool {
+        self.speed_increase_triggered_this_turn.contains(&id)
+    }
+
+    pub fn mark_speed_increase_triggered_this_turn(&mut self, id: PlayerId) {
+        self.speed_increase_triggered_this_turn.insert(id);
+    }
+
     /// Designate an object as a commander for a player.
     ///
     /// This sets the commander status on the game state and adds it to the player's commander list.
@@ -5734,6 +5813,7 @@ impl GameState {
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();
+        self.speed_increase_triggered_this_turn.clear();
 
         // Activate any pending player-control effects for the new active player.
         self.activate_pending_player_control(next_player);
@@ -6175,6 +6255,38 @@ impl GameState {
         self.named_turn_counter(&activated_ability_turn_counter_name(source, ability_index))
     }
 
+    /// Record that a specific activated ability resolved this turn.
+    pub fn record_activated_ability_resolved(&mut self, source: ObjectId, ability_index: usize) {
+        *self
+            .turn_store
+            .turn_history
+            .activated_abilities_resolved_this_turn
+            .entry((source, ability_index))
+            .or_insert(0) += 1;
+        self.turn_store.turn_history.turn_counters.increment_named(
+            activated_ability_resolution_turn_counter_name(source, ability_index),
+        );
+    }
+
+    /// Get how many times this activated ability resolved this turn.
+    pub fn activated_ability_resolution_count_this_turn(
+        &self,
+        source: ObjectId,
+        ability_index: usize,
+    ) -> u32 {
+        self.turn_store
+            .turn_history
+            .activated_abilities_resolved_this_turn
+            .get(&(source, ability_index))
+            .copied()
+            .unwrap_or_else(|| {
+                self.named_turn_counter(&activated_ability_resolution_turn_counter_name(
+                    source,
+                    ability_index,
+                ))
+            })
+    }
+
     /// Record that a mode index was chosen for an activated modal ability.
     pub fn record_ability_mode_choice(
         &mut self,
@@ -6434,6 +6546,7 @@ impl GameState {
         if let Some(source_id) = source
             && let Some(source_obj) = self.object(source_id)
         {
+            tagged_objects.extend(source_obj.cast_tagged_objects.clone());
             if let Some(attached_target) = source_obj.attached_to {
                 match attached_target {
                     AttachmentTarget::Object(attached_id) => {

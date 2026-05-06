@@ -280,6 +280,7 @@ pub(crate) fn parse_verb_first_clause(
         "become" => Verb::Become,
         "skip" => Verb::Skip,
         "surveil" => Verb::Surveil,
+        "incubate" => Verb::Incubate,
         "shuffle" => Verb::Shuffle,
         "pay" => Verb::Pay,
         "detain" => Verb::Detain,

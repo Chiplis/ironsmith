@@ -366,6 +366,7 @@ pub enum Subtype {
     Food,
     Fortification,
     Gold,
+    Incubator,
     Junk,
     Lander,
     Map,
@@ -637,6 +638,7 @@ impl Subtype {
             Subtype::Food,
             Subtype::Fortification,
             Subtype::Gold,
+            Subtype::Incubator,
             Subtype::Junk,
             Subtype::Lander,
             Subtype::Map,
@@ -948,6 +950,7 @@ impl Subtype {
                 | Subtype::Food
                 | Subtype::Fortification
                 | Subtype::Gold
+                | Subtype::Incubator
                 | Subtype::Junk
                 | Subtype::Lander
                 | Subtype::Map

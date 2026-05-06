@@ -45,6 +45,7 @@ impl StaticAbility {
             Some(StaticAbilityId::Infect) => Self::infect(),
             Some(StaticAbilityId::Changeling) => Self::changeling(),
             Some(StaticAbilityId::Partner) => Self::partner(),
+            Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),
             Some(StaticAbilityId::Assist) => Self::assist(),
             Some(StaticAbilityId::SplitSecond) => Self::split_second(),

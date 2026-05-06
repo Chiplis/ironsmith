@@ -139,6 +139,60 @@ fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
         && words.ends_with(&["tapped", "this", "way"])
 }
 
+fn prior_effect_words_reference_memory(words: &[&str]) -> bool {
+    words.windows(2).any(|window| window == ["this", "way"])
+        || words.iter().any(|word| {
+            matches!(
+                *word,
+                "chosen"
+                    | "destroyed"
+                    | "discarded"
+                    | "exiled"
+                    | "milled"
+                    | "revealed"
+                    | "sacrificed"
+                    | "searched"
+            )
+        })
+}
+
+fn prior_effect_metric_source(words: &[&str]) -> ironsmith_core::EffectMetricSource {
+    if words.iter().any(|word| *word == "chosen") {
+        ironsmith_core::EffectMetricSource::ChosenObjects
+    } else {
+        ironsmith_core::EffectMetricSource::AffectedObjects
+    }
+}
+
+fn parse_where_x_prior_effect_first_metric_value(words: &[&str], mut idx: usize) -> Option<Value> {
+    let metric = if words.get(idx).copied() == Some("power") {
+        idx += 1;
+        ironsmith_core::EffectMetric::FirstPower
+    } else if words.get(idx).copied() == Some("toughness") {
+        idx += 1;
+        ironsmith_core::EffectMetric::FirstToughness
+    } else if words.get(idx).copied() == Some("mana")
+        && words.get(idx + 1).copied() == Some("value")
+    {
+        idx += 2;
+        ironsmith_core::EffectMetric::FirstManaValue
+    } else {
+        return None;
+    };
+    if words.get(idx).copied() != Some("of") {
+        return None;
+    }
+    let object_words = &words[idx + 1..];
+    if !prior_effect_words_reference_memory(object_words) {
+        return None;
+    }
+
+    Some(Value::PendingEffectMetric {
+        source: prior_effect_metric_source(object_words),
+        metric,
+    })
+}
+
 fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
         return None;
@@ -146,6 +200,9 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     let mut idx = 3usize;
     if words.get(idx).copied() == Some("the") {
         idx += 1;
+    }
+    if let Some(value) = parse_where_x_prior_effect_first_metric_value(words, idx) {
+        return Some(value);
     }
     if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
         return None;
@@ -160,34 +217,64 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     {
         return Some(Value::X);
     }
-    let references_this_way = object_words
-        .windows(2)
-        .any(|window| window == ["this", "way"]);
-    let references_memory_action = object_words.iter().any(|word| {
-        matches!(
-            *word,
-            "chosen"
-                | "destroyed"
-                | "discarded"
-                | "exiled"
-                | "milled"
-                | "revealed"
-                | "sacrificed"
-                | "searched"
-        )
-    });
-    if !references_this_way && !references_memory_action {
+    if !prior_effect_words_reference_memory(object_words) {
         return None;
     }
 
     Some(Value::PendingEffectMetric {
-        source: if object_words.iter().any(|word| *word == "chosen") {
-            ironsmith_core::EffectMetricSource::ChosenObjects
-        } else {
-            ironsmith_core::EffectMetricSource::AffectedObjects
-        },
+        source: prior_effect_metric_source(object_words),
         metric: ironsmith_core::EffectMetric::Count,
     })
+}
+
+fn parse_where_x_commander_mana_value_choice(
+    words: &[&str],
+) -> Option<(EffectAst, Value)> {
+    if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
+        return None;
+    }
+    let tail: Vec<&str> = words
+        .get(3..)?
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "a" | "an" | "the"))
+        .collect();
+    if tail
+        != [
+            "mana",
+            "value",
+            "of",
+            "commander",
+            "you",
+            "own",
+            "on",
+            "battlefield",
+            "or",
+            "in",
+            "command",
+            "zone",
+        ]
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.is_commander = true;
+    filter.owner = Some(PlayerFilter::You);
+    let tag = TagKey::from("__where_x_commander_mana_value");
+
+    Some((
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+            zones: vec![Zone::Battlefield, Zone::Command],
+            search_mode: None,
+        },
+        Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag))),
+    ))
 }
 
 fn parse_tap_then_damage_for_number_tapped_this_way(
@@ -700,7 +787,13 @@ fn parse_effect_sentence_with_where_x_lexed(
         return Ok(effects);
     }
 
-    let where_value = if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
+    let mut prelude_effects = Vec::new();
+    let where_value = if let Some((choice_effect, value)) =
+        parse_where_x_commander_mana_value_choice(&where_words)
+    {
+        prelude_effects.push(choice_effect);
+        value
+    } else if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
         value
     } else {
         match where_words.get(3..) {
@@ -856,6 +949,10 @@ fn parse_effect_sentence_with_where_x_lexed(
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
     for effect in &mut effects {
         replace_search_filter_x(effect, &where_value);
+    }
+    if !prelude_effects.is_empty() {
+        prelude_effects.append(&mut effects);
+        return Ok(prelude_effects);
     }
     Ok(effects)
 }

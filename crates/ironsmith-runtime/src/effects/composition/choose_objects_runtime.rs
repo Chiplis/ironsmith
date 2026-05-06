@@ -95,6 +95,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::CountPlayers(player)
         | crate::effect::Value::PartySize(player)
         | crate::effect::Value::LifeTotal(player)
+        | crate::effect::Value::LifeTotalDifference(player)
+        | crate::effect::Value::Speed(player)
         | crate::effect::Value::StartingLifeTotal(player)
         | crate::effect::Value::HalfLifeTotalRoundedUp(player)
         | crate::effect::Value::HalfLifeTotalRoundedDown(player)
@@ -118,6 +120,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         crate::effect::Value::CommanderCastCount(player) => player.mentions_iterated_player(),
+        crate::effect::Value::ThisAbilityResolvedThisTurnCount => false,
         _ => false,
     }
 }

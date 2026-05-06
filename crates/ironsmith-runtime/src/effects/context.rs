@@ -226,6 +226,8 @@ pub struct ExecutionContext<'a> {
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
     /// Structural identity of the resolving triggered ability, when available.
     pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
+    /// Index of the resolving activated ability on its source object, when available.
+    pub ability_index: Option<usize>,
     /// Pre-chosen modes for modal spells (set during casting per MTG rule 601.2b).
     /// If Some, ChooseModeEffect should use these instead of prompting.
     pub chosen_modes: Option<Vec<usize>>,
@@ -268,6 +270,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("face_down_exile_viewers", &self.face_down_exile_viewers)
             .field("triggering_event", &self.triggering_event)
             .field("trigger_identity", &self.trigger_identity)
+            .field("ability_index", &self.ability_index)
             .field("cause", &self.cause)
             .field("provenance", &self.provenance)
             .field("mana", &self.mana)
@@ -306,6 +309,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -347,6 +351,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -378,6 +383,7 @@ impl<'a> ExecutionContext<'a> {
             face_down_exile_viewers: self.face_down_exile_viewers,
             triggering_event: self.triggering_event,
             trigger_identity: self.trigger_identity,
+            ability_index: self.ability_index,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
@@ -670,6 +676,12 @@ impl<'a> ExecutionContext<'a> {
         trigger_identity: crate::triggers::TriggerIdentity,
     ) -> Self {
         self.trigger_identity = Some(trigger_identity);
+        self
+    }
+
+    /// Set the activated ability index for the resolving activated ability.
+    pub fn with_ability_index(mut self, ability_index: usize) -> Self {
+        self.ability_index = Some(ability_index);
         self
     }
 

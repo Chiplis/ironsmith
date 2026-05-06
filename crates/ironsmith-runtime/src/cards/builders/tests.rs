@@ -1087,6 +1087,57 @@ fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_exploit_keyword_line_lowers_to_keyword_action_event() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Exploit (When this creature enters, you may sacrifice a creature.)\nWhen this creature exploits a creature, target player draws two cards and loses 2 life.",
+        )
+        .expect("exploit keyword line and exploit trigger should parse");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("SacrificeEffect")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("Exploit"),
+        "expected exploit to lower to optional sacrifice plus keyword event, got {debug}"
+    );
+    assert!(
+        rendered.contains("Exploit")
+            && rendered.contains("Whenever this creature exploits a creature")
+            && !rendered.contains("If you do,."),
+        "expected exploit keyword and exploit trigger to render cleanly, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_exploit_grant_and_creature_you_control_exploit_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Grant Parse Test")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
+        .parse_text(
+            "Other legendary creatures you control have exploit.\nWhenever a creature you control exploits a creature, put a +1/+1 counter on each creature you control.",
+        )
+        .expect("exploit grant and filtered exploit trigger should parse");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("GrantObjectAbilityForFilter")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("KeywordActionTrigger")
+            && debug.contains("Exploit"),
+        "expected exploit grant to lower to granted triggered ability and filtered keyword-action trigger, got {debug}"
+    );
+    assert!(
+        rendered.contains("Whenever a creature you control exploits a creature"),
+        "expected filtered exploit trigger to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_assist_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Assist Parse Test")
         .card_types(vec![CardType::Sorcery])
@@ -5091,6 +5142,39 @@ fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
         .mana_cost()
         .expect("kicker should preserve mana cost");
     assert_eq!(mana.to_oracle(), "{2}{R}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_dash_kicker_with_typed_discard_cost_compiles_to_optional_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dash Kicker Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Kicker—{2}{B}, Discard a creature card.\nFlying")
+        .expect("dash kicker with discard cost should parse");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    assert!(
+        def.spell_effect.is_none(),
+        "discard cost must not become a spell effect"
+    );
+    let kicker = &def.optional_costs[0];
+    assert_eq!(kicker.label, "Kicker");
+    let costs = kicker.cost.costs();
+    assert_eq!(costs.len(), 2);
+    assert_eq!(
+        costs[0]
+            .mana_cost_ref()
+            .expect("first component should be mana")
+            .to_oracle(),
+        "{2}{B}"
+    );
+    match costs[1].processing_mode() {
+        crate::costs::CostProcessingMode::DiscardCards { count, card_types } => {
+            assert_eq!(count, 1);
+            assert_eq!(card_types, vec![CardType::Creature]);
+        }
+        other => panic!("expected typed discard cost, got {other:?}"),
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -20422,6 +20506,189 @@ fn parse_gain_x_plus_life_with_where_clause_binds_x_value() {
                     "life equal to the number of green creatures on the battlefield plus 1"
                 )),
         "expected where-x binding to remain in compiled text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_colors_of_mana_spent_binds_spell_effect_values() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Painful Truths")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Converge — You draw X cards and lose X life, where X is the number of colors of mana spent to cast this spell.",
+        )
+        .expect("colors-of-mana where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("where x is the number of colors of mana spent to cast this spell"),
+        "expected rendered where-X colors-of-mana clause, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("colorsofmanaspenttocastthisspell"),
+        "expected X to bind to colors of mana spent, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_this_ability_resolved_count_binds_activated_effect_value() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bronze Cudgels")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "{2}: Until end of turn, equipped creature gets +X/+0, where X is the number of times this ability has resolved this turn.\nEquip {1}",
+        )
+        .expect("ability-resolution-count where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("equipped creature gets +x/+0")
+            && rendered
+                .contains("where x is the number of times this ability has resolved this turn"),
+        "expected rendered ability-resolution-count where-X clause, got {rendered}"
+    );
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("thisabilityresolvedthisturncount"),
+        "expected X to bind to this ability's resolution count, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_revealed_card_mana_value_uses_public_revealed_cost_tag() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disaster Radius")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, reveal a creature card from your hand.\nDisaster Radius deals X damage to each creature your opponents control, where X is the revealed card's mana value.",
+        )
+        .expect("revealed-card where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("where x is the revealed card's mana value"),
+        "expected rendered revealed-card where-X clause, got {rendered}"
+    );
+    let debug = format!("{:?}", def).to_ascii_lowercase();
+    assert!(
+        debug.contains("__public_revealed") && debug.contains("manavalueof"),
+        "expected X to bind to public revealed-card mana value, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_fixed_plus_counters_on_source() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lightning Storm Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Lightning Storm deals X damage to any target, where X is 3 plus the number of charge counters on this.",
+        )
+        .expect("fixed-plus-counters where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("3 plus") && rendered.contains("charge counters on this"),
+        "expected rendered fixed-plus-counters where-X clause, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("fixed(3)")
+            && debug.contains("countersonsource")
+            && debug.contains("charge"),
+        "expected X to bind to 3 plus charge counters on source, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_prior_effect_first_power_binds_to_affected_object_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Astarion's Thirst")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target creature. Put X +1/+1 counters on a commander creature you control, where X is the power of the creature exiled this way.",
+        )
+        .expect("prior-effect first-power where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("that creature's power +1/+1 counters"),
+        "expected rendered prior-effect first-power counter count, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("AffectedObjects")
+            && debug.contains("FirstPower")
+            && !debug.contains("PendingEffectMetric"),
+        "expected X to bind to resolved affected-object first-power metric, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_life_total_difference_between_target_players() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Profane Transfusion")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Two target players exchange life totals. You create an X/X colorless Horror artifact creature token, where X is the difference between those players' life totals.",
+        )
+        .expect("target-player life-total-difference where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("difference between those players' life totals"),
+        "expected rendered target-player life-total difference, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ExchangeLifeTotalsEffect")
+            && debug.contains("LifeTotalDifference")
+            && debug.contains("Target(Any)"),
+        "expected X to bind to target-player life-total difference, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_where_x_commander_mana_value_creates_runtime_choice() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stinging Study")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You draw X cards and you lose X life, where X is the mana value of a commander you own on the battlefield or in the command zone.",
+        )
+        .expect("commander mana-value where-X clause should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("commander")
+            && rendered.contains("mana value")
+            && rendered.contains("draw")
+            && rendered.contains("lose"),
+        "expected rendered commander mana-value draw/life clause, got {rendered}"
+    );
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("__where_x_commander_mana_value")
+            && debug.contains("additional_zones: [Command]")
+            && debug.contains("ManaValueOf"),
+        "expected X to bind to a chosen commander mana value, got {debug}"
     );
 }
 

@@ -910,6 +910,43 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     ));
                 }
 
+                let attached_subject_words = match subject_words.as_slice() {
+                    ["until", "end", "of", "turn", rest @ ..]
+                    | ["until", "your", "next", "turn", rest @ ..]
+                    | ["until", "end", "of", "combat", rest @ ..] => rest,
+                    words => words,
+                };
+                if matches!(
+                    attached_subject_words,
+                    ["equipped", "creature"] | ["equipped", "permanent"]
+                ) {
+                    return Ok(EffectAst::subject_verb_pump(
+                        power.clone(),
+                        toughness.clone(),
+                        TargetAst::Tagged(
+                            TagKey::from("equipped"),
+                            span_from_tokens(subject_tokens),
+                        ),
+                        duration,
+                        condition,
+                    ));
+                }
+                if matches!(
+                    attached_subject_words,
+                    ["enchanted", "creature"] | ["enchanted", "permanent"]
+                ) {
+                    return Ok(EffectAst::subject_verb_pump(
+                        power.clone(),
+                        toughness.clone(),
+                        TargetAst::Tagged(
+                            TagKey::from("enchanted"),
+                            span_from_tokens(subject_tokens),
+                        ),
+                        duration,
+                        condition,
+                    ));
+                }
+
                 let has_counter_state_pronoun = has_counter_state_pronoun(&subject_words);
                 let has_disallowed_pronoun_reference = (word_slice_contains(&subject_words, "it")
                     || word_slice_contains(&subject_words, "them"))

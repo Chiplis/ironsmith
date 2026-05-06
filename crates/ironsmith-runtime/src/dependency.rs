@@ -852,6 +852,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::LowestLifeTied
             | PlayerFilter::MostCardsInHand
             | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+            | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate
             | PlayerFilter::Active
@@ -1324,6 +1325,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::LifeTotalDifference(_)
+        | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
         | Value::HalfLifeTotalRoundedDown(_)
@@ -1341,6 +1344,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
         | Value::CommanderCastCount(_)
+        | Value::ThisAbilityResolvedThisTurnCount
         | Value::SpellsCastThisTurnMatching { .. }
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::CardTypesInGraveyard(_)

@@ -610,6 +610,12 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                 other.description()
             ),
         },
+        AnthemCountExpression::PlayerSpeed(player) => match player {
+            crate::target::PlayerFilter::You => "your speed".to_string(),
+            crate::target::PlayerFilter::Opponent => "an opponent's speed".to_string(),
+            crate::target::PlayerFilter::Any => "a player's speed".to_string(),
+            _ => "that player's speed".to_string(),
+        },
     }
 }
 
@@ -820,6 +826,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             )
         }
         crate::ConditionExpr::ValueComparison {
+            left: Value::Speed(crate::target::PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(4),
+        } => "as long as you have max speed".to_string(),
+        crate::ConditionExpr::ValueComparison {
             left: Value::CardsInGraveyard(player),
             operator,
             right: Value::Fixed(count),
@@ -892,6 +903,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as the player who has the most cards in hand is the monarch".to_string()
             }
             crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::CastCardTypeThisTurn(_) => {
@@ -1081,6 +1095,20 @@ pub(crate) fn resolve_anthem_count_expression(
             })
             .map(|player| game.commander_cast_count_for_player(player.id) as i32)
             .sum(),
+        AnthemCountExpression::PlayerSpeed(player_filter) => game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game()
+                    && crate::filter::player_filter_matches_game(
+                        player_filter,
+                        player.id,
+                        game,
+                        &filter_ctx,
+                    )
+            })
+            .map(|player| game.player_speed(player.id).unwrap_or(0) as i32)
+            .sum(),
     }
 }
 
@@ -1255,6 +1283,25 @@ impl StaticAbilityKind for Anthem {
                     multiplier: toughness,
                     count: toughness_count,
                 },
+            ) if power_count == toughness_count
+                && matches!(power_count, AnthemCountExpression::PlayerSpeed(_)) =>
+            {
+                format!(
+                    "{subject} {verb} {}/{}, where X is {}",
+                    x_component(*power),
+                    x_component(*toughness),
+                    describe_anthem_count_expression(power_count),
+                )
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count: power_count,
+                },
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count: toughness_count,
+                },
             ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
                 if let Some(count_subject) = describe_anthem_for_each_count_expression(power_count)
                 {
@@ -1288,6 +1335,19 @@ impl StaticAbilityKind for Anthem {
                     signed(*power),
                     signed_toughness(*power, *toughness),
                     describe_anthem_count_expression(power_count),
+                )
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count: count @ AnthemCountExpression::PlayerSpeed(_),
+                },
+                AnthemValue::Fixed(toughness),
+            ) if *toughness == 0 => {
+                format!(
+                    "{subject} {verb} {}/+0, where X is {}",
+                    x_component(*power),
+                    describe_anthem_count_expression(count),
                 )
             }
             (
@@ -1343,6 +1403,19 @@ impl StaticAbilityKind for Anthem {
                         describe_anthem_count_expression(count),
                     )
                 }
+            }
+            (
+                AnthemValue::Fixed(power),
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count: count @ AnthemCountExpression::PlayerSpeed(_),
+                },
+            ) if *power == 0 => {
+                format!(
+                    "{subject} {verb} +0/{}, where X is {}",
+                    x_component(*toughness),
+                    describe_anthem_count_expression(count),
+                )
             }
             (
                 AnthemValue::Fixed(power),

@@ -244,6 +244,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             if slice_contains(zones.as_slice(), &Zone::Battlefield)
                 && resolved_filter.controller.is_none()
+                && resolved_filter.owner.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
             {
                 resolved_filter.controller = Some(chooser.clone());

@@ -56,6 +56,20 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 strip_leading_article(&describe_player_filter(base))
             )
         }
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => {
+            let verb = if *has_max_speed {
+                "has max speed"
+            } else {
+                "doesn't have max speed"
+            };
+            format!(
+                "{} who {verb}",
+                strip_leading_article(&describe_player_filter(base))
+            )
+        }
         PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()
@@ -6231,6 +6245,15 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str().contains("copied") {
                 return "the copy".to_string();
             }
+            if tag.as_str() == "equipped" {
+                return "equipped creature".to_string();
+            }
+            if tag.as_str() == "enchanted" {
+                return "enchanted creature".to_string();
+            }
+            if tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG {
+                return "the revealed card".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 "it".to_string()
             } else {
@@ -7417,6 +7440,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             // "that card's mana value" over "its mana value".
             if let ChooseSpec::Tagged(tag) = spec.base()
                 && (tag.as_str().starts_with("revealed_")
+                    || tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
                     || tag.as_str().starts_with("searched_")
                     || tag.as_str().starts_with("milled_")
                     || tag.as_str().starts_with("discarded_"))
@@ -7428,6 +7452,16 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
+        }
+        Value::LifeTotalDifference(filter) => match filter {
+            PlayerFilter::Target(_) => "the difference between those players' life totals".to_string(),
+            _ => format!(
+                "the difference between {} life totals",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::Speed(filter) => {
+            format!("{} speed", describe_possessive_player_filter(filter))
         }
         Value::StartingLifeTotal(filter) => {
             format!(
@@ -7570,6 +7604,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::ThisAbilityResolvedThisTurnCount => {
+            "the number of times this ability has resolved this turn".to_string()
+        }
         Value::SpellsCastThisTurnMatching {
             player,
             filter,
@@ -10601,6 +10638,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         } => {
             if let Some(rendered) = describe_happily_value_comparison(left, *operator, right) {
                 return rendered;
+            }
+            if let (
+                Value::Speed(PlayerFilter::You),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(4),
+            ) = (left, operator, right)
+            {
+                return "you have max speed".to_string();
             }
             if let (
                 Value::LifeLostThisTurn(player),

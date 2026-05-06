@@ -1,6 +1,8 @@
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
 
+const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
+
 pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -17,6 +19,122 @@ pub(super) fn run_triggered_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
+}
+
+pub(super) fn run_max_speed_labeled_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim_start();
+    if !raw.to_ascii_lowercase().starts_with("max speed") {
+        return Ok(None);
+    };
+
+    let body_text = raw
+        .find('\u{2014}')
+        .and_then(|idx| raw.get(idx + '\u{2014}'.len_utf8()..))
+        .or_else(|| raw.split_once('-').map(|(_, body)| body))
+        .map(str::trim)
+        .filter(|body| !body.is_empty())
+        .unwrap_or(ctx.line.info.normalized.normalized.as_str())
+        .trim()
+        .to_string();
+    if body_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "max-speed label missing ability body: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let body_lower = body_text.to_ascii_lowercase();
+    if body_lower.starts_with("when ")
+        || body_lower.starts_with("whenever ")
+        || body_lower.starts_with("at ")
+    {
+        let triggered_text = max_speed_intervening_if_text(body_text.as_str());
+        let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+        let triggered = parse_triggered_line_cst(&triggered_line)?;
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            ctx.idx + 1,
+        )));
+    }
+
+    let activation_text = format!(
+        "{}. Activate only if you have max speed.",
+        body_text.trim_end_matches('.')
+    );
+    let activation_line = rewrite_line_normalized(ctx.line, activation_text.as_str())?;
+    if let Some((cost_tokens, effect_parse_tokens)) =
+        split_activation_text_tokens_lexed(&activation_line.tokens)
+    {
+        let cost_text = render_token_slice(&cost_tokens);
+        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
+        match parse_activation_cost_tokens_rewrite(&cost_tokens) {
+            Ok(cost) => {
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Activated(ActivatedLineCst {
+                        info: ctx.line.info.clone(),
+                        cost,
+                        cost_parse_tokens: cost_tokens,
+                        effect_text,
+                        effect_parse_tokens,
+                        chosen_option_label: None,
+                    }),
+                    ctx.idx + 1,
+                )));
+            }
+            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
+                return Err(err);
+            }
+            Err(_) => {}
+        }
+    }
+
+    let Some(static_cst) = parse_static_line_cst(ctx.line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower max-speed labeled line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(StaticLineCst {
+            chosen_option_label: Some(MAX_SPEED_CONDITION_LABEL.to_string()),
+            ..static_cst
+        }),
+        ctx.idx + 1,
+    )))
+}
+
+fn max_speed_intervening_if_text(body_text: &str) -> String {
+    let trimmed = body_text.trim().trim_end_matches('.');
+    let Some((trigger, effects)) = trimmed.split_once(',') else {
+        return trimmed.to_string();
+    };
+    format!("{trigger}, if you have max speed,{effects}")
+}
+
+pub(super) fn run_start_your_engines_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let lower = ctx.line.info.raw_line.trim_start().to_ascii_lowercase();
+    if !lower.starts_with("start your engines!")
+        && lower.trim_end_matches('.').trim() != "start your engines"
+    {
+        return Ok(None);
+    }
+
+    let start_line = rewrite_line_normalized(ctx.line, "start your engines")?;
+    let Some(start_static) = parse_static_line_cst(&start_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower start-your-engines keyword line: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Static(start_static),
+        ctx.idx + 1,
+    )))
 }
 
 pub(super) fn run_partner_with_keyword_line_family(

@@ -328,6 +328,11 @@ impl CardDefinitionBuilder {
             KeywordAction::Undaunted => self.undaunted(),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
+            KeywordAction::StartYourEngines => {
+                self.with_ability(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::start_your_engines(),
+                ))
+            }
             KeywordAction::Assist => self.assist(),
             KeywordAction::SplitSecond => self.split_second(),
             KeywordAction::Cascade => self.cascade(),

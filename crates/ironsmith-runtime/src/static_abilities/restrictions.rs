@@ -497,6 +497,39 @@ impl RuleRestriction {
     }
 }
 
+fn display_rule_restriction_condition(condition: &crate::ConditionExpr) -> Option<String> {
+    match condition {
+        crate::ConditionExpr::Not(inner) if is_you_have_max_speed_condition(inner) => {
+            Some("unless you have max speed".to_string())
+        }
+        crate::ConditionExpr::ActivationTiming(
+            crate::ability::ActivationTiming::DuringYourTurn,
+        ) => Some("During your turn".to_string()),
+        crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::DuringCombat) => {
+            Some("During combat".to_string())
+        }
+        _ => {
+            let described = super::describe_static_condition(condition);
+            if described.contains("ConditionExpr") || described.contains("ValueComparison") {
+                None
+            } else {
+                Some(described)
+            }
+        }
+    }
+}
+
+fn is_you_have_max_speed_condition(condition: &crate::ConditionExpr) -> bool {
+    matches!(
+        condition,
+        crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(crate::target::PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        }
+    )
+}
+
 impl StaticAbilityKind for RuleRestriction {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::RuleRestriction
@@ -506,26 +539,25 @@ impl StaticAbilityKind for RuleRestriction {
         let Some(condition) = &self.condition else {
             return self.display.clone();
         };
-        let prefix = match condition {
-            crate::ConditionExpr::ActivationTiming(
-                crate::ability::ActivationTiming::DuringYourTurn,
-            ) => Some("During your turn"),
-            crate::ConditionExpr::ActivationTiming(
-                crate::ability::ActivationTiming::DuringCombat,
-            ) => Some("During combat"),
-            _ => None,
-        };
-        let Some(prefix) = prefix else {
+        let Some(condition_text) = display_rule_restriction_condition(condition) else {
             return self.display.clone();
         };
         let body = self.display.trim();
         if body
             .to_ascii_lowercase()
-            .contains(&prefix.to_ascii_lowercase())
+            .contains(&condition_text.to_ascii_lowercase())
         {
             body.to_string()
+        } else if matches!(
+            condition,
+            crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn
+                    | crate::ability::ActivationTiming::DuringCombat
+            )
+        ) {
+            format!("{condition_text}, {body}")
         } else {
-            format!("{prefix}, {body}")
+            format!("{body} {condition_text}")
         }
     }
 

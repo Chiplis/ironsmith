@@ -458,6 +458,10 @@ fn lower_rewrite_activated_to_chunk_impl(
             trigger_spec: None,
         };
         apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
+        apply_chosen_option_condition_to_activated(
+            &mut parsed,
+            line.chosen_option_label.as_deref(),
+        );
         return Ok(LoweredRewriteActivatedLine {
             chunk: LineAst::Ability(parsed),
             restrictions,
@@ -510,6 +514,10 @@ fn lower_rewrite_activated_to_chunk_impl(
                 trigger_spec: None,
             };
             apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
+            apply_chosen_option_condition_to_activated(
+                &mut parsed,
+                line.chosen_option_label.as_deref(),
+            );
 
             return Ok(LoweredRewriteActivatedLine {
                 chunk: LineAst::Ability(parsed),
@@ -564,11 +572,29 @@ fn lower_rewrite_activated_to_chunk_impl(
         trigger_spec: None,
     };
     apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
+    apply_chosen_option_condition_to_activated(&mut parsed, line.chosen_option_label.as_deref());
 
     Ok(LoweredRewriteActivatedLine {
         chunk: LineAst::Ability(parsed),
         restrictions,
     })
+}
+
+fn apply_chosen_option_condition_to_activated(
+    parsed: &mut ParsedAbility,
+    chosen_option_label: Option<&str>,
+) {
+    let Some(label) = chosen_option_label else {
+        return;
+    };
+    let condition = condition_for_chosen_option_label(label);
+    let AbilityKind::Activated(activated) = parsed.kind_mut() else {
+        return;
+    };
+    activated.activation_condition = Some(match activated.activation_condition.take() {
+        Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+        None => condition,
+    });
 }
 
 fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String> {

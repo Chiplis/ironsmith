@@ -26,6 +26,28 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if matches!(
+        normalized_words.as_slice(),
+        [
+            "this", "cant", "attack", "or", "block", "unless", "you", "have", "max", "speed"
+        ] | [
+            "this", "creature", "cant", "attack", "or", "block", "unless", "you", "have", "max",
+            "speed"
+        ]
+    ) {
+        let max_speed = crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        };
+        return Ok(Some(vec![
+            StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                "This creature can't attack or block".to_string(),
+            )
+            .with_condition(crate::ConditionExpr::Not(Box::new(max_speed))),
+        ]));
+    }
     let is_direct_temporary_cast_restriction =
         contains_word_sequence(&normalized_words, &["this", "turn"])
             && !slice_contains(&normalized_words, &"unless")

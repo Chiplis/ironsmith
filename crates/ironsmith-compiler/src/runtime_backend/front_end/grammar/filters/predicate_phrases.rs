@@ -642,6 +642,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["you", "have", "max", "speed"] | ["you", "have", "maximum", "speed"]
+    ) {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(4),
+        });
+    }
+
     if let Some(predicate) = parse_counted_objects_have_counter_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -1996,7 +2007,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         return Ok(PredicateAst::NoSpellsWereCastLastTurn);
     }
-    if filtered.as_slice() == ["this", "spell", "was", "kicked"] {
+    if filtered.as_slice() == ["this", "spell", "was", "kicked"]
+        || filtered.as_slice() == ["this", "creature", "was", "kicked"]
+        || filtered.as_slice() == ["this", "permanent", "was", "kicked"]
+    {
         return Ok(PredicateAst::ThisSpellWasKicked);
     }
     if filtered.as_slice() == ["this", "spell", "was", "bargained"]
