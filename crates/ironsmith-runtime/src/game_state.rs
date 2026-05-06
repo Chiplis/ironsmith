@@ -7448,6 +7448,50 @@ impl GameState {
         self.effect_store.pending_trigger_events.push(event);
     }
 
+    pub(crate) fn tag_pending_zone_change_event_for_object(
+        &mut self,
+        event_object: ObjectId,
+        tag: crate::tag::TagKey,
+        snapshot: crate::snapshot::ObjectSnapshot,
+    ) {
+        use crate::events::zones::ZoneChangeEvent;
+
+        let Some((index, mut zone_change, provenance, source_snapshot)) = self
+            .effect_store
+            .pending_trigger_events
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, event)| {
+                let zone_change = event.downcast::<ZoneChangeEvent>()?;
+                let matches_object = zone_change.objects.contains(&event_object)
+                    || zone_change.result_objects.contains(&event_object)
+                    || zone_change.snapshot.as_ref().is_some_and(|event_snapshot| {
+                        event_snapshot.object_id == event_object
+                            || event_snapshot.stable_id == snapshot.stable_id
+                    });
+                matches_object.then(|| {
+                    (
+                        index,
+                        zone_change.clone(),
+                        event.provenance(),
+                        event.source_snapshot().cloned(),
+                    )
+                })
+            })
+        else {
+            return;
+        };
+
+        zone_change = zone_change.with_object_tag(tag, snapshot);
+        let mut replacement =
+            crate::triggers::TriggerEvent::new_with_provenance(zone_change, provenance);
+        if let Some(source_snapshot) = source_snapshot {
+            replacement = replacement.with_source_snapshot(source_snapshot);
+        }
+        self.effect_store.pending_trigger_events[index] = replacement;
+    }
+
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
         std::mem::take(&mut self.effect_store.pending_trigger_events)

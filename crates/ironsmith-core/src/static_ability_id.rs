@@ -86,24 +86,17 @@ pub enum StaticAbilityId {
     RemoveAllAbilitiesExceptManaForFilter,
     SetBasePowerToughnessForFilter,
     EquipmentGrant,
-    BloodMoon,
-    Humility,
-    BelloBardOfTheBrambles,
     CharacteristicDefiningPT,
     AddCardTypes,
     RemoveCardTypes,
     SetCardTypes,
     AddSubtypes,
     AddAllSubtypesOfFamily,
+    SetLandSubtypes,
     SetCreatureSubtypes,
     AddColors,
     CopyActivatedAbilities,
     CopyTriggeredAbilities,
-    ManascapeRefractor,
-    SquirrelNest,
-    MycosynthLattice,
-    TophFirstMetalbender,
-    MarvinMurderousMimic,
     SoulbondSharedBonus,
     AttachedAbilityGrant,
     AttachedChosenLandwalkGrant,
@@ -199,7 +192,7 @@ pub enum StaticAbilityId {
     ControlOpponentsWhileSearchingLibraries,
     OpponentSearchExileFoundCards,
     CastThisCardFromLibraryWhileSearching,
-    LibraryOfLengDiscardReplacement,
+    EffectDiscardToLibraryReplacement,
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
     ModifyDamageAmountReplacement,
@@ -310,24 +303,17 @@ impl StaticAbilityId {
             | RemoveAllAbilitiesExceptManaForFilter
             | SetBasePowerToughnessForFilter
             | EquipmentGrant
-            | BloodMoon
-            | Humility
-            | BelloBardOfTheBrambles
             | CharacteristicDefiningPT
             | AddCardTypes
             | RemoveCardTypes
             | SetCardTypes
             | AddSubtypes
             | AddAllSubtypesOfFamily
+            | SetLandSubtypes
             | SetCreatureSubtypes
             | AddColors
             | CopyActivatedAbilities
             | CopyTriggeredAbilities
-            | ManascapeRefractor
-            | SquirrelNest
-            | MycosynthLattice
-            | TophFirstMetalbender
-            | MarvinMurderousMimic
             | SoulbondSharedBonus
             | AttachedAbilityGrant
             | AttachedChosenLandwalkGrant
@@ -423,7 +409,7 @@ impl StaticAbilityId {
             | ControlOpponentsWhileSearchingLibraries
             | OpponentSearchExileFoundCards
             | CastThisCardFromLibraryWhileSearching
-            | LibraryOfLengDiscardReplacement
+            | EffectDiscardToLibraryReplacement
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard
             | ModifyDamageAmountReplacement
@@ -591,14 +577,12 @@ impl StaticAbilityId {
                 | EquipmentGrant
                 | GrantObjectAbilityForFilter
                 | ControlAttachedPermanent
-                | BloodMoon
-                | Humility
-                | BelloBardOfTheBrambles
                 | CharacteristicDefiningPT
                 | AddCardTypes
                 | RemoveCardTypes
                 | SetCardTypes
                 | AddSubtypes
+                | SetLandSubtypes
                 | AddColors
                 | SetColors
         )
@@ -615,7 +599,7 @@ mod tests {
         assert!(StaticAbilityId::Trample.is_keyword());
         assert!(StaticAbilityId::Protection.is_keyword());
         assert!(!StaticAbilityId::Anthem.is_keyword());
-        assert!(!StaticAbilityId::BloodMoon.is_keyword());
+        assert!(!StaticAbilityId::SetLandSubtypes.is_keyword());
     }
 
     #[test]
@@ -629,7 +613,7 @@ mod tests {
     #[test]
     fn continuous_effect_identification_is_stable() {
         assert!(StaticAbilityId::Anthem.generates_continuous_effects());
-        assert!(StaticAbilityId::BloodMoon.generates_continuous_effects());
+        assert!(StaticAbilityId::SetLandSubtypes.generates_continuous_effects());
         assert!(!StaticAbilityId::Flying.generates_continuous_effects());
         assert!(!StaticAbilityId::Hexproof.generates_continuous_effects());
     }

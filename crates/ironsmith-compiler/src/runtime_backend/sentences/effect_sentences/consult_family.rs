@@ -468,40 +468,6 @@ pub(crate) fn parse_bargained_face_down_cast_mana_value_gate(
     )
 }
 
-fn parse_if_no_card_into_hand_this_way_remainder_inner<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
-    dispatch! {peek(grammar::word_parser_text);
-        "if" => (
-            (
-                alt((
-                    grammar::phrase(&["if", "you", "didnt"]),
-                    grammar::phrase(&["if", "you", "didn't"]),
-                    grammar::phrase(&["if", "you", "did", "not"]),
-                )),
-                grammar::kw("put"),
-                opt(alt((grammar::kw("a"), grammar::kw("an"), grammar::kw("the")))),
-                grammar::kw("card"),
-                grammar::phrase(&["into", "your", "hand", "this", "way"]),
-            )
-                .void()
-                .context(StrContext::Label("if-no-card prefix"))
-                .context(StrContext::Expected(StrContextValue::Description(
-                    "if you didn't put a card into your hand this way",
-                ))),
-            cut_err(grammar::comma())
-                .context(StrContext::Label("if-no-card separator"))
-                .context(StrContext::Expected(StrContextValue::Description(
-                    "comma after if-no-card clause",
-                ))),
-            cut_err(take_remaining_clause_tokens),
-        )
-            .map(|(_, _, remainder)| remainder),
-        _ => fail::<_, &'a [OwnedLexToken], _>,
-    }
-    .parse_next(input)
-}
-
 fn parse_if_you_dont_remainder_inner<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
@@ -972,25 +938,6 @@ pub(crate) fn consult_cast_effects(
     }
 
     Ok(cast_effects)
-}
-
-pub(crate) fn parse_if_no_card_into_hand_this_way_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(after) = grammar::parse_all_or_none(
-        tokens,
-        parse_if_no_card_into_hand_this_way_remainder_inner,
-        "if-no-card-into-hand-this-way clause",
-    )?
-    else {
-        return Ok(None);
-    };
-
-    let effects = parse_effect_chain(after)?;
-    if effects.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(effects))
 }
 
 pub(crate) fn parse_if_you_dont_sentence(

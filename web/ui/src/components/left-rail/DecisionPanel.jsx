@@ -169,13 +169,17 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const passAdvanceLabel = resolvingStackPriority
     ? ""
-    : (holdingPriority || hasCustomPassLabel
-        ? passAction?.label || "Pass priority"
+    : (hasCustomPassLabel
+        ? ""
+        : holdingPriority
+          ? passAction?.label || "Pass priority"
         : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
-    : currentPriorityPhaseLabel(state?.phase, state?.step);
-  const passHelpAdvanceLabel = resolvingStackPriority ? "Resolve" : passAdvanceLabel;
+    : (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step));
+  const passHelpAdvanceLabel = resolvingStackPriority
+    ? "Resolve"
+    : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
   const decisionButtonStyle = decisionButtonAccentVars(state, decision);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 

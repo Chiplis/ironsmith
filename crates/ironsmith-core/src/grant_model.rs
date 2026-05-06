@@ -376,6 +376,12 @@ where
 
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
+            && self.filter == ObjectFilter::source()
+        {
+            return format!("{may_prefix} cast this card from your graveyard");
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
             return format!("{may_prefix} play lands from your graveyard");

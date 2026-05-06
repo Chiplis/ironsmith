@@ -751,6 +751,14 @@ pub(crate) fn parse_life_equal_to_value(
     if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }
+    if matches!(amount_words.get(..2), Some(["equal", "to"])) {
+        let value_tokens = &amount_tokens[2..];
+        if let Some((value, used)) = parse_value(value_tokens)
+            && used == value_tokens.len()
+        {
+            return Ok(Some(value));
+        }
+    }
 
     Err(CardTextError::ParseError(format!(
         "missing life amount in equal-to clause (clause: '{}')",

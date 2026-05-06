@@ -209,6 +209,18 @@ fn common_player_action_pattern_for(
     None
 }
 
+fn is_pronoun_top_or_bottom_library_choice_put_tail(tokens: &[OwnedLexToken]) -> bool {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    if !matches!(words.first().copied(), Some("it" | "them")) {
+        return false;
+    }
+    word_slice_contains(&words, "on")
+        && word_slice_contains(&words, "choice")
+        && word_slice_contains(&words, "top")
+        && word_slice_contains(&words, "bottom")
+        && word_slice_contains(&words, "library")
+}
+
 impl<'a> CommonPlayerActionClause<'a> {
     fn recognize(
         subject: SubjectAst,
@@ -974,6 +986,15 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     {
         let rest = &tokens[verb_idx + 1..];
         return parse_sacrifice(rest, Some(subject), Some(target));
+    }
+    if matches!(verb, Verb::Put)
+        && let Some((SubjectAst::Player(PlayerAst::ItsOwner), target)) =
+            parse_controller_or_owner_of_target_subject(subject_tokens)
+    {
+        let rest = &tokens[verb_idx + 1..];
+        if is_pronoun_top_or_bottom_library_choice_put_tail(rest) {
+            return Ok(EffectAst::subject_verb_move_to_library_top_or_bottom_choice(target));
+        }
     }
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();

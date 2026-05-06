@@ -2806,6 +2806,100 @@ impl StaticAbilityKind for AddAllSubtypesOfFamilyForFilter {
     }
 }
 
+/// Set land subtypes by removing all land types first, then adding the new list.
+#[derive(Debug, Clone)]
+pub struct SetLandSubtypesForFilter {
+    pub filter: ObjectFilter,
+    pub subtypes: Vec<Subtype>,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl SetLandSubtypesForFilter {
+    pub fn new(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
+        Self {
+            filter,
+            subtypes,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl PartialEq for SetLandSubtypesForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter
+            && self.subtypes == other.subtypes
+            && self.condition == other.condition
+    }
+}
+
+impl StaticAbilityKind for SetLandSubtypesForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetLandSubtypes
+    }
+
+    fn display(&self) -> String {
+        let subject = pluralized_subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        let subtypes = self
+            .subtypes
+            .iter()
+            .map(|subtype| {
+                let name = subtype.to_string().to_ascii_lowercase();
+                if verb == "are" {
+                    simple_pluralize(&name)
+                } else {
+                    name
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut text = format!("{subject} {verb} {}", join_with_and(&subtypes));
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    effect_target_for_filter(source, &self.filter),
+                    Modification::SetSubtypes(self.subtypes.clone()),
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            ),
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    effect_target_for_filter(source, &self.filter),
+                    Modification::RemoveAllAbilities,
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            ),
+        ]
+    }
+}
+
 /// Set creature subtypes by removing all creature types first, then adding the new list.
 #[derive(Debug, Clone)]
 pub struct SetCreatureSubtypesForFilter {
@@ -3576,85 +3670,6 @@ fn grant_subject_is_plural(subject: &str) -> bool {
     .any(|noun| lower.contains(noun))
 }
 
-/// Blood Moon: "Nonbasic lands are Mountains"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BloodMoon;
-
-impl StaticAbilityKind for BloodMoon {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::BloodMoon
-    }
-
-    fn display(&self) -> String {
-        "Nonbasic lands are Mountains".to_string()
-    }
-
-    fn generate_effects(
-        &self,
-        source: ObjectId,
-        controller: PlayerId,
-        _game: &GameState,
-    ) -> Vec<ContinuousEffect> {
-        let nonbasic_land_filter = ObjectFilter {
-            zone: Some(Zone::Battlefield),
-            card_types: vec![CardType::Land],
-            excluded_supertypes: vec![Supertype::Basic],
-            ..Default::default()
-        };
-
-        vec![
-            // Layer 4: Set land subtypes to Mountain
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(nonbasic_land_filter.clone()),
-                Modification::SetSubtypes(vec![Subtype::Mountain]),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            // Layer 6: Remove all abilities
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(nonbasic_land_filter),
-                Modification::RemoveAllAbilities,
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-        ]
-    }
-}
-
-/// Toph, the First Metalbender: "Nontoken artifacts you control are lands in addition to their other types."
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TophFirstMetalbender;
-
-impl StaticAbilityKind for TophFirstMetalbender {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::TophFirstMetalbender
-    }
-
-    fn display(&self) -> String {
-        "Nontoken artifacts you control are lands in addition to their other types.".to_string()
-    }
-
-    fn generate_effects(
-        &self,
-        source: ObjectId,
-        controller: PlayerId,
-        _game: &GameState,
-    ) -> Vec<ContinuousEffect> {
-        let filter = ObjectFilter::artifact().you_control().nontoken();
-        vec![
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter),
-                Modification::AddCardTypes(vec![CardType::Land]),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-        ]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4183,20 +4198,32 @@ mod tests {
     }
 
     #[test]
-    fn test_blood_moon() {
-        let blood_moon = BloodMoon;
-        assert_eq!(blood_moon.id(), StaticAbilityId::BloodMoon);
-        assert_eq!(blood_moon.display(), "Nonbasic lands are Mountains");
+    fn test_set_land_subtypes() {
+        let nonbasic_land_filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Land],
+            excluded_supertypes: vec![Supertype::Basic],
+            ..Default::default()
+        };
+        let ability = SetLandSubtypesForFilter::new(nonbasic_land_filter, vec![Subtype::Mountain]);
+        assert_eq!(ability.id(), StaticAbilityId::SetLandSubtypes);
+        assert_eq!(ability.display(), "nonbasic lands are mountains");
     }
 
     #[test]
-    fn test_blood_moon_generates_two_effects() {
-        let blood_moon = BloodMoon;
+    fn test_set_land_subtypes_generates_type_and_ability_effects() {
+        let nonbasic_land_filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Land],
+            excluded_supertypes: vec![Supertype::Basic],
+            ..Default::default()
+        };
+        let ability = SetLandSubtypesForFilter::new(nonbasic_land_filter, vec![Subtype::Mountain]);
         let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let source = ObjectId::from_raw(1);
         let controller = PlayerId::from_index(0);
 
-        let effects = blood_moon.generate_effects(source, controller, &game);
+        let effects = ability.generate_effects(source, controller, &game);
         assert_eq!(effects.len(), 2);
     }
 

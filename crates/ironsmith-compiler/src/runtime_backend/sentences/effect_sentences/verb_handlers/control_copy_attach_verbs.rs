@@ -375,6 +375,67 @@ pub(crate) fn parse_put_into_hand(
         }
     }
 
+    fn is_top_or_bottom_choice_destination(tokens: &[OwnedLexToken]) -> bool {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let mut idx = 0usize;
+
+        match words.get(idx).copied() {
+            Some("their" | "his" | "her" | "your") => {
+                idx += 1;
+            }
+            Some("its") => {
+                idx += 1;
+                if words.get(idx).copied().is_some_and(|word| {
+                    matches!(word, "owner" | "owners" | "owner's" | "owners'")
+                }) {
+                    idx += 1;
+                }
+            }
+            Some("that") if words.get(idx + 1).copied().is_some_and(|word| {
+                matches!(word, "player" | "players" | "player's" | "players'")
+            }) =>
+            {
+                idx += 2;
+            }
+            Some("owner" | "owners" | "owner's" | "owners'") => {
+                idx += 1;
+            }
+            _ => {}
+        }
+
+        if words.get(idx).copied() != Some("choice") {
+            return false;
+        }
+        idx += 1;
+        if words.get(idx).copied() != Some("of") {
+            return false;
+        }
+        idx += 1;
+        if words.get(idx).copied() == Some("either") {
+            idx += 1;
+        }
+        if words.get(idx).copied() == Some("the") {
+            idx += 1;
+        }
+
+        let top_or_bottom = words.get(idx).copied() == Some("top")
+            && words.get(idx + 1).copied() == Some("or")
+            && words.get(idx + 2).copied() == Some("bottom");
+        let bottom_or_top = words.get(idx).copied() == Some("bottom")
+            && words.get(idx + 1).copied() == Some("or")
+            && words.get(idx + 2).copied() == Some("top");
+        if !(top_or_bottom || bottom_or_top) {
+            return false;
+        }
+        idx += 3;
+        if words.get(idx).copied() != Some("of") {
+            return false;
+        }
+        words[idx + 1..]
+            .iter()
+            .any(|word| matches!(*word, "library" | "libraries"))
+    }
+
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -676,6 +737,31 @@ pub(crate) fn parse_put_into_hand(
             rewritten.extend_from_slice(&tokens[1..idx]);
             return parse_put_into_hand(&rewritten, subject);
         }
+    }
+
+    if let Some(on_idx) = find_index(tokens, |token| token.is_word("on"))
+        && is_top_or_bottom_choice_destination(&tokens[on_idx + 1..])
+    {
+        let target_tokens = trim_commas(&tokens[..on_idx]);
+        if target_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing target before top-or-bottom library choice (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let target = if let Some((count, used)) = parse_number(&target_tokens)
+            && target_tokens
+                .get(used)
+                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            let inner = parse_target_phrase(&target_tokens[used..])?;
+            TargetAst::WithCount(Box::new(inner), ChoiceCount::exactly(count as usize))
+        } else {
+            parse_target_phrase(&target_tokens)?
+        };
+        return Ok(EffectAst::subject_verb_move_to_library_top_or_bottom_choice(
+            target,
+        ));
     }
 
     if let Some((target_slice, after_on_top_of)) =

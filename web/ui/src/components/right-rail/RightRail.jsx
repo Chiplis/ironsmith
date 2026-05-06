@@ -303,7 +303,6 @@ export default function RightRail({
   const { state } = useGame();
   const [, setPreferredInlineWidth] = useState(null);
   const [preferredExpandedInlineWidth, setPreferredExpandedInlineWidth] = useState(null);
-  const [preferredExpandedInlineHeight, setPreferredExpandedInlineHeight] = useState(null);
   const [maxExpandedInlineWidth, setMaxExpandedInlineWidth] = useState(INLINE_EXPANDED_MAX_WIDTH_PX);
   const railRef = useRef(null);
   const compactInspectorRef = useRef(null);
@@ -458,9 +457,8 @@ export default function RightRail({
     const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
     const baseWidth = Math.max(compactInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
     const contentPreferredWidth = Number(preferredExpandedInlineWidth);
-    const preferredWidth = Number.isFinite(contentPreferredWidth) && contentPreferredWidth > 0
-      ? Math.ceil(contentPreferredWidth)
-      : baseWidth;
+    const hasPreferredWidth = Number.isFinite(contentPreferredWidth) && contentPreferredWidth > 0;
+    const preferredWidth = hasPreferredWidth ? Math.ceil(contentPreferredWidth) : baseWidth;
     const measuredMaxWidth = Math.round(maxExpandedInlineWidth || effectiveMaxWidth);
     const viewportTargetWidth = viewportInspectorTargetWidthPx();
     const defaultWidthCap = Math.min(
@@ -477,7 +475,11 @@ export default function RightRail({
         : Math.max(viewportTargetWidth, preferredWidth)
     );
     const defaultWidth = Math.max(baseWidth, defaultWidthCap);
-    return Math.max(defaultWidth, Math.min(preferredWidth, preferredWidthCap));
+    if (!hasPreferredWidth) {
+      return defaultWidth;
+    }
+
+    return Math.max(baseWidth, Math.min(preferredWidth, preferredWidthCap));
   }, [compactInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth]);
 
   useLayoutEffect(() => {
@@ -584,13 +586,9 @@ export default function RightRail({
         );
       const availableHeight = Math.max(0, Math.floor(safeBottom - safeTop));
       const minimumHeight = Math.min(INLINE_EXPANDED_MIN_HEIGHT, availableHeight);
-      const contentPreferredHeight = Number(preferredExpandedInlineHeight);
-      const targetExpandedHeight = Number.isFinite(contentPreferredHeight) && contentPreferredHeight > 0
-        ? Math.max(INLINE_EXPANDED_DEFAULT_HEIGHT, Math.ceil(contentPreferredHeight))
-        : INLINE_EXPANDED_DEFAULT_HEIGHT;
       const defaultExpandedHeight = inlineExpandedMaxHeight == null
-        ? targetExpandedHeight
-        : Math.min(targetExpandedHeight, inlineExpandedMaxHeight);
+        ? INLINE_EXPANDED_DEFAULT_HEIGHT
+        : Math.min(INLINE_EXPANDED_DEFAULT_HEIGHT, inlineExpandedMaxHeight);
       const nextHeight = Math.max(
         minimumHeight,
         Math.min(defaultExpandedHeight, availableHeight)
@@ -662,7 +660,6 @@ export default function RightRail({
     inlineDockPlacement,
     inlineExpandedMaxHeight,
     expandInlineToZoneViewer,
-    preferredExpandedInlineHeight,
     shouldRenderExpandedInlineInspector,
     shouldShowRail,
   ]);
@@ -778,7 +775,6 @@ export default function RightRail({
                   inspectorVariant={inspectorVariant}
                   availableInspectorWidth={expandedInlineWidth}
                   availableInspectorHeight={expandedInlineHeight}
-                  onOracleTextHeightChange={setPreferredExpandedInlineHeight}
                   onPreferredInspectorWidthChange={setPreferredExpandedInlineWidth}
                   onInspectorAccentChange={useExpandedInlineInspector ? setInspectorAccent : null}
                 />

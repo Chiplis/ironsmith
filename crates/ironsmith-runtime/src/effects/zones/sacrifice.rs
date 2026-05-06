@@ -14,6 +14,7 @@ use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -132,6 +133,34 @@ fn dynamic_count_tracks_tagged_selection(
         .is_some_and(|(count_tag, sacrifice_tag)| count_tag == sacrifice_tag)
 }
 
+fn tag_sacrifice_zone_change_event(
+    game: &mut GameState,
+    event_object: ObjectId,
+    object_tags: &[TagKey],
+    source_tags: &[TagKey],
+    sacrificed_snapshot: Option<&ObjectSnapshot>,
+    source_snapshot: Option<&ObjectSnapshot>,
+) {
+    if let Some(snapshot) = sacrificed_snapshot {
+        for tag in object_tags {
+            game.tag_pending_zone_change_event_for_object(
+                event_object,
+                tag.clone(),
+                snapshot.clone(),
+            );
+        }
+    }
+    if let Some(snapshot) = source_snapshot {
+        for tag in source_tags {
+            game.tag_pending_zone_change_event_for_object(
+                event_object,
+                tag.clone(),
+                snapshot.clone(),
+            );
+        }
+    }
+}
+
 /// Effect that makes a player sacrifice permanents.
 ///
 /// Sacrifice moves permanents from the battlefield to the graveyard.
@@ -163,6 +192,10 @@ pub struct SacrificeEffect {
     pub count: Value,
     /// Which player sacrifices.
     pub player: PlayerFilter,
+    /// Tags to attach to the sacrificed object's zone-change event.
+    pub event_object_tags: Vec<TagKey>,
+    /// Tags to attach to the source object on the sacrificed object's zone-change event.
+    pub event_source_tags: Vec<TagKey>,
 }
 
 impl SacrificeEffect {
@@ -172,6 +205,8 @@ impl SacrificeEffect {
             filter,
             count: count.into(),
             player,
+            event_object_tags: Vec::new(),
+            event_source_tags: Vec::new(),
         }
     }
 
@@ -188,6 +223,16 @@ impl SacrificeEffect {
     /// Create an effect where a specific player sacrifices.
     pub fn player(filter: ObjectFilter, count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self::new(filter, count, player)
+    }
+
+    pub fn with_event_object_tag(mut self, tag: impl Into<TagKey>) -> Self {
+        self.event_object_tags.push(tag.into());
+        self
+    }
+
+    pub fn with_event_source_tag(mut self, tag: impl Into<TagKey>) -> Self {
+        self.event_source_tags.push(tag.into());
+        self
     }
 }
 
@@ -317,6 +362,20 @@ impl EffectExecutor for SacrificeEffect {
             let pre_snapshot = game
                 .object(id)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+            let source_snapshot_for_event = if self.event_source_tags.is_empty() {
+                None
+            } else if pre_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.object_id == ctx.source)
+            {
+                pre_snapshot.clone()
+            } else {
+                game.object(ctx.source)
+                    .map(|obj| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    })
+                    .or_else(|| ctx.source_snapshot.clone())
+            };
             let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
@@ -337,6 +396,14 @@ impl EffectExecutor for SacrificeEffect {
                     continue;
                 }
                 EventOutcome::Proceed(result) => {
+                    tag_sacrifice_zone_change_event(
+                        game,
+                        id,
+                        &self.event_object_tags,
+                        &self.event_source_tags,
+                        pre_snapshot.as_ref(),
+                        source_snapshot_for_event.as_ref(),
+                    );
                     if let Some(snapshot) = pre_snapshot.clone() {
                         ctx.refresh_target_snapshot(snapshot);
                     }
@@ -359,6 +426,14 @@ impl EffectExecutor for SacrificeEffect {
                 }
                 EventOutcome::Replaced => {
                     // Replacement effects already executed by process_zone_change
+                    tag_sacrifice_zone_change_event(
+                        game,
+                        id,
+                        &self.event_object_tags,
+                        &self.event_source_tags,
+                        pre_snapshot.as_ref(),
+                        source_snapshot_for_event.as_ref(),
+                    );
                     sacrificed_count += 1;
                     sacrificed_objects.push(id);
                     if let Some(snapshot) = pre_snapshot.as_ref() {
@@ -862,6 +937,45 @@ mod tests {
             result
                 .execution_facts()
                 .contains(&ExecutionFact::AffectedObjects(vec![target_id]))
+        );
+    }
+
+    #[test]
+    fn sacrifice_event_tags_mark_zone_change_with_object_and_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = create_creature_on_battlefield(&mut game, "Exploiter", alice);
+        let victim_id = create_creature_on_battlefield(&mut game, "Victim", alice);
+
+        let effect = SacrificeEffect::you(ObjectFilter::creature().other(), 1)
+            .with_event_object_tag(crate::tag::EXPLOITED_TAG)
+            .with_event_source_tag(crate::tag::EXPLOITER_TAG);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        let events = game.take_pending_trigger_events();
+        let zone_change = events
+            .iter()
+            .find_map(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+            .expect("sacrifice should queue a zone-change event");
+        let exploited = zone_change
+            .object_tags
+            .get(crate::tag::EXPLOITED_TAG)
+            .expect("exploited object tag should be attached to the zone change");
+        assert!(
+            exploited
+                .iter()
+                .any(|snapshot| snapshot.object_id == victim_id)
+        );
+        let exploiters = zone_change
+            .object_tags
+            .get(crate::tag::EXPLOITER_TAG)
+            .expect("exploiter source tag should be attached to the zone change");
+        assert!(
+            exploiters
+                .iter()
+                .any(|snapshot| snapshot.object_id == source_id)
         );
     }
 

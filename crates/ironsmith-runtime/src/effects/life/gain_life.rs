@@ -137,6 +137,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_gain_life_payload_resolves_speed_value() {
+        let (mut game, alice) = setup();
+        game.increase_speed(alice, 3);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = GainLifeEffect::you(crate::effect::Value::Speed(
+            crate::target::PlayerFilter::You,
+        ))
+        .execute(&mut game, &mut ctx)
+        .expect("speed-based life gain should resolve");
+
+        assert_eq!(game.player(alice).expect("alice exists").life, 23);
+        assert_eq!(outcome.as_count(), Some(3));
+    }
+
+    #[test]
     fn shared_gain_life_payload_respects_life_gain_prevention() {
         let (mut game, alice) = setup();
         let source = game.new_object_id();

@@ -681,9 +681,6 @@ enum PriorityActionRef {
     PassPriority,
     KeepOpeningHand,
     TakeMulligan,
-    SerumPowderMulligan {
-        card_id: u64,
-    },
     ContinuePregame,
     BeginGame,
     UsePregameAction {
@@ -2374,6 +2371,21 @@ mod native_tests {
             }),
             "Phyrexian Tower action lines should not expose raw tagged costs: {lines:?}"
         );
+    }
+
+    #[test]
+    fn pregame_pass_actions_surface_decision_labels() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+        assert_eq!(
+            describe_action(&game, &LegalAction::KeepOpeningHand),
+            "Keep hand"
+        );
+        assert_eq!(
+            describe_action(&game, &LegalAction::ContinuePregame),
+            "Pregame"
+        );
+        assert_eq!(describe_action(&game, &LegalAction::BeginGame), "Pregame");
     }
 }
 

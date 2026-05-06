@@ -1474,7 +1474,9 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
         && contains_word_lexed(tokens, "instead")
 }
 
-pub(crate) fn is_library_of_leng_discard_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
     contains_phrase_lexed(tokens, &["effect", "causes", "you"])
         && contains_word_lexed(tokens, "discard")
         && contains_word_lexed(tokens, "top")
@@ -1490,15 +1492,6 @@ pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedL
         && contains_word_lexed(tokens, "shuffle")
         && contains_word_lexed(tokens, "library")
         && contains_word_lexed(tokens, "instead")
-}
-
-pub(crate) fn is_toph_first_metalbender_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    contains_word_lexed(tokens, "nontoken")
-        && contains_any_word_lexed(tokens, &["artifact", "artifacts"])
-        && (contains_phrase_lexed(tokens, &["you", "control"])
-            || contains_phrase_lexed(tokens, &["you", "controls"]))
-        && contains_any_word_lexed(tokens, &["land", "lands"])
-        && contains_phrase_lexed(tokens, &["in", "addition", "to", "their"])
 }
 
 pub(crate) fn is_discard_or_redirect_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1902,10 +1895,6 @@ pub(crate) fn is_players_skip_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> boo
 
 pub(crate) fn is_all_permanents_colorless_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["all", "permanents", "are", "colorless"])
-}
-
-pub(crate) fn is_blood_moon_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches_exact_phrase_line_lexed(tokens, &["nonbasic", "lands", "are", "mountains"])
 }
 
 pub(crate) fn is_remove_snow_line_lexed(tokens: &[OwnedLexToken]) -> bool {

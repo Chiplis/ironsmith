@@ -1,0 +1,23 @@
+<svg width="220" height="30" viewBox="0 0 220 30" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  <path d="M0 2H220V28H0V2Z" fill="url(#fade)"/>
+  <path d="M12 25H154" stroke="url(#underline)" stroke-width="1"/>
+  <path d="M12 5H154" stroke="url(#topline)" stroke-width="1" opacity=".28"/>
+  <path d="M0 2H2V28H0V2Z" fill="#d8c07c" opacity=".82"/>
+  <path d="M4 6H5V24H4V6Z" fill="#d8c07c" opacity=".38"/>
+  <defs>
+    <linearGradient id="fade" x1="0" y1="15" x2="220" y2="15" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#080a0b" stop-opacity=".78"/>
+      <stop offset=".42" stop-color="#0b0d0e" stop-opacity=".44"/>
+      <stop offset="1" stop-color="#0b0d0e" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="underline" x1="12" y1="25" x2="154" y2="25" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8c07c"/>
+      <stop offset=".48" stop-color="#9b7440" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#d8c07c" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="topline" x1="12" y1="5" x2="154" y2="5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0d891"/>
+      <stop offset="1" stop-color="#f0d891" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>

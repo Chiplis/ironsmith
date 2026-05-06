@@ -34,26 +34,6 @@ export default function AddCardBar({
 
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
-      <div className="topbar-phase-caption add-card-toolbar-phase-caption" aria-label="Current turn summary">
-        <span>{phaseSummary}</span>
-        <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-        <span>Turn {state?.turn_number ?? "-"}</span>
-        {activePlayer ? (
-          <>
-            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Active {activePlayer.name}</span>
-          </>
-        ) : null}
-        {priorityPlayer ? (
-          <>
-            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Priority {priorityPlayer.name}</span>
-          </>
-        ) : null}
-      </div>
-
-      <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />
-
       <div className="add-card-toolbar-zone-group">
         <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
       </div>
@@ -135,6 +115,26 @@ export default function AddCardBar({
             ))}
           </select>
         </label>
+      </div>
+
+      <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />
+
+      <div className="topbar-phase-caption add-card-toolbar-phase-caption add-card-toolbar-phase-caption--trailing" aria-label="Current turn summary">
+        <span>{phaseSummary}</span>
+        <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+        <span>Turn {state?.turn_number ?? "-"}</span>
+        {activePlayer ? (
+          <>
+            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+            <span>Active {activePlayer.name}</span>
+          </>
+        ) : null}
+        {priorityPlayer ? (
+          <>
+            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
+            <span>Priority {priorityPlayer.name}</span>
+          </>
+        ) : null}
       </div>
     </div>
   );

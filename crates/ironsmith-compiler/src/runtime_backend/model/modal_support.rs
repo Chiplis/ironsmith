@@ -423,7 +423,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -451,6 +450,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { .. }

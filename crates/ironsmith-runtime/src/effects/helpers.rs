@@ -819,9 +819,22 @@ pub fn resolve_value(
         Value::PowerOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+                ctx.get_tagged(tag)
+            } else {
+                None
+            };
             // Try to get current object, fall back to LKI snapshot
             if matches!(target_spec.as_ref(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot.power.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no power".to_string())
+                })
+            } else if let Some(snapshot) = tagged_snapshot
+                && game
+                    .object(snapshot.object_id)
+                    .is_none_or(|object| object.zone != snapshot.zone)
             {
                 snapshot.power.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no power".to_string())
@@ -832,9 +845,7 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no power".to_string())
                     })
-            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
-                && let Some(snapshot) = ctx.get_tagged(tag)
-            {
+            } else if let Some(snapshot) = tagged_snapshot {
                 snapshot.power.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no power".to_string())
                 })
@@ -850,9 +861,22 @@ pub fn resolve_value(
         Value::ToughnessOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+                ctx.get_tagged(tag)
+            } else {
+                None
+            };
             // Try to get current object, fall back to LKI snapshot
             if matches!(target_spec.as_ref(), ChooseSpec::Source)
                 && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot.toughness.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no toughness".to_string())
+                })
+            } else if let Some(snapshot) = tagged_snapshot
+                && game
+                    .object(snapshot.object_id)
+                    .is_none_or(|object| object.zone != snapshot.zone)
             {
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
@@ -863,9 +887,7 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no toughness".to_string())
                     })
-            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
-                && let Some(snapshot) = ctx.get_tagged(tag)
-            {
+            } else if let Some(snapshot) = tagged_snapshot {
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
                 })

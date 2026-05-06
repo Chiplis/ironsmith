@@ -318,6 +318,20 @@ fn words_contain(words: &[&str], expected: &str) -> bool {
     slice_contains(words, &expected)
 }
 
+fn title_case_card_name_words(words: &[&str]) -> String {
+    words
+        .iter()
+        .map(|word| {
+            let mut chars = word.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn contains_words_sequence(words: &[&str], pattern: &[&str]) -> bool {
     contains_word_sequence(words, pattern)
 }
@@ -1561,6 +1575,19 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::Fixed(value), 1));
     }
 
+    if matches!(words.get(..2), Some(["your", "speed"])) {
+        return Some((Value::Speed(PlayerFilter::You), 2));
+    }
+    if matches!(
+        words.get(..3),
+        Some(["target", "players", "speed"])
+            | Some(["target", "player", "speed"])
+            | Some(["that", "players", "speed"])
+            | Some(["that", "player", "speed"])
+    ) {
+        return Some((Value::Speed(PlayerFilter::target_player()), 3));
+    }
+
     for source_len in (1..words.len()).rev() {
         if let Some(surface) = source_reference_surface_for_possessive_words(&words[..source_len]) {
             match words.get(source_len).copied() {
@@ -1685,6 +1712,10 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "cards", "power"],
         &["that", "object", "power"],
         &["that", "objects", "power"],
+        &["the", "exploited", "creature", "power"],
+        &["the", "exploited", "creatures", "power"],
+        &["exploited", "creature", "power"],
+        &["exploited", "creatures", "power"],
         &["the", "sacrificed", "creature", "power"],
         &["the", "sacrificed", "creatures", "power"],
         &["sacrificed", "creature", "power"],
@@ -1696,8 +1727,16 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["the", "army", "you", "amassed", "power"],
         &["army", "you", "amassed", "power"],
     ]) {
+        let tag = if words
+            .get(..used)
+            .is_some_and(|prefix| prefix.contains(&"exploited"))
+        {
+            crate::tag::EXPLOITED_TAG
+        } else {
+            IT_TAG
+        };
         return Some((
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
             used,
         ));
     }
@@ -1709,6 +1748,10 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "cards", "toughness"],
         &["that", "object", "toughness"],
         &["that", "objects", "toughness"],
+        &["the", "exploited", "creature", "toughness"],
+        &["the", "exploited", "creatures", "toughness"],
+        &["exploited", "creature", "toughness"],
+        &["exploited", "creatures", "toughness"],
         &["the", "sacrificed", "creature", "toughness"],
         &["the", "sacrificed", "creatures", "toughness"],
         &["sacrificed", "creature", "toughness"],
@@ -1720,8 +1763,16 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["the", "army", "you", "amassed", "toughness"],
         &["army", "you", "amassed", "toughness"],
     ]) {
+        let tag = if words
+            .get(..used)
+            .is_some_and(|prefix| prefix.contains(&"exploited"))
+        {
+            crate::tag::EXPLOITED_TAG
+        } else {
+            IT_TAG
+        };
         return Some((
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
             used,
         ));
     }
@@ -1739,6 +1790,14 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["the", "mana", "value", "of", "the", "revealed", "cards"],
         &["mana", "value", "of", "the", "revealed", "card"],
         &["mana", "value", "of", "the", "revealed", "cards"],
+        &["the", "exiled", "card", "mana", "value"],
+        &["the", "exiled", "cards", "mana", "value"],
+        &["exiled", "card", "mana", "value"],
+        &["exiled", "cards", "mana", "value"],
+        &["the", "mana", "value", "of", "the", "exiled", "card"],
+        &["the", "mana", "value", "of", "the", "exiled", "cards"],
+        &["mana", "value", "of", "the", "exiled", "card"],
+        &["mana", "value", "of", "the", "exiled", "cards"],
         &["the", "exiled", "spell", "mana", "value"],
         &["the", "exiled", "spells", "mana", "value"],
         &["exiled", "spell", "mana", "value"],
@@ -1762,7 +1821,15 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     ]) {
         let tag = if matches!(
             words.get(..used),
-            Some(["the", "exiled", "spell", "mana", "value"])
+            Some(["the", "exiled", "card", "mana", "value"])
+                | Some(["the", "exiled", "cards", "mana", "value"])
+                | Some(["exiled", "card", "mana", "value"])
+                | Some(["exiled", "cards", "mana", "value"])
+                | Some(["the", "mana", "value", "of", "the", "exiled", "card"])
+                | Some(["the", "mana", "value", "of", "the", "exiled", "cards"])
+                | Some(["mana", "value", "of", "the", "exiled", "card"])
+                | Some(["mana", "value", "of", "the", "exiled", "cards"])
+                | Some(["the", "exiled", "spell", "mana", "value"])
                 | Some(["the", "exiled", "spells", "mana", "value"])
                 | Some(["exiled", "spell", "mana", "value"])
                 | Some(["exiled", "spells", "mana", "value"])
@@ -4591,6 +4658,22 @@ pub(crate) fn parse_cast_this_spell_only_line(
     }
 
     let tail = &line_words[4..];
+    if words_have_prefix(tail, &["if", "no", "permanents", "named"])
+        && words_have_suffix(tail, &["are", "on", "the", "battlefield"])
+        && tail.len() > 8
+    {
+        let name_words = &tail[4..tail.len() - 4];
+        let card_name = title_case_card_name_words(name_words);
+        return Ok(Some(StaticAbility::this_spell_cast_restriction(
+            crate::static_abilities::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield(
+                card_name.as_str(),
+            ),
+            format!(
+                "Cast this spell only if no permanents named {card_name} are on the battlefield."
+            ),
+        )));
+    }
+
     let declare_attackers_tails: &[&[&str]] = &[
         &["during", "the", "declare", "attackers", "step"],
         &["during", "declare", "attackers", "step"],
@@ -4745,24 +4828,6 @@ pub(crate) fn parse_cast_this_spell_only_line(
         Some((
             crate::static_abilities::ThisSpellCastRestrictionKind::after_combat(),
             "Cast this spell only after combat.",
-        ))
-    } else if tail
-        == [
-            "if",
-            "no",
-            "permanents",
-            "named",
-            "tidal",
-            "influence",
-            "are",
-            "on",
-            "the",
-            "battlefield",
-        ]
-    {
-        Some((
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield("Tidal Influence"),
-            "Cast this spell only if no permanents named Tidal Influence are on the battlefield.",
         ))
     } else if tail == ["if", "you", "control", "a", "snow", "land"] {
         Some((

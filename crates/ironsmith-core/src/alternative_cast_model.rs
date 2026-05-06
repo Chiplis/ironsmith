@@ -78,7 +78,7 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
     },
-    MindbreakTrap {
+    Trap {
         name: &'static str,
         cost: ManaCost,
         condition: TrapCondition,
@@ -109,7 +109,7 @@ where
             | Self::FlashWithAdditionalCost { .. }
             | Self::Overload { .. }
             | Self::Composed { .. }
-            | Self::MindbreakTrap { .. }
+            | Self::Trap { .. }
             | Self::Bestow { .. } => Zone::Hand,
         }
     }
@@ -137,7 +137,7 @@ where
             Self::Miracle { cost } => Some(cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => total_cost.mana_cost(),
             Self::Foretell { cost } => Some(cost),
-            Self::MindbreakTrap { cost, .. } => Some(cost),
+            Self::Trap { cost, .. } => Some(cost),
             Self::Composed { total_cost, .. } => total_cost.mana_cost(),
             Self::Bestow { total_cost } => total_cost.mana_cost(),
         }
@@ -215,13 +215,13 @@ where
             Self::FlashWithAdditionalCost { .. } => "Flash",
             Self::Foretell { .. } => "Foretell",
             Self::Composed { name, .. } => name,
-            Self::MindbreakTrap { name, .. } => name,
+            Self::Trap { name, .. } => name,
             Self::Bestow { .. } => "Bestow",
         }
     }
 
     pub fn trap(name: &'static str, cost: ManaCost, condition: TrapCondition) -> Self {
-        Self::MindbreakTrap {
+        Self::Trap {
             name,
             cost,
             condition,
@@ -230,7 +230,7 @@ where
 
     pub fn trap_condition(&self) -> Option<&TrapCondition> {
         match self {
-            Self::MindbreakTrap { condition, .. } => Some(condition),
+            Self::Trap { condition, .. } => Some(condition),
             _ => None,
         }
     }
@@ -410,11 +410,11 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
                 condition,
             },
-            Self::MindbreakTrap {
+            Self::Trap {
                 name,
                 cost,
                 condition,
-            } => AlternativeCastingMethod::MindbreakTrap {
+            } => AlternativeCastingMethod::Trap {
                 name,
                 cost,
                 condition,

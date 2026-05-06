@@ -46,7 +46,6 @@ impl WasmGame {
                 | LegalAction::PlayLand { .. }
                 | LegalAction::KeepOpeningHand
                 | LegalAction::TakeMulligan
-                | LegalAction::SerumPowderMulligan { .. }
                 | LegalAction::ContinuePregame
                 | LegalAction::BeginGame
                 | LegalAction::UsePregameAction { .. }
@@ -968,15 +967,12 @@ impl WasmGame {
             }
 
             let parse_block = Self::build_custom_face_parse_block(face)?;
-            let mut definition =
-                ironsmith_registry::compile_builder_to_runtime_definition(
-                    builder,
-                    parse_block,
-                    false,
-                )
-                .map_err(|err| {
-                    JsValue::from_str(&format!("face {} parse failed: {err}", index + 1))
-                })?;
+            let mut definition = ironsmith_registry::compile_builder_to_runtime_definition(
+                builder,
+                parse_block,
+                false,
+            )
+            .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
             definition.card.linked_face_layout = draft.layout.linked_face_layout();
             definitions.push(definition);
         }

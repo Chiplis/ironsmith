@@ -341,16 +341,23 @@ fn compile_subject_verb_effect(
             let id = ctx.next_effect_id();
             Ok((
                 vec![
-                    Effect::with_id(id.0, Effect::may(vec![Effect::sacrifice(
-                        ObjectFilter::creature(),
-                        1,
-                    )])),
+                    Effect::with_id(
+                        id.0,
+                        Effect::may(vec![Effect::sacrifice_with_event_tags(
+                            ObjectFilter::creature(),
+                            1,
+                            crate::tag::EXPLOITED_TAG,
+                            crate::tag::EXPLOITER_TAG,
+                        )]),
+                    ),
                     Effect::if_then(
                         id,
                         EffectPredicate::Happened,
-                        vec![Effect::emit_keyword_action(
+                        vec![Effect::emit_keyword_action_with_affected_object_memory_tag(
                             crate::events::KeywordActionKind::Exploit,
                             1,
+                            id,
+                            crate::tag::EXPLOITED_TAG,
                         )],
                     ),
                 ],
@@ -1946,6 +1953,17 @@ fn compile_subject_verb_effect(
 
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut effect = Effect::move_to_library_top_or_bottom_choice(spec.clone());
+            if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("moved");
+                ctx.last_object_tag = Some(tag.clone());
+                effect = effect.tag(tag);
+            }
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::TargetOnly { target } => {
             compile_tagged_effect_for_target(target, ctx, "targeted", |spec| {
                 Effect::new(crate::effects::TargetOnlyEffect::new(spec))
@@ -3283,98 +3301,6 @@ fn compile_subject_verb_effect(
             ctx.last_effect_id = Some(move_to_hand_id);
             Ok((compiled, choices))
         }
-        SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-            filter,
-            reveal,
-            order,
-            if_not_chosen,
-        } => {
-            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve looked-at cards without prior reference".to_string(),
-                )
-            })?;
-            let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
-            let chooser = subject.clone_player_filter();
-            let mut choose_filter =
-                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-            let mut choices = subject.into_choices();
-            choose_filter.zone = Some(Zone::Library);
-            choose_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-
-            let chosen_tag = ctx.next_tag("chosen");
-            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-            let choose = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    choose_filter,
-                    ChoiceCount::up_to(1),
-                    chooser.clone(),
-                    chosen_tag_key.clone(),
-                )
-                .in_zone(Zone::Library),
-            );
-
-            let mut compiled = vec![choose];
-            if *reveal {
-                compiled.push(Effect::for_each_tagged(
-                    chosen_tag.clone(),
-                    vec![Effect::new(crate::effects::RevealTaggedEffect::new(
-                        chosen_tag.clone(),
-                    ))],
-                ));
-            }
-            let move_to_hand_id = ctx.next_effect_id();
-            compiled.push(Effect::with_id(
-                move_to_hand_id.0,
-                Effect::for_each_tagged(
-                    chosen_tag.clone(),
-                    vec![Effect::move_to_zone(
-                        ChooseSpec::Iterated,
-                        Zone::Hand,
-                        false,
-                    )],
-                ),
-            ));
-
-            let resolved_order = match order {
-                crate::cards::builders::LibraryBottomOrderAst::Random => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::Random
-                }
-                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-                }
-            };
-            compiled.push(Effect::put_tagged_remainder_on_library_bottom(
-                TagKey::from(looked_tag.as_str()),
-                Some(chosen_tag_key.clone()),
-                resolved_order,
-                chooser.clone(),
-            ));
-
-            if !if_not_chosen.is_empty() {
-                let (if_not_effects, if_not_choices) =
-                    with_preserved_lowering_context(ctx, |_| {}, |ctx| {
-                        compile_effects(if_not_chosen, ctx)
-                    })?;
-                compiled.push(Effect::if_then(
-                    move_to_hand_id,
-                    EffectPredicate::DidNotHappen,
-                    if_not_effects,
-                ));
-                choices.extend(if_not_choices);
-            }
-
-            ctx.last_object_tag = Some(chosen_tag);
-            ctx.last_effect_id = Some(move_to_hand_id);
-            Ok((compiled, choices))
-        }
         SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
             spell_filter,
             order,
@@ -4201,14 +4127,28 @@ fn compile_subject_verb_effect(
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             let compiled = compile_tagged_effect_for_target(target, ctx, "counters", |spec| {
+                let resolved_amount = match (&resolved_amount, counter_type) {
+                    (Value::CountersOn(counter_source, amount_counter_type), Some(counter_type))
+                        if matches!(counter_source.as_ref(), ChooseSpec::Source)
+                            && amount_counter_type == &Some(*counter_type) =>
+                    {
+                        Value::CountersOn(Box::new(spec.clone()), Some(*counter_type))
+                    }
+                    (Value::CountersOn(counter_source, None), None)
+                        if matches!(counter_source.as_ref(), ChooseSpec::Source) =>
+                    {
+                        Value::CountersOn(Box::new(spec.clone()), None)
+                    }
+                    _ => resolved_amount.clone(),
+                };
                 let effect = if let Some(counter_type) = counter_type {
                     if *up_to {
-                        Effect::remove_up_to_counters(*counter_type, resolved_amount.clone(), spec)
+                        Effect::remove_up_to_counters(*counter_type, resolved_amount, spec)
                     } else {
-                        Effect::remove_counters(*counter_type, resolved_amount.clone(), spec)
+                        Effect::remove_counters(*counter_type, resolved_amount, spec)
                     }
                 } else {
-                    Effect::remove_up_to_any_counters(resolved_amount.clone(), spec)
+                    Effect::remove_up_to_any_counters(resolved_amount, spec)
                 };
                 Effect::with_id(id.0, effect)
             })?;

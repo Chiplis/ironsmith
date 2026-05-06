@@ -4473,6 +4473,14 @@
   pointer-events: none;
 }
 
+.hover-art-stage--left-art .hover-art-foreground-wrap {
+  justify-content: flex-start;
+}
+
+.hover-art-stage--left-art .hover-art-backdrop-image {
+  transform-origin: left center;
+}
+
 .hover-art-foreground-crop {
   position: relative;
   height: 100%;
@@ -6545,8 +6553,8 @@ textarea,
 .battlefield-panel-header .battlefield-name,
 .table-shared-player-header .battlefield-name {
   flex: 0 1 auto;
-  min-width: 3ch;
-  max-width: clamp(44px, 16cqw, 132px);
+  min-width: clamp(88px, 18cqw, 118px);
+  max-width: clamp(124px, 34cqw, 220px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8729,13 +8737,19 @@ textarea,
 }
 
 .add-card-toolbar-phase-caption {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   justify-content: flex-start;
   flex-wrap: nowrap;
-  min-width: min(32rem, 45vw);
-  max-width: min(50vw, 700px);
+  min-width: 0;
+  max-width: none;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.add-card-toolbar-phase-caption--trailing {
+  justify-content: flex-end;
+  margin-left: auto;
+  text-align: right;
 }
 
 .add-card-toolbar-phase-caption > span {
@@ -13296,7 +13310,7 @@ select::-ms-expand {
     border-color 220ms ease,
     box-shadow 220ms ease,
     color 220ms ease,
-    transform 180ms ease;
+    transform 500ms ease;
 }
 
 .decision-main-button::before,
@@ -13317,7 +13331,7 @@ select::-ms-expand {
     0 0 0 1px rgba(var(--decision-main-rgb), 0.56),
     0 0 22px rgba(var(--decision-main-rgb), 0.36),
     0 12px 22px rgba(0, 0, 0, 0.28) !important;
-  transform: scale(1.1) !important;
+  transform: scale(1.25) !important;
 }
 
 .decision-main-button:hover:not(:disabled) > * {
@@ -13550,22 +13564,22 @@ select::-ms-expand {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  height: 26px;
-  min-width: min(78px, 100%);
-  max-width: min(178px, 31cqw);
-  padding: 0 10px 0 12px !important;
+  height: 30px;
+  min-width: min(96px, 100%);
+  max-width: min(220px, 40cqw);
+  padding: 0 14px 1px 18px !important;
   border: 0 !important;
   border-radius: 0 !important;
   background:
-    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.2), rgba(42, 35, 27, 0.42) 38%, rgba(17, 15, 13, 0) 100%);
-  box-shadow:
-    inset 0 -1px 0 rgba(216, 191, 106, 0.22),
-    inset 3px 0 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.76);
+    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.9), rgba(var(--player-accent-rgb, 216, 191, 106), 0.18) 8px, transparent 9px),
+    url("/theme/player-nameplate-frame.svg") center / 100% 100% no-repeat !important;
+  box-shadow: none !important;
   color: var(--player-accent, #d8bf6a) !important;
-  letter-spacing: 0.035em !important;
+  font-size: 18px !important;
+  letter-spacing: 0.025em !important;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 0.84),
-    0 0 10px rgba(var(--player-accent-rgb, 216, 191, 106), 0.18);
+    0 0 8px rgba(var(--player-accent-rgb, 216, 191, 106), 0.24);
 }
 
 .battlefield-panel-header--compact .battlefield-name {
@@ -13583,15 +13597,7 @@ select::-ms-expand {
 
 .battlefield-panel-header .battlefield-name::after,
 .table-shared-player-header .battlefield-name::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 1px;
-  left: 12px;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(216, 191, 106, 0.62), transparent);
-  opacity: 0.54;
-  pointer-events: none;
+  display: none !important;
 }
 
 .battlefield-panel-header .battlefield-name > span,
@@ -13738,7 +13744,7 @@ select::-ms-expand {
   transform: scale(1);
   transform-origin: left center;
   transition:
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
     background 220ms ease,
     box-shadow 220ms ease,
     filter 220ms ease;
@@ -13749,7 +13755,7 @@ select::-ms-expand {
 .action-strip-layout--segmented > .action-strip-main-region:hover {
   z-index: 30;
   filter: brightness(1.06);
-  transform: scale(1.1);
+  transform: scale(1.25);
   box-shadow:
     0 0 0 1px rgba(var(--decision-main-rgb, 214, 164, 74), 0.28),
     0 0 22px rgba(var(--decision-main-rgb, 214, 164, 74), 0.24),
@@ -13797,7 +13803,7 @@ select::-ms-expand {
   border-width: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  transform: none !important;
+  transform: scale(1.25) !important;
 }
 
 .action-strip-main-region .action-strip-main-label .priority-pass-label-current {
@@ -14513,7 +14519,7 @@ select::-ms-expand {
     inset 0 1px 0 rgba(134, 184, 249, 0.3),
     0 2px 5px rgba(0, 0, 0, 0.42) !important;
   filter: none !important;
-  transform: none !important;
+  transform: scale(1.25) !important;
 }
 
 .action-strip-command-region .action-strip-main-region {
@@ -14650,7 +14656,7 @@ select::-ms-expand {
       inset 0 -1px 0 rgba(17, 11, 4, 0.72),
       0 2px 5px rgba(0, 0, 0, 0.42) !important;
     filter: none !important;
-    transform: none !important;
+    transform: scale(1.25) !important;
   }
 
   .action-strip-command-region .action-strip-main-region,
@@ -14669,7 +14675,7 @@ select::-ms-expand {
 /* ---- Reference middle controls pass ---- */
 @media (min-width: 1024px) and (min-height: 700px) {
   .table-shared-action-slot {
-    padding: 4px 4px 5px !important;
+    padding: 4px 4px 5px 15px !important;
     border-top: 1px solid rgba(199, 153, 75, 0.28);
     border-bottom: 1px solid rgba(199, 153, 75, 0.22);
     background:
@@ -14701,14 +14707,12 @@ select::-ms-expand {
     min-height: 36px !important;
     min-width: 92px !important;
     padding: 4px 13px !important;
-    border: 1px solid rgba(168, 135, 80, 0.58) !important;
-    border-radius: 3px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
     color: #fff0cf !important;
     background:
-      linear-gradient(180deg, rgba(55, 51, 45, 0.96), rgba(22, 22, 21, 0.98)) !important;
+      url("/theme/action-button-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 238, 196, 0.08),
-      inset 0 -1px 0 rgba(3, 3, 3, 0.78),
       0 2px 6px rgba(0, 0, 0, 0.44) !important;
   }
 
@@ -14756,34 +14760,54 @@ select::-ms-expand {
   .phase-track {
     height: 40px !important;
     min-height: 40px !important;
-    border: 1px solid rgba(178, 134, 62, 0.62) !important;
-    border-radius: 18px !important;
+    padding: 0 18px !important;
+    gap: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
     background:
-      radial-gradient(360px 36px at 50% 0%, rgba(197, 145, 59, 0.14), transparent 70%),
-      linear-gradient(180deg, rgba(41, 31, 18, 0.96), rgba(13, 11, 9, 0.98)) !important;
+      url("/theme/phase-track-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 238, 192, 0.1),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.76),
-      0 2px 7px rgba(0, 0, 0, 0.45) !important;
+      0 1px 0 rgba(255, 226, 161, 0.08),
+      0 2px 7px rgba(0, 0, 0, 0.48) !important;
   }
 
   .phase-track-cell {
     min-height: 38px !important;
+    position: relative;
     font-size: 13px !important;
     letter-spacing: 0.03em !important;
     color: #e8d3a5 !important;
     text-shadow: 0 1px 0 rgba(0, 0, 0, 0.86);
   }
 
+  .phase-track-cell:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    right: 0;
+    bottom: 10px;
+    width: 1px;
+    background:
+      linear-gradient(180deg, transparent, rgba(196, 145, 68, 0.34), transparent);
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.52);
+    pointer-events: none;
+  }
+
   .phase-track-cell[data-phase-active="true"] {
     color: #fff2ce !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .phase-track-indicator {
+    margin: 2px 0 !important;
+    height: calc(100% - 4px) !important;
+    border: 0 !important;
     background:
-      radial-gradient(80% 100% at 50% 0%, rgba(255, 229, 166, 0.18), transparent 68%),
-      linear-gradient(180deg, rgba(142, 101, 44, 0.98), rgba(82, 55, 23, 0.98)) !important;
+      url("/theme/phase-active-frame.svg") center / 100% 100% no-repeat,
+      linear-gradient(180deg, #9a6a2e 0%, #6c4319 48%, #2f1c0b 100%) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 241, 203, 0.18),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.58),
-      0 0 12px rgba(212, 152, 66, 0.18);
+      0 0 14px rgba(215, 159, 67, 0.2) !important;
   }
 
   .add-card-toolbar {
@@ -14801,8 +14825,10 @@ select::-ms-expand {
   }
 
   .add-card-toolbar-phase-caption {
-    min-width: min(32rem, 35vw) !important;
-    max-width: min(40vw, 560px) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
+    justify-content: flex-end !important;
     font-size: 11px !important;
     letter-spacing: 0.16em !important;
   }
@@ -14846,36 +14872,27 @@ select::-ms-expand {
 
   .action-strip-command-region,
   .action-strip-layout--segmented > .action-strip-main-region {
-    border-color: rgba(var(--decision-main-rgb, 68, 132, 215), 0.82) !important;
+    border-radius: 0 !important;
+    border: 0 !important;
     background:
-      radial-gradient(circle at 42% 20%, rgba(220, 236, 255, 0.2), transparent 42%),
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, rgb(var(--decision-main-rgb, 68, 132, 215)) 74%, #17366c 26%),
-        color-mix(in srgb, rgb(var(--decision-main-rgb, 68, 132, 215)) 36%, #061332 64%)
-      ) !important;
+      url("/theme/decision-button-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      inset 0 1px 0 rgba(238, 246, 255, 0.18),
-      inset 0 -1px 0 rgba(2, 8, 24, 0.72),
-      0 0 0 1px rgba(var(--decision-main-rgb, 68, 132, 215), 0.2),
-      0 2px 5px rgba(0, 0, 0, 0.42) !important;
+      0 0 12px rgba(33, 120, 255, 0.38),
+      0 2px 5px rgba(0, 0, 0, 0.52) !important;
+  }
+
+  .action-strip-command-region::before,
+  .action-strip-layout--segmented > .action-strip-main-region::before {
+    content: none !important;
   }
 
   .action-strip-command-region:hover,
   .action-strip-layout--segmented > .action-strip-main-region:hover {
-    border-color: rgba(var(--decision-main-rgb, 68, 132, 215), 0.92) !important;
     background:
-      radial-gradient(circle at 42% 20%, rgba(230, 242, 255, 0.24), transparent 42%),
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, rgb(var(--decision-main-rgb, 68, 132, 215)) 82%, #1a3c78 18%),
-        color-mix(in srgb, rgb(var(--decision-main-rgb, 68, 132, 215)) 42%, #061332 58%)
-      ) !important;
+      url("/theme/decision-button-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      inset 0 1px 0 rgba(238, 246, 255, 0.22),
-      inset 0 -1px 0 rgba(2, 8, 24, 0.74),
-      0 0 0 1px rgba(var(--decision-main-rgb, 68, 132, 215), 0.24),
-      0 2px 5px rgba(0, 0, 0, 0.42) !important;
+      0 0 14px rgba(39, 130, 255, 0.46),
+      0 2px 5px rgba(0, 0, 0, 0.52) !important;
   }
 
   .action-strip-main-region .decision-phase-help-button,
@@ -14884,5 +14901,83 @@ select::-ms-expand {
     border-color: rgba(var(--decision-main-rgb, 68, 132, 215), 0.68) !important;
     background: rgba(5, 23, 57, 0.48) !important;
     color: #e8f3ff !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] {
+    display: inline-flex !important;
+    width: 8px !important;
+    height: 8px !important;
+    min-width: 8px !important;
+    min-height: 8px !important;
+    margin: 0 0 0 2px !important;
+    border: 1px solid rgba(218, 236, 255, 0.78) !important;
+    border-radius: 999px !important;
+    background:
+      radial-gradient(circle at 50% 45%, rgba(232, 244, 255, 0.2), rgba(12, 47, 120, 0.18) 48%, rgba(2, 13, 44, 0.54) 100%) !important;
+    box-shadow:
+      inset 0 0 0 1px rgba(2, 11, 38, 0.5),
+      0 0 3px rgba(151, 202, 255, 0.38) !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"][data-state="checked"] {
+    border-color: rgba(239, 249, 255, 0.92) !important;
+    background:
+      radial-gradient(circle at 50% 50%, #eef8ff 0 24%, #6eb8ff 28% 48%, #123d96 54% 100%) !important;
+    box-shadow:
+      inset 0 0 0 1px rgba(2, 11, 38, 0.5),
+      0 0 5px rgba(132, 195, 255, 0.58) !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] svg {
+    display: none !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls .priority-control-toggles {
+    gap: 5px !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls .priority-control-toggle {
+    gap: 3px !important;
+  }
+
+  .action-strip-main-region .action-strip-main-controls {
+    margin-top: 4px !important;
+  }
+}
+
+/* Expanded decision UIs need to contain variable-height target/payment rows. */
+@media (min-width: 1024px) and (min-height: 700px) {
+  .table-action-bar[data-expanded="true"] .priority-inline-panel {
+    overflow: visible !important;
+  }
+
+  .table-action-bar[data-expanded="true"] .action-strip-decision-stack {
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .table-action-bar[data-expanded="true"] .action-strip-decision-toolbar {
+    min-height: 50px !important;
+    padding-top: 6px !important;
+    padding-bottom: 7px !important;
+  }
+
+  .table-action-bar[data-expanded="true"] .action-strip-decision-content,
+  .table-action-bar[data-expanded="true"] .action-strip-body-shell {
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .table-action-bar[data-expanded="true"] .action-strip-decision-content {
+    padding-top: 7px !important;
+    padding-bottom: 11px !important;
+  }
+
+  .table-action-bar[data-expanded="true"] .decision-target-meta,
+  .table-action-bar[data-expanded="true"] .decision-option-row--strip {
+    flex: 0 0 auto;
   }
 }

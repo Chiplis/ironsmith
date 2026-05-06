@@ -1252,6 +1252,17 @@ impl MoveToLibraryNthFromTopEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MoveToLibraryTopOrBottomChoiceEffect {
+    pub target: ChooseSpec,
+}
+
+impl MoveToLibraryTopOrBottomChoiceEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeControlEffect {
     pub permanent1: ChooseSpec,
     pub permanent2: ChooseSpec,
@@ -2968,6 +2979,20 @@ impl DestroyNoRegenerationEffect {
 pub struct SacrificeEffect {
     pub filter: ObjectFilter,
     pub count: i32,
+    pub event_object_tags: Vec<TagKey>,
+    pub event_source_tags: Vec<TagKey>,
+}
+
+impl SacrificeEffect {
+    pub fn with_event_object_tag(mut self, tag: impl Into<TagKey>) -> Self {
+        self.event_object_tags.push(tag.into());
+        self
+    }
+
+    pub fn with_event_source_tag(mut self, tag: impl Into<TagKey>) -> Self {
+        self.event_source_tags.push(tag.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4123,14 +4148,64 @@ impl Default for CastSourceEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EmitKeywordActionObjectTag {
+    pub effect_id: EffectId,
+    pub tag: TagKey,
+    pub use_affected_memory: bool,
+}
+
+impl EmitKeywordActionObjectTag {
+    pub fn affected(effect_id: EffectId, tag: impl Into<TagKey>) -> Self {
+        Self {
+            effect_id,
+            tag: tag.into(),
+            use_affected_memory: true,
+        }
+    }
+
+    pub fn chosen(effect_id: EffectId, tag: impl Into<TagKey>) -> Self {
+        Self {
+            effect_id,
+            tag: tag.into(),
+            use_affected_memory: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmitKeywordActionEffect {
     pub action: crate::event_model::KeywordActionKind,
     pub amount: u32,
+    pub object_tags: Vec<EmitKeywordActionObjectTag>,
 }
 
 impl EmitKeywordActionEffect {
     pub fn new(action: crate::event_model::KeywordActionKind, amount: u32) -> Self {
-        Self { action, amount }
+        Self {
+            action,
+            amount,
+            object_tags: Vec::new(),
+        }
+    }
+
+    pub fn with_affected_object_memory_tag(
+        mut self,
+        effect_id: EffectId,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        self.object_tags
+            .push(EmitKeywordActionObjectTag::affected(effect_id, tag));
+        self
+    }
+
+    pub fn with_chosen_object_memory_tag(
+        mut self,
+        effect_id: EffectId,
+        tag: impl Into<TagKey>,
+    ) -> Self {
+        self.object_tags
+            .push(EmitKeywordActionObjectTag::chosen(effect_id, tag));
+        self
     }
 }
 

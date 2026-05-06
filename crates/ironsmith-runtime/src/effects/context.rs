@@ -666,6 +666,17 @@ impl<'a> ExecutionContext<'a> {
             self.apply_voting_tags(votes, &action_event.player_tags);
         }
 
+        if let Some(action_event) = event.downcast::<crate::events::KeywordActionEvent>() {
+            for (tag, snapshots) in &action_event.object_tags {
+                self.set_tagged_objects(tag.clone(), snapshots.clone());
+            }
+        }
+        if let Some(zone_change_event) = event.downcast::<crate::events::ZoneChangeEvent>() {
+            for (tag, snapshots) in &zone_change_event.object_tags {
+                self.set_tagged_objects(tag.clone(), snapshots.clone());
+            }
+        }
+
         self.triggering_event = Some(event);
         self
     }

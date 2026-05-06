@@ -1,6 +1,6 @@
 use crate::{
     CauseFilter, ChooseSpec, CounterType, KeywordActionKind, ObjectFilter, PlayerFilter,
-    SourceReferenceSurface, Zone, filter_model::Comparison,
+    SourceReferenceSurface, TagKey, Zone, filter_model::Comparison,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,6 +249,13 @@ pub enum TriggerKind {
         action: KeywordActionKind,
         player: PlayerFilter,
         filter: ObjectFilter,
+    },
+    KeywordActionMatchingTaggedObject {
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
     },
     KeywordAction {
         action: KeywordActionKind,
@@ -861,6 +868,24 @@ impl Trigger {
                 action,
                 player,
                 filter,
+            },
+        )
+    }
+    pub fn keyword_action_matching_source_and_tagged_object(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "keyword_action_matching_source_and_tagged_object",
+            TriggerKind::KeywordActionMatchingTaggedObject {
+                action,
+                player,
+                source_filter,
+                object_tag,
+                object_filter,
             },
         )
     }

@@ -515,28 +515,155 @@ pub(super) fn can_stack_trigger_this_turn(
     }
 }
 
-/// Create a stack entry for a triggered ability, handling target selection.
-///
-/// Returns None if the trigger has mandatory targets but no legal targets exist.
-pub(super) fn create_triggered_stack_entry_with_targets(
-    game: &mut GameState,
+fn resolve_trigger_modal_count(
+    value: &crate::effect::Value,
+    x_value: Option<u32>,
+    fallback: usize,
+) -> usize {
+    match value {
+        crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
+        crate::effect::Value::X => x_value.map(|x| x as usize).unwrap_or(fallback),
+        crate::effect::Value::XTimes(multiplier) => x_value
+            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .unwrap_or(fallback),
+        _ => fallback,
+    }
+}
+
+fn triggered_modal_spec(
+    game: &GameState,
     trigger: &TriggeredAbilityEntry,
-    decision_maker: &mut dyn DecisionMaker,
-) -> Option<StackEntry> {
-    let effects = game.cached_continuous_effects_snapshot();
-    let mut entry = triggered_to_stack_entry_with_effects(game, trigger, &effects);
-    if let Some(triggering_event) = entry.triggering_event.take() {
-        let matched_node = game.provenance_graph_mut().alloc_child(
-            triggering_event.provenance(),
-            crate::provenance::ProvenanceNodeKind::TriggerMatched {
-                source: trigger.source,
-                controller: trigger.controller,
-            },
-        );
-        entry.triggering_event = Some(triggering_event.with_provenance(matched_node));
+) -> Option<crate::effects::ModalSpec> {
+    for effect in trigger.ability.effects.all_effects() {
+        if let Some(spec) =
+            effect
+                .0
+                .get_modal_spec_with_context(game, trigger.controller, trigger.source)
+        {
+            return Some(spec);
+        }
     }
 
-    // Check if this trigger has targets that need to be selected
+    None
+}
+
+fn selected_trigger_effects(trigger: &TriggeredAbilityEntry) -> Vec<Effect> {
+    trigger.ability.effects.all_effects_owned()
+}
+
+fn mode_is_legal_for_trigger(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    effects: &[Effect],
+    mode_idx: usize,
+) -> bool {
+    spell_has_legal_targets_with_mode_preview(
+        game,
+        effects,
+        trigger.controller,
+        Some(trigger.source),
+        &[mode_idx],
+    )
+}
+
+fn choose_trigger_modes(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Option<Option<Vec<usize>>> {
+    let Some(modal_spec) = triggered_modal_spec(game, trigger) else {
+        return Some(None);
+    };
+
+    let effects = selected_trigger_effects(trigger);
+    let max_modes = resolve_trigger_modal_count(
+        &modal_spec.max_modes,
+        trigger.x_value,
+        modal_spec.mode_descriptions.len().max(1),
+    );
+    let min_modes = resolve_trigger_modal_count(&modal_spec.min_modes, trigger.x_value, max_modes);
+
+    if max_modes == 0 || modal_spec.mode_descriptions.is_empty() {
+        return Some(Some(Vec::new()));
+    }
+
+    let mode_options: Vec<crate::decisions::specs::ModeOption> = modal_spec
+        .mode_descriptions
+        .iter()
+        .enumerate()
+        .map(|(i, desc)| {
+            crate::decisions::specs::ModeOption::with_legality(
+                i,
+                desc.clone(),
+                mode_is_legal_for_trigger(game, trigger, &effects, i),
+            )
+        })
+        .collect();
+
+    if mode_options.iter().filter(|mode| mode.legal).count() < min_modes {
+        return None;
+    }
+
+    let spec = crate::decisions::ModesSpec::new(
+        trigger.source,
+        mode_options,
+        min_modes,
+        max_modes,
+        modal_spec.allow_repeated_modes,
+    );
+    let chosen: Vec<usize> = crate::decisions::make_decision(
+        game,
+        decision_maker,
+        trigger.controller,
+        Some(trigger.source),
+        spec,
+    );
+    if decision_maker.awaiting_choice() {
+        return None;
+    }
+
+    let mut valid = Vec::new();
+    for idx in chosen {
+        if !mode_is_legal_for_trigger(game, trigger, &effects, idx) {
+            continue;
+        }
+        if !modal_spec.allow_repeated_modes && valid.contains(&idx) {
+            continue;
+        }
+        valid.push(idx);
+        if valid.len() >= max_modes {
+            break;
+        }
+    }
+
+    if valid.len() < min_modes {
+        return None;
+    }
+
+    Some(Some(valid))
+}
+
+fn trigger_target_requirement_contexts(
+    requirements: &[TargetRequirement],
+) -> Vec<crate::decisions::context::TargetRequirementContext> {
+    requirements
+        .iter()
+        .map(
+            |requirement| crate::decisions::context::TargetRequirementContext {
+                description: requirement.description.clone(),
+                legal_targets: requirement.legal_targets.clone(),
+                min_targets: requirement.min_targets,
+                max_targets: requirement.max_targets,
+            },
+        )
+        .collect()
+}
+
+fn target_requirements_from_explicit_choices(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
+) -> Vec<TargetRequirement> {
     let target_choices = trigger
         .ability
         .choices
@@ -544,12 +671,9 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         .filter(|choice| choice.is_target())
         .collect::<Vec<_>>();
     if target_choices.is_empty() {
-        // No targets needed
-        return Some(entry);
+        return Vec::new();
     }
 
-    // Build tagged-object context for target selection when filters reference
-    // saddle/crew contributors (e.g., "target creature that saddled it this turn").
     let mut tagged_objects: std::collections::HashMap<
         crate::tag::TagKey,
         Vec<crate::snapshot::ObjectSnapshot>,
@@ -587,83 +711,122 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     };
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
 
-    // Select targets for each target spec
-    let mut chosen_targets = Vec::new();
-    let mut target_assignments = Vec::new();
-    for target_spec in target_choices {
-        let count = target_spec.count();
+    target_choices
+        .into_iter()
+        .map(|target_spec| {
+            let count = target_spec.count();
+            let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
+                game,
+                target_spec,
+                trigger.controller,
+                Some(trigger.source),
+                tagged_objects_ref,
+                &view,
+            );
 
-        // Compute legal targets for this spec
-        let legal_targets = compute_legal_targets_with_tagged_objects_and_view(
-            game,
-            target_spec,
-            trigger.controller,
-            Some(trigger.source),
-            tagged_objects_ref,
-            &view,
-        );
-
-        if legal_targets.len() < count.min {
-            // Mandatory targets are missing, so the trigger can't go on the stack.
-            return None;
-        }
-
-        // Create a context for target selection
-        let ctx = crate::decisions::context::TargetsContext::new(
-            trigger.controller,
-            trigger.source,
-            format!("{}'s triggered ability", trigger.source_name),
-            vec![crate::decisions::context::TargetRequirementContext {
+            TargetRequirement {
+                spec: (*target_spec).clone(),
+                legal_targets,
                 description: format!("target for {}", trigger.source_name),
-                legal_targets: legal_targets.clone(),
                 min_targets: count.min,
                 max_targets: count.max,
-            }],
-        );
-
-        // Get the choice from the decision maker
-        let mut selected_targets = Vec::new();
-        for target in decision_maker.decide_targets(game, &ctx) {
-            if !legal_targets.contains(&target) || selected_targets.contains(&target) {
-                continue;
             }
-            selected_targets.push(target);
-            if let Some(max_targets) = count.max
-                && selected_targets.len() >= max_targets
-            {
-                break;
-            }
-        }
+        })
+        .collect()
+}
 
-        if decision_maker.awaiting_choice() {
-            return None;
-        }
-
-        if selected_targets.len() < count.min {
-            for legal_target in &legal_targets {
-                if selected_targets.len() >= count.min {
-                    break;
-                }
-                if !selected_targets.contains(legal_target) {
-                    selected_targets.push(*legal_target);
-                }
-            }
-        }
-
-        if selected_targets.len() < count.min {
-            return None;
-        }
-
-        let start = chosen_targets.len();
-        chosen_targets.extend(selected_targets);
-        let end = chosen_targets.len();
-        target_assignments.push(crate::game_state::TargetAssignment {
-            spec: (*target_spec).clone(),
-            range: start..end,
-        });
+fn choose_trigger_targets(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    requirements: &[TargetRequirement],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Option<(Vec<Target>, Vec<crate::game_state::TargetAssignment>)> {
+    if requirements.is_empty() {
+        return Some((Vec::new(), Vec::new()));
     }
 
-    // Add the chosen targets to the stack entry
+    if requirements
+        .iter()
+        .any(|requirement| requirement.legal_targets.len() < requirement.min_targets)
+    {
+        return None;
+    }
+
+    let requirement_contexts = trigger_target_requirement_contexts(requirements);
+    let ctx = crate::decisions::context::TargetsContext::new(
+        trigger.controller,
+        trigger.source,
+        format!("{}'s triggered ability", trigger.source_name),
+        requirement_contexts.clone(),
+    );
+
+    let proposed_targets = decision_maker.decide_targets(game, &ctx);
+    if decision_maker.awaiting_choice() {
+        return None;
+    }
+
+    let selected_targets = crate::targeting::normalize_targets_for_requirements(
+        &requirement_contexts,
+        proposed_targets,
+    )?;
+    let ranges =
+        crate::targeting::assigned_target_ranges(&requirement_contexts, &selected_targets)?;
+    let assignments = requirements
+        .iter()
+        .zip(ranges)
+        .map(|(requirement, range)| crate::game_state::TargetAssignment {
+            spec: requirement.spec.clone(),
+            range,
+        })
+        .collect();
+
+    Some((selected_targets, assignments))
+}
+
+/// Create a stack entry for a triggered ability, handling target selection.
+///
+/// Returns None if the trigger has mandatory targets but no legal targets exist.
+pub(super) fn create_triggered_stack_entry_with_targets(
+    game: &mut GameState,
+    trigger: &TriggeredAbilityEntry,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Option<StackEntry> {
+    let effects = game.cached_continuous_effects_snapshot();
+    let mut entry = triggered_to_stack_entry_with_effects(game, trigger, &effects);
+    if let Some(triggering_event) = entry.triggering_event.take() {
+        let matched_node = game.provenance_graph_mut().alloc_child(
+            triggering_event.provenance(),
+            crate::provenance::ProvenanceNodeKind::TriggerMatched {
+                source: trigger.source,
+                controller: trigger.controller,
+            },
+        );
+        entry.triggering_event = Some(triggering_event.with_provenance(matched_node));
+    }
+
+    if let Some(chosen_modes) = choose_trigger_modes(game, trigger, decision_maker)? {
+        entry = entry.with_chosen_modes(Some(chosen_modes));
+    }
+    if decision_maker.awaiting_choice() {
+        return None;
+    }
+
+    let mut requirements = target_requirements_from_explicit_choices(game, trigger, &entry);
+    if let Some(ref chosen_modes) = entry.chosen_modes {
+        requirements.extend(extract_target_requirements_from_program_with_modes(
+            game,
+            &trigger.ability.effects,
+            trigger.controller,
+            Some(trigger.source),
+            Some(chosen_modes),
+        ));
+    }
+
+    let (chosen_targets, target_assignments) =
+        choose_trigger_targets(game, trigger, &requirements, decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        return None;
+    }
     entry.targets = chosen_targets;
     entry.target_assignments = target_assignments;
 
@@ -827,4 +990,128 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     }
 
     entry
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ChooseExileModeTarget {
+        target: ObjectId,
+        mode_prompts: usize,
+        target_prompts: usize,
+    }
+
+    impl DecisionMaker for ChooseExileModeTarget {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.mode_prompts += 1;
+            vec![1]
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.target_prompts += 1;
+            assert!(
+                ctx.requirements.iter().any(|requirement| requirement
+                    .legal_targets
+                    .contains(&Target::Object(self.target))),
+                "graveyard card should be a legal modal trigger target"
+            );
+            vec![Target::Object(self.target)]
+        }
+    }
+
+    #[test]
+    fn modal_trigger_chooses_mode_then_targets_before_stacking() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let graveyard_target = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_100),
+            "Graveyard Target",
+        )
+        .card_types(vec![CardType::Instant])
+        .build();
+        let graveyard_target_id =
+            game.create_object_from_definition(&graveyard_target, bob, Zone::Graveyard);
+        let graveyard_target_stable_id = game
+            .object(graveyard_target_id)
+            .expect("graveyard target should exist")
+            .stable_id;
+
+        let modal_effect = Effect::choose_one(vec![
+            crate::effect::EffectMode::new(
+                "Discard a card. If you do, draw a card.",
+                vec![Effect::discard(1), Effect::draw(1)],
+            ),
+            crate::effect::EffectMode::new(
+                "Exile up to one target card from a graveyard.",
+                vec![Effect::exile(
+                    ChooseSpec::target(ChooseSpec::card_in_zone(Zone::Graveyard))
+                        .with_count(crate::effect::ChoiceCount::up_to(1)),
+                )],
+            ),
+        ]);
+        let kavu = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_101),
+            "Territorial Kavu",
+        )
+        .card_types(vec![CardType::Creature])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            vec![modal_effect],
+        ))
+        .build();
+        let kavu_id = game.create_object_from_definition(&kavu, alice, Zone::Battlefield);
+
+        let attack_event = TriggerEvent::new_with_provenance(
+            crate::events::combat::CreatureAttackedEvent::new(
+                kavu_id,
+                crate::triggers::AttackEventTarget::Player(bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &attack_event) {
+            trigger_queue.add(trigger);
+        }
+        assert_eq!(trigger_queue.entries.len(), 1);
+
+        let mut dm = ChooseExileModeTarget {
+            target: graveyard_target_id,
+            mode_prompts: 0,
+            target_prompts: 0,
+        };
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+            .expect("Kavu trigger should be put on the stack");
+
+        assert_eq!(dm.mode_prompts, 1);
+        assert_eq!(dm.target_prompts, 1);
+        assert!(trigger_queue.is_empty());
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].chosen_modes.as_deref(), Some(&[1][..]));
+        assert_eq!(
+            game.stack[0].targets,
+            vec![Target::Object(graveyard_target_id)]
+        );
+        assert_eq!(game.stack[0].target_assignments.len(), 1);
+
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("Kavu trigger should resolve");
+        let exiled_id = game
+            .find_object_by_stable_id(graveyard_target_stable_id)
+            .expect("target should still exist after moving zones");
+        assert_eq!(
+            game.object(exiled_id).map(|object| object.zone),
+            Some(Zone::Exile)
+        );
+    }
 }

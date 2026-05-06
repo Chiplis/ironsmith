@@ -1,12 +1,14 @@
 //! Zone change event implementation.
 
 use std::any::Any;
+use std::collections::HashMap;
 
 use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::zone::Zone;
 
 /// A zone change event that can be processed through the replacement effect system.
@@ -34,6 +36,8 @@ pub struct ZoneChangeEvent {
     /// Snapshot of the object's state before the zone change (for LKI).
     /// For batch events, this is the snapshot of the first/primary object.
     pub snapshot: Option<ObjectSnapshot>,
+    /// Optional tagged object snapshots attached to this zone-change event.
+    pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
 
 impl ZoneChangeEvent {
@@ -52,6 +56,7 @@ impl ZoneChangeEvent {
             to,
             cause,
             snapshot,
+            object_tags: HashMap::new(),
         }
     }
 
@@ -71,6 +76,7 @@ impl ZoneChangeEvent {
             to,
             cause,
             snapshot,
+            object_tags: HashMap::new(),
         }
     }
 
@@ -83,7 +89,13 @@ impl ZoneChangeEvent {
             to,
             cause,
             snapshot: None,
+            object_tags: HashMap::new(),
         }
+    }
+
+    pub fn with_object_tag(mut self, tag: TagKey, snapshot: ObjectSnapshot) -> Self {
+        self.object_tags.entry(tag).or_default().push(snapshot);
+        self
     }
 
     /// The destination-zone objects represented by this event.

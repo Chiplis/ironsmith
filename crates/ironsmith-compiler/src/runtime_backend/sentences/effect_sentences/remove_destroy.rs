@@ -44,18 +44,22 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 | ["this", "permanent"]
                 | ["this", "card"]
         );
-        if source_like_target {
-            let amount = match counter_type {
-                Some(counter_type) => Value::CountersOnSource(counter_type),
-                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
-            };
-            return Ok(EffectAst::subject_verb_remove_up_to_any_counters(
-                amount,
-                TargetAst::Source(span_from_tokens(&target_tokens)),
-                counter_type,
-                false,
-            ));
-        }
+        let target = if source_like_target {
+            TargetAst::Source(span_from_tokens(&target_tokens))
+        } else {
+            parse_target_phrase(&target_tokens)?
+        };
+        let amount = match (&target, counter_type) {
+            (TargetAst::Source(_), Some(counter_type)) => Value::CountersOnSource(counter_type),
+            (TargetAst::Source(_), None) => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            _ => Value::CountersOn(Box::new(ChooseSpec::Source), counter_type),
+        };
+        return Ok(EffectAst::subject_verb_remove_up_to_any_counters(
+            amount,
+            target,
+            counter_type,
+            false,
+        ));
     }
 
     let mut idx = 0;

@@ -1,0 +1,21 @@
+<svg width="160" height="36" viewBox="0 0 160 36" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  <path d="M2.5 2.5H157.5V33.5H2.5V2.5Z" fill="url(#body)" stroke="url(#outer)"/>
+  <path d="M5.5 5.5H154.5V30.5H5.5V5.5Z" stroke="#0b0907" stroke-opacity=".72"/>
+  <path d="M6 5h148v7H6z" fill="url(#sheen)" opacity=".45"/>
+  <defs>
+    <linearGradient id="body" x1="80" y1="2" x2="80" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3e3a33"/>
+      <stop offset=".55" stop-color="#1c1a18"/>
+      <stop offset="1" stop-color="#11100f"/>
+    </linearGradient>
+    <linearGradient id="outer" x1="80" y1="2" x2="80" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b38d57"/>
+      <stop offset=".5" stop-color="#4b3821"/>
+      <stop offset="1" stop-color="#9d7640"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="80" y1="5" x2="80" y2="12" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe2a1"/>
+      <stop offset="1" stop-color="#ffe2a1" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>

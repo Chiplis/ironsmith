@@ -5,7 +5,7 @@
 
 use crate::ability::Ability;
 use crate::effect::{Effect, Value};
-use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
+use crate::events::cards::matchers::WouldDrawCardMatcher;
 use crate::events::damage::matchers::{DamageFromSourceMatcher, DamageToPlayerMatcher};
 use crate::events::life::matchers::WouldGainLifeMatcher;
 use crate::events::permanents::matchers::ThisWouldBeDestroyedMatcher;
@@ -690,19 +690,6 @@ impl ReplacementEffect {
             controller,
             ThisWouldBeDestroyedMatcher,
             ReplacementAction::Prevent,
-        )
-    }
-
-    /// Create a Library of Leng style discard replacement effect.
-    ///
-    /// "If an effect causes you to discard a card, you may put it on top of
-    /// your library instead of into your graveyard."
-    pub fn library_of_leng_discard(source: ObjectId, controller: PlayerId) -> Self {
-        Self::with_matcher(
-            source,
-            controller,
-            WouldDiscardMatcher::you_from_effect(),
-            ReplacementAction::ChangeDestination(Zone::Library),
         )
     }
 }

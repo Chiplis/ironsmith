@@ -9,7 +9,6 @@ pub use ironsmith_core::{
     ThisSpellCastTiming,
 };
 
-pub const TOPH_FIRST_METALBENDER: StaticAbilityId = StaticAbilityId::TophFirstMetalbender;
 pub const PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT: StaticAbilityId =
     StaticAbilityId::PreventAllDamageDealtByThisPermanent;
 

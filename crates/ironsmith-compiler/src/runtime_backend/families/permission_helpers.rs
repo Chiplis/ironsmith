@@ -630,6 +630,23 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
+    let rest_words = token_word_refs(rest_tokens);
+    if matches!(
+        rest_words.as_slice(),
+        ["this", "card", "from", "your", "graveyard"]
+            | ["this", "spell", "from", "your", "graveyard"]
+    ) {
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                ObjectFilter::source(),
+                Zone::Graveyard,
+            ),
+            lifetime: PermissionLifetime::Static,
+        }));
+    }
+
     if allow_land && let Some(after_lands) = strip_prefix_phrase(rest_tokens, &["lands"]) {
         let zone_words = token_word_refs(after_lands);
         if zone_words == ["from", "the", "top", "of", "your", "library"] {

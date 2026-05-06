@@ -16,3 +16,31 @@ pub fn serum_powder() -> CardDefinition {
         )
         .expect("Card text should be supported")
 }
+
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
+mod tests {
+    use super::*;
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::PregameActionKind;
+
+    #[test]
+    fn test_serum_powder_parser_backed_mulligan_redraw_action() {
+        let card = serum_powder();
+
+        assert!(card.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if matches!(
+                        static_ability.pregame_action_kind(),
+                        Some(PregameActionKind::MulliganExileHandDrawSameCount)
+                    )
+            )
+        }));
+        assert!(
+            card.abilities
+                .iter()
+                .any(|ability| ability.is_mana_ability())
+        );
+    }
+}

@@ -716,11 +716,6 @@ impl StaticAbilityModelInterpreter {
                 super::ThisSpellCastRestrictionKind::if_creature_is_attacking_you()
             }
             "after combat" => super::ThisSpellCastRestrictionKind::after_combat(),
-            "if no permanents named Tidal Influence" => {
-                super::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield(
-                    "Tidal Influence",
-                )
-            }
             "if you control snow land" => {
                 super::ThisSpellCastRestrictionKind::if_you_control_snow_land()
             }
@@ -728,6 +723,11 @@ impl StaticAbilityModelInterpreter {
                 super::ThisSpellCastRestrictionKind::if_you_control_fewer_creatures_than_each_opponent()
             }
             label => {
+                if let Some(name) = label.strip_prefix("if no permanents named ") {
+                    return super::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield(
+                        name.to_string(),
+                    );
+                }
                 if let Some(rest) = label.strip_prefix("if you control ")
                     && let Some((count, subtype_name)) = rest.split_once("+ ")
                     && let Ok(count) = count.parse::<u32>()
@@ -1040,6 +1040,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::AddAllSubtypesOfFamily { filter, family } => {
                 StaticAbility::add_all_subtypes_of_family(filter.clone(), *family)
+            }
+            ironsmith_core::StaticAbilityPayload::SetLandSubtypes { filter, subtypes } => {
+                StaticAbility::set_land_subtypes(filter.clone(), subtypes.clone())
             }
             ironsmith_core::StaticAbilityPayload::SetCreatureSubtypes { filter, subtypes } => {
                 StaticAbility::set_creature_subtypes(filter.clone(), subtypes.clone())

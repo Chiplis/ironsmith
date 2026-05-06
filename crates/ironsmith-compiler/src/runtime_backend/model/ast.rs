@@ -282,6 +282,13 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         source_filter: Option<ObjectFilter>,
     },
+    KeywordActionTaggedObject {
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: crate::tag::TagKey,
+        object_filter: ObjectFilter,
+    },
     KeywordActionFromSource {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
@@ -945,6 +952,9 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_tapped: bool,
         attached_to: Option<TargetAst>,
     },
+    MoveToLibraryTopOrBottomChoice {
+        target: TargetAst,
+    },
     TargetOnly {
         target: TargetAst,
     },
@@ -1202,12 +1212,6 @@ pub(crate) enum SubjectVerbActionAst {
     ChooseFromLookedCardsIntoHandRestIntoGraveyard {
         filter: ObjectFilter,
         reveal: bool,
-        if_not_chosen: Vec<EffectAst>,
-    },
-    ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-        filter: ObjectFilter,
-        reveal: bool,
-        order: LibraryBottomOrderAst,
         if_not_chosen: Vec<EffectAst>,
     },
     ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
@@ -2030,6 +2034,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("attached_to", attached_to)
                 .finish(),
+            Self::MoveToLibraryTopOrBottomChoice { target } => f
+                .debug_struct("MoveToLibraryTopOrBottomChoice")
+                .field("target", target)
+                .finish(),
             Self::TargetOnly { target } => f.debug_tuple("TargetOnly").field(target).finish(),
             Self::TagMatchingObjects { filter, zones, tag } => f
                 .debug_struct("TagMatchingObjects")
@@ -2415,18 +2423,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ChooseFromLookedCardsIntoHandRestIntoGraveyard")
                 .field("filter", filter)
                 .field("reveal", reveal)
-                .field("if_not_chosen", if_not_chosen)
-                .finish(),
-            Self::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-                filter,
-                reveal,
-                order,
-                if_not_chosen,
-            } => f
-                .debug_struct("ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary")
-                .field("filter", filter)
-                .field("reveal", reveal)
-                .field("order", order)
                 .field("if_not_chosen", if_not_chosen)
                 .finish(),
             Self::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
@@ -3346,6 +3342,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_move_to_library_top_or_bottom_choice(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target },
+        )
+    }
+
     pub(crate) fn subject_verb_target_only(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3950,25 +3954,6 @@ impl EffectAst {
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
                 reveal,
-                if_not_chosen,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        filter: ObjectFilter,
-        reveal: bool,
-        order: LibraryBottomOrderAst,
-        if_not_chosen: Vec<EffectAst>,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-                filter,
-                reveal,
-                order,
                 if_not_chosen,
             },
         )

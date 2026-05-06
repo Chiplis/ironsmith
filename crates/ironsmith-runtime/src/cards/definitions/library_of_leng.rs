@@ -93,7 +93,7 @@ mod tests {
 
         let has_replacement = def.abilities.iter().any(|a| {
             if let AbilityKind::Static(s) = &a.kind {
-                s.id() == StaticAbilityId::LibraryOfLengDiscardReplacement
+                s.id() == StaticAbilityId::EffectDiscardToLibraryReplacement
             } else {
                 false
             }

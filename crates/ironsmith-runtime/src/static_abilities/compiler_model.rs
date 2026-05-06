@@ -151,16 +151,12 @@ impl StaticAbility {
             Some(StaticAbilityId::Delve) => Self::delve(),
             Some(StaticAbilityId::Convoke) => Self::convoke(),
             Some(StaticAbilityId::Improvise) => Self::improvise(),
-            Some(StaticAbilityId::BloodMoon) => Self::blood_moon(),
-            Some(StaticAbilityId::TophFirstMetalbender) => {
-                Self::new(crate::static_abilities::TophFirstMetalbender)
-            }
             Some(StaticAbilityId::NoMaximumHandSize) => Self::no_maximum_hand_size(),
             Some(StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger) => {
                 Self::creatures_entering_dont_cause_abilities_to_trigger()
             }
-            Some(StaticAbilityId::LibraryOfLengDiscardReplacement) => {
-                Self::library_of_leng_discard_replacement()
+            Some(StaticAbilityId::EffectDiscardToLibraryReplacement) => {
+                Self::effect_discard_to_library_replacement()
             }
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()

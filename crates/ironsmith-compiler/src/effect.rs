@@ -524,6 +524,11 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(&payload.target);
         }
+        if let Some(payload) =
+            self.downcast_ref::<crate::effects::MoveToLibraryTopOrBottomChoiceEffect>()
+        {
+            return Some(&payload.target);
+        }
         if let Some(payload) = self.downcast_ref::<crate::effects::ReturnToHandEffect>() {
             return Some(&payload.spec);
         }
@@ -692,6 +697,12 @@ impl Effect {
         Self::new(crate::effects::MoveToZoneEffect::new(target, zone, to_top))
     }
 
+    pub fn move_to_library_top_or_bottom_choice(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(
+            target,
+        ))
+    }
+
     pub fn for_each_tagged(_tag: impl Into<crate::tag::TagKey>, _effects: Vec<Effect>) -> Self {
         Self::new(crate::effects::ForEachTaggedEffect {
             tag: _tag.into(),
@@ -722,6 +733,18 @@ impl Effect {
 
     pub fn emit_keyword_action(kind: crate::events::KeywordActionKind, count: u32) -> Self {
         Self::new(crate::effects::EmitKeywordActionEffect::new(kind, count))
+    }
+
+    pub fn emit_keyword_action_with_affected_object_memory_tag(
+        kind: crate::events::KeywordActionKind,
+        count: u32,
+        effect_id: crate::effect::EffectId,
+        tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self::new(
+            crate::effects::EmitKeywordActionEffect::new(kind, count)
+                .with_affected_object_memory_tag(effect_id, tag),
+        )
     }
 
     pub fn renown_source(amount: u32) -> Self {
@@ -773,7 +796,27 @@ impl Effect {
         Self::new(crate::effects::SacrificeEffect {
             filter,
             count: count as i32,
+            event_object_tags: Vec::new(),
+            event_source_tags: Vec::new(),
         })
+    }
+
+    pub fn sacrifice_with_event_tags(
+        filter: crate::target::ObjectFilter,
+        count: u32,
+        object_tag: impl Into<crate::tag::TagKey>,
+        source_tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self::new(
+            crate::effects::SacrificeEffect {
+                filter,
+                count: count as i32,
+                event_object_tags: Vec::new(),
+                event_source_tags: Vec::new(),
+            }
+            .with_event_object_tag(object_tag)
+            .with_event_source_tag(source_tag),
+        )
     }
 
     pub fn pump(

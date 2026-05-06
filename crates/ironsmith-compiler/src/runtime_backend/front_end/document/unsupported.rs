@@ -67,24 +67,6 @@ const UNSUPPORTED_CONTAINS_RULES: &[UnsupportedWordRule] = &[
     },
     UnsupportedWordRule {
         phrase: &[
-            "put",
-            "one",
-            "of",
-            "them",
-            "into",
-            "your",
-            "hand",
-            "and",
-            "the",
-            "rest",
-            "into",
-            "your",
-            "graveyard",
-        ],
-        message: "unsupported multi-destination put clause",
-    },
-    UnsupportedWordRule {
-        phrase: &[
             "assigns",
             "no",
             "combat",

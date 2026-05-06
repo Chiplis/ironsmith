@@ -2333,15 +2333,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
         LegalAction::PassPriority => "Pass".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
         LegalAction::TakeMulligan => "Mulligan".to_string(),
-        LegalAction::SerumPowderMulligan { card_id } => {
-            let name = game
-                .object(*card_id)
-                .map(|o| o.name.as_str())
-                .unwrap_or("Serum Powder");
-            format!("Use {}", name)
-        }
-        LegalAction::ContinuePregame => "Continue".to_string(),
-        LegalAction::BeginGame => "Begin game".to_string(),
+        LegalAction::ContinuePregame | LegalAction::BeginGame => "Pregame".to_string(),
         LegalAction::UsePregameAction { card_id, .. } => {
             let name = game
                 .object(*card_id)

@@ -1,4 +1,3 @@
-
 impl Default for WasmGame {
     fn default() -> Self {
         Self::new()
@@ -77,13 +76,6 @@ pub(super) fn action_drag_metadata(
         LegalAction::PassPriority => ("pass_priority", None, None, None, None),
         LegalAction::KeepOpeningHand => ("pass_priority", None, None, None, None),
         LegalAction::TakeMulligan => ("take_mulligan", None, None, None, None),
-        LegalAction::SerumPowderMulligan { card_id } => (
-            "serum_powder_mulligan",
-            Some(card_id.0),
-            None,
-            Some(zone_name(Zone::Hand)),
-            None,
-        ),
         LegalAction::ContinuePregame => ("pass_priority", None, None, None, None),
         LegalAction::BeginGame => ("pass_priority", None, None, None, None),
         LegalAction::UsePregameAction { card_id, .. } => (
@@ -193,18 +185,38 @@ pub(super) fn zone_name(zone: Zone) -> String {
     .to_string()
 }
 
+fn pregame_action_kind(
+    game: &GameState,
+    card_id: ObjectId,
+    ability_index: usize,
+) -> Option<ironsmith::static_abilities::PregameActionKind> {
+    let ability = game.object(card_id)?.abilities.get(ability_index)?;
+    let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    static_ability.pregame_action_kind()
+}
+
 pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String {
     match action {
         LegalAction::PassPriority => "Pass priority".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
         LegalAction::TakeMulligan => "Mulligan".to_string(),
-        LegalAction::SerumPowderMulligan { card_id } => {
-            format!("Use {}", object_name(game, *card_id))
-        }
-        LegalAction::ContinuePregame => "Continue".to_string(),
-        LegalAction::BeginGame => "Begin game".to_string(),
-        LegalAction::UsePregameAction { card_id, .. } => {
-            format!("Begin with {}", object_name(game, *card_id))
+        LegalAction::ContinuePregame | LegalAction::BeginGame => "Pregame".to_string(),
+        LegalAction::UsePregameAction {
+            card_id,
+            ability_index,
+        } => {
+            if matches!(
+                pregame_action_kind(game, *card_id, *ability_index),
+                Some(
+                    ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
+                )
+            ) {
+                format!("Use {}", object_name(game, *card_id))
+            } else {
+                format!("Begin with {}", object_name(game, *card_id))
+            }
         }
         LegalAction::PlayLand { land_id } => {
             format!("Play {}", object_name(game, *land_id))
@@ -350,7 +362,9 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             ironsmith::special_actions::SpecialAction::Plot { card_id } => {
                 format!("Plot {}", object_name(game, *card_id))
             }
-            ironsmith::special_actions::SpecialAction::ActivateManaAbility { permanent_id, .. } => {
+            ironsmith::special_actions::SpecialAction::ActivateManaAbility {
+                permanent_id, ..
+            } => {
                 format!(
                     "Activate mana ability on {}",
                     object_name(game, *permanent_id)
@@ -413,42 +427,33 @@ pub(super) fn decision_exposes_object_to_perspective(
         DecisionContext::SelectObjects(objects) => {
             objects.candidates.iter().any(|obj| obj.id == id)
         }
-        DecisionContext::SelectOptions(options) => {
-            options.options.iter().any(|opt| {
-                opt.object_id.is_some_and(|object_id| object_id == id)
-                    || opt
-                        .related_object_ids
-                        .as_ref()
-                        .is_some_and(|object_ids| object_ids.contains(&id))
-            })
-        }
-        DecisionContext::Targets(targets) => {
-            targets.requirements.iter().any(|requirement| {
-                requirement.legal_targets.iter().any(|target| {
-                    matches!(target, Target::Object(object_id) if *object_id == id)
-                })
-            })
-        }
-        DecisionContext::Order(order) => {
-            order.items.iter().any(|(object_id, _)| *object_id == id)
-        }
-        DecisionContext::Attackers(attackers) => {
-            attackers.attacker_options.iter().any(|option| {
-                option.creature == id
+        DecisionContext::SelectOptions(options) => options.options.iter().any(|opt| {
+            opt.object_id.is_some_and(|object_id| object_id == id)
+                || opt
+                    .related_object_ids
+                    .as_ref()
+                    .is_some_and(|object_ids| object_ids.contains(&id))
+        }),
+        DecisionContext::Targets(targets) => targets.requirements.iter().any(|requirement| {
+            requirement
+                .legal_targets
+                .iter()
+                .any(|target| matches!(target, Target::Object(object_id) if *object_id == id))
+        }),
+        DecisionContext::Order(order) => order.items.iter().any(|(object_id, _)| *object_id == id),
+        DecisionContext::Attackers(attackers) => attackers.attacker_options.iter().any(|option| {
+            option.creature == id
                     || option.valid_targets.iter().any(|target| {
                         matches!(target, AttackTarget::Planeswalker(object_id) if *object_id == id)
                 })
-            })
-        }
-        DecisionContext::Blockers(blockers) => {
-            blockers.blocker_options.iter().any(|option| {
-                option.attacker == id
-                    || option
-                        .valid_blockers
-                        .iter()
-                        .any(|(blocker, _)| *blocker == id)
-            })
-        }
+        }),
+        DecisionContext::Blockers(blockers) => blockers.blocker_options.iter().any(|option| {
+            option.attacker == id
+                || option
+                    .valid_blockers
+                    .iter()
+                    .any(|(blocker, _)| *blocker == id)
+        }),
         DecisionContext::Partition(_)
         | DecisionContext::Modes(_)
         | DecisionContext::HybridChoice(_)
@@ -493,7 +498,6 @@ pub(super) fn redacted_action_label(action: &LegalAction) -> String {
         LegalAction::CastSpell { .. } => "Cast hidden spell".to_string(),
         LegalAction::PlayLand { .. } => "Play hidden land".to_string(),
         LegalAction::UsePregameAction { .. } => "Use hidden pregame action".to_string(),
-        LegalAction::SerumPowderMulligan { .. } => "Use hidden mulligan action".to_string(),
         _ => "Hidden action".to_string(),
     }
 }
@@ -525,9 +529,6 @@ pub(super) fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
         LegalAction::PassPriority => PriorityActionRef::PassPriority,
         LegalAction::KeepOpeningHand => PriorityActionRef::KeepOpeningHand,
         LegalAction::TakeMulligan => PriorityActionRef::TakeMulligan,
-        LegalAction::SerumPowderMulligan { card_id } => {
-            PriorityActionRef::SerumPowderMulligan { card_id: card_id.0 }
-        }
         LegalAction::ContinuePregame => PriorityActionRef::ContinuePregame,
         LegalAction::BeginGame => PriorityActionRef::BeginGame,
         LegalAction::UsePregameAction {
@@ -574,7 +575,9 @@ pub(super) fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
     }
 }
 
-pub(super) fn special_action_ref(action: &ironsmith::special_actions::SpecialAction) -> SpecialActionRef {
+pub(super) fn special_action_ref(
+    action: &ironsmith::special_actions::SpecialAction,
+) -> SpecialActionRef {
     match action {
         ironsmith::special_actions::SpecialAction::PlayLand { card_id } => {
             SpecialActionRef::PlayLand { card_id: card_id.0 }
@@ -605,11 +608,15 @@ pub(super) fn special_action_ref(action: &ironsmith::special_actions::SpecialAct
     }
 }
 
-pub(super) fn casting_method_ref(method: &ironsmith::alternative_cast::CastingMethod) -> CastingMethodRef {
+pub(super) fn casting_method_ref(
+    method: &ironsmith::alternative_cast::CastingMethod,
+) -> CastingMethodRef {
     match method {
         ironsmith::alternative_cast::CastingMethod::Normal => CastingMethodRef::Normal,
         ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown,
-        ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => CastingMethodRef::SplitOtherHalf,
+        ironsmith::alternative_cast::CastingMethod::SplitOtherHalf => {
+            CastingMethodRef::SplitOtherHalf
+        }
         ironsmith::alternative_cast::CastingMethod::Fuse => CastingMethodRef::Fuse,
         ironsmith::alternative_cast::CastingMethod::Alternative(index) => {
             CastingMethodRef::Alternative { index: *index }
@@ -807,7 +814,9 @@ pub(super) fn attack_target_from_input(input: &AttackTargetInput) -> AttackTarge
     }
 }
 
-pub(super) fn colors_for_context(ctx: &ironsmith::decisions::context::ColorsContext) -> Vec<ironsmith::color::Color> {
+pub(super) fn colors_for_context(
+    ctx: &ironsmith::decisions::context::ColorsContext,
+) -> Vec<ironsmith::color::Color> {
     if let Some(available) = &ctx.available_colors {
         if !available.is_empty() {
             return available.clone();

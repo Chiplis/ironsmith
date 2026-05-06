@@ -40,6 +40,23 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
 ) -> Option<(SubjectAst, TargetAst)> {
     let subject_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_view.to_word_refs();
+    fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+        let mut normalized = tokens.to_vec();
+        if let Some(last) = normalized.last_mut()
+            && let Some(word) = last.as_word().map(str::to_string)
+        {
+            let stripped = word
+                .strip_suffix("'s")
+                .or_else(|| word.strip_suffix("’s"))
+                .or_else(|| word.strip_suffix("s'"))
+                .or_else(|| word.strip_suffix("s’"));
+            if let Some(stripped) = stripped {
+                last.replace_word(stripped.to_string());
+            }
+        }
+        normalized
+    }
+
     let enchanted_filter = || {
         let mut filter = ObjectFilter::creature();
         filter
@@ -65,6 +82,29 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
             return Some((SubjectAst::Player(PlayerAst::ItsOwner), enchanted_filter()));
         }
         _ => {}
+    }
+
+    if subject_words.len() >= 2 {
+        let player = match subject_words.last().copied() {
+            Some("controller" | "controllers" | "controller's" | "controllers'") => {
+                Some(PlayerAst::ItsController)
+            }
+            Some("owner" | "owners" | "owner's" | "owners'") => Some(PlayerAst::ItsOwner),
+            _ => None,
+        };
+        if let Some(player) = player {
+            let owner_word_idx = subject_words.len() - 1;
+            if let Some(target_token_end) = subject_view.token_index_for_word_index(owner_word_idx)
+            {
+                let trimmed_target_tokens = trim_commas(&subject_tokens[..target_token_end]);
+                let target_tokens = strip_trailing_possessive_token(&trimmed_target_tokens);
+                if !target_tokens.is_empty()
+                    && let Ok(target) = parse_target_phrase(&target_tokens)
+                {
+                    return Some((SubjectAst::Player(player), target));
+                }
+            }
+        }
     }
 
     let (player, target_start) = match subject_words.as_slice() {

@@ -2411,6 +2411,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountersOn(_, None) => "the number of counters".to_string(),
             Value::SourcePower => "this creature's power".to_string(),
             Value::SourceToughness => "this creature's toughness".to_string(),
+            Value::PowerOf(spec) => {
+                format!("{} power", describe_value_choose_spec_possessive(spec))
+            }
+            Value::ToughnessOf(spec) => {
+                format!("{} toughness", describe_value_choose_spec_possessive(spec))
+            }
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base()
                     && tag.as_str() == crate::SOURCE_EXILED_TAG
@@ -2468,6 +2474,23 @@ fn describe_comparison(cmp: &Comparison) -> String {
         Comparison::GreaterThanOrEqualExpr(value) => {
             format!("{} or greater", describe_value_expr(value))
         }
+    }
+}
+
+fn describe_value_choose_spec_possessive(spec: &ChooseSpec) -> String {
+    let subject = match spec.base() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::EXPLOITED_TAG => {
+            "the exploited creature".to_string()
+        }
+        ChooseSpec::Tagged(_) => "that creature".to_string(),
+        ChooseSpec::Source => "this creature".to_string(),
+        ChooseSpec::Target(_) => "that creature".to_string(),
+        _ => "that object".to_string(),
+    };
+    if subject.ends_with('s') {
+        format!("{subject}'")
+    } else {
+        format!("{subject}'s")
     }
 }
 

@@ -147,7 +147,7 @@ fn prefixed_consult_window(sentences: &[SentenceInput], sentence_idx: usize) -> 
     sentence_head_word_in(sentences, sentence_idx + 1, &["exile", "reveal", "look"])
 }
 
-fn tainted_pact_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+fn iterative_library_procedure_window(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "exile")
         && sentence_head_word_is(sentences, sentence_idx + 2, "repeat")
 }
@@ -190,14 +190,6 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look,
         parser:
             generic_subject_verb_sequences::quads::parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom,
-    },
-    SequenceRuleDef {
-        name: "look-at-top-reveal-match-put-rest-bottom-if-not-into-hand",
-        feature_tag: Some("looked-cards-if-not-into-hand"),
-        priority: 428,
-        consumed_sentences: 4,
-        predicate: first_word_look,
-        parser: generic_subject_verb_sequences::quads::parse_look_at_top_reveal_match_put_rest_bottom_then_if_not_into_hand,
     },
     SequenceRuleDef {
         name: "choose-land-or-nonland-consult-hand-bottom",
@@ -354,11 +346,11 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_prefixed_library_consult_hand_exile_sequence,
     },
     SequenceRuleDef {
-        name: "tainted-pact-sequence",
+        name: "iterative-library-procedure-sequence",
         feature_tag: Some("repeat-process"),
         priority: 329,
         consumed_sentences: 3,
-        predicate: tainted_pact_window,
+        predicate: iterative_library_procedure_window,
         parser: generic_subject_verb_sequences::parse_iterative_library_procedure_sequence,
     },
     SequenceRuleDef {
@@ -608,8 +600,8 @@ pub(crate) fn subject_verb_sequence_route(name: &str) -> &'static str {
         "prefix-then-consult-match-into-hand-exile-others" => {
             "subject-verb verb=Search subject=explicit recognizer=consult-library-procedure"
         }
-        "tainted-pact-sequence" => {
-            "subject-verb verb=Exile subject=explicit recognizer=tainted-pact-procedure"
+        "iterative-library-procedure-sequence" => {
+            "subject-verb verb=Exile subject=explicit recognizer=iterative-library-procedure"
         }
         "target-gains-flashback-until-eot-targets-mana-cost" => {
             "subject-verb verb=Gain subject=explicit recognizer=parameterized-flashback-grant"

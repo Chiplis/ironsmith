@@ -245,6 +245,21 @@ where
     .expect("priority action should succeed");
 }
 
+fn snapshot_priority_action_label(wasm: &mut WasmGame, action_ref_kind: &str) -> String {
+    let snapshot_json = wasm.snapshot_json().expect("snapshot should render");
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot json should parse");
+    let actions = snapshot["decision"]["actions"]
+        .as_array()
+        .expect("priority decision should expose actions");
+    actions
+        .iter()
+        .find(|action| action["action_ref"]["kind"].as_str() == Some(action_ref_kind))
+        .and_then(|action| action["label"].as_str())
+        .unwrap_or_else(|| panic!("missing priority action label for {action_ref_kind}"))
+        .to_string()
+}
+
 fn dispatch_select_objects(wasm: &mut WasmGame, object_ids: &[u64]) {
     wasm.dispatch(
         serde_wasm_bindgen::to_value(&json!({
@@ -6130,6 +6145,45 @@ fn pregame_mulligan_prompt_offers_keep_and_mulligan() {
 }
 
 #[test]
+fn pregame_priority_labels_progress_from_keep_hand_to_pregame() {
+    let mut wasm = setup_pregame_match(MatchFormatInput::Normal);
+    start_pregame(&mut wasm, 7, MatchFormatInput::Normal);
+
+    assert_eq!(
+        snapshot_priority_action_label(&mut wasm, "keep_opening_hand"),
+        "Keep hand"
+    );
+
+    dispatch_matching_priority_action(&mut wasm, |action| {
+        matches!(action, LegalAction::KeepOpeningHand)
+    });
+    dispatch_matching_priority_action(&mut wasm, |action| {
+        matches!(action, LegalAction::KeepOpeningHand)
+    });
+
+    assert_eq!(
+        snapshot_priority_action_label(&mut wasm, "continue_pregame"),
+        "Pregame"
+    );
+
+    dispatch_matching_priority_action(&mut wasm, |action| {
+        matches!(action, LegalAction::ContinuePregame)
+    });
+
+    assert_eq!(
+        snapshot_priority_action_label(&mut wasm, "begin_game"),
+        "Pregame"
+    );
+
+    dispatch_matching_priority_action(&mut wasm, |action| matches!(action, LegalAction::BeginGame));
+
+    assert!(
+        wasm.pregame.is_none(),
+        "game should leave pregame after the Pregame decision"
+    );
+}
+
+#[test]
 fn commander_first_mulligan_is_free() {
     let mut wasm = setup_pregame_match(MatchFormatInput::Commander);
     let alice = PlayerId::from_index(0);
@@ -6208,7 +6262,7 @@ fn serum_powder_redraws_without_counting_as_a_mulligan() {
     dispatch_matching_priority_action(&mut wasm, |action| {
         matches!(
             action,
-            LegalAction::SerumPowderMulligan { card_id } if *card_id == serum_id
+            LegalAction::UsePregameAction { card_id, .. } if *card_id == serum_id
         )
     });
 

@@ -6254,6 +6254,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG {
                 return "the revealed card".to_string();
             }
+            if tag.as_str() == crate::tag::EXPLOITED_TAG {
+                return "the exploited creature".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 "it".to_string()
             } else {
@@ -10830,6 +10833,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             {
                 return source_activity_condition;
             }
+            if let Some(exploit_condition) =
+                describe_source_exploited_triggering_condition(left, right)
+            {
+                return exploit_condition;
+            }
             if let Some(exiled_counter_condition) =
                 describe_source_exiled_with_counter_condition(left, right)
             {
@@ -10842,6 +10850,37 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::Or(left, right) => {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
+    }
+}
+
+fn describe_source_exploited_triggering_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn is_exploited_triggering(condition: &Condition) -> bool {
+        let Condition::TaggedObjectMatches(tag, filter) = condition else {
+            return false;
+        };
+        tag.as_str() == crate::tag::EXPLOITED_TAG
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == "triggering"
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+    }
+
+    fn is_exploiter_source(condition: &Condition) -> bool {
+        let Condition::TaggedObjectMatches(tag, filter) = condition else {
+            return false;
+        };
+        tag.as_str() == crate::tag::EXPLOITER_TAG && filter.source
+    }
+
+    if (is_exploited_triggering(left) && is_exploiter_source(right))
+        || (is_exploited_triggering(right) && is_exploiter_source(left))
+    {
+        Some("it exploited that creature".to_string())
+    } else {
+        None
     }
 }
 

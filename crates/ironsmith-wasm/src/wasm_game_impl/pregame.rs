@@ -1,4 +1,3 @@
-
 impl WasmGame {
     pub(super) fn initialize_empty_match(
         &mut self,
@@ -142,14 +141,50 @@ impl WasmGame {
         card_id: ObjectId,
         ability_index: usize,
     ) -> Option<ironsmith::static_abilities::PregameBeginOnBattlefieldSpec> {
+        match self.parsed_pregame_action_kind(card_id, ability_index)? {
+            ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => Some(spec),
+            ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
+            | ironsmith::static_abilities::PregameActionKind::ChooseColor => None,
+        }
+    }
+
+    fn parsed_pregame_action_kind(
+        &self,
+        card_id: ObjectId,
+        ability_index: usize,
+    ) -> Option<ironsmith::static_abilities::PregameActionKind> {
         let ability = self.game.object(card_id)?.abilities.get(ability_index)?;
         let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
             return None;
         };
-        match static_ability.pregame_action_kind()? {
-            ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => Some(spec),
-            ironsmith::static_abilities::PregameActionKind::ChooseColor => None,
-        }
+        static_ability.pregame_action_kind()
+    }
+
+    fn is_mulligan_redraw_pregame_action(&self, card_id: ObjectId, ability_index: usize) -> bool {
+        matches!(
+            self.parsed_pregame_action_kind(card_id, ability_index),
+            Some(ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount)
+        )
+    }
+
+    fn available_mulligan_pregame_actions(&self, player: PlayerId) -> Vec<LegalAction> {
+        self.player_hand_ids(player)
+            .into_iter()
+            .flat_map(|card_id| {
+                let ability_len = self
+                    .game
+                    .object(card_id)
+                    .map(|object| object.abilities.len())
+                    .unwrap_or(0);
+                (0..ability_len).filter_map(move |ability_index| {
+                    self.is_mulligan_redraw_pregame_action(card_id, ability_index)
+                        .then_some(LegalAction::UsePregameAction {
+                            card_id,
+                            ability_index,
+                        })
+                })
+            })
+            .collect()
     }
 
     fn available_pregame_actions(&self, player: PlayerId) -> Vec<LegalAction> {
@@ -303,17 +338,7 @@ impl WasmGame {
                     return Ok(None);
                 };
                 let mut actions = vec![LegalAction::KeepOpeningHand, LegalAction::TakeMulligan];
-                actions.extend(
-                    self.player_hand_ids(player)
-                        .into_iter()
-                        .filter_map(|card_id| {
-                            let is_serum_powder = self
-                                .game
-                                .object(card_id)
-                                .is_some_and(|object| object.name == "Serum Powder");
-                            is_serum_powder.then_some(LegalAction::SerumPowderMulligan { card_id })
-                        }),
-                );
+                actions.extend(self.available_mulligan_pregame_actions(player));
                 DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
                     player, actions,
                 ))
@@ -449,39 +474,6 @@ impl WasmGame {
                 undecided_players.remove(0);
                 round_mulliganers.push(player);
             }
-            LegalAction::SerumPowderMulligan { card_id } => {
-                let player = match self.pregame.as_ref() {
-                    Some(PregameState {
-                        stage:
-                            PregameStage::MulliganDecision {
-                                undecided_players, ..
-                            },
-                        ..
-                    }) => undecided_players.first().copied(),
-                    _ => None,
-                }
-                .ok_or_else(|| {
-                    JsValue::from_str("Serum Powder can only be used while mulliganing")
-                })?;
-                let hand_ids = self.player_hand_ids(player);
-                if !hand_ids.contains(&card_id) {
-                    return Err(JsValue::from_str(
-                        "Serum Powder must be in the current player's hand",
-                    ));
-                }
-                let is_serum_powder = self
-                    .game
-                    .object(card_id)
-                    .is_some_and(|object| object.name == "Serum Powder");
-                if !is_serum_powder {
-                    return Err(JsValue::from_str("selected card is not Serum Powder"));
-                }
-                let draw_count = hand_ids.len();
-                for id in hand_ids {
-                    let _ = self.game.move_object_by_effect(id, Zone::Exile);
-                }
-                let _ = self.game.draw_cards(player, draw_count);
-            }
             LegalAction::ContinuePregame | LegalAction::BeginGame => {
                 let Some(PregameState {
                     stage:
@@ -507,6 +499,36 @@ impl WasmGame {
                 card_id,
                 ability_index,
             } => {
+                if self.is_mulligan_redraw_pregame_action(card_id, ability_index) {
+                    let player = match self.pregame.as_ref() {
+                        Some(PregameState {
+                            stage:
+                                PregameStage::MulliganDecision {
+                                    undecided_players, ..
+                                },
+                            ..
+                        }) => undecided_players.first().copied(),
+                        _ => None,
+                    }
+                    .ok_or_else(|| {
+                        JsValue::from_str(
+                            "mulligan redraw pregame actions can only be used while mulliganing",
+                        )
+                    })?;
+                    let hand_ids = self.player_hand_ids(player);
+                    if !hand_ids.contains(&card_id) {
+                        return Err(JsValue::from_str(
+                            "mulligan redraw source must be in the current player's hand",
+                        ));
+                    }
+                    let draw_count = hand_ids.len();
+                    for id in hand_ids {
+                        let _ = self.game.move_object_by_effect(id, Zone::Exile);
+                    }
+                    let _ = self.game.draw_cards(player, draw_count);
+                    return Ok(());
+                }
+
                 let player = match self.pregame.as_ref() {
                     Some(PregameState {
                         stage:
@@ -843,5 +865,4 @@ impl WasmGame {
             self.perspective = first.id;
         }
     }
-
 }

@@ -489,7 +489,7 @@ mod tests {
             (
                 "Generic Library Iteration",
                 "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
-                "subject-verb verb=Exile subject=explicit recognizer=tainted-pact-procedure",
+                "subject-verb verb=Exile subject=explicit recognizer=iterative-library-procedure",
             ),
             (
                 "Generic Vote Procedure",

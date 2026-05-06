@@ -46,7 +46,7 @@ impl GenericSubjectVerbSequence {
         }
     }
 
-    pub(super) fn tainted_pact_style_iteration() -> Self {
+    pub(super) fn iterative_library_procedure() -> Self {
         Self {
             verb: GenericSequenceVerb::IterateLibraryProcedure,
             consumed_sentences: 3,
@@ -146,7 +146,7 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let _shape = GenericSubjectVerbSequence::tainted_pact_style_iteration();
+    let _shape = GenericSubjectVerbSequence::iterative_library_procedure();
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
     let first_words: Vec<&str> = crate::runtime_backend::token_word_refs(&first_tokens)
         .into_iter()
@@ -208,8 +208,8 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
         return Ok(None);
     }
 
-    let current_tag = TagKey::from("tainted_pact_current");
-    let exiled_tag = TagKey::from("tainted_pact_exiled");
+    let current_tag = TagKey::from("iterative_library_current");
+    let exiled_tag = TagKey::from("iterative_library_exiled");
     let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
     Ok(Some(vec![EffectAst::RepeatProcess {
         effects: vec![

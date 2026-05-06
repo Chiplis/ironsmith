@@ -9,6 +9,12 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for the creature sacrificed to an exploit action.
+pub const EXPLOITED_TAG: &str = "exploited";
+
+/// Runtime tag for the object whose exploit action sacrificed another object.
+pub const EXPLOITER_TAG: &str = "exploiter";
+
 /// Dynamic tag key used by the tagging system.
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime

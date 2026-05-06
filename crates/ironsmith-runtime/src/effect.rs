@@ -1878,6 +1878,11 @@ impl Effect {
         Self::new(MoveToZoneEffect::new(target, zone, to_top))
     }
 
+    pub fn move_to_library_top_or_bottom_choice(target: ChooseSpec) -> Self {
+        use crate::effects::MoveToLibraryTopOrBottomChoiceEffect;
+        Self::new(MoveToLibraryTopOrBottomChoiceEffect::new(target))
+    }
+
     /// Create an effect that shuffles specific objects into a library and
     /// still shuffles that library even if none of those objects move.
     pub fn shuffle_objects_into_library(target: ChooseSpec, player: PlayerFilter) -> Self {

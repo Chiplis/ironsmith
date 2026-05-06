@@ -33,7 +33,7 @@ export default function PhaseTrack({ compact = false }) {
     const idx = PHASE_TRACK.indexOf(active);
     if (idx < 0) { setIndicator(null); return; }
 
-    const cell = track.children[idx + 1];
+    const cell = track.querySelectorAll(".phase-track-cell")[idx];
     if (!cell) { setIndicator(null); return; }
 
     const trackRect = track.getBoundingClientRect();
@@ -42,9 +42,12 @@ export default function PhaseTrack({ compact = false }) {
     const isFirst = firstRender.current;
     firstRender.current = false;
 
+    const leftInset = cellRect.left - trackRect.left;
+    const rightInset = trackRect.right - cellRect.right;
+
     setIndicator({
-      left: cellRect.left - trackRect.left,
-      width: cellRect.width,
+      left: idx === 0 ? 0 : leftInset,
+      width: cellRect.width + (idx === 0 ? leftInset : 0) + (idx === PHASE_TRACK.length - 1 ? rightInset : 0),
       animate: !isFirst && prevActiveRef.current !== active,
     });
 

@@ -39,12 +39,15 @@ mod tests {
         assert_eq!(card.card.mana_cost.as_ref().unwrap().mana_value(), 3); // 2R = 3
         assert!(card.card.card_types.contains(&CardType::Enchantment));
 
-        // Should have one ability: BloodMoon
+        // Should have one static ability: set land subtypes.
         assert_eq!(card.abilities.len(), 1);
 
         let ability = &card.abilities[0];
         if let AbilityKind::Static(s) = &ability.kind {
-            assert_eq!(s.id(), crate::static_abilities::StaticAbilityId::BloodMoon);
+            assert_eq!(
+                s.id(),
+                crate::static_abilities::StaticAbilityId::SetLandSubtypes
+            );
         } else {
             panic!("Expected static ability");
         }

@@ -3076,7 +3076,7 @@ impl StaticAbilityKind for MaximumHandSizeSevenMinusYourGraveyardCardTypes {
     }
 }
 
-/// Library of Leng's discard replacement effect.
+/// Replacement for effect-caused discards moving to the top of the library.
 ///
 /// "If an effect causes you to discard a card, you may put it on top of
 /// your library instead of into your graveyard."
@@ -3086,11 +3086,11 @@ impl StaticAbilityKind for MaximumHandSizeSevenMinusYourGraveyardCardTypes {
 /// - Uses the composable EventCause system to filter on cause type
 /// - Offers an interactive choice between graveyard and library
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LibraryOfLengDiscardReplacement;
+pub struct EffectDiscardToLibraryReplacement;
 
-impl StaticAbilityKind for LibraryOfLengDiscardReplacement {
+impl StaticAbilityKind for EffectDiscardToLibraryReplacement {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::LibraryOfLengDiscardReplacement
+        StaticAbilityId::EffectDiscardToLibraryReplacement
     }
 
     fn display(&self) -> String {
@@ -3110,9 +3110,8 @@ impl StaticAbilityKind for LibraryOfLengDiscardReplacement {
             WouldDiscardMatcher::you_from_effect(),
             ReplacementAction::InteractiveChooseDestination {
                 destinations: vec![Zone::Graveyard, Zone::Library],
-                description:
-                    "Library of Leng: Put discarded card on top of library instead of graveyard?"
-                        .to_string(),
+                description: "Put discarded card on top of library instead of graveyard?"
+                    .to_string(),
             },
         ))
     }
@@ -3361,6 +3360,9 @@ impl StaticAbilityKind for PregameAction {
         match &self.kind {
             crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
                 render_begin_on_battlefield_pregame(spec)
+            }
+            crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount => {
+                self.text.clone()
             }
             crate::static_abilities::PregameActionKind::ChooseColor => self.text.clone(),
         }

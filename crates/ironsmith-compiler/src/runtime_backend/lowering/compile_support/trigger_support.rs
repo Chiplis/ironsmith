@@ -275,6 +275,19 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Some(filter) => Trigger::keyword_action_matching_object(action, player, filter),
             None => Trigger::keyword_action(action, player),
         },
+        TriggerSpec::KeywordActionTaggedObject {
+            action,
+            player,
+            source_filter,
+            object_tag,
+            object_filter,
+        } => Trigger::keyword_action_matching_source_and_tagged_object(
+            action,
+            player,
+            source_filter,
+            object_tag,
+            object_filter,
+        ),
         TriggerSpec::KeywordActionFromSource { action, player } => {
             Trigger::keyword_action_from_source(action, player)
         }
@@ -333,6 +346,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
         | TriggerSpec::KeywordAction { .. }
+        | TriggerSpec::KeywordActionTaggedObject { .. }
         | TriggerSpec::KeywordActionFromSource { .. }
         | TriggerSpec::WinsClash { .. }
         | TriggerSpec::Expend { .. } => true,
@@ -389,6 +403,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::BeginningOfPrecombatMain(player)
         | TriggerSpec::BeginningOfPostcombatMain(player)
         | TriggerSpec::KeywordAction { player, .. }
+        | TriggerSpec::KeywordActionTaggedObject { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. }
         | TriggerSpec::WinsClash { player } => {
             if *player == PlayerFilter::Any {
@@ -446,6 +461,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::KeywordAction { .. }
+            | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. } => true,
             TriggerSpec::StateBased { .. } => false,

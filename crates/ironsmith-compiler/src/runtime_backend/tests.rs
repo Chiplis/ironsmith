@@ -6484,14 +6484,14 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
     )
     .expect("rewrite lexer should classify Library of Leng replacement line");
     assert!(
-        super::grammar::abilities::is_library_of_leng_discard_replacement_line_lexed(
+        super::grammar::abilities::is_effect_discard_to_library_replacement_line_lexed(
             &library_tokens
         ),
-        "grammar-owned Library of Leng probe should match"
+        "grammar-owned effect discard replacement probe should match"
     );
     assert!(
-        super::keyword_static::parse_library_of_leng_discard_replacement_line(&library_tokens)
-            .expect("Library of Leng replacement line should parse")
+        super::keyword_static::parse_effect_discard_to_library_replacement_line(&library_tokens)
+            .expect("effect discard replacement line should parse")
             .is_some()
     );
 
@@ -6512,20 +6512,20 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
             .is_some()
     );
 
-    let toph_tokens = lex_line(
-        "Nontoken artifact lands you control are Mountains in addition to their other types.",
+    let artifact_land_tokens = lex_line(
+        "Nontoken artifacts you control are lands in addition to their other types.",
         0,
     )
-    .expect("rewrite lexer should classify Toph static line");
-    assert!(
-        super::grammar::abilities::is_toph_first_metalbender_line_lexed(&toph_tokens),
-        "grammar-owned Toph probe should match"
-    );
-    assert!(
-        super::keyword_static::parse_toph_first_metalbender_line(&toph_tokens)
-            .expect("Toph static line should parse")
-            .is_some()
-    );
+    .expect("rewrite lexer should classify type-addition static line");
+    let parsed_artifact_land =
+        super::keyword_static::parse_subject_are_card_types_in_addition_to_their_other_types_line(
+            &artifact_land_tokens,
+        )
+        .expect("type-addition static line should parse");
+    assert!(matches!(
+        parsed_artifact_land,
+        Some(ability) if ability.id() == crate::static_abilities::StaticAbilityId::AddCardTypes
+    ));
 
     let discard_tokens = lex_line(
         "If Mox Diamond would enter the battlefield, you may discard a land card instead. If you don't, put it into its owner's graveyard.",
@@ -6540,6 +6540,30 @@ fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
         super::keyword_static::parse_discard_or_redirect_replacement_line(&discard_tokens)
             .expect("discard-or-redirect replacement line should parse")
             .is_some()
+    );
+}
+
+#[test]
+fn rewrite_cast_restriction_keeps_multiword_no_permanents_named_card_name() {
+    let tokens = lex_line(
+        "Cast this spell only if no permanents named Tidal Influence are on the battlefield.",
+        0,
+    )
+    .expect("rewrite lexer should classify cast restriction line");
+
+    let parsed = super::util::parse_cast_this_spell_only_line(&tokens)
+        .expect("cast restriction should parse")
+        .expect("cast restriction should produce a static ability");
+
+    assert_eq!(parsed.id(), StaticAbilityId::ThisSpellCastRestriction);
+    assert_eq!(
+        parsed.display(),
+        "Cast this spell only if no permanents named Tidal Influence are on the battlefield."
+    );
+    let debug = format!("{parsed:#?}");
+    assert!(
+        debug.contains("if no permanents named Tidal Influence"),
+        "{debug}"
     );
 }
 
@@ -6791,9 +6815,14 @@ fn rewrite_grammar_exact_static_line_probes_match_simple_keyword_static_shapes()
         ),
         (
             "Nonbasic lands are Mountains.",
-            super::grammar::abilities::is_blood_moon_line_lexed as Probe,
-            super::keyword_static::parse_blood_moon_line as Parser,
-            crate::static_abilities::StaticAbilityId::BloodMoon,
+            (|tokens| {
+                super::keyword_static::parse_nonbasic_lands_are_basic_land_type_line(tokens)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            }) as Probe,
+            super::keyword_static::parse_nonbasic_lands_are_basic_land_type_line as Parser,
+            crate::static_abilities::StaticAbilityId::SetLandSubtypes,
         ),
         (
             "All lands are no longer snow.",
@@ -7538,6 +7567,63 @@ fn rewrite_lexed_triggered_line_parses_state_trigger_condition() {
 }
 
 #[test]
+fn rewrite_lexed_triggered_line_parses_named_counter_threshold_state_trigger() {
+    let text = "Whenever there are four or more tide counters on this enchantment, remove all tide counters from it.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify counter state trigger line");
+
+    let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("named-counter state-triggered line should parse");
+
+    match parsed {
+        crate::cards::builders::LineAst::Triggered {
+            trigger, effects, ..
+        } => {
+            let trigger_debug = format!("{trigger:?}");
+            let effects_debug = format!("{effects:?}");
+            assert!(
+                matches!(
+                    trigger,
+                    crate::cards::builders::TriggerSpec::StateBased { .. }
+                ),
+                "expected named-counter state trigger, got {trigger_debug}"
+            );
+            assert!(
+                trigger_debug.contains("SourceHasCounterAtLeast")
+                    && trigger_debug.contains("tide")
+                    && trigger_debug.contains("count: 4"),
+                "expected four-or-more tide counter predicate, got {trigger_debug}"
+            );
+            assert!(
+                effects_debug.contains("RemoveUpToAnyCounters") && effects_debug.contains("tide"),
+                "expected remove-tide-counters effect, got {effects_debug}"
+            );
+        }
+        other => panic!("expected triggered line, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_parses_remove_all_named_counters_from_target() {
+    let text = "remove all charge counters from target artifact";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify remove-all-counters effect");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("remove-all-counters from target effect should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("RemoveUpToAnyCounters")
+            && debug.contains("Charge")
+            && debug.contains("CountersOn(")
+            && debug.contains("card_types: [Artifact]")
+            && debug.contains("Some(TextSpan"),
+        "expected generic remove-all named counters from target, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain() {
     let text = "Discard your hand, then draw four cards.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma-then effect");
@@ -7798,6 +7884,27 @@ fn rewrite_lexed_predicate_parser_handles_no_more_named_counters_on_it() {
     assert!(
         debug.contains("SourceHasNoCounter") && debug.contains("scream"),
         "expected named scream no-counter predicate, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_predicate_parser_handles_named_counter_threshold_on_source() {
+    let text = "there are four or more tide counters on this enchantment";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify named-counter threshold predicate");
+
+    let parser_root = super::parse_predicate_lexed(&lexed)
+        .expect("lexed named-counter threshold predicate should parse");
+    let grammar = super::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&lexed)
+        .expect("grammar predicate entrypoint should parse named-counter threshold");
+    let debug = format!("{parser_root:?}");
+
+    assert_eq!(debug, format!("{grammar:?}"));
+    assert!(
+        debug.contains("SourceHasCounterAtLeast")
+            && debug.contains("tide")
+            && debug.contains("count: 4"),
+        "expected four-or-more tide counter predicate, got {debug}"
     );
 }
 

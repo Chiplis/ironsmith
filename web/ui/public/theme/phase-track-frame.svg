@@ -1,27 +1,34 @@
-<svg width="600" height="40" viewBox="0 0 600 40" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-  <rect x="0" y="0" width="600" height="40" rx="2" fill="url(#frame-body)"/>
-  <rect x="3" y="3" width="594" height="34" rx="1" fill="none" stroke="url(#frame-inner)" stroke-width="1"/>
-  <rect x="0" y="0" width="600" height="2" fill="#d4a44a" opacity="0.7"/>
-  <rect x="0" y="38" width="600" height="2" fill="#8a6a2d" opacity="0.7"/>
-  <g opacity="0.55">
-    <circle cx="8" cy="8" r="2" fill="url(#stud)"/>
-    <circle cx="592" cy="8" r="2" fill="url(#stud)"/>
-    <circle cx="8" cy="32" r="2" fill="url(#stud)"/>
-    <circle cx="592" cy="32" r="2" fill="url(#stud)"/>
+<svg width="980" height="40" viewBox="0 0 980 40" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  <path d="M14.5 1H965.5L978.5 20L965.5 39H14.5L1.5 20L14.5 1Z" fill="url(#body)" stroke="url(#outer)" stroke-width="1.5"/>
+  <path d="M18.5 4.5H961.5L973 20L961.5 35.5H18.5L7 20L18.5 4.5Z" stroke="url(#inner)" stroke-width="1"/>
+  <path d="M21 7H959L967 20L959 33H21L13 20L21 7Z" stroke="#0a0704" stroke-opacity=".72" stroke-width="1"/>
+  <path d="M16 2H964L970 10H10L16 2Z" fill="url(#top-sheen)" opacity=".55"/>
+  <path d="M10 30H970L964 38H16L10 30Z" fill="#080604" opacity=".48"/>
+  <g opacity=".56">
+    <path d="M18 8h18" stroke="#d6a657" stroke-width="1"/>
+    <path d="M944 8h18" stroke="#d6a657" stroke-width="1"/>
+    <path d="M18 32h18" stroke="#6f4c1f" stroke-width="1"/>
+    <path d="M944 32h18" stroke="#6f4c1f" stroke-width="1"/>
   </g>
   <defs>
-    <linearGradient id="frame-body" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#3a2916"/>
-      <stop offset="0.5" stop-color="#2b1d10"/>
-      <stop offset="1" stop-color="#1a120a"/>
+    <linearGradient id="body" x1="490" y1="1" x2="490" y2="39" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2b2115"/>
+      <stop offset=".48" stop-color="#100d09"/>
+      <stop offset="1" stop-color="#201509"/>
     </linearGradient>
-    <linearGradient id="frame-inner" x1="0" y1="0" x2="0" y2="40" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#6b4f2c"/>
-      <stop offset="1" stop-color="#4a3520"/>
+    <linearGradient id="outer" x1="490" y1="0" x2="490" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d9a95a"/>
+      <stop offset=".48" stop-color="#503312"/>
+      <stop offset="1" stop-color="#a97831"/>
     </linearGradient>
-    <radialGradient id="stud" cx="0.5" cy="0.4" r="0.6">
-      <stop stop-color="#f1e4c4"/>
-      <stop offset="1" stop-color="#6b4f2c"/>
-    </radialGradient>
+    <linearGradient id="inner" x1="490" y1="4" x2="490" y2="36" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7d5525"/>
+      <stop offset=".55" stop-color="#26180a"/>
+      <stop offset="1" stop-color="#c08a3f"/>
+    </linearGradient>
+    <linearGradient id="top-sheen" x1="490" y1="2" x2="490" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0c978"/>
+      <stop offset="1" stop-color="#f0c978" stop-opacity="0"/>
+    </linearGradient>
   </defs>
 </svg>

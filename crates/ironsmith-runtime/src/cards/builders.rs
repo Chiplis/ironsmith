@@ -10343,18 +10343,18 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn reject_conditional_gain_control_clause_instead_of_partial_parse() {
-        let err = CardDefinitionBuilder::new(CardId::new(), "Exert Influence Variant")
+    fn parse_conditional_gain_control_clause_structurally() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Exert Influence Variant")
             .parse_text(
                 "Gain control of target creature if its power is less than or equal to the number of colors of mana spent to cast this spell.",
             )
-            .expect_err("conditional gain-control clause should fail until fully supported");
-        let debug = format!("{err:?}");
+            .expect("conditional gain-control clause should parse structurally");
+        let debug = format!("{:#?}", def.spell_effect);
         assert!(
-            debug.contains("unsupported conditional gain-control clause")
-                || debug.contains("unsupported power-vs-count conditional clause")
-                || debug.contains("unsupported predicate"),
-            "expected strict conditional gain-control rejection, got {debug}"
+            debug.contains("ConditionalEffect")
+                && debug.contains("ChangeControllerToEffectController")
+                && debug.contains("ColorsOfManaSpentToCastThisSpell"),
+            "expected conditional gain-control lowering, got {debug}"
         );
     }
 

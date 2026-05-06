@@ -1719,7 +1719,7 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
                 );
             !bestow_targets.is_empty()
         }
-        AlternativeCastingMethod::MindbreakTrap {
+        AlternativeCastingMethod::Trap {
             cost, condition, ..
         } => {
             // Check if the trap condition is met

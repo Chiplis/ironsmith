@@ -482,41 +482,63 @@ impl GrantRegistry {
 
         let mut grants = Vec::new();
 
-        for &perm_id in &game.battlefield {
-            let Some(perm) = game.object(perm_id) else {
-                continue;
+        let mut collect_from_source = |source_id: ObjectId, source_is_battlefield: bool| {
+            let Some(source) = game.object(source_id) else {
+                return;
             };
 
-            let controller = game.controller_of(perm);
+            let controller = game.controller_of(source);
 
-            for ability in &perm.abilities {
-                if let AbilityKind::Static(s) = &ability.kind {
-                    if !s.is_active(game, perm_id) {
-                        continue;
-                    }
-                    if let Some(spec) = s.grant_spec() {
-                        let combat = game.combat.as_ref();
-                        for player in game.players.iter().filter(|player| {
-                            player.is_in_game()
-                                && player_matches_filter_with_combat(
-                                    player.id,
-                                    &spec.beneficiary,
-                                    game,
-                                    controller,
-                                    combat,
-                                )
-                        }) {
-                            grants.push(Grant {
-                                target_id: None,
-                                filter: Some(normalize_grant_filter(spec.filter.clone())),
-                                zone: spec.zone,
-                                player: player.id,
-                                grantable: spec.grantable.clone(),
-                                source: GrantSource::StaticAbility { source_id: perm_id },
-                            });
-                        }
-                    }
+            for ability in &source.abilities {
+                let AbilityKind::Static(s) = &ability.kind else {
+                    continue;
+                };
+                if !s.is_active(game, source_id) {
+                    continue;
                 }
+                let Some(spec) = s.grant_spec() else {
+                    continue;
+                };
+
+                let is_source_self_grant = spec.filter == ObjectFilter::source();
+                if !source_is_battlefield && (!is_source_self_grant || spec.zone != source.zone) {
+                    continue;
+                }
+
+                let combat = game.combat.as_ref();
+                for player in game.players.iter().filter(|player| {
+                    player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id,
+                            &spec.beneficiary,
+                            game,
+                            controller,
+                            combat,
+                        )
+                }) {
+                    grants.push(Grant {
+                        target_id: is_source_self_grant.then_some(source_id),
+                        filter: (!is_source_self_grant)
+                            .then(|| normalize_grant_filter(spec.filter.clone())),
+                        zone: spec.zone,
+                        player: player.id,
+                        grantable: spec.grantable.clone(),
+                        source: GrantSource::StaticAbility { source_id },
+                    });
+                }
+            }
+        };
+
+        for &perm_id in &game.battlefield {
+            collect_from_source(perm_id, true);
+        }
+
+        for zone in [Zone::Graveyard, Zone::Exile, Zone::Command] {
+            for source_id in crate::object_query::candidate_ids_for_zone(game, Some(zone)) {
+                if game.battlefield.contains(&source_id) {
+                    continue;
+                }
+                collect_from_source(source_id, false);
             }
         }
 
@@ -651,6 +673,53 @@ mod tests {
         assert_eq!(
             registry.grants[0].source,
             GrantSource::until_end_of_turn(source_id, 3)
+        );
+    }
+
+    #[test]
+    fn test_static_self_play_from_graveyard_grant_is_active_in_graveyard() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(60), "Max Speed Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new())
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let max_speed = crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        };
+        let play_self = StaticAbility::grants(crate::grant::GrantSpec::new(
+            Grantable::play_from(),
+            ObjectFilter::source(),
+            Zone::Graveyard,
+        ))
+        .with_condition(max_speed)
+        .expect("play-from grant should accept a static condition");
+        game.object_mut(card_id)
+            .expect("graveyard card should exist")
+            .abilities
+            .push(Ability::static_ability(play_self));
+
+        assert!(
+            game.effect_store
+                .grant_registry
+                .granted_play_from_for_card(&game, card_id, Zone::Graveyard, alice)
+                .is_empty(),
+            "self grant should be gated before max speed"
+        );
+
+        game.increase_speed(alice, 4);
+
+        assert_eq!(
+            game.effect_store
+                .grant_registry
+                .granted_play_from_for_card(&game, card_id, Zone::Graveyard, alice)
+                .len(),
+            1,
+            "self grant should apply to the card while it is in the graveyard"
         );
     }
 

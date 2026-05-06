@@ -712,12 +712,30 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         {
             return Some(tagged_it_power);
         }
+        if segment == ["the", "exploited", "creature", "power"]
+            || segment == ["the", "exploited", "creatures", "power"]
+            || segment == ["exploited", "creature", "power"]
+            || segment == ["exploited", "creatures", "power"]
+        {
+            return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                crate::tag::EXPLOITED_TAG,
+            )))));
+        }
         if segment == ["the", "sacrificed", "creature", "toughness"]
             || segment == ["the", "sacrificed", "creatures", "toughness"]
             || segment == ["sacrificed", "creature", "toughness"]
             || segment == ["sacrificed", "creatures", "toughness"]
         {
             return Some(tagged_it_toughness);
+        }
+        if segment == ["the", "exploited", "creature", "toughness"]
+            || segment == ["the", "exploited", "creatures", "toughness"]
+            || segment == ["exploited", "creature", "toughness"]
+            || segment == ["exploited", "creatures", "toughness"]
+        {
+            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
+                TagKey::from(crate::tag::EXPLOITED_TAG),
+            ))));
         }
         None
     };

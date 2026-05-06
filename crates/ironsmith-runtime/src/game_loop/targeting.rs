@@ -802,17 +802,81 @@ fn cast_time_selected_effects_from_program(
         match applicable.as_slice() {
             [] => selected.extend(segment.default_effects.iter().cloned()),
             [branch] => {
-                selected.extend(segment.default_effects.iter().cloned());
-                selected.extend(branch.replacement_effects.iter().cloned());
+                if effects_have_new_cast_time_target_selection(&branch.replacement_effects)
+                    || !effects_have_cast_time_target_selection(&segment.default_effects)
+                {
+                    selected.extend(branch.replacement_effects.iter().cloned());
+                } else {
+                    selected.extend(segment.default_effects.iter().cloned());
+                }
             }
             [branch, ..] => {
-                selected.extend(segment.default_effects.iter().cloned());
-                selected.extend(branch.replacement_effects.iter().cloned());
+                if effects_have_new_cast_time_target_selection(&branch.replacement_effects)
+                    || !effects_have_cast_time_target_selection(&segment.default_effects)
+                {
+                    selected.extend(branch.replacement_effects.iter().cloned());
+                } else {
+                    selected.extend(segment.default_effects.iter().cloned());
+                }
             }
         }
     }
 
     selected
+}
+
+fn effects_have_cast_time_target_selection(effects: &[Effect]) -> bool {
+    let mut consumed_modal_selection = false;
+    let mut declared_targets = Vec::new();
+    effects.iter().any(|effect| {
+        count_target_selection_slots_from_effect_internal(
+            effect,
+            None,
+            &mut consumed_modal_selection,
+            &mut declared_targets,
+        ) > 0
+    })
+}
+
+fn effects_have_new_cast_time_target_selection(effects: &[Effect]) -> bool {
+    effects
+        .iter()
+        .any(effect_has_new_cast_time_target_selection)
+}
+
+fn effect_has_new_cast_time_target_selection(effect: &Effect) -> bool {
+    if let Some(modal) = effect.modal_effect_spec() {
+        return modal.modes.iter().any(|mode| {
+            mode.effects
+                .iter()
+                .any(effect_has_new_cast_time_target_selection)
+        });
+    }
+
+    let Some(extracted) = extract_target_spec(effect) else {
+        return false;
+    };
+    requires_target_selection(extracted.spec)
+        && !target_spec_references_previous_target_tag(extracted.spec)
+}
+
+fn target_spec_references_previous_target_tag(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Object(filter) => object_filter_references_previous_target_tag(filter),
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            target_spec_references_previous_target_tag(inner)
+        }
+        _ => false,
+    }
+}
+
+fn object_filter_references_previous_target_tag(filter: &crate::filter::ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && constraint.tag.as_str().starts_with("targeted")
+    })
 }
 
 pub(crate) fn extract_target_requirements_from_program_with_modes(

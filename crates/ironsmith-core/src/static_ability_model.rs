@@ -33,6 +33,7 @@ pub struct ConditionalSpellKeywordSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
+    MulliganExileHandDrawSameCount,
     ChooseColor,
 }
 
@@ -123,8 +124,8 @@ impl ThisSpellCastRestrictionKind {
         Self::named("after combat")
     }
 
-    pub fn if_no_permanents_named_on_battlefield(name: &'static str) -> Self {
-        Self::named(format!("if no permanents named {name}"))
+    pub fn if_no_permanents_named_on_battlefield(name: impl AsRef<str>) -> Self {
+        Self::named(format!("if no permanents named {}", name.as_ref()))
     }
 
     pub fn if_you_control_snow_land() -> Self {
@@ -292,6 +293,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     AddAllSubtypesOfFamily {
         filter: ObjectFilter,
         family: SubtypeFamily,
+    },
+    SetLandSubtypes {
+        filter: ObjectFilter,
+        subtypes: Vec<Subtype>,
     },
     SetCreatureSubtypes {
         filter: ObjectFilter,
@@ -918,6 +923,9 @@ where
             }
             StaticAbilityPayload::AddAllSubtypesOfFamily { filter, family } => {
                 StaticAbilityPayload::AddAllSubtypesOfFamily { filter, family }
+            }
+            StaticAbilityPayload::SetLandSubtypes { filter, subtypes } => {
+                StaticAbilityPayload::SetLandSubtypes { filter, subtypes }
             }
             StaticAbilityPayload::SetCreatureSubtypes { filter, subtypes } => {
                 StaticAbilityPayload::SetCreatureSubtypes { filter, subtypes }
@@ -1993,6 +2001,13 @@ impl<
             payload: StaticAbilityPayload::SetCardTypes { filter, card_types },
         }
     }
+    pub fn set_land_subtypes(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetLandSubtypes),
+            label: "set land subtypes".to_string(),
+            payload: StaticAbilityPayload::SetLandSubtypes { filter, subtypes },
+        }
+    }
     pub fn set_creature_subtypes(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
         Self {
             id: Some(StaticAbilityId::SetCreatureSubtypes),
@@ -2607,13 +2622,6 @@ impl<
     pub fn legend_rule_doesnt_apply() -> Self {
         Self::new("legend rule doesnt apply")
     }
-    pub fn blood_moon() -> Self {
-        Self {
-            id: Some(StaticAbilityId::BloodMoon),
-            label: "blood moon".into(),
-            payload: StaticAbilityPayload::None,
-        }
-    }
     pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveSupertypes),
@@ -2775,10 +2783,10 @@ impl<
             },
         }
     }
-    pub fn library_of_leng_discard_replacement() -> Self {
+    pub fn effect_discard_to_library_replacement() -> Self {
         Self {
-            id: Some(StaticAbilityId::LibraryOfLengDiscardReplacement),
-            label: "library of leng discard replacement".into(),
+            id: Some(StaticAbilityId::EffectDiscardToLibraryReplacement),
+            label: "effect discard to library replacement".into(),
             payload: StaticAbilityPayload::None,
         }
     }

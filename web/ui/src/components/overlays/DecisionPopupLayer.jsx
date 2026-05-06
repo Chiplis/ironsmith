@@ -1574,12 +1574,12 @@ function MobileBattleDecisionLayer({
   const passAdvanceLabel = showPriorityAdvanceButton
     ? (
       hasCustomPassLabel
-        ? passAction.label
+        ? ""
         : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
     )
     : (visibleActionGroups[0]?.label || "Continue");
   const passCurrentLabel = showPriorityAdvanceButton
-    ? currentPriorityPhaseLabel(state?.phase, state?.step)
+    ? (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step))
     : passAdvanceLabel;
   const objectNameById = useMemo(
     () => buildObjectNameById(state),
@@ -1624,11 +1624,12 @@ function MobileBattleDecisionLayer({
   }, [decision?.context_text, decision?.description]);
   const mobileDockSubtitle = useMemo(() => {
     if (toolbarDecisionSummary) return toolbarDecisionSummary;
+    if (hasCustomPassLabel) return "";
     if (stackSize > 0) {
       return `Resolve ${stackSize}`;
     }
     return nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize);
-  }, [stackSize, state?.phase, state?.step, toolbarDecisionSummary]);
+  }, [hasCustomPassLabel, stackSize, state?.phase, state?.step, toolbarDecisionSummary]);
 
   const triggerPriorityAction = useCallback(
     (action) => {
@@ -2091,12 +2092,12 @@ function PriorityControlStack({
           </span>
         ) : null}
         <label className={checkboxLabelClass}>
+          <span title="Hold">{compactLandscapeViewport ? "H" : "Hold"}</span>
           <Checkbox
             checked={holdEnabled}
             onCheckedChange={(value) => onHoldChange?.(Boolean(value))}
             className="h-3 w-3"
           />
-          <span title="Hold">{compactLandscapeViewport ? "H" : "Hold"}</span>
         </label>
       </div>
     </div>
@@ -2182,18 +2183,22 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const passAdvanceLabel = resolvingStackPriority
     ? ""
-    : (holdRule === "always" || hasCustomPassLabel
-        ? (passAction?.label || "Pass priority")
+    : (hasCustomPassLabel
+        ? ""
+        : holdRule === "always"
+          ? (passAction?.label || "Pass priority")
         : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
   const passControlAdvanceLabel = resolvingStackPriority
     ? ""
     : (hasCustomPassLabel
-        ? compactPriorityControlAdvanceLabel(passAdvanceLabel).toUpperCase()
+        ? ""
         : compactPriorityControlAdvanceLabel(`→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`));
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
-    : currentPriorityPhaseLabel(state?.phase, state?.step);
-  const passHelpAdvanceLabel = resolvingStackPriority ? "Resolve" : passAdvanceLabel;
+    : (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step));
+  const passHelpAdvanceLabel = resolvingStackPriority
+    ? "Resolve"
+    : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
     [state?.players]

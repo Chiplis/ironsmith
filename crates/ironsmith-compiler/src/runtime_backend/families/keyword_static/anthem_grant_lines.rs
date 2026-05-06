@@ -3741,9 +3741,11 @@ fn parsed_exploit_ability() -> ParsedAbility {
             Effect::if_then(
                 effect_id,
                 crate::effect::EffectPredicate::Happened,
-                vec![Effect::emit_keyword_action(
+                vec![Effect::emit_keyword_action_with_affected_object_memory_tag(
                     crate::events::KeywordActionKind::Exploit,
                     1,
+                    crate::effect::EffectId(effect_id),
+                    crate::tag::EXPLOITED_TAG,
                 )],
             ),
         ],

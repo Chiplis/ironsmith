@@ -82,6 +82,7 @@ pub use zone_changes::*;
 
 use crate::events::EventKind;
 use crate::events::cause::CauseFilter;
+use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use std::sync::Arc;
@@ -904,6 +905,23 @@ impl Trigger {
     ) -> Self {
         Self::new(KeywordActionTrigger::matching_object(
             action, player, filter,
+        ))
+    }
+
+    /// Create a "whenever [matching source] [keyword action] [tagged matching object]" trigger.
+    pub fn keyword_action_matching_source_and_tagged_object(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(KeywordActionTrigger::matching_source_and_tagged_object(
+            action,
+            player,
+            source_filter,
+            object_tag,
+            object_filter,
         ))
     }
 

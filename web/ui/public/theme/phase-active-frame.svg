@@ -1,0 +1,22 @@
+<svg width="124" height="36" viewBox="0 0 124 36" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  <path d="M10.5 1H113.5L123 10.5V25.5L113.5 35H10.5L1 25.5V10.5L10.5 1Z" fill="url(#body)" stroke="url(#outer)" stroke-width="1.5"/>
+  <path d="M13.5 4H110.5L119 12V24L110.5 32H13.5L5 24V12L13.5 4Z" stroke="#3a2208" stroke-opacity=".75"/>
+  <path d="M13 3H111L116 8H8L13 3Z" fill="url(#sheen)" opacity=".72"/>
+  <path d="M7 26H117L111 33H13L7 26Z" fill="#1c1005" opacity=".42"/>
+  <defs>
+    <linearGradient id="body" x1="62" y1="1" x2="62" y2="35" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a77835"/>
+      <stop offset=".48" stop-color="#74481b"/>
+      <stop offset="1" stop-color="#35200d"/>
+    </linearGradient>
+    <linearGradient id="outer" x1="62" y1="0" x2="62" y2="36" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f1ce83"/>
+      <stop offset=".45" stop-color="#7a4b18"/>
+      <stop offset="1" stop-color="#c99139"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="62" y1="3" x2="62" y2="11" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff0bd"/>
+      <stop offset="1" stop-color="#fff0bd" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>

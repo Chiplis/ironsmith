@@ -835,6 +835,22 @@ fn tagged_objects_for_trigger_event(
             tagged.insert(crate::tag::TagKey::from("other_attacker"), other_attackers);
         }
     }
+    if let Some(action_event) = trigger_event.downcast::<crate::events::KeywordActionEvent>() {
+        for (tag, snapshots) in &action_event.object_tags {
+            tagged
+                .entry(tag.clone())
+                .or_default()
+                .extend(snapshots.clone());
+        }
+    }
+    if let Some(zone_change_event) = trigger_event.downcast::<crate::events::ZoneChangeEvent>() {
+        for (tag, snapshots) in &zone_change_event.object_tags {
+            tagged
+                .entry(tag.clone())
+                .or_default()
+                .extend(snapshots.clone());
+        }
+    }
     tagged
 }
 

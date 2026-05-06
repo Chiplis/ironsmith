@@ -293,7 +293,7 @@ fn describe_prevention_follow_up_target(target: &ChooseSpec) -> &'static str {
     }
 }
 
-fn render_tainted_pact_repeat_process(
+fn render_iterative_library_repeat_process(
     repeat: &crate::effects::RepeatProcessEffect,
 ) -> Option<String> {
     if repeat.predicate != ironsmith_core::EffectPredicate::WasDeclined {
@@ -320,8 +320,8 @@ fn render_tainted_pact_repeat_process(
     }
     let current_tag = &exile.moved_tags[0];
     let exiled_tag = &exile.accumulated_tags[0];
-    if current_tag.as_str() != "tainted_pact_current"
-        || exiled_tag.as_str() != "tainted_pact_exiled"
+    if current_tag.as_str() != "iterative_library_current"
+        || exiled_tag.as_str() != "iterative_library_exiled"
     {
         return None;
     }
@@ -12287,6 +12287,11 @@ fn describe_triggered_inline_ability(
         .as_ref()
         .map(split_trigger_intervening_if)
         .unwrap_or((None, None));
+    let intervening_condition = if trigger_is_state_based(&triggered.trigger) {
+        None
+    } else {
+        intervening_condition
+    };
     let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
@@ -23339,6 +23344,28 @@ fn describe_create_attached_token_then_reflexive_fight(
     ))
 }
 
+fn describe_remove_counter_phrase(
+    count: &Value,
+    counter_type: CounterType,
+    target: &ChooseSpec,
+) -> String {
+    let removes_all_matching_counters = match count {
+        Value::CountersOnSource(found_counter) => {
+            *found_counter == counter_type && matches!(target.base(), ChooseSpec::Source)
+        }
+        Value::CountersOn(counter_source, Some(found_counter)) => {
+            *found_counter == counter_type && counter_source.unhinted() == target.unhinted()
+        }
+        _ => false,
+    };
+
+    if removes_all_matching_counters {
+        format!("all {} counters", describe_counter_type(counter_type))
+    } else {
+        describe_put_counter_phrase(count, counter_type)
+    }
+}
+
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_reveal_until_sequence(sequence) {
@@ -23826,6 +23853,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!(
             "{chooser} {choose_verb} a creature type other than {}",
             join_with_or(&excluded)
+        );
+    }
+    if let Some(move_choice) =
+        effect.downcast_ref::<crate::effects::MoveToLibraryTopOrBottomChoiceEffect>()
+    {
+        let target = describe_choose_spec(&move_choice.target);
+        if choose_spec_is_plural(&move_choice.target) {
+            return format!(
+                "Put {target} on their owners' choice of the top or bottom of their owners' libraries"
+            );
+        }
+        return format!(
+            "{} owner puts it on their choice of the top or bottom of their library",
+            describe_possessive_choose_spec(&move_choice.target)
         );
     }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
@@ -24562,11 +24603,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             describe_choose_spec(&remove_counters.target)
         };
-        return format!(
-            "Remove {} from {}",
-            describe_put_counter_phrase(&remove_counters.count, remove_counters.counter_type),
-            target
+        let counter_phrase = describe_remove_counter_phrase(
+            &remove_counters.count,
+            remove_counters.counter_type,
+            &remove_counters.target,
         );
+        return format!("Remove {} from {}", counter_phrase, target);
     }
     if let Some(remove_counters_among) =
         effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
@@ -24843,6 +24885,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::PowerOf(_)
                 | Value::ToughnessOf(_)
                 | Value::ManaValueOf(_)
+                | Value::Speed(_)
                 | Value::EffectMetric { .. }
                 | Value::EffectMetricOffset { .. }
                 | Value::PendingEffectMetric { .. }
@@ -24990,6 +25033,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::PowerOf(_)
                 | Value::ToughnessOf(_)
                 | Value::ManaValueOf(_)
+                | Value::Speed(_)
         ) {
             return format!(
                 "{} {} life equal to {}",
@@ -26026,7 +26070,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return describe_effect(&with_id.effect);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
-        if let Some(rendered) = render_tainted_pact_repeat_process(repeat) {
+        if let Some(rendered) = render_iterative_library_repeat_process(repeat) {
             return rendered;
         }
         let body = describe_effect_list(&repeat.effects);
@@ -30386,6 +30430,12 @@ fn trigger_is_this_enters_battlefield(trigger: &crate::triggers::Trigger) -> boo
         })
 }
 
+fn trigger_is_state_based(trigger: &crate::triggers::Trigger) -> bool {
+    trigger
+        .downcast_ref::<crate::triggers::StateTrigger>()
+        .is_some()
+}
+
 fn trigger_is_this_blocks_or_becomes_blocked(trigger: &crate::triggers::Trigger) -> bool {
     let Some(or_trigger) = trigger.downcast_ref::<crate::triggers::OrTrigger>() else {
         return false;
@@ -31260,6 +31310,11 @@ pub(super) fn describe_ability(
                 .as_ref()
                 .map(split_trigger_intervening_if)
                 .unwrap_or((None, None));
+            let intervening_condition = if trigger_is_state_based(&triggered.trigger) {
+                None
+            } else {
+                intervening_condition
+            };
             let trigger_surface = apply_triggered_presentation_label(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),

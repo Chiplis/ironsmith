@@ -2114,17 +2114,42 @@ pub(crate) fn parse_trigger_clause_lexed(
     }) {
         let subject_words = &words[..exploit_word_idx];
         let tail_words = &words[exploit_word_idx + 1..];
-        if !is_source_reference_words(subject_words)
-            && (tail_words.is_empty()
+        if !is_source_reference_words(subject_words) {
+            let subject_end = word_view
+                .token_index_after_words(exploit_word_idx)
+                .unwrap_or(exploit_word_idx);
+            let tail_start = word_view
+                .token_index_after_words(exploit_word_idx + 1)
+                .unwrap_or(tokens.len());
+            let tail_tokens = tokens.get(tail_start..).unwrap_or_default();
+            let object_filter = if tail_words.is_empty()
                 || tail_words == ["a", "creature"]
-                || tail_words == ["creature"])
-        {
-            let subject_tokens = &tokens[..exploit_word_idx];
+                || tail_words == ["creature"]
+            {
+                None
+            } else {
+                Some(parse_object_filter_lexed(tail_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported exploit object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?)
+            };
+            let subject_tokens = &tokens[..subject_end];
             if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
-                return Ok(TriggerSpec::KeywordAction {
-                    action: crate::events::KeywordActionKind::Exploit,
-                    player: PlayerFilter::Any,
-                    source_filter: Some(filter),
+                return Ok(match object_filter {
+                    Some(object_filter) => TriggerSpec::KeywordActionTaggedObject {
+                        action: crate::events::KeywordActionKind::Exploit,
+                        player: PlayerFilter::Any,
+                        source_filter: filter,
+                        object_tag: TagKey::from(crate::tag::EXPLOITED_TAG),
+                        object_filter,
+                    },
+                    None => TriggerSpec::KeywordAction {
+                        action: crate::events::KeywordActionKind::Exploit,
+                        player: PlayerFilter::Any,
+                        source_filter: Some(filter),
+                    },
                 });
             }
         }

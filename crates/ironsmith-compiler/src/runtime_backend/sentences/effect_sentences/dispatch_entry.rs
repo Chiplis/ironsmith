@@ -813,12 +813,6 @@ pub(super) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     looked_cards_family::parse_looked_card_reveal_filter(tokens)
 }
 
-pub(super) fn parse_if_no_card_into_hand_this_way_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    consult_family::parse_if_no_card_into_hand_this_way_sentence(tokens)
-}
-
 pub(super) fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1305,8 +1299,7 @@ mod tests {
         parse_consult_cast_clause, parse_consult_condition_value,
         parse_consult_mana_value_condition_tokens,
         parse_counted_looked_cards_into_your_hand_tokens, parse_exact_card_effect_bundle_lexed,
-        parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
-        parse_looked_card_reveal_filter,
+        parse_if_you_dont_sentence, parse_looked_card_reveal_filter,
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence,
     };
@@ -1684,21 +1677,6 @@ mod tests {
     }
 
     #[test]
-    fn if_no_card_into_hand_clause_accepts_article_before_card() {
-        let tokens = lex_line(
-            "If you didn't put a card into your hand this way, draw a card",
-            0,
-        )
-        .expect("rewrite lexer should classify if-no-card clause");
-
-        let parsed = parse_if_no_card_into_hand_this_way_sentence(&tokens)
-            .expect("if-no-card clause should not error")
-            .expect("if-no-card clause should parse");
-
-        assert_eq!(parsed.len(), 1);
-    }
-
-    #[test]
     fn if_you_dont_clause_reports_missing_comma_after_matched_prefix() {
         let tokens = lex_line("If you don't draw a card", 0)
             .expect("rewrite lexer should classify if-you-don't clause");
@@ -1770,6 +1748,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Explore { target }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
@@ -2237,7 +2216,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -2265,6 +2243,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { .. }

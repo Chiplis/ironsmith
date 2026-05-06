@@ -184,9 +184,9 @@ pub use tokens::{
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,
     ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
-    MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
-    ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
-    ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
-    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
-    ShuffleObjectsIntoLibraryEffect,
+    MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToLibraryTopOrBottomChoiceEffect,
+    MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
+    ReturnAllToBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
+    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
+    SacrificeEffect, SacrificeTargetEffect, ShuffleObjectsIntoLibraryEffect,
 };

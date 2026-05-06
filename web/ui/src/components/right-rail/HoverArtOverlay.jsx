@@ -29,8 +29,10 @@ const INSPECTOR_LOW_PROFILE_HEIGHT = 140;
 const INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING = 10;
 const INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING = 8;
 const INSPECTOR_RULES_MIN_WIDTH = 220;
-const INSPECTOR_RULES_MAX_LINE_WIDTH = 920;
-const INSPECTOR_HEADER_HORIZONTAL_PADDING = 136;
+const INSPECTOR_RULES_MAX_LINE_WIDTH = 1120;
+const INSPECTOR_HEADER_HORIZONTAL_PADDING = 24;
+const INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE = 72;
+const INSPECTOR_LEFT_ART_HEADER_ALLOWANCE = 188;
 const INSPECTOR_ORACLE_TOP_PADDING = 54;
 const INSPECTOR_ORACLE_BOTTOM_PADDING = 10;
 const INSPECTOR_ORACLE_HORIZONTAL_PADDING = 28;
@@ -911,6 +913,55 @@ export default function HoverArtOverlay({
       INSPECTOR_RULES_MAX_LINE_WIDTH
     ));
   }, [ruleLineWidths]);
+  const measuredPreferredHeaderWidth = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    if (!displayObjectName && !displayManaCost && !hasTopLeftInlineMetadata) return null;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const titleFontSize = compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE;
+    ctx.font = `800 ${titleFontSize}px ${INSPECTOR_MEASURE_FONT}`;
+    const nameWidth = displayObjectName
+      ? measureInspectorTextWidth(ctx, displayObjectName)
+      : 0;
+
+    const metadataFontSize = titleFontSize * 0.5;
+    ctx.font = `600 ${metadataFontSize}px ${INSPECTOR_MEASURE_FONT}`;
+    const metadataLines = [
+      ...displayTopLeftDetailLines,
+      ...displayTopLeftZoneLines,
+    ];
+    const metadataWidth = metadataLines.length > 0
+      ? Math.max(...metadataLines.map((line) => measureInspectorTextWidth(ctx, line)))
+      : 0;
+
+    const manaSymbolCount = displayManaCost
+      ? Math.max(1, String(displayManaCost).match(/\{[^}]+\}|[^\s]/g)?.length || 1)
+      : 0;
+    const manaWidth = manaSymbolCount > 0
+      ? (manaSymbolCount * 23) + 18
+      : 0;
+    const gapWidth = (
+      (displayObjectName && displayManaCost ? 8 : 0)
+      + ((displayObjectName || displayManaCost) && metadataWidth > 0 ? 8 : 0)
+    );
+    const chromeWidth = 40;
+
+    return Math.ceil(clampNumber(
+      nameWidth + manaWidth + metadataWidth + gapWidth + chromeWidth,
+      INSPECTOR_RULES_MIN_WIDTH,
+      INSPECTOR_RULES_MAX_LINE_WIDTH
+    ));
+  }, [
+    compact,
+    displayManaCost,
+    displayObjectName,
+    displayTopLeftDetailLines,
+    displayTopLeftZoneLines,
+    hasTopLeftInlineMetadata,
+  ]);
   const preferredInlineWidth = null;
   const availableInspectorWidthNum = Number(availableInspectorWidth);
   const availableInspectorHeightNum = Number(availableInspectorHeight);
@@ -921,9 +972,27 @@ export default function HoverArtOverlay({
     && availableInspectorHeightNum > 0
     && availableInspectorHeightNum < INSPECTOR_LOW_PROFILE_HEIGHT
   );
-  const preferredInspectorWidth = compact || displayMode !== "inspector" || measuredPreferredRulesWidth == null
+  const measuredHeaderArtAllowance = (
+    !compact
+    && displayMode === "inspector"
+    && imageUrl
+    && !imageErrored
+  )
+    ? INSPECTOR_LEFT_ART_HEADER_ALLOWANCE
+    : 0;
+  const measuredPreferredHeaderInspectorWidth = measuredPreferredHeaderWidth == null
+    ? 0
+    : measuredPreferredHeaderWidth + measuredHeaderArtAllowance + INSPECTOR_HEADER_HORIZONTAL_PADDING;
+  const measuredPreferredOracleInspectorWidth = measuredPreferredRulesWidth == null
+    ? 0
+    : measuredPreferredRulesWidth + INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE;
+  const measuredPreferredInspectorWidth = Math.max(
+    measuredPreferredHeaderInspectorWidth,
+    measuredPreferredOracleInspectorWidth
+  );
+  const preferredInspectorWidth = compact || displayMode !== "inspector" || measuredPreferredInspectorWidth <= 0
     ? null
-    : Math.ceil(measuredPreferredRulesWidth + INSPECTOR_HEADER_HORIZONTAL_PADDING);
+    : Math.ceil(measuredPreferredInspectorWidth);
   const activeMeasuredPreferredInspectorWidth = preferredInspectorWidth;
   const resolvedPreferredInspectorWidth = activeMeasuredPreferredInspectorWidth;
   const activeInspectorTextScale = compact || displayMode !== "inspector"
@@ -931,6 +1000,8 @@ export default function HoverArtOverlay({
     : (inspectorScaleSession.key === inspectorScaleSessionKey ? inspectorScaleSession.scale : 1);
   const activeInspectorTitleScale = displayMode !== "inspector"
     ? 1
+    : !displayManaCost
+      ? 1
     : (
       inspectorTitleScaleSession.key === inspectorTitleScaleSessionKey
         ? inspectorTitleScaleSession.scale
@@ -1079,18 +1150,19 @@ export default function HoverArtOverlay({
   ) : null;
 
   useLayoutEffect(() => {
-    if (displayMode !== "inspector" || !displayObjectName) return undefined;
+    if (displayMode !== "inspector" || !displayObjectName || !displayManaCost) return undefined;
 
     const banner = inspectorTitleRef.current;
     const titleHost = banner?.parentElement;
     const titleRow = titleHost?.parentElement;
+    const headerHost = topHeaderRef.current;
     if (!banner || !titleHost || !inspectorTitleScaleSessionKey) return undefined;
 
     let rafId = null;
     const publishScale = () => {
       const currentScale = Math.max(activeInspectorTitleScale, 0.01);
       const naturalWidth = banner.scrollWidth / currentScale;
-      const rowWidth = Math.floor((titleRow || titleHost).clientWidth);
+      const rowWidth = Math.floor((headerHost || titleRow || titleHost).clientWidth);
       const metadataContent = headerMetadataContentRef.current;
       const metadataNaturalWidth = hasTopLeftInlineMetadata && metadataContent
         ? metadataContent.scrollWidth
@@ -1142,6 +1214,7 @@ export default function HoverArtOverlay({
     observer.observe(banner);
     observer.observe(titleHost);
     if (titleRow) observer.observe(titleRow);
+    if (headerHost) observer.observe(headerHost);
     if (headerMetadataContentRef.current) observer.observe(headerMetadataContentRef.current);
     window.addEventListener("resize", scheduleScale);
 
@@ -1154,6 +1227,7 @@ export default function HoverArtOverlay({
     activeInspectorTitleScale,
     compact,
     displayMode,
+    displayManaCost,
     hasTopLeftInlineMetadata,
     inspectorTitleScaleSessionKey,
     displayObjectName,
@@ -1430,14 +1504,17 @@ export default function HoverArtOverlay({
     : 0;
   const inspectorHeaderRowReserve = Math.max(
     displayObjectName ? ((INSPECTOR_TITLE_FONT_SIZE * inspectorTitleScale) + (12 * inspectorScale)) : 0,
+    displayManaCost ? ((22 * inspectorScale) + (10 * inspectorScale)) : 0,
     inspectorHeaderMetadataReserve
   );
   const inspectorTopMetadataReserve = debugInspector
     ? 52
     : (
       16
-      + (transitionTitle ? 28 * inspectorScale : 0)
-      + inspectorHeaderRowReserve
+      + Math.max(
+        inspectorHeaderRowReserve,
+        transitionTitle ? 28 * inspectorScale : 0
+      )
       + (displayTypeLineBadges.length > 0 ? ((18 * inspectorScale) + 10) : 0)
       + (hasTopLeftMetadata ? 10 * inspectorScale : 0)
     );
@@ -1452,7 +1529,6 @@ export default function HoverArtOverlay({
     : (
       14
       + (transitionTitle ? 24 : 0)
-      + (displayManaCost ? 22 : 0)
       + (displayStatsText ? 22 : 0)
       + ((displayObjectName || hasTopLeftInlineMetadata) ? Math.max(24, inspectorHeaderMetadataReserve) : 0)
       + (displayTypeLineBadges.length > 0 ? 18 : 0)
@@ -1470,8 +1546,13 @@ export default function HoverArtOverlay({
       ? "text-[12px] leading-[1.22] text-white font-semibold text-left"
       : "text-[13px] leading-[1.28] text-white font-semibold text-left")
     : "text-white font-semibold text-left";
+  const inspectorHeaderManaIconSize = compact
+    ? 14
+    : Math.max(18, Math.round(22 * inspectorTitleScale));
   const inspectorTitleStyle = {
     fontSize: `${(compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE) * inspectorTitleScale}px`,
+    minHeight: `${inspectorHeaderManaIconSize + (compact ? 8 : 10)}px`,
+    minWidth: `${Math.max(92, inspectorHeaderManaIconSize * 4.2)}px`,
   };
   const inspectorIdentityHeaderStyle = compact ? {
     ...METADATA_TEXT_STYLE,
@@ -1503,19 +1584,6 @@ export default function HoverArtOverlay({
   const inspectorBottomOverlayPadding = compact
     ? compactOraclePaddingBottom
     : 18;
-  const inspectorOracleContainerStyle = compact ? undefined : {
-    paddingTop: lowProfileInspector
-      ? `${INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING}px`
-      : `${inspectorOracleTopPadding * inspectorScale}px`,
-    paddingBottom: lowProfileInspector
-      ? `${INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING}px`
-      : `${Math.max(INSPECTOR_ORACLE_BOTTOM_PADDING * inspectorScale, inspectorBottomOverlayPadding)}px`,
-    paddingLeft: `${10 * inspectorScale}px`,
-    paddingRight: `${10 * inspectorScale}px`,
-  };
-  const resolvedOracleContainerStyle = compact
-    ? { paddingTop: `${compactOraclePaddingTop}px`, paddingBottom: `${compactOraclePaddingBottom}px` }
-    : inspectorOracleContainerStyle;
   const inspectorRulesBodyMaxWidth = compact
     ? null
     : Math.max(
@@ -1546,6 +1614,22 @@ export default function HoverArtOverlay({
         - inspectorArtSafeWidth
         - (INSPECTOR_ORACLE_HORIZONTAL_PADDING * inspectorScale)
     );
+  const inspectorLeftArtOffset = !compact && inspectorArtSafeWidth != null
+    ? Math.ceil(inspectorArtSafeWidth)
+    : 0;
+  const inspectorOracleContainerStyle = compact ? undefined : {
+    paddingTop: lowProfileInspector
+      ? `${displayObjectName ? (hasTopLeftInlineMetadata ? 58 : 38) : INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING}px`
+      : `${inspectorOracleTopPadding * inspectorScale}px`,
+    paddingBottom: lowProfileInspector
+      ? `${INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING}px`
+      : `${Math.max(INSPECTOR_ORACLE_BOTTOM_PADDING * inspectorScale, inspectorBottomOverlayPadding)}px`,
+    paddingLeft: `${inspectorLeftArtOffset + (10 * inspectorScale)}px`,
+    paddingRight: `${10 * inspectorScale}px`,
+  };
+  const resolvedOracleContainerStyle = compact
+    ? { paddingTop: `${compactOraclePaddingTop}px`, paddingBottom: `${compactOraclePaddingBottom}px` }
+    : inspectorOracleContainerStyle;
   const oracleBodyStyle = compact || inspectorRulesBodyMaxWidth == null
     ? undefined
     : {
@@ -1557,9 +1641,8 @@ export default function HoverArtOverlay({
     };
   const inspectorHeaderSafeStyle = compact ? undefined : {
     width: "100%",
-    maxWidth: inspectorRulesSafeWidth == null
-      ? INSPECTOR_RULES_FALLBACK_SAFE_WIDTH
-      : `${Math.ceil(inspectorRulesSafeWidth)}px`,
+    maxWidth: "100%",
+    paddingLeft: inspectorLeftArtOffset > 0 ? `${inspectorLeftArtOffset}px` : undefined,
   };
   const rulesTextStyle = compact ? ORACLE_TEXT_STYLE : {
     ...ORACLE_TEXT_STYLE,
@@ -1696,7 +1779,8 @@ export default function HoverArtOverlay({
       className={cn(
         "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden",
         (compact || hasTransitionNavigator) ? "pointer-events-auto" : "pointer-events-none",
-        lowProfileInspector && "hover-art-stage--low-profile"
+        lowProfileInspector && "hover-art-stage--low-profile",
+        !compactTopbarLayout && !compact && "hover-art-stage--left-art"
       )}
     >
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
@@ -1719,13 +1803,13 @@ export default function HoverArtOverlay({
               <div className="flex w-full max-w-full min-w-0 items-start gap-1">
                 {(displayObjectName || hasTopLeftInlineMetadata) && (
                   <div
-                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-start gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
+                    className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-center gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
                     style={inspectorIdentityHeaderStyle}
                   >
                     {displayObjectName && (
                       <div
                         ref={inspectorTitleRef}
-                        className="min-w-0 shrink-0 font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
+                        className="flex shrink-0 items-center font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]"
                         style={inspectorTitleStyle}
                       >
                       <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -1835,7 +1919,7 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && (transitionTitle || displayObjectName || (!lowProfileInspector && (displayTopLeftDetailLines.length > 0 || displayTopLeftZoneLines.length > 0))) && (
+        {!compactTopbarLayout && (transitionTitle || displayObjectName || displayManaCost || hasTopLeftInlineMetadata) && (
           <div
             ref={topHeaderRef}
             className={cn(
@@ -1844,46 +1928,9 @@ export default function HoverArtOverlay({
             style={inspectorHeaderSafeStyle}
           >
             <div className="flex w-full min-w-0 max-w-full flex-col items-start gap-1">
-              {transitionTitle && (
-                <div
-                  className={cn(
-                    "inspector-banner inspector-banner--meta flex items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
-                    topMetadataTextClassName
-                  )}
-                  style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
-                >
-                  {hasTransitionNavigator && (
-                    <button
-                      type="button"
-                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
-                      onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
-                      aria-label="Show previous moved card"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <span>{transitionTitle}</span>
-                  {transitionSequenceLabel && (
-                    <span className="rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
-                      {transitionSequenceLabel}
-                    </span>
-                  )}
-                  {hasTransitionNavigator && (
-                    <button
-                      type="button"
-                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
-                      onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
-                      aria-label="Show next moved card"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-              {!lowProfileInspector && (displayObjectName || hasTopLeftInlineMetadata) && (
-                <div className="flex w-full min-w-0 max-w-full items-start gap-1">
+              <div className="flex w-full min-w-0 max-w-full items-start gap-1">
+              {(displayObjectName || displayManaCost || hasTopLeftInlineMetadata) && (
+                <div className="flex min-w-0 max-w-full items-start gap-1">
                   <div
                     className="inspector-banner inspector-banner--identity flex w-max max-w-full min-w-0 items-start gap-2 overflow-visible rounded-none bg-[linear-gradient(90deg,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.44)_82%,rgba(0,0,0,0.12)_100%)] text-[#f3f8ff] backdrop-blur-[2px]"
                     style={inspectorIdentityHeaderStyle}
@@ -1902,6 +1949,11 @@ export default function HoverArtOverlay({
                           )}
                           <span>{displayObjectName}</span>
                         </span>
+                      </div>
+                    )}
+                    {displayManaCost && (
+                      <div className="inspector-banner inspector-banner--mana inline-flex shrink-0 items-center rounded-none bg-[rgba(0,0,0,0.4)] px-1.5 py-0.5">
+                        <ManaCostIcons cost={displayManaCost} size={inspectorHeaderManaIconSize} />
                       </div>
                     )}
                     {hasTopLeftInlineMetadata && (
@@ -1931,6 +1983,45 @@ export default function HoverArtOverlay({
                   </div>
                 </div>
               )}
+              {transitionTitle && (
+                <div
+                  className={cn(
+                    "inspector-banner inspector-banner--meta flex min-w-0 max-w-full items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
+                    topMetadataTextClassName
+                  )}
+                  style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                >
+                  {hasTransitionNavigator && (
+                    <button
+                      type="button"
+                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
+                      onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
+                      aria-label="Show previous moved card"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <span className="min-w-0 truncate">{transitionTitle}</span>
+                  {transitionSequenceLabel && (
+                    <span className="rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
+                      {transitionSequenceLabel}
+                    </span>
+                  )}
+                  {hasTransitionNavigator && (
+                    <button
+                      type="button"
+                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
+                      onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
+                      aria-label="Show next moved card"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              </div>
               {!lowProfileInspector && displayTypeLineBadges.length > 0 && (
                 <div className="flex max-w-full flex-wrap gap-1">
                   {displayTypeLineBadges.map((badge) => (
@@ -1964,17 +2055,10 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && (displayManaCost || (!lowProfileInspector && displayTopRightDetailLines.length > 0)) && (
+        {!compactTopbarLayout && !lowProfileInspector && displayTopRightDetailLines.length > 0 && (
           <div ref={topMetadataRef} className="pointer-events-auto absolute top-0 right-0 z-[60] flex max-w-[40%] flex-col items-end gap-1 overflow-visible">
-            {displayManaCost && (
-              <div className="flex items-center justify-end gap-1.5">
-                <div className="inspector-banner inspector-banner--mana rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1" style={inspectorManaStyle}>
-                  <ManaCostIcons cost={displayManaCost} size={compact ? 14 : Math.max(13, Math.round(18 * inspectorScale))} />
-                </div>
-              </div>
-            )}
             <InspectorMetadataBlock
-              lines={lowProfileInspector ? [] : displayTopRightDetailLines}
+              lines={displayTopRightDetailLines}
               className={cn(
                 "inspector-banner inspector-banner--meta self-end rounded-none bg-[rgba(0,0,0,0.48)] px-2.5 py-1 text-right backdrop-blur-[1.8px]",
                 topMetadataTextClassName

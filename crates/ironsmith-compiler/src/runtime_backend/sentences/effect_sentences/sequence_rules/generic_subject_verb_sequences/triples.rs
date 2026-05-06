@@ -3,8 +3,7 @@ use super::super::super::dispatch_entry::{
     find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
     parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
     parse_consult_traversal_sentence, parse_if_declined_put_match_into_hand,
-    parse_if_no_card_into_hand_this_way_sentence, parse_if_you_dont_sentence,
-    parse_top_cards_view_sentence,
+    parse_if_you_dont_sentence, parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,

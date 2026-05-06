@@ -8,7 +8,7 @@ use super::grammar::abilities::{
     CombatDamageUsingToughnessSubject, DoesntUntapDuringUntapStepSpec, FlyingBlockRestrictionKind,
     is_all_permanents_colorless_line_lexed,
     is_as_long_as_power_odd_or_even_flash_marker_line_lexed,
-    is_attack_as_haste_unless_entered_this_turn_marker_line_lexed, is_blood_moon_line_lexed,
+    is_attack_as_haste_unless_entered_this_turn_marker_line_lexed,
     is_can_be_your_commander_line_lexed, is_can_block_only_flying_line_lexed,
     is_cast_this_spell_as_though_it_had_flash_line_lexed, is_companion_marker_line_lexed,
     is_creatures_cant_block_line_lexed,
@@ -16,16 +16,18 @@ use super::grammar::abilities::{
     is_creatures_without_flying_cant_attack_line_lexed,
     is_discard_or_redirect_replacement_line_lexed, is_doctors_companion_marker_line_lexed,
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
-    is_draw_replace_exile_top_face_down_line_lexed, is_enchanted_land_is_chosen_type_line_lexed,
+    is_draw_replace_exile_top_face_down_line_lexed,
+    is_effect_discard_to_library_replacement_line_lexed,
+    is_enchanted_land_is_chosen_type_line_lexed,
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
     is_lands_dont_untap_during_their_controllers_untap_steps_line_lexed,
-    is_library_of_leng_discard_replacement_line_lexed, is_mana_group_slash_marker_line_lexed,
-    is_may_assign_damage_as_unblocked_line_lexed, is_minimum_spell_total_mana_three_line_lexed,
-    is_more_than_meets_the_eye_marker_line_lexed, is_no_maximum_hand_size_line_lexed,
-    is_once_each_turn_play_from_exile_marker_guard_lexed, is_permanents_enter_tapped_line_lexed,
-    is_play_lands_from_graveyard_line_lexed, is_play_top_card_your_library_revealed_line_lexed,
-    is_players_cant_cycle_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
+    is_mana_group_slash_marker_line_lexed, is_may_assign_damage_as_unblocked_line_lexed,
+    is_minimum_spell_total_mana_three_line_lexed, is_more_than_meets_the_eye_marker_line_lexed,
+    is_no_maximum_hand_size_line_lexed, is_once_each_turn_play_from_exile_marker_guard_lexed,
+    is_permanents_enter_tapped_line_lexed, is_play_lands_from_graveyard_line_lexed,
+    is_play_top_card_your_library_revealed_line_lexed, is_players_cant_cycle_line_lexed,
+    is_players_cant_pay_life_or_sacrifice_line_lexed,
     is_players_play_top_card_libraries_revealed_line_lexed, is_players_skip_upkeep_line_lexed,
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
@@ -36,8 +38,7 @@ use super::grammar::abilities::{
     is_shuffle_into_library_from_graveyard_line_lexed, is_skulk_rules_text_line_lexed,
     is_this_creature_cant_attack_alone_line_lexed,
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
-    is_toph_first_metalbender_line_lexed, is_you_have_shroud_line_lexed,
-    is_you_may_look_top_card_any_time_line_lexed,
+    is_you_have_shroud_line_lexed, is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
     parse_activated_abilities_cant_be_activated_spec_lexed,
     parse_creatures_assign_combat_damage_using_toughness_line_lexed,
@@ -270,10 +271,6 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
         ],
-        "parse_toph_first_metalbender_line" => vec![
-            StaticAbilityLineHeadHint::Single("the"),
-            StaticAbilityLineHeadHint::Pair("the", "first"),
-        ],
         "parse_spell_cost_increase_per_target_beyond_first_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "spell"),
@@ -346,6 +343,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Single("choose"),
             StaticAbilityLineHeadHint::Pair("choose", "a"),
+        ],
+        "parse_pregame_mulligan_redraw_line" => vec![
+            StaticAbilityLineHeadHint::Single("any"),
+            StaticAbilityLineHeadHint::Pair("any", "time"),
         ],
         "parse_legend_rule_doesnt_apply_line" => vec![
             StaticAbilityLineHeadHint::Single("the"),
@@ -459,6 +460,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_damage_doubling_mana_value_marker_line),
         single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
         single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
+        single_static_ability_ast_rule!(parse_pregame_mulligan_redraw_line),
         multi_static_ability_ast_rule!(parse_combined_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
@@ -485,10 +487,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_no_maximum_hand_size_line),
         single_static_ability_ast_rule!(parse_can_be_your_commander_line),
         single_static_ability_ast_rule!(parse_reduced_maximum_hand_size_line),
-        single_static_ability_ast_rule!(parse_library_of_leng_discard_replacement_line),
+        single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
-        single_static_ability_ast_rule!(parse_toph_first_metalbender_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
         single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
@@ -546,7 +547,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
         single_static_ability_ast_rule!(parse_all_creatures_are_color_line),
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
-        single_static_ability_ast_rule!(parse_blood_moon_line),
+        single_static_ability_ast_rule!(parse_nonbasic_lands_are_basic_land_type_line),
         single_static_ability_ast_rule!(parse_land_type_addition_line),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
@@ -1260,6 +1261,32 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
                 exile_cards_from_hand,
             },
         ),
+        clause_words.join(" "),
+    )))
+}
+
+pub(crate) fn parse_pregame_mulligan_redraw_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !contains_keyword_static_phrase(&clause_words, &["any", "time", "you", "could", "mulligan"])
+        || !contains_keyword_static_phrase(&clause_words, &["is", "in", "your", "hand"])
+        || !contains_keyword_static_phrase(
+            &clause_words,
+            &[
+                "you", "may", "exile", "all", "the", "cards", "from", "your", "hand",
+            ],
+        )
+        || !contains_keyword_static_phrase(
+            &clause_words,
+            &["then", "draw", "that", "many", "cards"],
+        )
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::pregame_action(
+        crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount,
         clause_words.join(" "),
     )))
 }
@@ -5067,13 +5094,48 @@ pub(crate) fn parse_all_creatures_are_color_line(
     Ok(Some(StaticAbility::set_colors(filter, color)))
 }
 
-pub(crate) fn parse_blood_moon_line(
+pub(crate) fn parse_nonbasic_lands_are_basic_land_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_blood_moon_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::blood_moon()));
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(be_idx) = find_index(&words, |word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if be_idx == 0 || be_idx + 1 >= words.len() {
+        return Ok(None);
     }
-    Ok(None)
+
+    let subtype_words = &words[be_idx + 1..];
+    if subtype_words.len() != 1 {
+        return Ok(None);
+    }
+
+    let Some(subtype) = parse_subtype_word(subtype_words[0])
+        .or_else(|| str_strip_suffix(subtype_words[0], "s").and_then(parse_subtype_word))
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        subtype,
+        Subtype::Plains | Subtype::Island | Subtype::Swamp | Subtype::Mountain | Subtype::Forest
+    ) {
+        return Ok(None);
+    }
+
+    let subject_tokens = &tokens[..be_idx];
+    let filter = parse_object_filter(subject_tokens, false)?;
+    let filter_words = &words[..be_idx];
+    if !filter_words
+        .iter()
+        .any(|word| matches!(*word, "land" | "lands"))
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::set_land_subtypes(
+        filter,
+        vec![subtype],
+    )))
 }
 
 pub(crate) fn parse_remove_snow_line(
@@ -6421,11 +6483,11 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
     Ok(None)
 }
 
-pub(crate) fn parse_library_of_leng_discard_replacement_line(
+pub(crate) fn parse_effect_discard_to_library_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_library_of_leng_discard_replacement_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::library_of_leng_discard_replacement()));
+    if is_effect_discard_to_library_replacement_line_lexed(tokens) {
+        return Ok(Some(StaticAbility::effect_discard_to_library_replacement()));
     }
 
     Ok(None)
@@ -6454,18 +6516,6 @@ pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_line(
             spec.counter_type,
         ),
     ))
-}
-
-pub(crate) fn parse_toph_first_metalbender_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_toph_first_metalbender_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::new(
-            crate::static_abilities::TOPH_FIRST_METALBENDER,
-        )));
-    }
-
-    Ok(None)
 }
 
 pub(crate) fn parse_discard_or_redirect_replacement_line(

@@ -95,7 +95,7 @@ pub enum ThisSpellCastCondition {
     /// "only if a creature is attacking you"
     CreatureIsAttackingYou,
     /// "only if no permanents named <name> are on the battlefield"
-    NoPermanentsNamedOnBattlefield(&'static str),
+    NoPermanentsNamedOnBattlefield(String),
     /// "only if you control N or more matching permanents"
     YouControlAtLeast {
         filter: crate::target::ObjectFilter,
@@ -225,8 +225,10 @@ impl ThisSpellCastRestrictionKind {
         Self::timing(ThisSpellCastTiming::AfterCombat)
     }
 
-    pub fn if_no_permanents_named_on_battlefield(name: &'static str) -> Self {
-        Self::condition(ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(name))
+    pub fn if_no_permanents_named_on_battlefield(name: impl Into<String>) -> Self {
+        Self::condition(ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(
+            name.into(),
+        ))
     }
 
     pub fn if_you_control_snow_land() -> Self {
@@ -305,7 +307,7 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Called by the static ability processor to create effects that go through
     /// the layer system. Most abilities return empty (the default).
     ///
-    /// Override for: Anthem, GrantAbility, BloodMoon, Humility, etc.
+    /// Override for static abilities that emit continuous effects.
     fn generate_effects(
         &self,
         _source: ObjectId,
@@ -2018,6 +2020,13 @@ impl StaticAbility {
         Self::new(AddAllSubtypesOfFamilyForFilter::new(filter, family))
     }
 
+    pub fn set_land_subtypes(
+        filter: crate::target::ObjectFilter,
+        subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        Self::new(SetLandSubtypesForFilter::new(filter, subtypes))
+    }
+
     pub fn set_creature_subtypes(
         filter: crate::target::ObjectFilter,
         subtypes: Vec<crate::types::Subtype>,
@@ -2276,10 +2285,6 @@ impl StaticAbility {
         Self::new(Improvise)
     }
 
-    pub fn blood_moon() -> Self {
-        Self::new(BloodMoon)
-    }
-
     pub fn no_maximum_hand_size() -> Self {
         Self::new(NoMaximumHandSize)
     }
@@ -2450,8 +2455,8 @@ impl StaticAbility {
         ))
     }
 
-    pub fn library_of_leng_discard_replacement() -> Self {
-        Self::new(LibraryOfLengDiscardReplacement)
+    pub fn effect_discard_to_library_replacement() -> Self {
+        Self::new(EffectDiscardToLibraryReplacement)
     }
 
     pub fn duplicate_matching_triggered_abilities(

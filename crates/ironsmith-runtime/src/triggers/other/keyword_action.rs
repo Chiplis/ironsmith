@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
+use crate::tag::{EXPLOITED_TAG, TagKey};
 use crate::target::ObjectFilter;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -23,12 +24,28 @@ fn is_plain_other_card_filter(filter: &ObjectFilter) -> bool {
         && filter.excluded_name.is_none()
 }
 
+fn ensure_singular_noun_phrase_article(description: String) -> String {
+    if description.starts_with("a ")
+        || description.starts_with("an ")
+        || description.starts_with("the ")
+        || description.starts_with("this ")
+        || description.starts_with("that ")
+        || description.starts_with("each ")
+        || description.starts_with("another ")
+    {
+        description
+    } else {
+        format!("a {description}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeywordActionTrigger {
     pub action: KeywordActionKind,
     pub player: PlayerFilter,
     pub source_must_match: bool,
     pub source_filter: Option<ObjectFilter>,
+    pub tagged_object_filter: Option<(TagKey, ObjectFilter)>,
 }
 
 impl KeywordActionTrigger {
@@ -38,6 +55,7 @@ impl KeywordActionTrigger {
             player,
             source_must_match: false,
             source_filter: None,
+            tagged_object_filter: None,
         }
     }
 
@@ -47,6 +65,7 @@ impl KeywordActionTrigger {
             player,
             source_must_match: true,
             source_filter: None,
+            tagged_object_filter: None,
         }
     }
 
@@ -60,6 +79,23 @@ impl KeywordActionTrigger {
             player,
             source_must_match: false,
             source_filter: Some(source_filter),
+            tagged_object_filter: None,
+        }
+    }
+
+    pub fn matching_source_and_tagged_object(
+        action: KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_tag: TagKey,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            action,
+            player,
+            source_must_match: false,
+            source_filter: Some(source_filter),
+            tagged_object_filter: Some((object_tag, object_filter)),
         }
     }
 }
@@ -97,6 +133,17 @@ impl TriggerMatcher for KeywordActionTrigger {
             } else {
                 false
             };
+            if !matches {
+                return false;
+            }
+        }
+
+        if let Some((tag, object_filter)) = &self.tagged_object_filter {
+            let matches = e.object_tags.get(tag).is_some_and(|snapshots| {
+                snapshots.iter().any(|snapshot| {
+                    object_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                })
+            });
             if !matches {
                 return false;
             }
@@ -183,20 +230,16 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Exploit
             && let Some(source_filter) = &self.source_filter
         {
-            let description = source_filter.description();
-            let subject = if description.starts_with("a ")
-                || description.starts_with("an ")
-                || description.starts_with("the ")
-                || description.starts_with("this ")
-                || description.starts_with("that ")
-                || description.starts_with("each ")
-                || description.starts_with("another ")
-            {
-                description
-            } else {
-                format!("a {description}")
-            };
-            return format!("Whenever {subject} exploits a creature");
+            let subject = ensure_singular_noun_phrase_article(source_filter.description());
+            let object = self
+                .tagged_object_filter
+                .as_ref()
+                .filter(|(tag, _)| tag.as_str() == EXPLOITED_TAG)
+                .map(|(_, object_filter)| {
+                    ensure_singular_noun_phrase_article(object_filter.description())
+                })
+                .unwrap_or_else(|| "a creature".to_string());
+            return format!("Whenever {subject} exploits {object}");
         }
 
         match &self.player {
@@ -402,6 +445,75 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever a creature you control exploits a creature"
+        );
+    }
+
+    #[test]
+    fn keyword_action_exploit_matching_tagged_object_filters_exploited_object() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Exploiter")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let source_id =
+            game.create_object_from_card(&source_card, alice, crate::zone::Zone::Battlefield);
+
+        let exploited_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(2), "Victim")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let exploited_id =
+            game.create_object_from_card(&exploited_card, alice, crate::zone::Zone::Battlefield);
+        let mut exploited_snapshot =
+            ObjectSnapshot::from_object(game.object(exploited_id).expect("exploited"), &game);
+
+        let trigger = KeywordActionTrigger::matching_source_and_tagged_object(
+            KeywordActionKind::Exploit,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+            TagKey::from(EXPLOITED_TAG),
+            ObjectFilter::creature().nontoken(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let object_tags = std::collections::HashMap::from([(
+            TagKey::from(EXPLOITED_TAG),
+            vec![exploited_snapshot.clone()],
+        )]);
+        let nontoken_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Exploit, alice, source_id, 1)
+                .with_object_tags(object_tags),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&nontoken_event, &ctx));
+
+        exploited_snapshot.is_token = true;
+        let object_tags = std::collections::HashMap::from([(
+            TagKey::from(EXPLOITED_TAG),
+            vec![exploited_snapshot],
+        )]);
+        let token_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Exploit, alice, source_id, 1)
+                .with_object_tags(object_tags),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&token_event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_exploit_matching_tagged_object_display_phrase() {
+        let trigger = KeywordActionTrigger::matching_source_and_tagged_object(
+            KeywordActionKind::Exploit,
+            PlayerFilter::Any,
+            ObjectFilter::creature().you_control(),
+            TagKey::from(EXPLOITED_TAG),
+            ObjectFilter::creature().nontoken(),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever a creature you control exploits a nontoken creature"
         );
     }
 

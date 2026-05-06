@@ -48,9 +48,6 @@ pub enum LegalAction {
     /// Take a normal mulligan during pregame.
     TakeMulligan,
 
-    /// Use Serum Powder's pregame mulligan replacement from hand.
-    SerumPowderMulligan { card_id: ObjectId },
-
     /// Finish the current player's pregame actions and move to the next player.
     ContinuePregame,
 

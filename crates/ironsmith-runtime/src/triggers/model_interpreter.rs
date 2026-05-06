@@ -345,6 +345,19 @@ pub(crate) fn interpret_trigger_model(
             player,
             filter,
         } => crate::triggers::Trigger::keyword_action_matching_object(action, player, filter),
+        TriggerKind::KeywordActionMatchingTaggedObject {
+            action,
+            player,
+            source_filter,
+            object_tag,
+            object_filter,
+        } => crate::triggers::Trigger::keyword_action_matching_source_and_tagged_object(
+            action,
+            player,
+            source_filter,
+            object_tag,
+            object_filter,
+        ),
         TriggerKind::KeywordAction { action, player } => {
             crate::triggers::Trigger::keyword_action(action, player)
         }

@@ -45,7 +45,9 @@ fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
     false
 }
 
-fn trailing_counter_constraint(tokens: &[OwnedLexToken]) -> Option<crate::filter::CounterConstraint> {
+fn trailing_counter_constraint(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::filter::CounterConstraint> {
     let words = crate::runtime_backend::token_word_refs(tokens);
     let with_idx = words.iter().position(|word| *word == "with")?;
     let tail = &words[with_idx + 1..];
@@ -70,8 +72,7 @@ fn apply_trailing_counter_constraint_to_destroy_all(
                     SubjectVerbActionAst::DestroyAll { filter, .. }
                     | SubjectVerbActionAst::ExileAll { filter, .. },
                 ..
-            })
-            => {
+            }) => {
                 if filter.with_counter.is_none() {
                     filter.with_counter = Some(counter_constraint);
                 }
@@ -183,6 +184,19 @@ fn parse_where_x_prior_effect_first_metric_value(words: &[&str], mut idx: usize)
         return None;
     }
     let object_words = &words[idx + 1..];
+    if metric == ironsmith_core::EffectMetric::FirstManaValue
+        && matches!(
+            object_words,
+            ["the", "exiled", "card"]
+                | ["the", "exiled", "cards"]
+                | ["exiled", "card"]
+                | ["exiled", "cards"]
+        )
+    {
+        return Some(Value::ManaValueOf(Box::new(
+            crate::target::ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+        )));
+    }
     if !prior_effect_words_reference_memory(object_words) {
         return None;
     }
@@ -209,7 +223,9 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     }
 
     let object_words = &words[idx + 2..];
-    if object_words.iter().any(|word| *word == "counter" || *word == "counters")
+    if object_words
+        .iter()
+        .any(|word| *word == "counter" || *word == "counters")
         && object_words.iter().any(|word| *word == "removed")
         && object_words
             .windows(2)
@@ -227,9 +243,7 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     })
 }
 
-fn parse_where_x_commander_mana_value_choice(
-    words: &[&str],
-) -> Option<(EffectAst, Value)> {
+fn parse_where_x_commander_mana_value_choice(words: &[&str]) -> Option<(EffectAst, Value)> {
     if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
         return None;
     }
@@ -613,7 +627,9 @@ pub(crate) fn parse_effect_sentence_lexed(
     })
 }
 
-fn parse_effect_sentence_lexed_inner(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+fn parse_effect_sentence_lexed_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -797,138 +813,138 @@ fn parse_effect_sentence_with_where_x_lexed(
         value
     } else {
         match where_words.get(3..) {
-        Some(["its", "power"]) => {
-            if stripped_words.iter().any(|w| *w == "target") {
-                Value::PowerOf(Box::new(crate::target::ChooseSpec::target(
-                    crate::target::ChooseSpec::Object(ObjectFilter::default()),
-                )))
-            } else {
-                Value::SourcePower
+            Some(["its", "power"]) => {
+                if stripped_words.iter().any(|w| *w == "target") {
+                    Value::PowerOf(Box::new(crate::target::ChooseSpec::target(
+                        crate::target::ChooseSpec::Object(ObjectFilter::default()),
+                    )))
+                } else {
+                    Value::SourcePower
+                }
             }
-        }
-        Some(["its", "toughness"]) => {
-            if stripped_words.iter().any(|w| *w == "target") {
-                Value::ToughnessOf(Box::new(crate::target::ChooseSpec::target(
-                    crate::target::ChooseSpec::Object(ObjectFilter::default()),
-                )))
-            } else {
-                Value::SourceToughness
+            Some(["its", "toughness"]) => {
+                if stripped_words.iter().any(|w| *w == "target") {
+                    Value::ToughnessOf(Box::new(crate::target::ChooseSpec::target(
+                        crate::target::ChooseSpec::Object(ObjectFilter::default()),
+                    )))
+                } else {
+                    Value::SourceToughness
+                }
             }
-        }
-        Some(["its", "mana", "value"]) => {
-            Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
-                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                    ObjectFilter::default(),
+            Some(["its", "mana", "value"]) => {
+                Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                        ObjectFilter::default(),
+                    ))
+                } else {
+                    crate::target::ChooseSpec::Source
+                }))
+            }
+            Some(["this", "creatures", "power"]) => Value::SourcePower,
+            Some(["this", "creatures", "toughness"]) => Value::SourceToughness,
+            Some(["this", "creatures", "mana", "value"]) => {
+                Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source))
+            }
+            Some(["that", "creatures", "power"]) => {
+                Value::PowerOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                        ObjectFilter::default(),
+                    ))
+                } else {
+                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                }))
+            }
+            Some(["that", "creatures", "toughness"]) => {
+                Value::ToughnessOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                        ObjectFilter::default(),
+                    ))
+                } else {
+                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                }))
+            }
+            Some(["that", "creatures", "mana", "value"]) => {
+                Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                        ObjectFilter::default(),
+                    ))
+                } else {
+                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                }))
+            }
+            Some(
+                [
+                    "2",
+                    "plus",
+                    "the",
+                    "sacrificed",
+                    "creature",
+                    "mana",
+                    "value",
+                    ..,
+                ],
+            )
+            | Some(
+                [
+                    "2",
+                    "plus",
+                    "the",
+                    "sacrificed",
+                    "creatures",
+                    "mana",
+                    "value",
+                    ..,
+                ],
+            )
+            | Some(["2", "plus", "sacrificed", "creature", "mana", "value", ..])
+            | Some(["2", "plus", "sacrificed", "creatures", "mana", "value", ..])
+            | Some(
+                [
+                    "two",
+                    "plus",
+                    "the",
+                    "sacrificed",
+                    "creature",
+                    "mana",
+                    "value",
+                    ..,
+                ],
+            )
+            | Some(
+                [
+                    "two",
+                    "plus",
+                    "the",
+                    "sacrificed",
+                    "creatures",
+                    "mana",
+                    "value",
+                    ..,
+                ],
+            )
+            | Some(["two", "plus", "sacrificed", "creature", "mana", "value", ..])
+            | Some(
+                [
+                    "two",
+                    "plus",
+                    "sacrificed",
+                    "creatures",
+                    "mana",
+                    "value",
+                    ..,
+                ],
+            ) => Value::Add(
+                Box::new(Value::Fixed(2)),
+                Box::new(Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                ))),
+            ),
+            _ => parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported where-x clause (clause: '{}')",
+                    clause_words.join(" ")
                 ))
-            } else {
-                crate::target::ChooseSpec::Source
-            }))
-        }
-        Some(["this", "creatures", "power"]) => Value::SourcePower,
-        Some(["this", "creatures", "toughness"]) => Value::SourceToughness,
-        Some(["this", "creatures", "mana", "value"]) => {
-            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source))
-        }
-        Some(["that", "creatures", "power"]) => {
-            Value::PowerOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
-                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                    ObjectFilter::default(),
-                ))
-            } else {
-                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-            }))
-        }
-        Some(["that", "creatures", "toughness"]) => {
-            Value::ToughnessOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
-                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                    ObjectFilter::default(),
-                ))
-            } else {
-                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-            }))
-        }
-        Some(["that", "creatures", "mana", "value"]) => {
-            Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
-                crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
-                    ObjectFilter::default(),
-                ))
-            } else {
-                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
-            }))
-        }
-        Some(
-            [
-                "2",
-                "plus",
-                "the",
-                "sacrificed",
-                "creature",
-                "mana",
-                "value",
-                ..,
-            ],
-        )
-        | Some(
-            [
-                "2",
-                "plus",
-                "the",
-                "sacrificed",
-                "creatures",
-                "mana",
-                "value",
-                ..,
-            ],
-        )
-        | Some(["2", "plus", "sacrificed", "creature", "mana", "value", ..])
-        | Some(["2", "plus", "sacrificed", "creatures", "mana", "value", ..])
-        | Some(
-            [
-                "two",
-                "plus",
-                "the",
-                "sacrificed",
-                "creature",
-                "mana",
-                "value",
-                ..,
-            ],
-        )
-        | Some(
-            [
-                "two",
-                "plus",
-                "the",
-                "sacrificed",
-                "creatures",
-                "mana",
-                "value",
-                ..,
-            ],
-        )
-        | Some(["two", "plus", "sacrificed", "creature", "mana", "value", ..])
-        | Some(
-            [
-                "two",
-                "plus",
-                "sacrificed",
-                "creatures",
-                "mana",
-                "value",
-                ..,
-            ],
-        ) => Value::Add(
-            Box::new(Value::Fixed(2)),
-            Box::new(Value::ManaValueOf(Box::new(
-                crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
-            ))),
-        ),
-        _ => parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported where-x clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?,
+            })?,
         }
     }
     .with_surface_hint(ValueSurfaceHint::WhereXIs);

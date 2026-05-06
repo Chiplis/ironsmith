@@ -357,7 +357,6 @@ fn advance_reference_frame_for_effect(
                     frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
                 }
                 SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -485,6 +484,17 @@ fn advance_reference_frame_for_effect(
                     {
                         frame.last_object_tag = Some(tag);
                     }
+                }
+                SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
+                    let refs = lowering_reference_frame(frame);
+                    let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
+                    if frame.auto_tag_object_targets
+                        && let Some(tag) =
+                            propagated_or_generated_object_tag(&spec, id_gen, "moved")
+                    {
+                        frame.last_object_tag = Some(tag);
+                    }
+                    track_target_player(target, frame);
                 }
                 SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
                     maybe_tag_target(target, frame, id_gen, "moved")?;
@@ -1597,7 +1607,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -1624,6 +1633,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { .. }
@@ -2072,6 +2082,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(target, seed_tag)
                     + bind_unresolved_it_in_value(position, seed_tag)
             }
+            SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+            }
             SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
                 bind_unresolved_it_in_target(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
@@ -2251,10 +2264,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter, ..
-            }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
-                filter,
-                ..
             } => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
                 spell_filter,

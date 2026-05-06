@@ -109,6 +109,26 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
         )?;
         let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
         default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
+        let replacement_effects = replacement_lowered
+            .effects
+            .flattened_default_effects()
+            .to_vec();
+        let replacement_effects =
+            strip_duplicate_self_replacement_prelude(&default_effects, replacement_effects);
+        let replacement_effects = if let Some(antecedent) = default_effects
+            .iter()
+            .rev()
+            .find(|effect| effect.target_spec().is_some())
+            && let Some(zone_replacements) =
+                extract_local_zone_replacement_followups(&replacement_effects, antecedent)
+        {
+            vec![Effect::new(crate::effects::LocalRewriteEffect::new(
+                antecedent.clone(),
+                zone_replacements,
+            ))]
+        } else {
+            replacement_effects
+        };
 
         let mut choices = prefix_lowered.choices;
         choices.extend(default_lowered.choices);
@@ -119,10 +139,7 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
                     default_effects,
                     self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                         condition,
-                        replacement_lowered
-                            .effects
-                            .flattened_default_effects()
-                            .to_vec(),
+                        replacement_effects,
                     )],
                 },
             ]),
@@ -271,12 +288,65 @@ fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect
             idx += 2;
             continue;
         }
+        if idx + 1 < effects.len()
+            && effects[idx].target_spec().is_some()
+            && let Some(zone_replacements) =
+                extract_local_zone_replacement_followups(&effects[idx + 1..idx + 2], &effects[idx])
+            && zone_replacements.iter().all(|replacement| {
+                replacement.from_zone == Some(crate::zone::Zone::Stack)
+                    && replacement.to_zone == Some(crate::zone::Zone::Graveyard)
+            })
+        {
+            rewritten.push(Effect::new(crate::effects::LocalRewriteEffect::new(
+                effects[idx].clone(),
+                zone_replacements,
+            )));
+            idx += 2;
+            continue;
+        }
 
         rewritten.push(effects[idx].clone());
         idx += 1;
     }
 
     rewritten
+}
+
+fn strip_duplicate_self_replacement_prelude(
+    default_effects: &[Effect],
+    mut replacement_effects: Vec<Effect>,
+) -> Vec<Effect> {
+    let shared_prelude_len = default_effects
+        .iter()
+        .zip(replacement_effects.iter())
+        .take_while(|(default, replacement)| same_resolution_prelude(default, replacement))
+        .count();
+    if shared_prelude_len > 0 {
+        replacement_effects.drain(0..shared_prelude_len);
+    }
+    replacement_effects
+}
+
+fn same_resolution_prelude(left: &Effect, right: &Effect) -> bool {
+    if let (Some(left), Some(right)) = (
+        left.downcast_ref::<crate::effects::TagAttachedToSourceEffect>(),
+        right.downcast_ref::<crate::effects::TagAttachedToSourceEffect>(),
+    ) {
+        return left == right;
+    }
+    if let (Some(left), Some(right)) = (
+        left.downcast_ref::<crate::effects::TagTriggeringObjectEffect>(),
+        right.downcast_ref::<crate::effects::TagTriggeringObjectEffect>(),
+    ) {
+        return left == right;
+    }
+    if let (Some(left), Some(right)) = (
+        left.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>(),
+        right.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>(),
+    ) {
+        return left == right;
+    }
+    false
 }
 
 fn extract_local_zone_replacement_followups(

@@ -81,7 +81,7 @@ export default function TableCore({
     ? 236
     : (landscapeMobileViewport ? 92 : 112);
   const desktopPriorityBarHeight = largeDesktopViewport ? 54 : (smallDesktopViewport ? 48 : 50);
-  const desktopDecisionBarHeight = largeDesktopViewport ? 118 : (smallDesktopViewport ? 94 : 108);
+  const desktopDecisionBarHeight = largeDesktopViewport ? 138 : (smallDesktopViewport ? 112 : 128);
   const actionBarHeight = expandedActionBar
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
     : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);

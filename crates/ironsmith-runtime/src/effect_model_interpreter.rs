@@ -473,10 +473,17 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SacrificeEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::SacrificeEffect::you(
+        let mut sacrifice = crate::effects::SacrificeEffect::you(
             payload.filter.clone(),
             crate::effect::Value::Fixed(payload.count),
-        )));
+        );
+        for tag in &payload.event_object_tags {
+            sacrifice = sacrifice.with_event_object_tag(tag.clone());
+        }
+        for tag in &payload.event_source_tags {
+            sacrifice = sacrifice.with_event_source_tag(tag.clone());
+        }
+        return Ok(Effect::new(sacrifice));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::zones::SacrificePlayerEffect>(&effect)
@@ -1416,6 +1423,7 @@ where
         crate::effects::ModifyPowerToughnessEffect,
         crate::effects::MoveCountersEffect,
         crate::effects::MoveToLibraryNthFromTopEffect,
+        crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
         crate::effects::MoveToZoneEffect,
         crate::effects::PayAnyEnergyEffect,
         crate::effects::PayEnergyEffect,

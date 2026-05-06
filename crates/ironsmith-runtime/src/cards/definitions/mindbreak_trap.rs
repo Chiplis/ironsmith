@@ -49,7 +49,7 @@ mod tests {
         let card = mindbreak_trap();
         assert_eq!(card.alternative_casts.len(), 1);
 
-        if let AlternativeCastingMethod::MindbreakTrap {
+        if let AlternativeCastingMethod::Trap {
             cost, condition, ..
         } = &card.alternative_casts[0]
         {

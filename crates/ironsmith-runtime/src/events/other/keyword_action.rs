@@ -29,6 +29,8 @@ pub struct KeywordActionEvent {
     pub snapshot: Option<ObjectSnapshot>,
     /// Optional tagged players attached to the action event.
     pub player_tags: HashMap<TagKey, Vec<PlayerId>>,
+    /// Optional tagged object snapshots attached to the action event.
+    pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
 
 impl KeywordActionEvent {
@@ -41,6 +43,7 @@ impl KeywordActionEvent {
             votes: None,
             snapshot: None,
             player_tags: HashMap::new(),
+            object_tags: HashMap::new(),
         }
     }
 
@@ -56,6 +59,11 @@ impl KeywordActionEvent {
 
     pub fn with_player_tags(mut self, tags: HashMap<TagKey, Vec<PlayerId>>) -> Self {
         self.player_tags.extend(tags);
+        self
+    }
+
+    pub fn with_object_tags(mut self, tags: HashMap<TagKey, Vec<ObjectSnapshot>>) -> Self {
+        self.object_tags.extend(tags);
         self
     }
 }

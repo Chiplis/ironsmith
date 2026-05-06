@@ -428,7 +428,6 @@ pub fn apply_priority_response_with_dm(
         }
         LegalAction::KeepOpeningHand
         | LegalAction::TakeMulligan
-        | LegalAction::SerumPowderMulligan { .. }
         | LegalAction::ContinuePregame
         | LegalAction::BeginGame
         | LegalAction::UsePregameAction { .. } => Err(GameLoopError::InvalidState(

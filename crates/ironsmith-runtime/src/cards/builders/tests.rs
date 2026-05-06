@@ -1087,6 +1087,24 @@ fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permission() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Speed Parse Test")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Enchant creature or Vehicle\nStart your engines!\nEnchanted permanent gets +1/+1 and has vigilance.\nMax speed — You may cast this card from your graveyard.",
+        )
+        .expect("start-your-engines and max-speed graveyard cast line should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Start your engines!")
+            && rendered.contains("You may cast this card from your graveyard")
+            && rendered.contains("as long as you have max speed"),
+        "expected speed keyword plus max-speed graveyard cast permission, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_exploit_keyword_line_lowers_to_keyword_action_event() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Parse Test")
         .card_types(vec![CardType::Creature])
@@ -1133,6 +1151,99 @@ fn test_parse_exploit_grant_and_creature_you_control_exploit_trigger() {
     assert!(
         rendered.contains("Whenever a creature you control exploits a creature"),
         "expected filtered exploit trigger to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_exploit_trigger_filters_exploited_object() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Object Filter Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Exploit (When this creature enters, you may sacrifice a creature.)\nWhenever a creature you control exploits a nontoken creature, create a 2/2 black Zombie creature token.",
+        )
+        .expect("exploit trigger object filter should parse");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("tagged_object_filter")
+            && debug.contains("exploited")
+            && debug.contains("nontoken: true"),
+        "expected exploit trigger to filter the exploited object, got {debug}"
+    );
+    assert!(
+        rendered.contains("Whenever a creature you control exploits a nontoken creature"),
+        "expected exploited object filter to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_exploit_payoff_owner_chooses_top_or_bottom_library() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Top Bottom Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Exploit (When this creature enters, you may sacrifice a creature.)\nWhen this creature exploits a creature, target creature's owner puts it on their choice of the top or bottom of their library.",
+        )
+        .expect("exploit payoff top-or-bottom library choice should parse");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("MoveToLibraryTopOrBottomChoiceEffect"),
+        "expected top-or-bottom library choice effect, got {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "target creature's owner puts it on their choice of the top or bottom of their library"
+        ),
+        "expected owner-choice library placement to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_exploit_payoff_references_exploited_creature_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Toughness Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Exploit (When this creature enters, you may sacrifice a creature.)\nWhen this creature exploits a creature, return to their owners' hands all creatures your opponents control with toughness less than the exploited creature's toughness.",
+        )
+        .expect("exploit payoff should parse exploited creature toughness reference");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("object_tags")
+            && debug.contains("exploited")
+            && debug.contains("ToughnessOf")
+            && debug.contains("ReturnToHandEffect"),
+        "expected exploit to tag sacrificed memory and payoff to compare toughness, got {debug}"
+    );
+    assert!(
+        rendered.contains("toughness less than the exploited creature's toughness"),
+        "expected exploited creature toughness comparison to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_exploit_conditional_checks_source_exploited_triggering_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Conditional Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nExploit (When this creature enters, you may sacrifice a creature.)\nWhenever another creature you control dies, put a +1/+1 counter on this creature. It gains haste until end of turn if it exploited that creature.",
+        )
+        .expect("exploit conditional should parse");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        debug.contains("exploited")
+            && debug.contains("exploiter")
+            && debug.contains("TaggedObjectMatches"),
+        "expected exploit conditional to use exploited/exploiter event tags, got {debug}"
+    );
+    assert!(
+        rendered.contains("If it exploited that creature, it gains haste until end of turn"),
+        "expected exploit conditional to render, got {rendered}"
     );
 }
 
@@ -10669,6 +10780,41 @@ fn parse_gain_life_equal_to_devotion_value() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_gain_life_equal_to_your_speed() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Momentum Breaker Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Start your engines!\n{2}, Sacrifice this enchantment: You gain life equal to your speed.",
+        )
+        .expect("speed-based life gain should parse");
+
+    let gain = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<GainLifeEffect>()),
+            _ => None,
+        })
+        .expect("expected activated gain-life effect");
+    assert!(
+        matches!(gain.amount, crate::effect::Value::Speed(PlayerFilter::You)),
+        "expected gain-life amount to use your speed, got {gain:?}"
+    );
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("gain life equal to your speed"),
+        "expected speed life-gain rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_gain_life_equal_to_life_lost_this_way() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Agent of Masks Variant")
         .card_types(vec![CardType::Sorcery])
@@ -12117,7 +12263,7 @@ fn parse_add_any_color_for_each_removed_counter() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("remove the number of charge counter")
+        joined.contains("remove all charge counters from it")
             && joined.contains("add x mana of any color"),
         "expected removed-counter mana wording, got {joined}"
     );
@@ -17305,8 +17451,11 @@ fn render_enchanted_tap_untap_compacts_tag_prelude() {
     let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
     let lower = joined.to_ascii_lowercase();
     assert!(
-        (lower.contains("tap enchanted creature") || lower.contains("tap an enchanted creature"))
+        (lower.contains("tap enchanted creature")
+            || lower.contains("tap enchanted permanent")
+            || lower.contains("tap an enchanted creature"))
             && (lower.contains("untap enchanted creature")
+                || lower.contains("untap enchanted permanent")
                 || lower.contains("untap an enchanted creature")),
         "expected compact enchanted tap/untap wording, got {joined}"
     );
@@ -22342,13 +22491,13 @@ fn parse_ranger_captain_of_eos_search_and_silence_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_tainted_pact_uses_handwritten_runtime_definition() {
+fn parse_iterative_library_loop_for_tainted_pact() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tainted Pact")
         .card_types(vec![CardType::Instant])
         .parse_text(
             "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
         )
-        .expect("tainted pact should use handwritten runtime support");
+        .expect("iterative library loop should parse");
 
     assert_eq!(def.name(), "Tainted Pact");
     let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
@@ -22362,13 +22511,13 @@ fn parse_tainted_pact_uses_handwritten_runtime_definition() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn render_tainted_pact_repeat_process_uses_oracle_loop_wording() {
+fn render_iterative_library_repeat_process_uses_oracle_loop_wording() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tainted Pact")
         .card_types(vec![CardType::Instant])
         .parse_text(
             "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
         )
-        .expect("tainted pact should use handwritten runtime support");
+        .expect("iterative library loop should parse");
 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
@@ -22376,7 +22525,7 @@ fn render_tainted_pact_repeat_process_uses_oracle_loop_wording() {
     assert!(
         rendered.contains("you may put that card into your hand unless it has the same name as another card exiled this way")
             && rendered.contains("repeat this process until you put a card into your hand or you exile two cards with the same name")
-            && !rendered.contains("tainted_pact_current")
+            && !rendered.contains("iterative_library_current")
             && !rendered.contains("tagged object"),
         "expected Tainted Pact compiled text to use oracle loop wording, got {rendered}"
     );
@@ -24771,6 +24920,42 @@ fn kumenas_awakening_renders_ascend_and_citys_blessing_replacement() {
     );
 }
 
+#[test]
+fn tidal_influence_renders_state_trigger_without_duplicate_counter_condition() {
+    let def = parse_oracle_card_definition("Tidal Influence");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Whenever there are four or more tide counters on this enchantment, remove all tide counters from it."
+        ),
+        "expected Tidal Influence to render its state trigger cleanly, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("if this enchantment has 4 or more tide counters")
+            && !rendered.contains("the number of tide counters"),
+        "expected Tidal Influence not to duplicate its trigger condition or count phrase, got {rendered}"
+    );
+}
+
+#[test]
+fn remove_all_named_counters_from_target_renders_generically() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Cleaner")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Remove all charge counters from target artifact.")
+        .expect("remove-all-counters target activation should parse");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Remove all charge counters from target artifact"),
+        "expected generic remove-all counter wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("the number of charge counters"),
+        "expected target remove-all counter wording not to use count phrase, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn fear_of_immobility_keeps_tap_target_and_conditional_stun_counter() {
@@ -26144,6 +26329,28 @@ fn parse_creatures_entering_dont_trigger_static_line() {
             &crate::static_abilities::StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger
         ),
         "expected ETB trigger suppression static ability, got {static_ids:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_serum_powder_compiles_to_mulligan_redraw_pregame_action() {
+    let def = parse_oracle_card_definition("Serum Powder");
+    let static_abilities: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        static_abilities.iter().any(|ability| matches!(
+            ability.pregame_action_kind(),
+            Some(crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount)
+        )),
+        "expected oracle Serum Powder to compile to mulligan redraw pregame action, got {static_abilities:#?}"
     );
 }
 
@@ -31552,13 +31759,15 @@ fn parse_skyclave_apparition_where_x_uses_exiled_card_mana_value() {
 fn where_x_exiled_card_plus_one_still_fails_loudly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Broken Skyclave Variant")
         .parse_text(
-            "When this creature leaves the battlefield, the exiled card's owner creates an X/X blue Illusion creature token, where X is the mana value of the exiled card plus one.",
+            "When this creature enters, exile up to one target nonland, nontoken permanent you don't control with mana value 4 or less.\nWhen this creature leaves the battlefield, the exiled card's owner creates an X/X blue Illusion creature token, where X is the mana value of the exiled card plus one.",
         )
         .expect_err("unsupported where-x math tail should still fail");
 
     let rendered = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported where-x clause") || rendered.contains("plus one"),
+        rendered.contains("unsupported where-x clause")
+            || rendered.contains("plus one")
+            || rendered.contains("pending effect metric requires a prior memory-producing effect"),
         "expected loud where-x failure, got {rendered}"
     );
 }

@@ -591,6 +591,22 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["it", "exploited", "that", "creature"] | ["it", "exploited", "that", "object"]
+    ) {
+        return Ok(PredicateAst::And(
+            Box::new(PredicateAst::TaggedMatches(
+                TagKey::from(crate::tag::EXPLOITED_TAG),
+                ObjectFilter::tagged("triggering"),
+            )),
+            Box::new(PredicateAst::TaggedMatches(
+                TagKey::from(crate::tag::EXPLOITER_TAG),
+                ObjectFilter::source(),
+            )),
+        ));
+    }
+
     for (phrase, zone) in [
         (
             ["this", "card", "is", "in", "your", "hand"].as_slice(),
@@ -1186,11 +1202,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if let Some((count, used)) = parse_number(&tokens[2..]) {
             let rest = &tokens[2 + used..];
             let rest_words = crate::runtime_backend::token_word_refs(rest);
-            if rest_words.len() >= 4
+            if let Some(counter_idx) = find_index(rest_words.as_slice(), |word| {
+                *word == "counter" || *word == "counters"
+            }) && rest_words.len() >= 4
                 && rest_words[0] == "or"
                 && rest_words[1] == "more"
-                && (rest_words[3] == "counter" || rest_words[3] == "counters")
-                && let Some(counter_type) = parse_counter_type_word(rest_words[2])
+                && counter_idx > 2
+                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[2..=counter_idx])
             {
                 return Ok(PredicateAst::SourceHasCounterAtLeast {
                     counter_type,
@@ -1205,11 +1223,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && let Some(count) = parse_named_number(raw_words[prefix_len])
         && raw_words[prefix_len + 1] == "or"
         && raw_words[prefix_len + 2] == "more"
-        && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len + 3])
-        && matches!(raw_words[prefix_len + 4], "counter" | "counters")
-        && raw_words[prefix_len + 5] == "on"
+        && let Some(counter_idx) = find_index(&raw_words[prefix_len + 3..], |word| {
+            *word == "counter" || *word == "counters"
+        })
+        && counter_idx > 0
+        && let Some(counter_type) =
+            parse_counter_type_from_tokens(&tokens[prefix_len + 3..=prefix_len + 3 + counter_idx])
+        && raw_words.get(prefix_len + 4 + counter_idx) == Some(&"on")
         && matches!(
-            raw_words.get(prefix_len + 6).copied(),
+            raw_words.get(prefix_len + 5 + counter_idx).copied(),
             Some("it" | "him" | "her" | "them" | "this" | "that")
         )
     {

@@ -124,6 +124,21 @@ fn pending_count_metric_value(object_words: &[&str]) -> Option<Value> {
     })
 }
 
+fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
+    if matches!(
+        object_words,
+        ["the", "exiled", "card"]
+            | ["the", "exiled", "cards"]
+            | ["exiled", "card"]
+            | ["exiled", "cards"]
+    ) {
+        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        ))));
+    }
+    None
+}
+
 fn lower_words_have(words: &ValueHelperCompatWords, expected: &str) -> bool {
     let mut idx = 0usize;
     while idx < words.len() {
@@ -568,6 +583,11 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
     let object_words = &clause_refs[idx..];
+    if value_kind == "mana_value"
+        && let Some(value) = source_linked_exiled_mana_value(object_words)
+    {
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
@@ -900,6 +920,11 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     let object_start_token_idx = clause_words.token_index_for_word_index(idx)?;
     let filter_tokens = &tokens[object_start_token_idx..];
     let object_words = &clause_refs[idx..];
+    if value_kind == "mana_value"
+        && let Some(value) = source_linked_exiled_mana_value(object_words)
+    {
+        return Some(value);
+    }
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value);
     }

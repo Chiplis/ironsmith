@@ -95,6 +95,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
@@ -664,6 +665,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
         | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
         | SubjectVerbActionAst::MoveToZone { .. }
+        | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
         | SubjectVerbActionAst::TargetOnly { .. }
         | SubjectVerbActionAst::TagMatchingObjects { .. }
         | SubjectVerbActionAst::Pump { .. }
@@ -700,7 +702,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-        | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -901,6 +902,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::SacrificeAll { filter } => filter_references_tag(filter, IT_TAG),
             SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. } => {
                 target_references_tag(target, IT_TAG)
             }
@@ -951,7 +953,6 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter_references_tag(filter, IT_TAG)
             }
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => true,
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
