@@ -417,6 +417,18 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         parse_sentence_cant_effect
     ),
     primitive!(
+        "compound-damage-fanout",
+        380,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("deal"),
+            LexRuleHeadHint::Single("deals"),
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("target"),
+        ],
+        parse_sentence_compound_damage_fanout
+    ),
+    primitive!(
         "shared-color-target-fanout",
         390,
         PostDiagnostic,

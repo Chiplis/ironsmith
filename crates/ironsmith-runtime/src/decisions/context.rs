@@ -1442,6 +1442,21 @@ pub fn decision_source_text(
     game: &crate::game_state::GameState,
     source: ObjectId,
 ) -> Option<String> {
+    fn object_source_text(obj: &crate::object::Object) -> Option<String> {
+        let cached_text = obj
+            .compiled_card_text
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        if !cached_text.is_empty() {
+            return Some(cached_text.join("; "));
+        }
+
+        let lines = unprocessed_compiled_lines(&obj.to_card_definition());
+        (!lines.is_empty()).then(|| lines.join("; "))
+    }
+
     if let Some(entry) = game
         .stack
         .iter()
@@ -1455,16 +1470,10 @@ pub fn decision_source_text(
                 .map(|effects| compile_effect_list(effects))
                 .filter(|text| !text.trim().is_empty());
         }
-        return game.object(source).and_then(|obj| {
-            let lines = unprocessed_compiled_lines(&obj.to_card_definition());
-            (!lines.is_empty()).then(|| lines.join("; "))
-        });
+        return game.object(source).and_then(object_source_text);
     }
 
-    game.object(source).and_then(|obj| {
-        let lines = unprocessed_compiled_lines(&obj.to_card_definition());
-        (!lines.is_empty()).then(|| lines.join("; "))
-    })
+    game.object(source).and_then(object_source_text)
 }
 
 fn infer_follow_up_hints(ctx: &DecisionContext, source_text: &str) -> Option<(String, String)> {

@@ -111,7 +111,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(from);
                 visit(to);
             }
-            SubjectVerbActionAst::Attach { target, .. } => {
+            SubjectVerbActionAst::Attach { object, target } => {
+                visit(object);
                 visit(target);
             }
             SubjectVerbActionAst::Fight {

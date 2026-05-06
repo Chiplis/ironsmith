@@ -33,8 +33,8 @@ use super::zone_counter_helpers::parse_convert;
 #[allow(unused_imports)]
 use super::{
     bind_implicit_player_context, parse_become_clause, parse_cant_effect_sentence,
-    parse_delayed_until_next_end_step_sentence, parse_delayed_when_that_dies_this_turn_sentence,
-    parse_destroy_or_exile_all_split_sentence,
+    parse_compound_damage_fanout_sentence, parse_delayed_until_next_end_step_sentence,
+    parse_delayed_when_that_dies_this_turn_sentence, parse_destroy_or_exile_all_split_sentence,
     parse_each_player_put_permanent_cards_exiled_with_source_sentence, parse_earthbend_sentence,
     parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed, parse_effect_clause,
     parse_effect_sentence_lexed, parse_enchant_sentence,

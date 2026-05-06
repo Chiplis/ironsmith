@@ -334,30 +334,13 @@ fn parse_target_gains_then_gets_subject_verb(
     if !has_get_tail {
         return Ok(None);
     }
-    let subject_tokens = words[..gain_idx]
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
-    if subject_tokens.is_empty() {
+    if words
+        .windows(3)
+        .any(|window| matches!(window, ["where", "x", "is"]))
+    {
         return Ok(None);
     }
-    let target = super::super::util::parse_target_phrase(&subject_tokens)?;
-    let mut abilities = Vec::new();
-    let ability_words = &words[gain_idx + 1..];
-    if ability_words.iter().any(|word| *word == "menace") {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Menace));
-    }
-    if ability_words.iter().any(|word| *word == "flying") {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Flying));
-    }
-    if abilities.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(vec![EffectAst::subject_verb_grant_abilities_to_target(
-        target,
-        abilities,
-        Until::EndOfTurn,
-    )]))
+    super::gain_ability::parse_gain_ability_sentence(tokens)
 }
 
 fn parse_target_player_controls_get_subject_verb(

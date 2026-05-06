@@ -2698,6 +2698,101 @@ fn rewrite_if_clause_binds_that_enchantment_and_created_token_references() {
 }
 
 #[test]
+fn rewrite_triggered_attach_it_to_target_seeds_triggering_object_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attach Source Variant")
+        .parse_text("When this Equipment enters, attach it to target creature you control.")
+        .expect("triggered attach-it clause should lower");
+
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("Attach"),
+        "expected lowered definition to contain attach effect, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_if_you_do_attach_it_uses_prior_returned_object_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attach Returned Variant")
+        .parse_text(
+            "When this creature enters, you may return target Equipment card from your graveyard to the battlefield. If you do, you may attach it to this creature.",
+        )
+        .expect("conditional attach-it clause should use returned object");
+
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("Attach"),
+        "expected lowered definition to contain attach effect, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_if_clause_supports_passive_this_way_tagged_object_predicate() {
+    let tokens = lex_line(
+        "If a red card is discarded this way, this deals 4 damage to any target.",
+        0,
+    )
+    .expect("rewrite lexer should classify passive this-way predicate");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("passive this-way predicate should parse");
+
+    let [
+        crate::cards::builders::EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected conditional damage clause, got {parsed:?}");
+    };
+    assert!(if_false.is_empty());
+    let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate else {
+        panic!("expected passive this-way predicate to bind last tagged object, got {predicate:?}");
+    };
+    assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+    assert!(
+        filter.colors.is_some(),
+        "expected red-card predicate to retain color filter, got {filter:?}"
+    );
+    assert!(matches!(
+        if_true.as_slice(),
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
+                ..
+            }
+        )]
+    ));
+}
+
+#[test]
+fn rewrite_if_clause_keeps_passive_this_way_card_filters_zone_neutral() {
+    let tokens = lex_line(
+        "If a land card is discarded this way, this deals 4 damage to any target.",
+        0,
+    )
+    .expect("rewrite lexer should classify passive this-way card predicate");
+
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("passive this-way card predicate should parse");
+
+    let [crate::cards::builders::EffectAst::Conditional { predicate, .. }] = parsed.as_slice()
+    else {
+        panic!("expected conditional damage clause, got {parsed:?}");
+    };
+    let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate else {
+        panic!("expected passive this-way predicate to bind last tagged object, got {predicate:?}");
+    };
+    assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+    assert_eq!(filter.card_types, vec![CardType::Land]);
+    assert!(
+        filter.zone.is_none(),
+        "card predicates should not inherit a battlefield-only zone, got {filter:?}"
+    );
+}
+
+#[test]
 fn rewrite_exile_from_hand_or_graveyard_preserves_both_choice_zones() {
     let tokens = lex_line(
         "You may exile an artifact or creature card from your hand or graveyard and put a cage counter on it.",
@@ -4727,6 +4822,57 @@ fn result_metric_dynamic_token_count_uses_prior_search_exile_effect() {
             && debug.contains("EffectValue")
             && debug.contains("CreateTokenEffect"),
         "expected token count to reference the prior search/exile effect result, got {debug}"
+    );
+}
+
+#[test]
+fn equal_to_dynamic_token_count_can_use_opponent_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Count Token Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, create a number of 1/1 black Rat creature tokens equal to the number of opponents you have.",
+        )
+        .expect("opponent-count token creation should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("CountPlayers")
+            && debug.contains("Opponent"),
+        "expected dynamic create count to use opponent count, got {debug}"
+    );
+}
+
+#[test]
+fn where_x_life_total_can_drive_create_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life Total Token Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Create X 2/2 white Cat creature tokens, where X is your life total.")
+        .expect("life-total where-X token creation should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect") && debug.contains("LifeTotal") && debug.contains("You"),
+        "expected dynamic create count to use your life total, got {debug}"
+    );
+}
+
+#[test]
+fn partner_with_keyword_line_lowers_to_partner_and_search_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner With Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Partner with Frodo, Adventurous Hobbit (When this creature enters, target player may put Frodo, Adventurous Hobbit into their hand from their library, then shuffle.)",
+        )
+        .expect("partner-with keyword line should parse");
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("partner")
+            && debug.contains("chooseobjectseffect")
+            && debug.contains("frodo adventurous hobbit")
+            && debug.contains("shufflelibraryeffect"),
+        "expected partner-with to lower to partner plus named-card search trigger, got {debug}"
     );
 }
 
@@ -8914,6 +9060,133 @@ fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
         debug.contains("GrantAbilitiesAll"),
         "expected labeled sentence parser to preserve fanout grant effect, got {debug}"
     );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_compound_damage_to_target_and_controller_objects() {
+    let text = "Chandra Nalaar deals 10 damage to target player or planeswalker and each creature that player or that planeswalker's controller controls.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify compound damage fanout sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split compound damage fanout");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("DealDamage") && debug.contains("DealDamageEach"),
+        "expected target damage plus object fanout damage, got {debug}"
+    );
+    assert!(
+        debug.contains("TargetPlayerOrControllerOfTarget"),
+        "expected controller fanout to track target player or planeswalker controller, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_compound_damage_to_object_groups() {
+    let text = "This deals 4 damage to each non-Giant creature and each planeswalker.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify compound object damage sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split compound object damage");
+    let debug = format!("{parsed:?}");
+
+    assert_eq!(
+        debug.matches("DealDamageEach").count(),
+        2,
+        "expected two object fanout damage effects, got {debug}"
+    );
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("Planeswalker"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_equal_to_compound_damage_to_objects_and_players() {
+    let text = "This artifact deals damage equal to the number of time counters on it to each creature and each player.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify equal-to compound damage sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split equal-to compound damage");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("CountersOnSource"), "{debug}");
+    assert!(debug.contains("DealDamageEach"), "{debug}");
+    assert!(debug.contains("ForEachPlayer"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_target_gain_then_get_where_x() {
+    let text = "Target creature gains trample and gets +X/+0 until end of turn, where X is the number of creatures you control.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-then-get sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split gain-then-get target pump");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantAbilitiesToTarget") && debug.contains("Pump"),
+        "expected target ability grant plus pump effect, got {debug}"
+    );
+    assert!(
+        debug.contains("Trample") && debug.matches("EndOfTurn").count() >= 2,
+        "expected trample and shared end-of-turn duration, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_filter_gain_then_get_where_x() {
+    let text = "Creatures you control gain trample and get +X/+X until end of turn, where X is the number of creatures you control.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain-then-get sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split gain-then-get anthem pump");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantAbilitiesAll") && debug.contains("PumpAll"),
+        "expected filter ability grant plus pump-all effect, got {debug}"
+    );
+    assert!(
+        debug.contains("Trample") && debug.matches("EndOfTurn").count() >= 2,
+        "expected trample and shared end-of-turn duration, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_gain_then_get_for_each_cards_drawn() {
+    let text = "Until end of turn, target creature gains trample and gets +1/+0 for each card you've drawn this turn.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify gain-then-get for-each sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split gain-then-get for-each pump");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantAbilitiesToTarget") && debug.contains("PumpForEach"),
+        "expected target ability grant plus for-each pump effect, got {debug}"
+    );
+    assert!(
+        debug.contains("MaxCardsDrawnThisTurn") && debug.contains("Trample"),
+        "expected cards-drawn count and trample grant, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_sentence_supports_compound_damage_to_you_and_your_objects() {
+    let text = "This deals 2 damage to you and each creature you control.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify player plus object damage sentence");
+
+    let parsed = parse_effect_sentence_lexed(&lexed)
+        .expect("rewrite effect sentence parser should split player plus object damage");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Player(You"), "{debug}");
+    assert!(debug.contains("DealDamageEach"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
 }
 
 #[test]

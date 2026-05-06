@@ -798,8 +798,14 @@ fn cast_time_selected_effects_from_program(
 
         match applicable.as_slice() {
             [] => selected.extend(segment.default_effects.iter().cloned()),
-            [branch] => selected.extend(branch.replacement_effects.iter().cloned()),
-            [branch, ..] => selected.extend(branch.replacement_effects.iter().cloned()),
+            [branch] => {
+                selected.extend(segment.default_effects.iter().cloned());
+                selected.extend(branch.replacement_effects.iter().cloned());
+            }
+            [branch, ..] => {
+                selected.extend(segment.default_effects.iter().cloned());
+                selected.extend(branch.replacement_effects.iter().cloned());
+            }
         }
     }
 

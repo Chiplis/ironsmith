@@ -737,6 +737,24 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    match words.get(3..) {
+        Some(["your", "life", "total"]) => return Some(Value::LifeTotal(PlayerFilter::You)),
+        Some(["the", "number", "of", "opponents", "you", "have"])
+        | Some(["number", "of", "opponents", "you", "have"])
+        | Some(["the", "number", "of", "opponents"])
+        | Some(["number", "of", "opponents"]) => {
+            return Some(Value::CountPlayers(PlayerFilter::Opponent));
+        }
+        Some(["target", "players", "life", "total"])
+        | Some(["target", "player", "life", "total"]) => {
+            return Some(Value::LifeTotal(PlayerFilter::target_player()));
+        }
+        Some(["that", "players", "life", "total"]) | Some(["that", "player", "life", "total"]) => {
+            return Some(Value::LifeTotal(PlayerFilter::target_player()));
+        }
+        _ => {}
+    }
+
     if let Some(value) = parse_where_x_is_aggregate_filter_value(tokens) {
         return Some(value);
     }

@@ -19,6 +19,37 @@ pub(super) fn run_triggered_line_family(
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
 }
 
+pub(super) fn run_partner_with_keyword_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let Some(partner_name) = partner_with_name_from_line(ctx.line.info.raw_line.as_str()) else {
+        return Ok(None);
+    };
+
+    let partner_line = rewrite_line_normalized(ctx.line, "partner")?;
+    let Some(partner_static) = parse_static_line_cst(&partner_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower partner-with keyword head: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    let trigger_text = format!(
+        "when this creature enters, target player may search their library for a card named \"{}\", reveal it, put it into their hand, then shuffle",
+        partner_name.replace('"', "")
+    );
+    let trigger_line = rewrite_line_normalized(ctx.line, trigger_text.as_str())?;
+    let partner_trigger = parse_triggered_line_cst(&trigger_line)?;
+
+    Ok(Some(LineDispatchResult {
+        lines: vec![
+            RewriteLineCst::Static(partner_static),
+            RewriteLineCst::Triggered(partner_trigger),
+        ],
+        next_idx: ctx.idx + 1,
+    }))
+}
+
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -80,6 +111,25 @@ pub(super) fn run_activation_line_family(
     }
 
     Ok(None)
+}
+
+fn partner_with_name_from_line(raw_line: &str) -> Option<String> {
+    let trimmed = raw_line.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let rest_start = "partner with ".len();
+    if !lower.starts_with("partner with ") {
+        return None;
+    }
+
+    let rest = trimmed.get(rest_start..)?.trim();
+    let name = rest
+        .split_once('(')
+        .map(|(name, _)| name)
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 pub(super) fn run_combined_static_line_family(

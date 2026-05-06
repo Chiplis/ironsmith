@@ -255,6 +255,92 @@ fn predicate_tokens_from_words(words: &[&str]) -> Vec<OwnedLexToken> {
         .collect()
 }
 
+fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let mut filter = ObjectFilter::default();
+    let mut saw_color = false;
+    for word in words {
+        if matches!(*word, "and" | "or") {
+            continue;
+        }
+        if let Some(color) = parse_color(word) {
+            let existing = filter.colors.unwrap_or(ColorSet::new());
+            filter.colors = Some(existing.union(color));
+            saw_color = true;
+            continue;
+        }
+        if let Some(color) = parse_non_color(word) {
+            filter.excluded_colors = filter.excluded_colors.union(color);
+            saw_color = true;
+            continue;
+        }
+        return None;
+    }
+    saw_color.then_some(filter)
+}
+
+fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let has_card_noun = matches!(words.last().copied(), Some("card" | "cards"));
+    let candidates = [
+        (words, has_card_noun),
+        (words.strip_suffix(&["card"]).unwrap_or(words), true),
+        (words.strip_suffix(&["cards"]).unwrap_or(words), true),
+    ];
+    for (candidate, stripped_card_noun) in candidates {
+        if candidate.is_empty() {
+            return Some(ObjectFilter::default());
+        }
+        let tokens = predicate_tokens_from_words(candidate);
+        if let Ok(mut filter) = parse_object_filter(&tokens, false) {
+            if stripped_card_noun {
+                filter.zone = None;
+            }
+            return Some(filter);
+        }
+        if let Some(mut filter) = parse_color_only_object_filter_words(candidate) {
+            if stripped_card_noun {
+                filter.zone = None;
+            }
+            return Some(filter);
+        }
+    }
+    None
+}
+
+fn parse_passive_this_way_tagged_object_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if filtered.len() < 5 || !slice_ends_with(filtered, &["this", "way"]) {
+        return Ok(None);
+    }
+    let verb_idx = filtered.len() - 3;
+    let copula_idx = verb_idx.saturating_sub(1);
+    if copula_idx == 0
+        || !matches!(filtered[copula_idx], "is" | "are" | "was" | "were")
+        || !matches!(
+            filtered[verb_idx],
+            "countered"
+                | "destroyed"
+                | "discarded"
+                | "exiled"
+                | "milled"
+                | "returned"
+                | "revealed"
+                | "sacrificed"
+        )
+    {
+        return Ok(None);
+    }
+
+    let filter_words = &filtered[..copula_idx];
+    let Some(filter) = parse_this_way_object_filter_words(filter_words) else {
+        return Ok(None);
+    };
+    Ok(Some(PredicateAst::TaggedMatches(
+        TagKey::from(IT_TAG),
+        filter,
+    )))
+}
+
 fn parse_repeated_if_or_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -490,6 +576,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
         return Ok(predicate);
     }
 

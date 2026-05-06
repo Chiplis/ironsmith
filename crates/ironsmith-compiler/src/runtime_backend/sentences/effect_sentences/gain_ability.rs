@@ -142,6 +142,55 @@ fn append_shared_subject_pump_to_target(
     }
 }
 
+fn parse_shared_subject_pump_from_get_tail(
+    tokens: &[OwnedLexToken],
+    get_word_idx: usize,
+    duration: &Until,
+    has_explicit_duration: bool,
+) -> Result<Option<SharedSubjectPump>, CardTextError> {
+    let Some(modifier_start_token_idx) = token_index_for_word_index(tokens, get_word_idx + 1)
+    else {
+        return Ok(None);
+    };
+    let mut modifier_token_storage = trim_commas(&tokens[modifier_start_token_idx..]).to_vec();
+    for token in &mut modifier_token_storage {
+        token.lowercase_word();
+    }
+    let modifier_tokens = trim_commas(&modifier_token_storage);
+    let Some(mod_word) = modifier_tokens.first().and_then(OwnedLexToken::as_word) else {
+        return Ok(None);
+    };
+    let Ok((power, toughness)) = parse_pt_modifier_values(mod_word) else {
+        return Ok(None);
+    };
+    let for_each =
+        if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness) {
+            parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
+                .map(|count| (*power_per, *toughness_per, count))
+        } else {
+            None
+        };
+    let modifier_words = GainAbilityWordView::new(&modifier_tokens).to_word_refs();
+    let has_local_duration = modifier_words
+        .iter()
+        .any(|word| matches!(*word, "until" | "during"));
+    let (power, toughness, local_duration, condition) =
+        parse_get_modifier_values_with_tail(&modifier_tokens, power, toughness)?;
+    let pump_duration = if has_explicit_duration || !has_local_duration {
+        duration.clone()
+    } else {
+        local_duration
+    };
+    Ok(Some((
+        power,
+        toughness,
+        get_word_idx,
+        pump_duration,
+        condition,
+        for_each,
+    )))
+}
+
 fn parsed_static_granted_abilities(
     ability_tokens: &[OwnedLexToken],
     abilities: Vec<crate::cards::builders::StaticAbilityAst>,
@@ -924,8 +973,32 @@ pub(crate) fn parse_gain_ability_sentence(
     let has_explicit_duration =
         duration_phrase.is_some() || leading_duration_phrase.as_ref().is_some();
 
+    let shared_get_tail_word_idx = if !losing {
+        after_gain
+            .windows(2)
+            .position(|window| matches!(window, ["and", "get"] | ["and", "gets"]))
+    } else {
+        None
+    };
+    let following_pump_effect = if let Some(shared_idx) = shared_get_tail_word_idx {
+        let get_word_idx = gain_idx + 1 + shared_idx + 1;
+        parse_shared_subject_pump_from_get_tail(
+            tokens,
+            get_word_idx,
+            &duration,
+            has_explicit_duration,
+        )?
+    } else {
+        None
+    };
+    if shared_get_tail_word_idx.is_some() && following_pump_effect.is_none() {
+        return Ok(None);
+    }
+
     let mut trailing_tail_tokens: Vec<OwnedLexToken> = Vec::new();
-    if let Some((start_rel, len_words, _)) = duration_phrase {
+    if shared_get_tail_word_idx.is_none()
+        && let Some((start_rel, len_words, _)) = duration_phrase
+    {
         let tail_word_idx = gain_idx + 1 + start_rel + len_words;
         if let Some(tail_token_idx) = token_index_for_word_index(tokens, tail_word_idx) {
             let mut tail_tokens = trim_commas(&tokens[tail_token_idx..]).to_vec();
@@ -958,6 +1031,9 @@ pub(crate) fn parse_gain_ability_sentence(
     let ability_end_word_idx = duration_phrase
         .as_ref()
         .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel);
+    let ability_end_word_idx = shared_get_tail_word_idx
+        .map(|idx| gain_idx + 1 + idx)
+        .or(ability_end_word_idx);
     let ability_end_token_idx = if let Some(end_word_idx) = ability_end_word_idx {
         token_index_for_word_index(tokens, end_word_idx).unwrap_or(tokens.len())
     } else {
@@ -1199,17 +1275,24 @@ pub(crate) fn parse_gain_ability_sentence(
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else {
             effects.push(EffectAst::subject_verb_grant_abilities_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         }
+        append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -1221,17 +1304,24 @@ pub(crate) fn parse_gain_ability_sentence(
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else {
             effects.push(EffectAst::subject_verb_grant_abilities_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         }
+        append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -1247,17 +1337,24 @@ pub(crate) fn parse_gain_ability_sentence(
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         } else {
             effects.push(EffectAst::subject_verb_grant_abilities_to_target(
-                target, abilities, duration,
+                target.clone(),
+                abilities,
+                duration,
             ));
         }
+        append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -1293,6 +1390,13 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         }
+        let following_pump_target =
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));
+        append_shared_subject_pump_to_target(
+            &mut effects,
+            &following_pump_target,
+            &following_pump_effect,
+        );
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -1358,15 +1462,30 @@ pub(crate) fn parse_gain_ability_sentence(
     }
     if losing {
         effects.push(EffectAst::subject_verb_remove_abilities_all(
-            filter, abilities, duration,
+            filter.clone(),
+            abilities,
+            duration,
         ));
     } else if grant_is_choice {
         effects.push(EffectAst::subject_verb_grant_abilities_choice_all(
-            filter, abilities, duration,
+            filter.clone(),
+            abilities,
+            duration,
         ));
     } else {
         effects.push(EffectAst::subject_verb_grant_abilities_all(
-            filter, abilities, duration,
+            filter.clone(),
+            abilities,
+            duration,
+        ));
+    }
+    if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = following_pump_effect
+    {
+        effects.push(EffectAst::subject_verb_pump_all(
+            filter.clone(),
+            power,
+            toughness,
+            pump_duration,
         ));
     }
     effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;

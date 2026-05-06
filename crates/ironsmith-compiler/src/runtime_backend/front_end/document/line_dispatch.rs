@@ -1,7 +1,8 @@
 use super::line_family_handlers::{
     run_activation_line_family, run_colon_nonactivation_statement_line_family,
     run_combined_static_line_family, run_keyword_line_family, run_labeled_line_family,
-    run_statement_line_family, run_statement_probe_line_family, run_static_line_family,
+    run_partner_with_keyword_line_family, run_statement_line_family,
+    run_statement_probe_line_family, run_static_line_family,
     run_trailing_keyword_activation_line_family, run_triggered_line_family,
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
 };
@@ -40,7 +41,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 11] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 12] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -58,6 +59,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 11] = [
         priority: 30,
         heads: &["when", "whenever", "at"],
         run: run_triggered_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "partner-with-keyword-line",
+        priority: 35,
+        heads: &["partner"],
+        run: run_partner_with_keyword_line_family,
     },
     LineFamilyRuleDef {
         id: "keyword-line",

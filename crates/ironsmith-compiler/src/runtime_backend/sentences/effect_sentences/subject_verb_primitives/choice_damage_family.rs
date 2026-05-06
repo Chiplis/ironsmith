@@ -64,6 +64,12 @@ pub(crate) fn parse_sentence_shared_color_target_fanout(
     parse_shared_color_target_fanout_sentence(tokens)
 }
 
+pub(crate) fn parse_sentence_compound_damage_fanout(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_compound_damage_fanout_sentence(tokens)
+}
+
 pub(crate) fn parse_sentence_same_name_gets_fanout(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

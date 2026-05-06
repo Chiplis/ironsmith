@@ -524,30 +524,56 @@ pub(crate) fn split_copy_source_inline_combat_modifiers(
     )
 }
 
+fn parse_create_equal_to_dynamic_count(
+    tail_tokens: &[OwnedLexToken],
+) -> Result<Option<(Value, usize)>, CardTextError> {
+    let tail_words = token_word_refs(tail_tokens);
+    let Some(equal_word_idx) = find_word_sequence_index(&tail_words, &["equal", "to"]) else {
+        return Ok(None);
+    };
+    let Some(equal_token_idx) = token_index_for_word_index(tail_tokens, equal_word_idx) else {
+        return Ok(None);
+    };
+    let Some(value_token_idx) = token_index_for_word_index(tail_tokens, equal_word_idx + 2) else {
+        return Ok(None);
+    };
+    let value_tokens = trim_commas(&tail_tokens[value_token_idx..]);
+    if value_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let synthetic = format!("where x is {}", render_token_slice(&value_tokens));
+    let synthetic_tokens = super::super::lexer::lex_line(synthetic.as_str(), 0)?;
+    Ok(parse_value_binding_clause(&synthetic_tokens).map(|value| {
+        (
+            value.with_surface_hint(ValueSurfaceHint::EqualTo),
+            equal_token_idx,
+        )
+    }))
+}
+
 pub(crate) fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let mut player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
-    let has_unsupported_dynamic_count = grammar::words_match_any_prefix(
-        tokens,
-        &[&["a", "number", "of"], &["the", "number", "of"]],
-    )
-    .is_some();
-    if has_unsupported_dynamic_count {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported dynamic token count in create clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
     let mut idx = 0;
     let mut count_value = Value::Fixed(1);
+    let mut needs_equal_to_dynamic_count = false;
     if tokens.first().is_some_and(|token| token.is_word("that"))
         && tokens.get(1).is_some_and(|token| token.is_word("many"))
     {
         count_value = Value::EventValue(EventValueSpec::Amount);
         idx = 2;
+    } else if grammar::words_match_any_prefix(
+        tokens,
+        &[&["a", "number", "of"], &["the", "number", "of"]],
+    )
+    .is_some()
+    {
+        needs_equal_to_dynamic_count = true;
+        idx = 3;
     } else if tokens.first().is_some_and(|token| token.is_word("x")) {
         count_value = Value::X;
         idx = 1;
@@ -573,6 +599,18 @@ pub(crate) fn parse_create(
         .filter(|word| !is_article(word))
         .collect();
     let mut tail_tokens = tokens[idx + token_idx + 1..].to_vec();
+    if needs_equal_to_dynamic_count {
+        let Some((dynamic_count, equal_token_idx)) =
+            parse_create_equal_to_dynamic_count(&tail_tokens)?
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported dynamic token count in create clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        count_value = dynamic_count;
+        tail_tokens.truncate(equal_token_idx);
+    }
     let mut delayed_create_player = None;
     let initial_tail_words = token_word_refs(&tail_tokens);
     if let Some((clause_start, player)) =

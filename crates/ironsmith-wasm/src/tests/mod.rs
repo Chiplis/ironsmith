@@ -1,3 +1,4 @@
+use super::WasmReplayDecisionMaker;
 use super::ui_snapshot::grouped_battlefield_for_player;
 use super::{
     CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot, MatchFormatInput,
@@ -11,11 +12,6 @@ use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::CardRegistry;
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::cards::definitions::{
-    basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
-    gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, phyrexian_tower, polluted_delta,
-    serum_powder, urzas_saga, yawgmoth_thran_physician,
-};
 use ironsmith::continuous::ContinuousEffect;
 use ironsmith::cost::OptionalCostsPaid;
 use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
@@ -38,6 +34,11 @@ use ironsmith::static_abilities::StaticAbility;
 use ironsmith::triggers::{Trigger, TriggerEvent, check_triggers};
 use ironsmith::types::{CardType, Subtype};
 use ironsmith::zone::Zone;
+use ironsmith_registry::cards::definitions::{
+    basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
+    gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, phyrexian_tower, polluted_delta,
+    serum_powder, stoke_the_flames, urzas_saga, yawgmoth_thran_physician,
+};
 use ironsmith_registry::compile_to_runtime_definition;
 use serde::Deserialize;
 use serde_json::json;
@@ -266,6 +267,19 @@ fn dispatch_select_options(wasm: &mut WasmGame, option_indices: &[usize]) {
     .expect("select_options should succeed");
 }
 
+fn dispatch_select_target_object(wasm: &mut WasmGame, object_id: ObjectId) {
+    wasm.dispatch(
+        serde_wasm_bindgen::to_value(&json!({
+            "type": "select_targets",
+            "targets": [
+                { "kind": "object", "object": object_id.0 },
+            ],
+        }))
+        .expect("select_targets should serialize"),
+    )
+    .expect("select_targets should succeed");
+}
+
 fn dispatch_pass_priority(wasm: &mut WasmGame) {
     dispatch_matching_priority_action(wasm, |action| matches!(action, LegalAction::PassPriority));
 }
@@ -449,7 +463,7 @@ fn object_details_compacts_changeling_type_line_display() {
     let definition = CardDefinitionBuilder::new(CardId::from_raw(70_010), "Valiant Mini")
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Shapeshifter])
-        .with_ability(Ability::static_ability(StaticAbility::changeling()).with_text("Changeling"))
+        .with_ability(Ability::static_ability(StaticAbility::changeling()))
         .build();
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
@@ -558,7 +572,7 @@ fn object_details_compiled_text_uses_normalized_surface_for_possessive_self_refe
 fn object_details_include_convoke_for_builtin_cards() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
-    let definition = ironsmith::cards::definitions::stoke_the_flames();
+    let definition = stoke_the_flames();
     let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
 
     let details = build_object_details_snapshot(&game, object_id).expect("expected object details");
@@ -1140,6 +1154,8 @@ fn cancelability_allows_locked_pending_mana_ability_while_decision_open() {
         other_costs: Vec::new(),
         mana_to_add: vec![ManaSymbol::Green],
         effects: ironsmith::resolution::ResolutionProgram::default(),
+        mana_usage_restrictions: Vec::new(),
+        mana_source_chosen_creature_type: None,
         undo_locked_by_mana: true,
     });
     wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
@@ -1168,6 +1184,8 @@ fn cancelability_allows_mana_undo_when_not_locked() {
         other_costs: Vec::new(),
         mana_to_add: vec![ManaSymbol::Green],
         effects: ironsmith::resolution::ResolutionProgram::default(),
+        mana_usage_restrictions: Vec::new(),
+        mana_source_chosen_creature_type: None,
         undo_locked_by_mana: false,
     });
 
@@ -1815,30 +1833,37 @@ fn snapshot_public_top_library_static_shows_each_players_top_card() {
 
     let lantern = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
         .card_types(vec![CardType::Artifact])
-        .with_ability(
-            Ability::static_ability(StaticAbility::all_players_look_at_top_cards_of_libraries())
-                .with_text("Players play with the top card of their libraries revealed."),
-        )
+        .with_ability(Ability::static_ability(
+            StaticAbility::all_players_look_at_top_cards_of_libraries(),
+        ))
         .build();
     game.create_object_from_definition(&lantern, alice, Zone::Battlefield);
 
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Alice Bottom").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Alice Bottom")
+            .card_types(vec![CardType::Creature])
+            .build(),
         alice,
         Zone::Library,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Alice Top").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Alice Top")
+            .card_types(vec![CardType::Creature])
+            .build(),
         alice,
         Zone::Library,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Bob Bottom").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Bob Bottom")
+            .card_types(vec![CardType::Creature])
+            .build(),
         bob,
         Zone::Library,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Bob Top").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Bob Top")
+            .card_types(vec![CardType::Creature])
+            .build(),
         bob,
         Zone::Library,
     );
@@ -1846,6 +1871,7 @@ fn snapshot_public_top_library_static_shows_each_players_top_card() {
     let snapshot = GameSnapshot::from_game(
         &game,
         alice,
+        None,
         None,
         None,
         None,
@@ -1881,20 +1907,23 @@ fn snapshot_courser_static_shows_only_controllers_top_library_card() {
 
     let courser = CardDefinitionBuilder::new(CardId::new(), "Courser of Kruphix Variant")
         .card_types(vec![CardType::Enchantment, CardType::Creature])
-        .with_ability(
-            Ability::static_ability(StaticAbility::all_players_look_at_your_top_library_card())
-                .with_text("Play with the top card of your library revealed."),
-        )
+        .with_ability(Ability::static_ability(
+            StaticAbility::all_players_look_at_your_top_library_card(),
+        ))
         .build();
     game.create_object_from_definition(&courser, alice, Zone::Battlefield);
 
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Alice Top").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Alice Top")
+            .card_types(vec![CardType::Creature])
+            .build(),
         alice,
         Zone::Library,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Bob Hidden Top").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Bob Hidden Top")
+            .card_types(vec![CardType::Creature])
+            .build(),
         bob,
         Zone::Library,
     );
@@ -1902,6 +1931,7 @@ fn snapshot_courser_static_shows_only_controllers_top_library_card() {
     let snapshot = GameSnapshot::from_game(
         &game,
         bob,
+        None,
         None,
         None,
         None,
@@ -1941,25 +1971,30 @@ fn snapshot_telepathy_static_shows_opponents_hands_to_all_players() {
 
     let telepathy = CardDefinitionBuilder::new(CardId::new(), "Telepathy Variant")
         .card_types(vec![CardType::Enchantment])
-        .with_ability(
-            Ability::static_ability(StaticAbility::opponents_play_with_hands_revealed())
-                .with_text("Your opponents play with their hands revealed."),
-        )
+        .with_ability(Ability::static_ability(
+            StaticAbility::opponents_play_with_hands_revealed(),
+        ))
         .build();
     game.create_object_from_definition(&telepathy, alice, Zone::Battlefield);
 
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Alice Secret").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Alice Secret")
+            .card_types(vec![CardType::Creature])
+            .build(),
         alice,
         Zone::Hand,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Bob Revealed").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Bob Revealed")
+            .card_types(vec![CardType::Creature])
+            .build(),
         bob,
         Zone::Hand,
     );
     game.create_object_from_card(
-        &CardBuilder::new(CardId::new(), "Cara Revealed").card_types(vec![CardType::Creature]),
+        &CardBuilder::new(CardId::new(), "Cara Revealed")
+            .card_types(vec![CardType::Creature])
+            .build(),
         cara,
         Zone::Hand,
     );
@@ -1967,6 +2002,7 @@ fn snapshot_telepathy_static_shows_opponents_hands_to_all_players() {
     let snapshot = GameSnapshot::from_game(
         &game,
         cara,
+        None,
         None,
         None,
         None,
@@ -3006,6 +3042,134 @@ fn stack_snapshot_includes_controller_and_targets() {
         }
         other => panic!("expected player target on stack snapshot, got {other:?}"),
     }
+}
+
+#[test]
+fn wasm_stubborn_denial_can_target_and_counter_lightning_bolt() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+
+    let stubborn_id = ObjectId::from_raw(
+        wasm.add_card_to_zone(0, "Stubborn Denial".to_string(), "hand".to_string(), true)
+            .expect("Stubborn Denial should be loadable into Alice's hand"),
+    );
+    wasm.game
+        .player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let ferocious_creature = CardBuilder::new(CardId::new(), "Ferocious Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    wasm.game
+        .create_object_from_card(&ferocious_creature, alice, Zone::Battlefield);
+
+    let bolt_id = wasm
+        .game
+        .create_object_from_definition(&lightning_bolt(), bob, Zone::Stack);
+    let bolt_stable_id = wasm
+        .game
+        .object(bolt_id)
+        .expect("Lightning Bolt should exist on the stack")
+        .stable_id;
+    wasm.game
+        .push_to_stack(StackEntry::new(bolt_id, bob).with_targets(vec![Target::Player(alice)]));
+
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice,
+        compute_legal_actions(&wasm.game, alice),
+    )));
+
+    dispatch_matching_priority_action(
+        &mut wasm,
+        |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == stubborn_id),
+    );
+
+    let targets_ctx = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::Targets(ctx)) => ctx,
+        other => panic!("expected Stubborn Denial target prompt, got {other:?}"),
+    };
+    assert!(
+        targets_ctx
+            .requirements
+            .iter()
+            .flat_map(|requirement| requirement.legal_targets.iter())
+            .any(|target| *target == Target::Object(bolt_id)),
+        "Stubborn Denial should expose Lightning Bolt as a legal noncreature spell target"
+    );
+
+    let snapshot_json = wasm
+        .snapshot_json()
+        .expect("target prompt snapshot should render");
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot JSON should parse");
+    let snapshot_targets = snapshot["decision"]["requirements"][0]["legal_targets"]
+        .as_array()
+        .expect("target prompt should serialize legal targets");
+    assert!(
+        snapshot_targets.iter().any(|target| {
+            target["kind"].as_str() == Some("object")
+                && target["object"].as_u64() == Some(bolt_id.0)
+                && target["name"].as_str() == Some("Lightning Bolt")
+        }),
+        "WASM snapshot should expose Lightning Bolt as a clickable Stubborn Denial target: {snapshot_targets:?}"
+    );
+
+    dispatch_select_target_object(&mut wasm, bolt_id);
+
+    for _ in 0..8 {
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .map(|option| option.index)
+                    .unwrap_or_else(|| panic!("expected a legal payment option, got {ctx:?}"));
+                dispatch_select_options(&mut wasm, &[option_index]);
+            }
+            Some(DecisionContext::Priority(_)) => {
+                dispatch_pass_priority(&mut wasm);
+                if let Some(current_bolt_id) = wasm.game.find_object_by_stable_id(bolt_stable_id)
+                    && wasm
+                        .game
+                        .object(current_bolt_id)
+                        .is_some_and(|object| object.zone == Zone::Graveyard)
+                {
+                    break;
+                }
+            }
+            Some(other) => panic!("unexpected Stubborn Denial follow-up decision: {other:?}"),
+            None => break,
+        }
+    }
+
+    let countered_bolt_id = wasm
+        .game
+        .find_object_by_stable_id(bolt_stable_id)
+        .expect("countered Lightning Bolt should still be tracked");
+    assert_eq!(
+        wasm.game
+            .object(countered_bolt_id)
+            .expect("Lightning Bolt should still exist")
+            .zone,
+        Zone::Graveyard,
+        "Stubborn Denial should counter Lightning Bolt through the WASM dispatch flow"
+    );
+    assert_eq!(
+        wasm.game.player(alice).expect("Alice should exist").life,
+        20,
+        "countered Lightning Bolt should not resolve and damage Alice"
+    );
 }
 
 #[test]

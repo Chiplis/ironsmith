@@ -424,6 +424,43 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             }
         }
     }
+
+    match &words[idx..filter_end] {
+        [
+            "card" | "cards",
+            "youve" | "you've",
+            "drawn",
+            "this",
+            "turn",
+        ]
+        | ["card" | "cards", "you", "have", "drawn", "this", "turn"] => {
+            return Some((Value::MaxCardsDrawnThisTurn(PlayerFilter::You), filter_end));
+        }
+        [
+            "card" | "cards",
+            "an",
+            "opponent",
+            "has",
+            "drawn",
+            "this",
+            "turn",
+        ]
+        | [
+            "card" | "cards",
+            "opponents",
+            "have",
+            "drawn",
+            "this",
+            "turn",
+        ] => {
+            return Some((
+                Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent),
+                filter_end,
+            ));
+        }
+        _ => {}
+    }
+
     let filter_tokens = words[idx..filter_end]
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -2215,6 +2252,17 @@ mod tests {
             }),
             "expected the revealed-this-way count to bind to IT_TAG, got {filter:?}"
         );
+    }
+
+    #[test]
+    fn parse_for_each_count_value_words_handles_cards_youve_drawn_this_turn() {
+        let words = ["for", "each", "card", "you've", "drawn", "this", "turn"];
+
+        let (value, used_words) =
+            parse_for_each_count_value_words(&words).expect("count phrase should parse");
+
+        assert_eq!(used_words, words.len());
+        assert_eq!(value, Value::MaxCardsDrawnThisTurn(PlayerFilter::You));
     }
 }
 

@@ -4,12 +4,12 @@ use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, rfind_index};
 use super::super::util::{
-    is_article, is_source_reference_words, parse_target_phrase, parse_value,
+    is_article, is_source_reference_words, parse_target_phrase, parse_value, span_from_tokens,
     token_index_for_word_index, trim_commas,
 };
 use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_filter_mut};
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
-use super::{find_verb, parse_simple_gain_ability_clause};
+use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, PlayerAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, TagKey, TargetAst, Verb,
@@ -939,6 +939,434 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
     }
 
     Ok(None)
+}
+
+#[derive(Debug, Clone)]
+enum CompoundDamagePart {
+    Target(TargetAst),
+    EachObject(ObjectFilter),
+    EachPlayer(PlayerFilter),
+}
+
+fn strip_trailing_damage_noise(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut cleaned = trim_commas(tokens);
+    while cleaned
+        .last()
+        .is_some_and(|token| token.is_word("instead") || token.is_comma())
+    {
+        cleaned.pop();
+    }
+    cleaned
+}
+
+fn strip_trailing_where_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let where_idx = tokens
+        .iter()
+        .position(|token| token.is_word("where"))
+        .unwrap_or(tokens.len());
+    strip_trailing_damage_noise(&tokens[..where_idx])
+}
+
+fn words_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
+    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
+}
+
+fn strip_word_suffix(tokens: &[OwnedLexToken], suffix: &[&str]) -> Option<Vec<OwnedLexToken>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words_have_suffix(&words, suffix) {
+        return None;
+    }
+    let base_word_len = words.len().saturating_sub(suffix.len());
+    let token_end = if base_word_len == 0 {
+        0
+    } else if base_word_len >= words.len() {
+        tokens.len()
+    } else {
+        token_index_for_word_index(tokens, base_word_len).unwrap_or(base_word_len)
+    };
+    Some(strip_trailing_damage_noise(&tokens[..token_end]))
+}
+
+fn tokens_before_word(tokens: &[OwnedLexToken], word_idx: usize) -> Vec<OwnedLexToken> {
+    let token_end = if word_idx == 0 {
+        0
+    } else {
+        token_index_for_word_index(tokens, word_idx).unwrap_or(word_idx)
+    };
+    strip_trailing_damage_noise(&tokens[..token_end])
+}
+
+fn target_context_for_damage_part(part: &CompoundDamagePart) -> Option<PlayerFilter> {
+    match part {
+        CompoundDamagePart::Target(TargetAst::Player(filter, span))
+        | CompoundDamagePart::Target(TargetAst::PlayerOrPlaneswalker(filter, span)) => {
+            if span.is_some() {
+                Some(PlayerFilter::Target(Box::new(filter.clone())))
+            } else {
+                Some(filter.clone())
+            }
+        }
+        CompoundDamagePart::EachPlayer(_) => Some(PlayerFilter::IteratedPlayer),
+        _ => None,
+    }
+}
+
+fn strip_known_controller_tail(
+    tokens: &[OwnedLexToken],
+    player_context: Option<PlayerFilter>,
+) -> (Vec<OwnedLexToken>, Option<PlayerFilter>) {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let has_controller_controls_tail = words_have_suffix(&words, &["controller", "controls"])
+        || words_have_suffix(&words, &["controller", "control"])
+        || words_have_suffix(&words, &["controllers", "controls"])
+        || words_have_suffix(&words, &["controllers", "control"]);
+    if has_controller_controls_tail && words.len() >= 6 {
+        for start in 0..words.len().saturating_sub(4) {
+            if words[start..].starts_with(&["that", "player", "or", "that"])
+                && words[start + 4..words.len().saturating_sub(2)]
+                    .iter()
+                    .any(|word| word.starts_with("planeswalker"))
+            {
+                return (
+                    tokens_before_word(tokens, start),
+                    Some(PlayerFilter::TargetPlayerOrControllerOfTarget),
+                );
+            }
+        }
+    }
+
+    for suffix in [
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalkers",
+            "controller",
+            "controls",
+        ][..],
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalker",
+            "controller",
+            "controls",
+        ][..],
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalker",
+            "s",
+            "controller",
+            "controls",
+        ][..],
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalkers",
+            "controller",
+            "control",
+        ][..],
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalker",
+            "s",
+            "controller",
+            "control",
+        ][..],
+        &[
+            "that",
+            "player",
+            "or",
+            "that",
+            "planeswalker",
+            "controller",
+            "control",
+        ][..],
+    ] {
+        if let Some(base) = strip_word_suffix(tokens, suffix) {
+            return (base, Some(PlayerFilter::TargetPlayerOrControllerOfTarget));
+        }
+    }
+
+    for suffix in [
+        &["that", "player", "controls"][..],
+        &["that", "player", "control"][..],
+        &["they", "control"][..],
+        &["they", "controls"][..],
+    ] {
+        if let Some(base) = strip_word_suffix(tokens, suffix) {
+            return (
+                base,
+                Some(player_context.unwrap_or_else(PlayerFilter::target_player)),
+            );
+        }
+    }
+
+    for suffix in [
+        &["your", "opponents", "control"][..],
+        &["your", "opponent", "controls"][..],
+    ] {
+        if let Some(base) = strip_word_suffix(tokens, suffix) {
+            return (base, Some(PlayerFilter::Opponent));
+        }
+    }
+
+    for suffix in [
+        &["you", "control"][..],
+        &["you", "controls"][..],
+        &["your", "control"][..],
+    ] {
+        if let Some(base) = strip_word_suffix(tokens, suffix) {
+            return (base, Some(PlayerFilter::You));
+        }
+    }
+
+    (tokens.to_vec(), None)
+}
+
+fn parse_each_damage_part(
+    tokens: &[OwnedLexToken],
+    player_context: Option<PlayerFilter>,
+) -> Result<Option<CompoundDamagePart>, CardTextError> {
+    let tokens = strip_trailing_damage_noise(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    if words.is_empty() {
+        return Ok(None);
+    }
+
+    match words.as_slice() {
+        ["player"] | ["players"] => {
+            return Ok(Some(CompoundDamagePart::EachPlayer(PlayerFilter::Any)));
+        }
+        ["opponent"] | ["opponents"] => {
+            return Ok(Some(CompoundDamagePart::EachPlayer(PlayerFilter::Opponent)));
+        }
+        _ => {}
+    }
+
+    if words
+        .first()
+        .is_some_and(|word| *word == "player" || *word == "players")
+    {
+        return Ok(None);
+    }
+
+    let (filter_tokens, controller) = strip_known_controller_tail(&tokens, player_context);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = match parse_object_filter(&filter_tokens, false) {
+        Ok(filter) => filter,
+        Err(_) => return Ok(None),
+    };
+    if filter.controller.is_none() {
+        filter.controller = controller;
+    }
+    Ok(Some(CompoundDamagePart::EachObject(filter)))
+}
+
+fn parse_damage_part(
+    tokens: &[OwnedLexToken],
+    player_context: Option<PlayerFilter>,
+) -> Result<Option<CompoundDamagePart>, CardTextError> {
+    let tokens = strip_trailing_damage_noise(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    if words.is_empty() {
+        return Ok(None);
+    }
+
+    if matches!(words.first().copied(), Some("each" | "all")) {
+        return parse_each_damage_part(&tokens[1..], player_context);
+    }
+
+    if words.as_slice() == ["you"] {
+        return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
+            PlayerFilter::You,
+            span_from_tokens(&tokens),
+        ))));
+    }
+
+    if words.as_slice() == ["opponent"] || words.as_slice() == ["opponents"] {
+        return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
+            PlayerFilter::Opponent,
+            span_from_tokens(&tokens),
+        ))));
+    }
+
+    if words.iter().any(|word| *word == "target") {
+        return Ok(Some(CompoundDamagePart::Target(parse_target_phrase(
+            &tokens,
+        )?)));
+    }
+
+    Ok(None)
+}
+
+fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
+    match filter {
+        PlayerFilter::Opponent => EffectAst::ForEachOpponent { effects },
+        PlayerFilter::Any => EffectAst::ForEachPlayer { effects },
+        other => EffectAst::ForEachPlayersFiltered {
+            filter: other,
+            effects,
+        },
+    }
+}
+
+fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> EffectAst {
+    match part {
+        CompoundDamagePart::Target(target) => EffectAst::subject_verb_damage(amount, target),
+        CompoundDamagePart::EachObject(filter) => {
+            EffectAst::subject_verb_damage_each(amount, filter)
+        }
+        CompoundDamagePart::EachPlayer(filter) => damage_player_iteration_effect(
+            filter,
+            vec![EffectAst::subject_verb_damage(
+                amount,
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
+        ),
+    }
+}
+
+fn compound_damage_effects(
+    amount: Value,
+    left: CompoundDamagePart,
+    right: CompoundDamagePart,
+) -> Vec<EffectAst> {
+    match left {
+        CompoundDamagePart::EachPlayer(filter) => {
+            let mut nested = vec![EffectAst::subject_verb_damage(
+                amount.clone(),
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )];
+            nested.push(compound_damage_part_to_effect(right, amount));
+            vec![damage_player_iteration_effect(filter, nested)]
+        }
+        other => vec![
+            compound_damage_part_to_effect(other, amount.clone()),
+            compound_damage_part_to_effect(right, amount),
+        ],
+    }
+}
+
+fn equal_damage_target_tail_starts_like_destination(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    matches!(
+        words.first().copied(),
+        Some("each" | "all" | "target" | "you" | "opponent" | "opponents" | "player" | "players")
+    )
+}
+
+fn parse_equal_damage_amount_and_targets(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, Vec<OwnedLexToken>)> {
+    if !tokens.first().is_some_and(|token| token.is_word("damage"))
+        || !tokens.get(1).is_some_and(|token| token.is_word("equal"))
+        || !tokens.get(2).is_some_and(|token| token.is_word("to"))
+    {
+        return None;
+    }
+
+    for target_to_idx in 3..tokens.len() {
+        if !tokens[target_to_idx].is_word("to") {
+            continue;
+        }
+        let target_tail = &tokens[target_to_idx + 1..];
+        if !equal_damage_target_tail_starts_like_destination(target_tail) {
+            continue;
+        }
+        let amount_tokens = trim_commas(&tokens[3..target_to_idx]);
+        let (amount, used) = parse_value(&amount_tokens)?;
+        if used != amount_tokens.len() {
+            continue;
+        }
+        return Some((amount, target_tail.to_vec()));
+    }
+
+    None
+}
+
+pub(crate) fn parse_compound_damage_fanout_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let deal_tokens = if tokens.first().is_some_and(|token| token.is_word("deal")) {
+        tokens
+    } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
+        &tokens[verb_idx..]
+    } else {
+        return Ok(None);
+    };
+
+    let after_deal = &deal_tokens[1..];
+    let (amount, target_tokens) =
+        if let Some((amount, target_tokens)) = parse_equal_damage_amount_and_targets(after_deal) {
+            (amount, target_tokens)
+        } else {
+            let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
+            let (amount, used) =
+                if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
+                    (Value::EventValue(EventValueSpec::Amount), 2usize)
+                } else if let Some((value, used)) = parse_value(after_deal) {
+                    (value, used)
+                } else {
+                    return Ok(None);
+                };
+
+            let after_amount = &after_deal[used..];
+            if !after_amount
+                .first()
+                .is_some_and(|token| token.is_word("damage"))
+            {
+                return Ok(None);
+            }
+
+            let mut target_tokens = &after_amount[1..];
+            if target_tokens
+                .first()
+                .is_some_and(|token| token.is_word("to"))
+            {
+                target_tokens = &target_tokens[1..];
+            }
+            (amount, target_tokens.to_vec())
+        };
+    let target_tokens = strip_trailing_where_clause(&target_tokens);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(split_idx) = find_token_word_window(&target_tokens, &["and", "each"])
+        .or_else(|| find_token_word_window(&target_tokens, &["and", "all"]))
+    else {
+        return Ok(None);
+    };
+    if split_idx == 0 || split_idx + 2 >= target_tokens.len() {
+        return Ok(None);
+    }
+
+    let left_tokens = trim_commas(&target_tokens[..split_idx]);
+    let right_tokens = trim_commas(&target_tokens[split_idx + 2..]);
+    let Some(left) = parse_damage_part(&left_tokens, None)? else {
+        return Ok(None);
+    };
+    let right_context = target_context_for_damage_part(&left);
+    let Some(right) = parse_each_damage_part(&right_tokens, right_context)? else {
+        return Ok(None);
+    };
+
+    let mut effects = compound_damage_effects(amount, left, right);
+    apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_same_name_gets_fanout_sentence(

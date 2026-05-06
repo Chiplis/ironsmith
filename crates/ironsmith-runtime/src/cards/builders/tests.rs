@@ -1069,18 +1069,19 @@ fn test_parse_partner_keyword_line_compiles_keyword_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn test_parse_partner_with_keyword_line_fails_loudly() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner With Parse Test")
+fn test_parse_partner_with_keyword_line_lowers_keyword_and_search_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner With Parse Test")
         .card_types(vec![CardType::Creature])
         .parse_text(
             "Partner with Proud Mentor (When this creature enters, target player may put Proud Mentor into their hand from their library, then shuffle.)",
         )
-        .expect_err("partner-with keyword line should fail loudly until supported");
-    let message = format!("{err:?}");
+        .expect("partner-with keyword line should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        message.contains("unsupported partner-with keyword line")
-            && message.contains("[rule=partner-with-keyword-line]"),
-        "expected targeted partner-with diagnostic, got {message}"
+        rendered.contains("Partner")
+            && rendered.contains("card named proud mentor")
+            && rendered.contains("target player"),
+        "expected partner-with to render keyword plus ETB search trigger, got {rendered}"
     );
 }
 
@@ -30846,6 +30847,321 @@ fn parse_oracle_stubborn_denial_renders_base_effect_before_self_replacement() {
     assert!(
         !rendered.contains("Otherwise, counter target noncreature spell"),
         "expected Stubborn Denial rendering to avoid inverted otherwise phrasing, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_stubborn_denial_ferocious_still_requires_target_choice() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ferocious_creature = crate::card::CardBuilder::new(CardId::new(), "Ferocious Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_card(&ferocious_creature, alice, Zone::Battlefield);
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Probe Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let stubborn_denial = CardDefinitionBuilder::new(CardId::new(), "Stubborn Denial")
+        .parse_text(
+            "Mana cost: {U}\nType: Instant\nCounter target noncreature spell unless its controller pays {1}.\nFerocious \u{2014} If you control a creature with power 4 or greater, counter that spell instead.",
+        )
+        .expect("generated-style Stubborn Denial block should parse");
+    let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Stack);
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        stubborn_denial.spell_effect.as_ref().expect("spell effect"),
+        alice,
+        Some(denial_id),
+        None,
+    );
+
+    assert!(
+        requirements.iter().any(|requirement| {
+            requirement
+                .legal_targets
+                .iter()
+                .any(|target| *target == crate::game_state::Target::Object(target_id))
+        }),
+        "ferocious self-replacement should preserve Stubborn Denial's original target choice"
+    );
+}
+
+#[test]
+fn parse_oracle_stubborn_denial_ferocious_free_cast_prompts_for_target() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let omniscience = parse_oracle_card_definition("Omniscience");
+    game.create_object_from_definition(&omniscience, alice, Zone::Battlefield);
+
+    let ferocious_creature = crate::card::CardBuilder::new(CardId::new(), "Ferocious Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_card(&ferocious_creature, alice, Zone::Battlefield);
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Probe Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let stubborn_denial = CardDefinitionBuilder::new(CardId::new(), "Stubborn Denial")
+        .parse_text(
+            "Mana cost: {U}\nType: Instant\nCounter target noncreature spell unless its controller pays {1}.\nFerocious \u{2014} If you control a creature with power 4 or greater, counter that spell instead.",
+        )
+        .expect("generated-style Stubborn Denial block should parse");
+    let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Hand);
+
+    let cast_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method:
+                        crate::alternative_cast::CastingMethod::PlayFrom {
+                            use_alternative: Some(_),
+                            ..
+                        },
+                } if *spell_id == denial_id
+            )
+        })
+        .expect("Omniscience should offer Stubborn Denial as a free cast");
+
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_action),
+        &mut decision_maker,
+    )
+    .expect("free-casting Stubborn Denial should not fail");
+
+    let crate::decision::GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::Targets(ctx),
+    ) = progress
+    else {
+        panic!("expected Stubborn Denial target prompt, got {progress:?}");
+    };
+
+    assert!(
+        ctx.requirements.iter().any(|requirement| {
+            requirement
+                .legal_targets
+                .iter()
+                .any(|target| *target == crate::game_state::Target::Object(target_id))
+        }),
+        "free-cast ferocious Stubborn Denial should expose the stack spell target"
+    );
+}
+
+#[cfg(feature = "generated-registry")]
+#[test]
+fn generated_registry_stubborn_denial_ferocious_free_cast_prompts_for_target() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let omniscience = crate::cards::CardRegistry::try_compile_card("Omniscience")
+        .expect("generated Omniscience should compile");
+    let omniscience_id = game.create_object_from_definition(&omniscience, alice, Zone::Battlefield);
+
+    let ferocious_creature = crate::card::CardBuilder::new(CardId::new(), "Ferocious Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_card(&ferocious_creature, alice, Zone::Battlefield);
+
+    let lightning_bolt = crate::cards::CardRegistry::try_compile_card("Lightning Bolt")
+        .expect("generated Lightning Bolt should compile");
+    let target_id = game.create_object_from_definition(&lightning_bolt, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let stubborn_denial = crate::cards::CardRegistry::try_compile_card("Stubborn Denial")
+        .expect("generated Stubborn Denial should compile");
+    let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Hand);
+
+    let cast_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method:
+                        crate::alternative_cast::CastingMethod::PlayFrom {
+                            source,
+                            use_alternative: Some(_),
+                            ..
+                        },
+                } if *spell_id == denial_id && *source == omniscience_id
+            )
+        })
+        .expect("generated Omniscience should offer Stubborn Denial as a free cast");
+
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_action),
+        &mut decision_maker,
+    )
+    .expect("free-casting generated Stubborn Denial should not fail");
+
+    let crate::decision::GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::Targets(ctx),
+    ) = progress
+    else {
+        panic!("expected generated Stubborn Denial target prompt, got {progress:?}");
+    };
+
+    assert!(
+        ctx.requirements.iter().any(|requirement| {
+            requirement
+                .legal_targets
+                .iter()
+                .any(|target| *target == crate::game_state::Target::Object(target_id))
+        }),
+        "generated free-cast ferocious Stubborn Denial should expose the stack spell target"
+    );
+}
+
+#[test]
+fn parse_oracle_stubborn_denial_lets_target_controller_pay_without_ferocious() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Probe Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    let target_stable_id = game
+        .object(target_id)
+        .expect("target spell should exist")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let stubborn_denial = parse_oracle_card_definition("Stubborn Denial");
+    let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(denial_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)]),
+    );
+
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Stubborn Denial should resolve");
+
+    let target_after = game
+        .find_object_by_stable_id(target_stable_id)
+        .expect("target spell should still be tracked");
+    assert_eq!(
+        game.object(target_after).expect("target spell exists").zone,
+        Zone::Stack,
+        "without ferocious, Bob should be able to pay {{1}} and keep the target spell on the stack"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "Bob should spend the {{1}} prevention payment"
+    );
+}
+
+#[test]
+fn parse_oracle_stubborn_denial_ferocious_counters_without_payment() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ferocious_creature = crate::card::CardBuilder::new(CardId::new(), "Ferocious Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_card(&ferocious_creature, alice, Zone::Battlefield);
+
+    let target_card = crate::card::CardBuilder::new(CardId::new(), "Bob Probe Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    let target_stable_id = game
+        .object(target_id)
+        .expect("target spell should exist")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(target_id, bob));
+
+    let stubborn_denial = parse_oracle_card_definition("Stubborn Denial");
+    let denial_id = game.create_object_from_definition(&stubborn_denial, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(denial_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)]),
+    );
+
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Stubborn Denial should resolve");
+
+    let target_after = game
+        .find_object_by_stable_id(target_stable_id)
+        .expect("countered target spell should still be tracked");
+    assert_eq!(
+        game.object(target_after).expect("target spell exists").zone,
+        Zone::Graveyard,
+        "ferocious should replace the unless-payment effect with an unconditional counter"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        1,
+        "ferocious should not offer or spend the {{1}} prevention payment"
     );
 }
 

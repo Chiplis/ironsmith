@@ -9,10 +9,6 @@ struct UnsupportedWordRule {
 
 const UNSUPPORTED_STARTS_WITH_RULES: &[UnsupportedWordRule] = &[
     UnsupportedWordRule {
-        phrase: &["partner", "with"],
-        message: "unsupported partner-with keyword line [rule=partner-with-keyword-line]",
-    },
-    UnsupportedWordRule {
         phrase: &[
             "the", "first", "creature", "spell", "you", "cast", "each", "turn", "costs",
         ],

@@ -93,8 +93,8 @@ pub(crate) use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
 pub(crate) use fanout_family::{
-    parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
-    parse_shared_color_target_fanout_sentence,
+    parse_compound_damage_fanout_sentence, parse_same_name_gets_fanout_sentence,
+    parse_same_name_target_fanout_sentence, parse_shared_color_target_fanout_sentence,
 };
 pub(crate) use gain_ability::*;
 pub(crate) use lex_chain_helpers::find_verb_lexed;
