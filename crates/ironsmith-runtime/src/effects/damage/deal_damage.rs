@@ -13,7 +13,7 @@ use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot;
 use crate::game_state::GameState;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
 use crate::triggers::TriggerEvent;
 use crate::types::CardType;
@@ -261,6 +261,45 @@ impl EffectExecutor for DealDamageEffect {
         // Handle SourceController - deal damage to the controller of the source (e.g., Ancient Tomb)
         if let ChooseSpec::SourceController = &self.target {
             let controller = ctx.controller;
+            return Ok(apply_processed_damage_outcome(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                DamageTarget::Player(controller),
+                amount,
+                self.source_is_combat,
+                ctx.provenance,
+                ctx.cause.clone(),
+            ));
+        }
+
+        let controller_of_tagged = match &self.target {
+            ChooseSpec::Player(
+                PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+                | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag)),
+            ) => Some(tag),
+            ChooseSpec::Target(inner) => match inner.as_ref() {
+                ChooseSpec::Player(
+                    PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+                    | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag)),
+                ) => Some(tag),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(tag) = controller_of_tagged {
+            let controller = ctx
+                .get_tagged(tag)
+                .map(|snapshot| snapshot.controller)
+                .or_else(|| {
+                    ctx.triggering_event
+                        .as_ref()
+                        .and_then(|event| event.snapshot())
+                        .map(|snapshot| snapshot.controller)
+                });
+            let Some(controller) = controller else {
+                return Ok(EffectOutcome::target_invalid());
+            };
             return Ok(apply_processed_damage_outcome(
                 game,
                 ctx.source,

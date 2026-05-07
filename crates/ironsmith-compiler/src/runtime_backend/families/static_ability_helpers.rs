@@ -163,10 +163,22 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
             "annihilator {amount}"
         ))),
+        KeywordAction::Marker(name) if supported_keyword_marker_text(name) => {
+            Some(StaticAbility::keyword_marker(name))
+        }
+        KeywordAction::MarkerText(text) if supported_keyword_marker_text(&text) => {
+            Some(StaticAbility::keyword_marker(text))
+        }
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
         KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
         _ => None,
     }
+}
+
+fn supported_keyword_marker_text(text: &str) -> bool {
+    text.trim_start()
+        .to_ascii_lowercase()
+        .starts_with("prototype ")
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {
@@ -182,6 +194,7 @@ pub(crate) fn lower_granted_ability_ast(
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
         GrantedAbilityAst::KeywordAction(action) => lower_keyword_action_or_err(action.clone()),
+        GrantedAbilityAst::StaticAbility(ability) => Ok(ability.clone()),
         GrantedAbilityAst::MustAttack => Ok(StaticAbility::must_attack()),
         GrantedAbilityAst::MustBlock => Ok(StaticAbility::must_block()),
         GrantedAbilityAst::CanAttackAsThoughNoDefender => {
@@ -214,6 +227,9 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
         GrantedAbilityAst::KeywordAction(action) => {
             let static_ability = lower_keyword_action_or_err(action.clone())?;
             Ok(Ability::static_ability(static_ability))
+        }
+        GrantedAbilityAst::StaticAbility(static_ability) => {
+            Ok(Ability::static_ability(static_ability.clone()))
         }
         GrantedAbilityAst::MustAttack => {
             let static_ability = StaticAbility::must_attack();

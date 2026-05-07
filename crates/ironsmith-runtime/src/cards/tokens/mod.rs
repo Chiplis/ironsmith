@@ -6,6 +6,7 @@ mod incubator_token;
 mod junk_token;
 mod lander_token;
 mod map_token;
+mod mutagen_token;
 mod role_token;
 mod shard_token;
 mod treasure_token;
@@ -17,6 +18,7 @@ pub use incubator_token::{incubator_token_definition, incubator_token_definition
 pub use junk_token::junk_token_definition;
 pub use lander_token::lander_token_definition;
 pub use map_token::map_token_definition;
+pub use mutagen_token::mutagen_token_definition;
 pub use role_token::{
     cursed_role_token_definition, monster_role_token_definition, royal_role_token_definition,
     sorcerer_role_token_definition, wicked_role_token_definition, young_hero_role_token_definition,

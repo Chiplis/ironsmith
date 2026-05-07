@@ -437,7 +437,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
             )
         }
         // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => {
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
             compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
                 game,
                 inner,

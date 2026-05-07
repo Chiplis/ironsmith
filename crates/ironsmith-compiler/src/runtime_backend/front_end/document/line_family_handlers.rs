@@ -183,17 +183,53 @@ pub(super) fn run_station_line_family(
     let cost = parse_activation_cost_tokens_rewrite(&cost_tokens)?;
     let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
 
-    Ok(Some(LineDispatchResult::single(
-        RewriteLineCst::Activated(ActivatedLineCst {
-            info: ctx.line.info.clone(),
-            cost,
-            cost_parse_tokens: cost_tokens,
-            effect_text,
-            effect_parse_tokens,
-            chosen_option_label: None,
-        }),
-        ctx.idx + 1,
-    )))
+    let mut lines = vec![RewriteLineCst::Activated(ActivatedLineCst {
+        info: ctx.line.info.clone(),
+        cost,
+        cost_parse_tokens: cost_tokens,
+        effect_text,
+        effect_parse_tokens,
+        chosen_option_label: None,
+    })];
+
+    let has_explicit_station_threshold_rows = ctx
+        .preprocessed
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            PreprocessedItem::Line(line) => Some(line),
+            PreprocessedItem::Metadata(_) => None,
+        })
+        .any(|line| parse_station_threshold_line(line.info.raw_line.as_str()).is_some());
+    if !has_explicit_station_threshold_rows
+        && let Some(threshold) = parse_station_keyword_creature_threshold(&lower)
+        && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
+    {
+        let label = station_threshold_condition_label(threshold);
+        let power = pt.power.base_value();
+        let toughness = pt.toughness.base_value();
+        for static_text in [
+            "This artifact is a creature in addition to its other types.".to_string(),
+            format!("This artifact has base power and toughness {power}/{toughness}."),
+        ] {
+            let static_line = rewrite_line_normalized(ctx.line, static_text.as_str())?;
+            let Some(static_cst) = parse_static_line_cst(&static_line)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "parser could not lower station reminder threshold support: '{}'",
+                    ctx.line.info.raw_line
+                )));
+            };
+            lines.push(RewriteLineCst::Static(StaticLineCst {
+                chosen_option_label: Some(label.clone()),
+                ..static_cst
+            }));
+        }
+    }
+
+    Ok(Some(LineDispatchResult {
+        lines,
+        next_idx: ctx.idx + 1,
+    }))
 }
 
 pub(super) fn run_station_threshold_line_family(
@@ -209,7 +245,6 @@ pub(super) fn run_station_threshold_line_family(
     {
         body_text = rewritten;
     }
-    body_text = body_text.replace(" an additional land ", " one additional land ");
     if !body_text.ends_with(['.', '!', '?']) {
         body_text.push('.');
     }
@@ -299,6 +334,20 @@ fn parse_station_threshold_line(raw_line: &str) -> Option<(i32, String)> {
         .ok()?;
     let body = body.trim();
     (!body.is_empty()).then(|| (threshold, body.to_string()))
+}
+
+fn parse_station_keyword_creature_threshold(lower: &str) -> Option<i32> {
+    let marker = "artifact creature at ";
+    let start = lower.find(marker)? + marker.len();
+    let tail = &lower[start..];
+    let digits = tail
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() || !tail[digits.len()..].starts_with('+') {
+        return None;
+    }
+    digits.parse().ok()
 }
 
 fn station_threshold_condition_label(threshold: i32) -> String {

@@ -744,6 +744,95 @@ fn parse_effect_sentence_with_where_x_lexed(
         }
     }
 
+    fn bind_dynamic_target_count(target: &mut TargetAst, replacement: &Value) {
+        match target {
+            TargetAst::WithCount(inner, count) => {
+                bind_dynamic_target_count(inner, replacement);
+                if count.is_dynamic_x() {
+                    let old = std::mem::replace(target, TargetAst::Source(None));
+                    if let TargetAst::WithCount(inner, count) = old {
+                        *target = TargetAst::WithCountValue(inner, count, replacement.clone());
+                    }
+                }
+            }
+            TargetAst::WithCountValue(inner, _, value) => {
+                bind_dynamic_target_count(inner, replacement);
+                if matches!(value, Value::X) {
+                    *value = replacement.clone();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn bind_dynamic_target_counts(effect: &mut EffectAst, replacement: &Value) {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+            return;
+        };
+        match action {
+            SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Connive { target, .. }
+            | SubjectVerbActionAst::ExchangeTextBoxes { target }
+            | SubjectVerbActionAst::Attach { target, .. }
+            | SubjectVerbActionAst::MayMoveToZone { target, .. }
+            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
+            | SubjectVerbActionAst::MoveToZone { target, .. }
+            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
+            | SubjectVerbActionAst::TargetOnly { target }
+            | SubjectVerbActionAst::Pump { target, .. }
+            | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
+            | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
+            | SubjectVerbActionAst::SetBasePower { target, .. }
+            | SubjectVerbActionAst::PumpForEach { target, .. }
+            | SubjectVerbActionAst::PumpByLastEffect { target, .. }
+            | SubjectVerbActionAst::AddCardTypes { target, .. }
+            | SubjectVerbActionAst::RemoveCardTypes { target, .. }
+            | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
+            | SubjectVerbActionAst::SetColors { target, .. }
+            | SubjectVerbActionAst::MakeColorless { target, .. }
+            | SubjectVerbActionAst::BecomeBasicLandTypeChoice { target, .. }
+            | SubjectVerbActionAst::BecomeCreatureTypeChoice { target, .. }
+            | SubjectVerbActionAst::BecomeColorChoice { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+            | SubjectVerbActionAst::GrantToTarget { target, .. }
+            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
+            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
+            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RetargetStackObject { target, .. }
+            | SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
+            | SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::Untap { target } => bind_dynamic_target_count(target, replacement),
+            SubjectVerbActionAst::Fight {
+                creature1,
+                creature2,
+            }
+            | SubjectVerbActionAst::DealDamageEqualToPower {
+                source: creature1,
+                target: creature2,
+            }
+            | SubjectVerbActionAst::BecomeCopy {
+                target: creature1,
+                source: creature2,
+                ..
+            } => {
+                bind_dynamic_target_count(creature1, replacement);
+                bind_dynamic_target_count(creature2, replacement);
+            }
+            SubjectVerbActionAst::CreateTokenCopyFromSource { source, .. } => {
+                bind_dynamic_target_count(source, replacement);
+            }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                attached_to: Some(target),
+                ..
+            } => bind_dynamic_target_count(target, replacement),
+            _ => {}
+        }
+    }
+
     let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
     let Some(where_idx) =
@@ -751,7 +840,12 @@ fn parse_effect_sentence_with_where_x_lexed(
     else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
-    let Some(where_token_idx) = token_index_for_word_index(tokens, where_idx) else {
+    let where_token_idx = token_index_for_word_index(tokens, where_idx).or_else(|| {
+        tokens.windows(3).position(|window| {
+            window[0].is_word("where") && window[1].is_word("x") && window[2].is_word("is")
+        })
+    });
+    let Some(where_token_idx) = where_token_idx else {
         return Err(CardTextError::ParseError(format!(
             "unsupported where-x clause (clause: '{}')",
             clause_words.join(" ")
@@ -940,12 +1034,38 @@ fn parse_effect_sentence_with_where_x_lexed(
                     crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
                 ))),
             ),
-            _ => parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported where-x clause (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?,
+            _ => {
+                let activation_time_trimmed = primary_where_tokens
+                    .iter()
+                    .position(|token| token.is_word("as"))
+                    .map(|token_idx| trim_edge_punctuation(&primary_where_tokens[..token_idx]));
+                let number_of_filter_value =
+                    crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+                        primary_where_tokens,
+                    )
+                    .or_else(|| {
+                        activation_time_trimmed.as_deref().and_then(
+                            crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value,
+                        )
+                    });
+                if let Some(value) = number_of_filter_value {
+                    value
+                } else if let Some(trimmed) = activation_time_trimmed.as_deref() {
+                    parse_value_binding_clause_lexed(trimmed).ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported where-x clause (clause: '{}')",
+                            clause_words.join(" ")
+                        ))
+                    })?
+                } else {
+                    parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported where-x clause (clause: '{}')",
+                            clause_words.join(" ")
+                        ))
+                    })?
+                }
+            }
         }
     }
     .with_surface_hint(ValueSurfaceHint::WhereXIs);
@@ -966,6 +1086,7 @@ fn parse_effect_sentence_with_where_x_lexed(
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
     for effect in &mut effects {
         replace_search_filter_x(effect, &where_value);
+        bind_dynamic_target_counts(effect, &where_value);
     }
     if !prelude_effects.is_empty() {
         prelude_effects.append(&mut effects);

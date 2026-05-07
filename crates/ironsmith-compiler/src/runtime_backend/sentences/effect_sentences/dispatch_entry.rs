@@ -587,6 +587,22 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
+    if str_contains(&normalized, "the next time")
+        && str_contains(&normalized, "cast an instant or sorcery spell")
+        && str_contains(&normalized, "from your hand")
+        && str_contains(&normalized, "this turn")
+        && str_contains(&normalized, "put that card into your hand")
+        && str_contains(&normalized, "instead of into your graveyard")
+    {
+        return Some(EffectAst::subject_verb_register_future_zone_replacement(
+            ObjectFilter::instant_or_sorcery().cast_by_you(),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Hand,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
     None
 }
 
@@ -2321,6 +2337,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }

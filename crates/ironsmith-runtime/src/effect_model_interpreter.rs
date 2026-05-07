@@ -1103,6 +1103,11 @@ where
         return Ok(Effect::new(converted));
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ExileInsteadOfGraveyardEffect>(&effect)
     {
         return Ok(converted);

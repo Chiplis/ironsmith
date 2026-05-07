@@ -320,6 +320,13 @@ impl ManaSpendPermission {
             scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
         }
     }
+
+    pub fn any_color_for_casting_matching(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::CastingSpellsMatching(filter),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -327,6 +334,7 @@ pub enum ManaSpendScope {
     AllCosts,
     ActivationCostsOf(ObjectFilter),
     CastingSpellsWithStableIds(Vec<StableId>),
+    CastingSpellsMatching(ObjectFilter),
 }
 
 impl Restriction {

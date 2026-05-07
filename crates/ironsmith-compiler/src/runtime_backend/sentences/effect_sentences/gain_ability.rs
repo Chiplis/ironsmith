@@ -34,6 +34,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
@@ -297,6 +298,42 @@ fn parse_granted_ability_component_for_gain(
     let ability_tokens = trim_edge_punctuation(ability_tokens);
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+    let ability_words = GainAbilityWordView::new(&ability_tokens).to_word_refs();
+    if matches!(
+        ability_words.as_slice(),
+        [
+            "cant",
+            "be",
+            "blocked",
+            "this",
+            "turn",
+            "except",
+            "by",
+            "creatures",
+            "with",
+            "haste"
+        ] | [
+            "cant",
+            "be",
+            "blocked",
+            "except",
+            "by",
+            "creatures",
+            "with",
+            "haste"
+        ]
+    ) {
+        let restriction = crate::effect::Restriction::block_specific_attacker(
+            ObjectFilter::creature().without_static_ability(StaticAbilityId::Haste),
+            ObjectFilter::source(),
+        );
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(
+            StaticAbility::restriction(
+                restriction,
+                "can't be blocked except by creatures with haste".to_string(),
+            ),
+        )]));
     }
 
     if grammar::words_match_any_prefix(&ability_tokens, &[&["hexproof", "from"]]).is_some() {
@@ -1047,6 +1084,21 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let (mut abilities, grant_is_choice) =
         parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, !losing)?;
+    if !trailing_tail_tokens.is_empty() {
+        let mut tail_tokens = trailing_tail_tokens.as_slice();
+        if tail_tokens
+            .first()
+            .is_some_and(|token| token.is_word("and") || token.is_word("then"))
+        {
+            tail_tokens = &tail_tokens[1..];
+        }
+        let (trailing_abilities, trailing_is_choice) =
+            parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
+        if !trailing_abilities.is_empty() && !trailing_is_choice {
+            abilities.extend(trailing_abilities);
+            trailing_tail_tokens.clear();
+        }
+    }
     let removes_all_abilities = losing
         && GainAbilityWordView::new(&ability_tokens)
             .to_word_refs()
@@ -1228,8 +1280,12 @@ pub(crate) fn parse_gain_ability_sentence(
                     let mut start_idx = idx;
                     if idx >= 3 && before_gain[idx - 3..idx] == ["up", "to", "one"] {
                         start_idx = idx - 3;
+                    } else if idx >= 3 && before_gain[idx - 3..idx] == ["up", "to", "x"] {
+                        start_idx = idx - 3;
                     } else if idx >= 3 && before_gain[idx - 3..idx] == ["any", "number", "of"] {
                         start_idx = idx - 3;
+                    } else if idx >= 1 && before_gain[idx - 1] == "x" {
+                        start_idx = idx - 1;
                     } else if idx >= 4 && before_gain[idx - 4..idx] == ["each", "of", "up", "to"] {
                         start_idx = idx - 4;
                     }

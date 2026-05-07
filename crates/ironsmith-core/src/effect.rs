@@ -3331,6 +3331,33 @@ impl RegisterZoneReplacementEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterFutureZoneReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub from_zone: Option<crate::zone::Zone>,
+    pub to_zone: Option<crate::zone::Zone>,
+    pub replacement_zone: crate::zone::Zone,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterFutureZoneReplacementEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        from_zone: Option<crate::zone::Zone>,
+        to_zone: Option<crate::zone::Zone>,
+        replacement_zone: crate::zone::Zone,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            filter,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            mode,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LearnEffect;
 

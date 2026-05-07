@@ -168,7 +168,17 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
-    StaticAbility::keyword_fallback_text(keyword_static_clause_text(tokens))
+    let text = keyword_static_clause_text(tokens);
+    if supported_keyword_marker_text(&text) {
+        return StaticAbility::keyword_marker(text);
+    }
+    StaticAbility::keyword_fallback_text(text)
+}
+
+fn supported_keyword_marker_text(text: &str) -> bool {
+    text.trim_start()
+        .to_ascii_lowercase()
+        .starts_with("prototype ")
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -6090,7 +6100,7 @@ pub(crate) fn parse_additional_land_play_line(
         return Ok(None);
     };
     let (count, used) = match tokens[count_token_idx].as_word() {
-        Some("a" | "an") => (1, 1),
+        Some("a" | "an" | "one") => (1, 1),
         _ => {
             let Some((count, used)) = parse_number(&tokens[count_token_idx..]) else {
                 return Ok(None);
@@ -6771,6 +6781,46 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if slice_starts_with(
+        &clause_words,
+        &[
+            "you", "can", "spend", "mana", "of", "any", "type", "to", "cast",
+        ],
+    ) || slice_starts_with(
+        &clause_words,
+        &[
+            "you", "may", "spend", "mana", "of", "any", "type", "to", "cast",
+        ],
+    ) {
+        let filter_start = 9usize;
+        let filter_tokens = trim_edge_punctuation(&tokens[filter_start..]);
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+        let filter = parse_object_filter(&filter_tokens, false)
+            .map(|mut filter| {
+                filter.zone = None;
+                filter.stack_kind = None;
+                filter.has_mana_cost = false;
+                filter
+            })
+            .map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported mana spend cast filter (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::mana_spend_permission(
+                crate::effect::ManaSpendPermission::any_color_for_casting_matching(
+                    PlayerFilter::You,
+                    filter,
+                ),
+                clause_words.join(" "),
+            ),
+        )));
+    }
+
     let (player, tail_start, display) = if slice_starts_with(
         &clause_words,
         &[

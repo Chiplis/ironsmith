@@ -445,7 +445,7 @@ pub(super) fn format_alternative_method(
             }
             ("Bestow".to_string(), parts.join(", "))
         }
-        AlternativeCastingMethod::Composed { .. } => {
+        AlternativeCastingMethod::Composed { .. } | AlternativeCastingMethod::FromZone { .. } => {
             let mana_cost = method.mana_cost();
             let name = method.name();
             let mut parts = Vec::new();

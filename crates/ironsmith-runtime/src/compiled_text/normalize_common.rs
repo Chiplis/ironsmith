@@ -6283,7 +6283,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::SpecificObject(_) => "that object".to_string(),
         ChooseSpec::SpecificPlayer(_) => "that player".to_string(),
         ChooseSpec::Iterated => "that object".to_string(),
-        ChooseSpec::WithCount(inner, count) => {
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             let inner_text = describe_choose_spec(inner);
             let random_suffix = if count.is_random() {
                 if count.is_single() {

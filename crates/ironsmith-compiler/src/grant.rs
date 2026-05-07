@@ -14,4 +14,4 @@ pub type GrantSpec = ironsmith_core::GrantSpec<
     Cost,
     crate::static_abilities::ThisSpellCastCondition,
 >;
-pub use ironsmith_core::GrantDuration;
+pub use ironsmith_core::{GrantDuration, GrantUsageLimit};

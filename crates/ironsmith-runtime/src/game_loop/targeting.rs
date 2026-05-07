@@ -361,6 +361,37 @@ fn declare_target(profile: &ExtractedTarget<'_>, declared: &mut Vec<DeclaredTarg
     }
 }
 
+fn resolved_target_bounds(
+    game: &GameState,
+    profile: &ExtractedTarget<'_>,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+) -> (usize, Option<usize>) {
+    let Some(count_value) = profile.count_value else {
+        return (profile.min_targets, profile.max_targets);
+    };
+    let count = profile.spec.count();
+    if !count.is_dynamic_x() {
+        return (profile.min_targets, profile.max_targets);
+    }
+
+    let Some(source_id) = source_id else {
+        return (profile.min_targets, profile.max_targets);
+    };
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, caster, &mut decision_maker);
+    ctx.x_value = game.object(source_id).and_then(|source| source.x_value);
+    let Ok(resolved) = crate::effects::helpers::resolve_value(game, count_value, &ctx) else {
+        return (profile.min_targets, profile.max_targets);
+    };
+    let resolved = resolved.max(0) as usize;
+    if count.is_up_to_dynamic_x() {
+        (0, Some(resolved))
+    } else {
+        (resolved, Some(resolved))
+    }
+}
+
 fn player_filter_reuses_declared_target(candidate: &PlayerFilter, declared: &PlayerFilter) -> bool {
     candidate == declared
         || matches!(declared, PlayerFilter::Target(inner) if candidate == inner.as_ref())
@@ -674,17 +705,18 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         }
         declare_target(&extracted, declared_targets);
         let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
+        let (min_targets, max_targets) =
+            resolved_target_bounds(game, &extracted, caster, source_id);
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
-        let has_enough_targets =
-            extracted.min_targets == 0 || legal_targets.len() >= extracted.min_targets;
+        let has_enough_targets = min_targets == 0 || legal_targets.len() >= min_targets;
         if has_enough_targets {
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 legal_targets,
                 description: extracted.description.to_string(),
-                min_targets: extracted.min_targets,
-                max_targets: extracted.max_targets,
+                min_targets,
+                max_targets,
             });
         }
     }

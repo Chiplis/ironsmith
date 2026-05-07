@@ -1,5 +1,5 @@
 use crate::diagnostics::TextSpan;
-use ironsmith_core::{ChoiceCount, TagKey};
+use ironsmith_core::{ChoiceCount, TagKey, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageBySpec {
@@ -107,7 +107,7 @@ pub enum ExchangeValueAst<
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TargetAst<
     PlayerFilter = crate::target::PlayerFilter,
     ObjectFilter = crate::target::ObjectFilter,
@@ -123,6 +123,11 @@ pub enum TargetAst<
     Object(ObjectFilter, Option<TextSpan>, Option<TextSpan>),
     Tagged(Tag, Option<TextSpan>),
     WithCount(Box<TargetAst<PlayerFilter, ObjectFilter, Tag>>, ChoiceCount),
+    WithCountValue(
+        Box<TargetAst<PlayerFilter, ObjectFilter, Tag>>,
+        ChoiceCount,
+        Value,
+    ),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

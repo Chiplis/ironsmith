@@ -38,7 +38,9 @@ use super::util::classify_instead_followup_text;
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     match target {
         TargetAst::Tagged(_, _) | TargetAst::Object(_, _, _) => true,
-        TargetAst::WithCount(inner, _) => target_can_establish_local_object_reference(inner),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_can_establish_local_object_reference(inner)
+        }
         TargetAst::Source(_)
         | TargetAst::AnyTarget(_)
         | TargetAst::AnyOtherTarget(_)
@@ -891,10 +893,22 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
             "annihilator {amount}"
         ))),
+        KeywordAction::Marker(name) if supported_keyword_marker_text(name) => {
+            Some(StaticAbility::keyword_marker(name))
+        }
+        KeywordAction::MarkerText(text) if supported_keyword_marker_text(&text) => {
+            Some(StaticAbility::keyword_marker(text))
+        }
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
         KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_fallback_text(text)),
         _ => None,
     }
+}
+
+fn supported_keyword_marker_text(text: &str) -> bool {
+    text.trim_start()
+        .to_ascii_lowercase()
+        .starts_with("prototype ")
 }
 
 fn rewrite_lower_keyword_action_or_err(

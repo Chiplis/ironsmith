@@ -416,7 +416,9 @@ pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
             player_filter_references_tag(filter, tag)
         }
-        TargetAst::WithCount(inner, _) => target_references_tag(inner, tag),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_references_tag(inner, tag)
+        }
         TargetAst::AttackedPlayerOrPlaneswalker(_) => false,
         TargetAst::Source(_)
         | TargetAst::AnyTarget(_)
@@ -719,6 +721,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
         | SubjectVerbActionAst::MayMoveToZone { .. }
         | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+        | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }

@@ -740,6 +740,7 @@ impl<'a> DerivedGameView<'a> {
                     method: method.clone(),
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
+                    usage_limit: None,
                 }),
                 Grantable::DerivedAlternativeCast(spec) => {
                     materialize_derived_alternative_cast(card, spec).map(|method| {
@@ -747,6 +748,7 @@ impl<'a> DerivedGameView<'a> {
                             method,
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
+                            usage_limit: spec.usage_limit(),
                         }
                     })
                 }

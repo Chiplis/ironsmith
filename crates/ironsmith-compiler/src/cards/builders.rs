@@ -37,6 +37,7 @@ pub(crate) use crate::runtime_backend::{
 pub(crate) use crate::runtime_backend::{
     find_verb, parse_effect_sentence_lexed, parse_shared_color_target_fanout_sentence,
 };
+use crate::static_abilities::StaticAbility;
 pub(crate) use crate::tag::TagKey;
 pub use crate::target::{ObjectFilter, PlayerFilter};
 pub use crate::types::CardType;
@@ -51,6 +52,7 @@ pub(crate) mod document_parser {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GrantedAbilityAst {
     KeywordAction(KeywordAction),
+    StaticAbility(StaticAbility),
     MustAttack,
     MustBlock,
     CanAttackAsThoughNoDefender,
@@ -203,6 +205,15 @@ impl CardDefinitionBuilder {
             if text.eq_ignore_ascii_case("fuse") {
                 self.has_fuse = true;
                 return self;
+            }
+            if let Some(cost) = parse_prototype_marker_cost(&text) {
+                self.alternative_casts.push(
+                    crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                        "Prototype",
+                        Some(cost),
+                        vec![],
+                    ),
+                );
             }
             if let Some(amount) = parse_standalone_bolster_marker(&text)
                 && self
@@ -2066,4 +2077,20 @@ fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
         .then(|| parts.next().and_then(|amount| amount.parse::<u32>().ok()))
         .flatten()
         .filter(|_| parts.next().is_none())
+}
+
+fn parse_prototype_marker_cost(text: &str) -> Option<ManaCost> {
+    let trimmed = text.trim();
+    let rest = trimmed
+        .strip_prefix("Prototype")
+        .or_else(|| trimmed.strip_prefix("prototype"))?
+        .trim_start();
+    let cost_text = rest
+        .split(|ch| matches!(ch, '-' | '—' | '–'))
+        .next()?
+        .trim();
+    if cost_text.is_empty() {
+        return None;
+    }
+    crate::runtime_backend::parse_scryfall_mana_cost(&cost_text.to_ascii_uppercase()).ok()
 }

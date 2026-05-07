@@ -1,6 +1,24 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
+fn grant_usage_limit_allows(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    limit: Option<crate::grant::GrantUsageLimit>,
+) -> bool {
+    match limit {
+        Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns) => {
+            game.turn.active_player == player
+                && !game
+                    .turn_store
+                    .grant_cast_uses_this_turn
+                    .contains(&(player, source_id))
+        }
+        None => true,
+    }
+}
+
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -112,8 +130,12 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
 ) {
     let granted_casts = view.granted_alternative_casts_for_card(card_id, Zone::Graveyard, player);
 
-    for grant in granted_casts {
+    let base_alt_idx = card.alternative_casts.len();
+    for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
+        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+            continue;
+        }
         let requirements = build_requirements_for_method(method);
         let mana_cost = get_mana_cost_for_method(method, card);
         let casting_method = match method {
@@ -126,6 +148,14 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
             crate::alternative_cast::AlternativeCastingMethod::Flashback { .. } => {
                 CastingMethod::GrantedFlashback
             }
+            crate::alternative_cast::AlternativeCastingMethod::FromZone {
+                zone: Zone::Graveyard,
+                ..
+            } => CastingMethod::PlayFrom {
+                source: grant.source_id,
+                zone: Zone::Graveyard,
+                use_alternative: Some(base_alt_idx + offset),
+            },
             _ => continue,
         };
 
@@ -168,6 +198,7 @@ fn append_hand_granted_alternative_cast_actions_for_card(
 
     for (offset, grant) in granted_casts.iter().enumerate() {
         if grant.method.cast_from_zone() != Zone::Hand
+            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
             || !can_cast_with_alternative_from_hand_with_view(
                 game,
                 player,

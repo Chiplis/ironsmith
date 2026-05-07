@@ -1910,10 +1910,10 @@ fn build_registry_card_record(card: &Value) -> Option<RegistryCardRecord> {
         .filter(|value| !value.is_empty() && *value != name)
         .map(ToOwned::to_owned);
 
-    let raw_oracle_text = pick_field(card, face, "oracle_text")?.trim().to_string();
-    if raw_oracle_text.is_empty() {
-        return None;
-    }
+    let raw_oracle_text = pick_field(card, face, "oracle_text")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     let oracle_text = strip_parenthetical_text(&raw_oracle_text);
 
     let mana_cost = pick_field_preferring_face(card, face, "mana_cost");

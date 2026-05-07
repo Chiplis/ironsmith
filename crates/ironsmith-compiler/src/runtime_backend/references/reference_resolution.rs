@@ -1637,6 +1637,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
@@ -2145,7 +2146,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ClearSuspected {
                 target: Some(target),
             } => bind_unresolved_it_in_target(target, seed_tag),
-            SubjectVerbActionAst::ClearSuspected { target: None } => {}
+            SubjectVerbActionAst::ClearSuspected { target: None } => 0,
             SubjectVerbActionAst::RegenerateAll { filter } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
@@ -2205,6 +2206,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::RegisterFutureZoneReplacement { filter, .. } => {
+                bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::DestroyAllAttachedTo { filter, target } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)

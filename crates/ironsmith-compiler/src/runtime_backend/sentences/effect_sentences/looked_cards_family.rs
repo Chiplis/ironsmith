@@ -19,7 +19,7 @@ use crate::effect::Value;
 use crate::runtime_backend::grammar::primitives::TokenWordView;
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
-use ironsmith_core::{EffectMetric, EffectMetricSource};
+use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
@@ -96,12 +96,18 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
         let value_start = tail_word_view.token_index_for_word_index(7)?;
         let value_tokens = trim_commas(&tail_tokens[value_start..]);
         if let Some(resolved) = parse_prior_effect_number_value(&value_tokens) {
-            return Some((marker, resolved));
+            return Some((
+                marker,
+                resolved.with_surface_hint(ValueSurfaceHint::WhereXIs),
+            ));
         }
         if let Some((resolved, used_value)) = parse_value_from_lexed(&value_tokens)
             && TokenWordView::new(&value_tokens[used_value..]).is_empty()
         {
-            return Some((marker, resolved));
+            return Some((
+                marker,
+                resolved.with_surface_hint(ValueSurfaceHint::WhereXIs),
+            ));
         }
         let value_words = TokenWordView::new(&value_tokens);
         let value_word_refs = value_words.word_refs();
@@ -114,7 +120,10 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
             && let Some(resolved) =
                 parse_where_x_greatest_commander_mana_value(&value_tokens, commander_start)
         {
-            return Some((marker, resolved));
+            return Some((
+                marker,
+                resolved.with_surface_hint(ValueSurfaceHint::WhereXIs),
+            ));
         }
     }
 

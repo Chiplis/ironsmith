@@ -1,0 +1,138 @@
+package org.mage.test.cards.abilities.oneshot.counterspell;
+
+import mage.constants.PhaseStep;
+import mage.constants.Zone;
+import org.junit.Assert;
+import org.junit.Test;
+import org.mage.test.serverside.base.CardTestPlayerBase;
+
+/**
+ * {@link mage.cards.f.ForceOfWill Force of Will} {3}{U}{U}
+ * Instant
+ * You may pay 1 life and exile a blue card from your hand rather than pay Force of Will's mana cost.
+ * Counter target spell.
+ *
+ * @author LevelX2
+ */
+public class ForceOfWillTest extends CardTestPlayerBase {
+
+    /**
+     * Test that Force of Will can be played with alternate casting costs
+     */
+    @Test
+    public void testWithBlueCardsInHand() {
+        setStrictChooseMode(true);
+
+        addCard(Zone.HAND, playerA, "Thoughtseize");
+        addCard(Zone.BATTLEFIELD, playerA, "Swamp", 1);
+
+        addCard(Zone.HAND, playerB, "Force of Will");
+        addCard(Zone.HAND, playerB, "Remand", 2); // blue cards to pay force of will
+        addCard(Zone.BATTLEFIELD, playerB, "Island", 2);
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerA, "Thoughtseize", playerB);
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerB, "Force of Will", "Thoughtseize");
+        setChoice(playerB, "Cast with alternative cost: Pay 1 life, Exile a blue card from your hand (source: Force of Will");
+        setChoice(playerB, "Remand");
+
+        setStopAt(1, PhaseStep.CLEANUP);
+        execute();
+
+        assertLife(playerA, 20);
+        assertLife(playerB, 19); // losing 1 from Force of Will
+
+        assertHandCount(playerA, 0);
+        assertGraveyardCount(playerA, 1);
+        assertHandCount(playerB, 1);     // One Remand left
+        assertGraveyardCount(playerB, 1); // Force of Will 
+        assertExileCount("Remand", 1); // one Remand (cost from Force of Will)
+    }
+
+    /**
+     * Test that Force of Will can't be played with alternate casting costs
+     * if no blue card is in hand and not enough mana available
+     */
+    @Test
+    public void testWithRedCardsInHand() {
+        addCard(Zone.HAND, playerA, "Thoughtseize");
+        addCard(Zone.BATTLEFIELD, playerA, "Swamp", 1);
+
+        // No other Blue cards in hand
+        addCard(Zone.HAND, playerB, "Force of Will");
+        addCard(Zone.HAND, playerB, "Fireball", 2);
+
+        addCard(Zone.BATTLEFIELD, playerB, "Island", 2);
+
+        setStrictChooseMode(true);
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerA, "Thoughtseize", playerB);
+        playerA.addChoice("Fireball");
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerB, "Force of Will", "Thoughtseize");
+
+        setStopAt(1, PhaseStep.CLEANUP);
+
+        // TODO: Needed since the alternative cost is not being properly check for playability.
+        try {
+            execute();
+            Assert.fail("must throw exception on execute");
+        } catch (Throwable e) {
+            if (!e.getMessage().contains("Cast Force of Will$target=Thoughtseize")) {
+                Assert.fail("must throw error about not being able to cast Force of Will, but got:\n" + e.getMessage());
+            }
+        }
+    }
+
+    // https://github.com/magefree/mage/issues/14397
+    @Test
+    public void testWithLavinia() {
+        addCard(Zone.BATTLEFIELD, playerA, "Lavinia, Azorius Renegade");
+        addCard(Zone.HAND, playerA, "Balduvian Bears");
+        addCard(Zone.BATTLEFIELD, playerA, "Forest", 2);
+        addCard(Zone.HAND, playerB, "Force of Will");
+        addCard(Zone.HAND, playerB, "Remand");
+        addCard(Zone.BATTLEFIELD, playerB, "Island", 5);
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerA, "Balduvian Bears");
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerB, "Force of Will");
+        addTarget(playerB, "Balduvian Bears");
+        setChoice(playerB, "Cast with alternative cost: Pay 1 life, Exile a blue card from your hand (source: Force of Will");
+        setChoice(playerB, "Remand");
+
+        setStrictChooseMode(true);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+
+        assertPermanentCount(playerA, "Balduvian Bears", 1);
+        assertGraveyardCount(playerB, "Force of Will", 1);
+        assertExileCount(playerB, "Remand", 1);
+        assertLife(playerB, 19);
+    }
+
+    @Test
+    public void testWithBoromir() {
+        addCard(Zone.BATTLEFIELD, playerA, "Boromir, Warden of the Tower");
+        addCard(Zone.HAND, playerA, "Balduvian Bears");
+        addCard(Zone.BATTLEFIELD, playerA, "Forest", 2);
+        addCard(Zone.HAND, playerB, "Force of Will");
+        addCard(Zone.HAND, playerB, "Remand");
+        addCard(Zone.BATTLEFIELD, playerB, "Island", 5);
+
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerA, "Balduvian Bears");
+        castSpell(1, PhaseStep.PRECOMBAT_MAIN, playerB, "Force of Will");
+        addTarget(playerB, "Balduvian Bears");
+        setChoice(playerB, "Cast with alternative cost: Pay 1 life, Exile a blue card from your hand (source: Force of Will");
+        setChoice(playerB, "Remand");
+
+        setStrictChooseMode(true);
+        setStopAt(1, PhaseStep.PRECOMBAT_MAIN);
+        execute();
+
+        assertPermanentCount(playerA, "Balduvian Bears", 1);
+        assertGraveyardCount(playerB, "Force of Will", 1);
+        assertExileCount(playerB, "Remand", 1);
+        assertLife(playerB, 19);
+    }
+
+}

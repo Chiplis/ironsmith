@@ -134,6 +134,39 @@ pub fn junk_token_definition() -> CardDefinition {
         .with_ability(impulse_draw_ability)
         .build()
 }
+pub fn mutagen_token_definition() -> CardDefinition {
+    let ability = crate::ability::Ability {
+        kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            mana_cost: TotalCost::from_costs(vec![
+                Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+                Cost::tap(),
+                Cost::sacrifice_self(),
+            ]),
+            effects: vec![Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                1,
+                ChooseSpec::target(ChooseSpec::creature()),
+            )]
+            .into(),
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::SorcerySpeed,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: None,
+            activation_condition: None,
+            mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    };
+
+    CardDefinitionBuilder::new(CardId::new(), "Mutagen")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Mutagen])
+        .with_ability(ability)
+        .build()
+}
 pub fn gold_token_definition() -> CardDefinition {
     let mana_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {

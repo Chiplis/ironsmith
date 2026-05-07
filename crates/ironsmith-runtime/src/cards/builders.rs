@@ -841,6 +841,7 @@ impl TextSpan {
 #[derive(Debug, Clone)]
 pub(crate) enum GrantedAbilityAst {
     KeywordAction(KeywordAction),
+    StaticAbility(StaticAbility),
     MustAttack,
     MustBlock,
     CanAttackAsThoughNoDefender,
@@ -932,6 +933,7 @@ pub(crate) enum TargetAst {
     Object(ObjectFilter, Option<TextSpan>, Option<TextSpan>),
     Tagged(TagKey, Option<TextSpan>),
     WithCount(Box<TargetAst>, ChoiceCount),
+    WithCountValue(Box<TargetAst>, ChoiceCount, Value),
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]

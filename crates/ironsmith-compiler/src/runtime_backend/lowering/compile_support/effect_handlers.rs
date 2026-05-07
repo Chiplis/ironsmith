@@ -152,7 +152,9 @@ pub(super) fn try_compile_timing_and_control_effect(
             (vec![effect], choices)
         }
         EffectAst::DelayedTriggerThisTurn { trigger, effects } => {
-            let (delayed_effects, choices) = compile_trigger_effects(Some(trigger), effects)?;
+            let (delayed_effects, _delayed_choices) =
+                compile_trigger_effects(Some(trigger), effects)?;
+            let choices = Vec::new();
             match trigger {
                 TriggerSpec::IsDealtDamage(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -188,6 +190,15 @@ pub(super) fn try_compile_timing_and_control_effect(
                 TriggerSpec::PutIntoGraveyard(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                        let lowered = compile_trigger_effects_with_imports(
+                            Some(trigger),
+                            effects,
+                            &ReferenceImports {
+                                last_object_tag: Some(watched_tag.clone()),
+                                ..Default::default()
+                            },
+                        )?;
+                        let delayed_effects = lowered.effects.to_vec();
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                             watched_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::ThisDies,
@@ -206,6 +217,44 @@ pub(super) fn try_compile_timing_and_control_effect(
                                 ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(
                                     resolved_filter,
                                 ),
+                                delayed_effects,
+                                false,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
+                TriggerSpec::Dies(filter) => {
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                        let lowered = compile_trigger_effects_with_imports(
+                            Some(trigger),
+                            effects,
+                            &ReferenceImports {
+                                last_object_tag: Some(watched_tag.clone()),
+                                ..Default::default()
+                            },
+                        )?;
+                        let delayed_effects = lowered.effects.to_vec();
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::ThisDies,
+                            delayed_effects,
+                            false,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        );
+                        let delayed = delayed
+                            .with_target_filter(resolved_filter)
+                            .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::Dies(resolved_filter),
                                 delayed_effects,
                                 false,
                                 Vec::new(),

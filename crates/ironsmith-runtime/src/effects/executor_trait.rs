@@ -63,6 +63,7 @@ pub struct TargetSelectionProfile<'a> {
     pub description: &'static str,
     pub min_targets: usize,
     pub max_targets: Option<usize>,
+    pub count_value: Option<&'a crate::effect::Value>,
     pub reuse_policy: TargetReusePolicy,
 }
 
@@ -256,6 +257,7 @@ pub trait EffectExecutor:
             description: self.target_description(),
             min_targets,
             max_targets,
+            count_value: spec.count_value(),
             reuse_policy: self.target_reuse_policy(),
         })
     }

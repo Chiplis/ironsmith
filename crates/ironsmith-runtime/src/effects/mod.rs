@@ -171,7 +171,8 @@ pub use player::{
     VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
-    ApplyReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
+    ApplyReplacementEffect, RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect,
+    ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub use stack::{

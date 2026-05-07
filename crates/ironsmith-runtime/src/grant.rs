@@ -54,7 +54,7 @@ pub type GrantSpec = ironsmith_core::GrantSpec<
     Cost,
     crate::static_abilities::ThisSpellCostCondition,
 >;
-pub use ironsmith_core::GrantDuration;
+pub use ironsmith_core::{GrantDuration, GrantUsageLimit};
 
 impl ironsmith_core::GrantStaticAbility for StaticAbility {
     fn grant_flash() -> Self {
@@ -115,6 +115,24 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                         crate::mana::ManaSymbol::Generic(mana_value),
                     ])),
                     Vec::new(),
+                ))
+            }
+            Self::GraveyardCastFromCardManaCost {
+                additional_costs, ..
+            } => {
+                let mana_cost = card.mana_cost.clone()?;
+                if card.zone != Zone::Graveyard {
+                    return None;
+                }
+
+                let mut costs = vec![Cost::mana(mana_cost)];
+                costs.extend(additional_costs.iter().cloned());
+                Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                    "Cast from graveyard",
+                    Zone::Graveyard,
+                    TotalCost::from_costs(costs),
+                    Some(crate::static_abilities::ThisSpellCostCondition::YourTurn),
+                    false,
                 ))
             }
         }

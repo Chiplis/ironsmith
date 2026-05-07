@@ -327,6 +327,16 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
             ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }
+        compiler::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+            additional_costs,
+            usage_limit,
+        } => ironsmith::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+            additional_costs: additional_costs
+                .into_iter()
+                .map(runtime_cost_from_core_model)
+                .collect::<Result<Vec<_>, _>>()?,
+            usage_limit,
+        },
     })
 }
 

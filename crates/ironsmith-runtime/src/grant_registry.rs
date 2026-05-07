@@ -10,7 +10,9 @@
 
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::filter::ObjectFilterExt as _;
-use crate::grant::{DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, Grantable};
+use crate::grant::{
+    DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, GrantUsageLimit, Grantable,
+};
 use crate::ids::{ObjectId, PlayerId};
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
@@ -128,6 +130,7 @@ pub struct GrantedAlternativeCast {
     pub method: AlternativeCastingMethod,
     pub source_id: ObjectId,
     pub zone: Zone,
+    pub usage_limit: Option<GrantUsageLimit>,
 }
 
 /// A grant that allows playing cards from a zone as though from hand.
@@ -551,11 +554,15 @@ fn materialize_granted_alternative_cast(
     card_id: ObjectId,
     grant: Grant,
 ) -> Option<GrantedAlternativeCast> {
-    let method = match grant.grantable {
-        Grantable::AlternativeCast(method) => method,
+    let (method, usage_limit) = match grant.grantable {
+        Grantable::AlternativeCast(method) => (method, None),
         Grantable::DerivedAlternativeCast(spec) => {
             let card = game.object(card_id)?;
-            materialize_derived_alternative_cast(card, spec)?
+            let usage_limit = spec.usage_limit();
+            (
+                materialize_derived_alternative_cast(card, spec)?,
+                usage_limit,
+            )
         }
         Grantable::Ability(_) | Grantable::PlayFrom => return None,
     };
@@ -564,6 +571,7 @@ fn materialize_granted_alternative_cast(
         method,
         source_id: grant.source.source_id(),
         zone: grant.zone,
+        usage_limit,
     })
 }
 
@@ -721,6 +729,50 @@ mod tests {
             1,
             "self grant should apply to the card while it is in the graveyard"
         );
+    }
+
+    #[test]
+    fn test_static_graveyard_cast_grant_materializes_with_usage_limit() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let source = CardBuilder::new(crate::ids::CardId::from_raw(61), "Broodship Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let grant_spec = crate::grant::GrantSpec::new(
+            Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(vec![
+                crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
+            ]),
+            ObjectFilter {
+                card_types: vec![CardType::Artifact],
+                ..ObjectFilter::default()
+            },
+            Zone::Graveyard,
+        );
+        game.object_mut(source_id)
+            .expect("source permanent should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::grants(grant_spec)));
+
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(62), "Buried Artifact")
+            .card_types(vec![CardType::Artifact])
+            .mana_cost(ManaCost::new())
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+
+        let grants = game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, card_id, Zone::Graveyard, alice);
+        assert_eq!(grants.len(), 1);
+        assert_eq!(
+            grants[0].usage_limit,
+            Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+        );
+        assert_eq!(grants[0].method.cast_from_zone(), Zone::Graveyard);
+        assert!(!grants[0].method.exiles_after_resolution());
+        assert_eq!(grants[0].method.non_mana_costs().len(), 1);
     }
 
     #[test]

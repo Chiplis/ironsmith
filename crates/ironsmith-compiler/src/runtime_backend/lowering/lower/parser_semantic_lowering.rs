@@ -781,6 +781,12 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if let Some(count) = parse_additional_land_play_static_count_from_text(line.text.as_str()) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::additional_land_plays(count).into()),
+            chosen_option_label,
+        );
+    }
     if let Some(chunk) = try_lower_hideaway_text(line.text.as_str(), line.info.raw_line.as_str())? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
@@ -830,6 +836,18 @@ fn lower_rewrite_static_to_chunk_impl(
     {
         return Ok(LineAst::Abilities(actions));
     }
+    if let Some(abilities) =
+        crate::runtime_backend::families::keyword_static::parse_additional_land_play_line(&lexed)?
+    {
+        let abilities = abilities
+            .into_iter()
+            .map(crate::cards::builders::StaticAbilityAst::Static)
+            .collect();
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbilities(abilities),
+            chosen_option_label,
+        );
+    }
     match parse_static_ability_ast_line_lexed(&lexed) {
         Ok(Some(abilities)) => {
             return wrap_chosen_option_static_chunk(
@@ -872,6 +890,30 @@ fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken
     }
     let words = token_word_refs(parse_tokens);
     !words.is_empty() && words.len() <= 4
+}
+
+fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> {
+    let words = text
+        .trim()
+        .trim_end_matches('.')
+        .split_whitespace()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if words.len() != 11
+        || words[0] != "you"
+        || words[1] != "may"
+        || words[2] != "play"
+        || words[4] != "additional"
+        || !matches!(words[5].as_str(), "land" | "lands")
+        || words[6..] != ["on", "each", "of", "your", "turns"]
+    {
+        return None;
+    }
+    match words[3].as_str() {
+        "a" | "an" | "one" => Some(1),
+        "two" => Some(2),
+        _ => words[3].parse::<u32>().ok(),
+    }
 }
 
 #[cfg(test)]

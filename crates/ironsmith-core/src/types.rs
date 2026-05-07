@@ -360,6 +360,7 @@ pub enum Subtype {
     Zubera,
 
     // Artifact subtypes
+    Bobblehead,
     Clue,
     Contraption,
     Equipment,
@@ -370,6 +371,7 @@ pub enum Subtype {
     Junk,
     Lander,
     Map,
+    Mutagen,
     Treasure,
     Vehicle,
 
@@ -632,6 +634,7 @@ impl Subtype {
 
     pub const fn all_artifact_types() -> &'static [Subtype] {
         &[
+            Subtype::Bobblehead,
             Subtype::Clue,
             Subtype::Contraption,
             Subtype::Equipment,
@@ -642,6 +645,7 @@ impl Subtype {
             Subtype::Junk,
             Subtype::Lander,
             Subtype::Map,
+            Subtype::Mutagen,
             Subtype::Treasure,
             Subtype::Vehicle,
         ]
@@ -945,6 +949,7 @@ impl Subtype {
         matches!(
             self,
             Subtype::Clue
+                | Subtype::Bobblehead
                 | Subtype::Contraption
                 | Subtype::Equipment
                 | Subtype::Food
@@ -954,6 +959,7 @@ impl Subtype {
                 | Subtype::Junk
                 | Subtype::Lander
                 | Subtype::Map
+                | Subtype::Mutagen
                 | Subtype::Treasure
                 | Subtype::Vehicle
         )

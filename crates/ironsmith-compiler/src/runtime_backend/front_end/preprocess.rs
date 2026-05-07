@@ -584,6 +584,21 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
     (remainder, remainder_map)
 }
 
+fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+    let lower = text.to_ascii_lowercase();
+    let Some(idx) = str_find(lower.as_str(), " as it resolves") else {
+        return (text.to_string(), map.to_vec());
+    };
+
+    let mut out = text[..idx].trim_end().to_string();
+    let mut out_map = map[..out.chars().count().min(map.len())].to_vec();
+    if text.trim_end().ends_with('.') && !out.ends_with('.') {
+        out.push('.');
+        out_map.push(*map.get(idx).unwrap_or_else(|| map.last().unwrap_or(&0)));
+    }
+    (out, out_map)
+}
+
 fn normalize_line_for_parse(
     line: &str,
     full_name: &str,
@@ -599,6 +614,7 @@ fn normalize_line_for_parse(
         replace_names_with_map(trimmed, full_name, short_name, preserve_source_surfaces, 0);
     let (label_stripped, label_map) = strip_labeled_ability_word_prefix_with_map(&replaced, &map);
     let (stripped, stripped_map) = strip_parenthetical_with_map(&label_stripped, &label_map);
+    let (stripped, stripped_map) = strip_resolution_timing_tail_with_map(&stripped, &stripped_map);
 
     if stripped.trim().is_empty() {
         let is_wrapped = str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')');

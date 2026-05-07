@@ -17,6 +17,11 @@ pub enum DerivedAlternativeCast<C> {
     EscapeFromCardManaCost { exile_count: u32 },
     /// Cast from hand by paying generic mana equal to the card's mana value.
     ManaValueAsGenericFromHand,
+    /// Cast from the graveyard using the card's mana cost plus optional extra cost components.
+    GraveyardCastFromCardManaCost {
+        additional_costs: Vec<C>,
+        usage_limit: Option<GrantUsageLimit>,
+    },
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -25,8 +30,21 @@ impl<C> DerivedAlternativeCast<C> {
             Self::FlashbackFromCardManaCost { .. } => "flashback",
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
+            Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
         }
     }
+
+    pub fn usage_limit(&self) -> Option<GrantUsageLimit> {
+        match self {
+            Self::GraveyardCastFromCardManaCost { usage_limit, .. } => *usage_limit,
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantUsageLimit {
+    OnceDuringEachOfYourTurns,
 }
 
 impl<C: CostComponent> DerivedAlternativeCast<C> {
@@ -38,6 +56,13 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
     pub fn escape_from_cards_mana_cost(exile_count: u32) -> Self {
         Self::EscapeFromCardManaCost { exile_count }
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
+        Self::GraveyardCastFromCardManaCost {
+            additional_costs,
+            usage_limit: Some(GrantUsageLimit::OnceDuringEachOfYourTurns),
+        }
     }
 }
 
@@ -97,6 +122,14 @@ where
     /// to the granted card's mana value.
     pub fn mana_value_as_generic_from_hand() -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::ManaValueAsGenericFromHand)
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost(
+                additional_costs,
+            ),
+        )
     }
 }
 
@@ -502,6 +535,42 @@ where
             return format!(
                 "{may_prefix} pay {{X}} rather than pay the mana cost for {} you cast, where X is that spell's mana value",
                 castable_filter_description(&self.filter)
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                additional_costs,
+                usage_limit,
+            },
+        ) = &self.grantable
+            && self.zone == Zone::Graveyard
+        {
+            let filter_desc = castable_filter_description(&filter);
+            let cost_text = if additional_costs.is_empty() {
+                "paying its mana cost".to_string()
+            } else {
+                format!(
+                    "paying its mana cost plus {}",
+                    additional_costs
+                        .iter()
+                        .map(CostComponent::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            let prefix = if matches!(
+                usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            ) {
+                "Once during each of your turns, "
+            } else {
+                ""
+            };
+            return format!(
+                "{prefix}{} cast {} from your graveyard by {}",
+                may_prefix.to_ascii_lowercase(),
+                filter_desc,
+                cost_text
             );
         }
         if let Grantable::Ability(ability) = &self.grantable

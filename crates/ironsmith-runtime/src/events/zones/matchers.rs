@@ -4,8 +4,8 @@ use crate::events::context::EventContext;
 use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
 };
-use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
+use crate::filter::{ObjectFilterExt as _, StackObjectKind};
 use crate::ids::ObjectId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
@@ -274,6 +274,23 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
         }
         if self.to_zone.is_some_and(|zone| zone_change.to != zone) {
             return false;
+        }
+
+        if zone_change.from == Zone::Stack {
+            let mut filter = self.filter.clone();
+            let mut filter_ctx = ctx.filter_ctx.clone();
+
+            if filter.zone == Some(Zone::Stack) {
+                filter.zone = None;
+            }
+            if filter.stack_kind == Some(StackObjectKind::Spell) {
+                filter.stack_kind = None;
+            }
+
+            if let Some(snapshot) = zone_change.snapshot.as_ref().or(ctx.event_source_snapshot) {
+                filter_ctx.caster.get_or_insert(snapshot.controller);
+                return filter.matches_snapshot(snapshot, &filter_ctx, ctx.game);
+            }
         }
 
         if let Some(obj) = zone_change

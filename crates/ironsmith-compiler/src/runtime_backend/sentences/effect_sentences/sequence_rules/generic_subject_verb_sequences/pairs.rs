@@ -431,6 +431,141 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
     ]))
 }
 
+#[derive(Clone, Copy)]
+enum RestAction {
+    Destroy,
+    Exile,
+    Sacrifice,
+}
+
+fn parse_rest_action_sentence(tokens: &[OwnedLexToken]) -> Option<RestAction> {
+    let words = sentence_words(tokens);
+    let words = if words.first().copied() == Some("then") {
+        &words[1..]
+    } else {
+        words.as_slice()
+    };
+    match words {
+        ["destroy", "the", "rest"] | ["destroy", "rest"] => Some(RestAction::Destroy),
+        ["exile", "the", "rest"] | ["exile", "rest"] => Some(RestAction::Exile),
+        ["sacrifice", "the", "rest"]
+        | ["sacrifice", "rest"]
+        | ["sacrifices", "the", "rest"]
+        | ["sacrifices", "rest"] => Some(RestAction::Sacrifice),
+        _ => None,
+    }
+}
+
+fn rest_action_effect(action: RestAction, filter: ObjectFilter, player: PlayerAst) -> EffectAst {
+    match action {
+        RestAction::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        RestAction::Exile => EffectAst::subject_verb_exile_all(filter, false),
+        RestAction::Sacrifice => EffectAst::subject_verb_sacrifice_all(player, filter),
+    }
+}
+
+fn append_rest_action_after_choice(
+    effect: EffectAst,
+    action: RestAction,
+) -> Option<Vec<EffectAst>> {
+    match effect {
+        EffectAst::ChooseObjects {
+            filter,
+            tag,
+            count,
+            count_value,
+            player,
+        } => {
+            let rest_filter = filter.clone().not_tagged(tag.clone());
+            Some(vec![
+                EffectAst::ChooseObjects {
+                    filter,
+                    tag,
+                    count,
+                    count_value,
+                    player,
+                },
+                rest_action_effect(action, rest_filter, player),
+            ])
+        }
+        EffectAst::ForEachPlayer { effects } => {
+            let [inner] = effects.as_slice() else {
+                return None;
+            };
+            let EffectAst::ChooseObjects {
+                filter,
+                tag,
+                count,
+                count_value,
+                player,
+            } = inner.clone()
+            else {
+                return None;
+            };
+            let rest_filter = filter.clone().not_tagged(tag.clone());
+            Some(vec![EffectAst::ForEachPlayer {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        tag,
+                        count,
+                        count_value,
+                        player,
+                    },
+                    rest_action_effect(action, rest_filter, player),
+                ],
+            }])
+        }
+        EffectAst::ForEachOpponent { effects } => {
+            let [inner] = effects.as_slice() else {
+                return None;
+            };
+            let EffectAst::ChooseObjects {
+                filter,
+                tag,
+                count,
+                count_value,
+                player,
+            } = inner.clone()
+            else {
+                return None;
+            };
+            let rest_filter = filter.clone().not_tagged(tag.clone());
+            Some(vec![EffectAst::ForEachOpponent {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        tag,
+                        count,
+                        count_value,
+                        player,
+                    },
+                    rest_action_effect(action, rest_filter, player),
+                ],
+            }])
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_choose_then_affect_rest(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(action) = parse_rest_action_sentence(sentences[sentence_idx + 1].lowered()) else {
+        return Ok(None);
+    };
+    let Ok(first_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [first] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+    Ok(append_rest_action_after_choice(first.clone(), action))
+}
+
 pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     sentences: &[SentenceInput],
     sentence_idx: usize,

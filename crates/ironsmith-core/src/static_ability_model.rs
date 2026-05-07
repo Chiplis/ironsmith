@@ -561,6 +561,19 @@ where
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
                 }
+                DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                    additional_costs,
+                    usage_limit,
+                } => {
+                    let mut mapped = Vec::with_capacity(additional_costs.len());
+                    for cost in additional_costs {
+                        mapped.push(map_cost(cost)?);
+                    }
+                    DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                        additional_costs: mapped,
+                        usage_limit,
+                    }
+                }
             })
         }
 

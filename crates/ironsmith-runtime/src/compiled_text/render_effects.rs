@@ -1250,7 +1250,7 @@ fn describe_simple_create_token_bundle(effects: &[&Effect]) -> Option<String> {
         let token_name = create.token.name();
         if !matches!(
             token_name,
-            "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk"
+            "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk" | "Mutagen"
         ) {
             return None;
         }
@@ -10848,6 +10848,29 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 5;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some((_, move_chosen)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(rest) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) = describe_look_at_top_then_reveal_any_matching_to_hand_rest_bottom(
+                look_at_top,
+                choose,
+                reveal,
+                move_chosen,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 3 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -10908,6 +10931,22 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 move_chosen,
                 rest,
             )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
+        if idx + 3 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(cast) = filtered[idx + 2].downcast_ref::<crate::effects::CastTaggedEffect>()
+            && let Some(rest) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) =
+                describe_look_at_top_then_cast_matching_rest_bottom(look_at_top, choose, cast, rest)
         {
             parts.push(compact);
             idx += 4;
@@ -17422,7 +17461,7 @@ pub(super) fn describe_compact_create_token(
     let token_name = create_token.token.name();
     let is_compact_named_token = matches!(
         token_name,
-        "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk"
+        "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk" | "Mutagen"
     );
     if !is_compact_named_token {
         return None;
@@ -19190,6 +19229,105 @@ fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
 
     Some(format!(
         "{opener} the top {count_text} {noun} of {owner} library{count_where_clause}. {put_prefix} any number of {matching} from among them {destination}. Put the rest on the bottom of {owner} library{order_text}"
+    ))
+}
+
+fn describe_look_at_top_then_reveal_any_matching_to_hand_rest_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: &crate::effects::RevealTaggedEffect,
+    move_chosen: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+) -> Option<String> {
+    if reveal.tag.as_str() != choose.tag.as_str()
+        || !for_each_moves_tag_to_hand(move_chosen, choose.tag.as_str())
+        || rest.tag.as_str() != look_at_top.tag.as_str()
+        || rest
+            .keep_tagged
+            .as_ref()
+            .is_none_or(|tag| tag.as_str() != choose.tag.as_str())
+    {
+        return None;
+    }
+    let matching = describe_any_number_filter_from_looked_cards(look_at_top, choose)?;
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&choose.chooser);
+    let (count_text, noun, count_where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let may_prefix = if choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+    let order_text = match rest.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+            " in a random order".to_string()
+        }
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+            " in any order".to_string()
+        }
+    };
+
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} reveal any number of {matching} from among them and put the revealed cards into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
+    ))
+}
+
+fn describe_look_at_top_then_cast_matching_rest_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    cast: &crate::effects::CastTaggedEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+) -> Option<String> {
+    if cast.tag.as_str() != choose.tag.as_str()
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+        || rest.tag.as_str() != look_at_top.tag.as_str()
+        || rest
+            .keep_tagged
+            .as_ref()
+            .is_none_or(|tag| tag.as_str() != choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let mut chosen = describe_choose_filter_from_looked_cards(look_at_top, choose)?;
+    if let Some(rest) = chosen.strip_prefix("a nonland card with ") {
+        let rest = rest.strip_suffix(" card").unwrap_or(rest);
+        chosen = format!("a spell with {rest}");
+    } else if chosen.starts_with("a nonland ") && chosen.contains(" with ") {
+        let suffix = chosen.split_once(" with ")?.1;
+        let suffix = suffix.strip_suffix(" card").unwrap_or(suffix);
+        chosen = format!("a spell with {suffix}");
+    } else if chosen == "a nonland card" {
+        chosen = "a spell".to_string();
+    }
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, count_where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let may_prefix = if choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+    let order_text = match rest.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+            " in a random order".to_string()
+        }
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+            " in any order".to_string()
+        }
+    };
+
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} cast {chosen} from among them without paying its mana cost. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -28219,6 +28357,43 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!(
             "If {target} would go{from}{to}{duration}, it goes to {replacement} instead"
+        );
+    }
+    if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+    {
+        if register.filter == ObjectFilter::instant_or_sorcery().cast_by_you()
+            && register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Hand
+            && matches!(
+                register.mode,
+                crate::effects::ReplacementApplyMode::OneShot
+                    | crate::effects::ReplacementApplyMode::UntilEndOfTurn
+            )
+        {
+            return "The next time you cast an instant or sorcery spell from your hand this turn, put that card into your hand instead of into your graveyard".to_string();
+        }
+
+        let target = register.filter.description();
+        let from = register
+            .from_zone
+            .map(|zone| format!(" from {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let to = register
+            .to_zone
+            .map(|zone| format!(" into {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::OneShot
+            | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::Resolution => "",
+        };
+        let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        return format!(
+            "The next time {target} would go{from}{to}{duration}, it goes to {replacement} instead"
         );
     }
     if let Some(additional_land_plays) =

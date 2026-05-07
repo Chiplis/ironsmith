@@ -120,6 +120,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     self.one_shot,
                     controller_id,
                 )
+                .with_ability_source(Some(ctx.source))
                 .with_x_value(ctx.x_value)
                 .with_not_before_turn(if self.start_next_turn {
                     Some(game.turn.turn_number.saturating_add(1))
@@ -148,6 +149,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             self.one_shot,
             controller_id,
         )
+        .with_ability_source(Some(ctx.source))
         .with_x_value(ctx.x_value)
         .with_not_before_turn(if self.start_next_turn {
             Some(game.turn.turn_number.saturating_add(1))

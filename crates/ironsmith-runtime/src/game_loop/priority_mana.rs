@@ -3511,6 +3511,39 @@ pub(super) fn finalize_spell_cast(
         optional_costs_paid.mark_label_paid("Escape");
     }
 
+    if let CastingMethod::PlayFrom {
+        source,
+        use_alternative: Some(_),
+        ..
+    } = &casting_method
+    {
+        let source_has_once_graveyard_cast_grant = game.object(*source).is_some_and(|source_obj| {
+            source_obj.abilities.iter().any(|ability| {
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    return false;
+                };
+                static_ability.grant_spec().is_some_and(|spec| {
+                    matches!(
+                        spec.grantable,
+                        crate::grant::Grantable::DerivedAlternativeCast(
+                            crate::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                                usage_limit: Some(
+                                    crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
+                                ),
+                                ..
+                            }
+                        )
+                    )
+                })
+            })
+        });
+        if source_has_once_graveyard_cast_grant {
+            game.turn_store
+                .grant_cast_uses_this_turn
+                .insert((caster, *source));
+        }
+    }
+
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes
     let mut entry = StackEntry::new(new_id, caster)
         .with_provenance(provenance)

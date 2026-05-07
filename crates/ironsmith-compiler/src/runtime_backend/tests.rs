@@ -9946,7 +9946,8 @@ fn rewrite_activation_cost_parses_loyalty_shorthand_without_fallback_escape_hatc
         minus_x.segments.as_slice(),
         [super::ActivationCostSegmentCst::RemoveCountersDynamic {
             counter_type: Some(CounterType::Loyalty),
-            display_x: true
+            display_x: true,
+            ..
         }]
     ));
     assert!(

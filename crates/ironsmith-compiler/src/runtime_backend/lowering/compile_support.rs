@@ -2946,6 +2946,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("junk") && !has_word("creature") {
         return Some(crate::cards::tokens::junk_token_definition());
     }
+    if has_word("mutagen") && !has_word("creature") {
+        return Some(crate::cards::tokens::mutagen_token_definition());
+    }
     if has_word("gold") && !has_word("creature") {
         return Some(crate::cards::tokens::gold_token_definition());
     }

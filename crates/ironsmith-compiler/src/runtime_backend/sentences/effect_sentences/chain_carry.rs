@@ -125,6 +125,81 @@ fn parse_choose_land_of_each_basic_land_type_segment(
     )
 }
 
+#[derive(Clone, Copy)]
+enum RestAction {
+    Destroy,
+    Exile,
+    Sacrifice,
+}
+
+fn parse_rest_action_segment_lexed(tokens: &[OwnedLexToken]) -> Option<RestAction> {
+    let words = token_word_refs(tokens);
+    let words = if words.first().copied() == Some("then") {
+        &words[1..]
+    } else {
+        words.as_slice()
+    };
+    match words {
+        ["destroy", "the", "rest"] | ["destroy", "rest"] => Some(RestAction::Destroy),
+        ["exile", "the", "rest"] | ["exile", "rest"] => Some(RestAction::Exile),
+        ["sacrifice", "the", "rest"]
+        | ["sacrifice", "rest"]
+        | ["sacrifices", "the", "rest"]
+        | ["sacrifices", "rest"] => Some(RestAction::Sacrifice),
+        _ => None,
+    }
+}
+
+fn rest_action_effect(action: RestAction, filter: ObjectFilter, player: PlayerAst) -> EffectAst {
+    match action {
+        RestAction::Destroy => EffectAst::subject_verb_destroy_all(filter),
+        RestAction::Exile => EffectAst::subject_verb_exile_all(filter, false),
+        RestAction::Sacrifice => EffectAst::subject_verb_sacrifice_all(player, filter),
+    }
+}
+
+fn try_apply_rest_action_followup(effects: &mut Vec<EffectAst>, action: RestAction) -> bool {
+    if let Some(EffectAst::ChooseObjects {
+        filter,
+        tag,
+        player,
+        ..
+    }) = effects.last()
+    {
+        let rest_filter = filter.clone().not_tagged(tag.clone());
+        let player = *player;
+        effects.push(rest_action_effect(action, rest_filter, player));
+        return true;
+    }
+
+    let Some(last) = effects.last_mut() else {
+        return false;
+    };
+    match last {
+        EffectAst::ForEachPlayer {
+            effects: inner_effects,
+        }
+        | EffectAst::ForEachOpponent {
+            effects: inner_effects,
+        } => {
+            let Some(EffectAst::ChooseObjects {
+                filter,
+                tag,
+                player,
+                ..
+            }) = inner_effects.last()
+            else {
+                return false;
+            };
+            let rest_filter = filter.clone().not_tagged(tag.clone());
+            let player = *player;
+            inner_effects.push(rest_action_effect(action, rest_filter, player));
+            true
+        }
+        _ => false,
+    }
+}
+
 fn contains_char(text: &str, expected: char) -> bool {
     let mut chars = text.chars();
     while let Some(ch) = chars.next() {
@@ -996,6 +1071,12 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         }
         if let Some(segment_effects) = parse_choose_land_of_each_basic_land_type_segment(&segment) {
             effects.extend(segment_effects);
+            previous_segment = Some(segment);
+            continue;
+        }
+        if let Some(action) = parse_rest_action_segment_lexed(&segment)
+            && try_apply_rest_action_followup(&mut effects, action)
+        {
             previous_segment = Some(segment);
             continue;
         }

@@ -690,7 +690,8 @@ fn evaluate_value(
                 | ChooseSpec::All(_)
                 | ChooseSpec::EachPlayer(_)
                 | ChooseSpec::Iterated
-                | ChooseSpec::WithCount(_, _) => {}
+                | ChooseSpec::WithCount(_, _)
+                | ChooseSpec::WithCountValue(_, _, _) => {}
             }
             values.sort();
             ValueEval::Set(values)

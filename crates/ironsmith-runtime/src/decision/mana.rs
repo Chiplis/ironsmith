@@ -1440,7 +1440,12 @@ pub(crate) fn get_mana_cost_for_method<'a>(
 ) -> Option<&'a crate::mana::ManaCost> {
     // Composed costs can intentionally represent "without paying its mana cost"
     // by omitting a mana component, so do not fall back to the card's printed cost.
-    if method.is_composed_cost() {
+    if method.is_composed_cost()
+        || matches!(
+            method,
+            crate::alternative_cast::AlternativeCastingMethod::FromZone { .. }
+        )
+    {
         return method.mana_cost();
     }
 
@@ -1539,6 +1544,16 @@ pub(crate) fn can_cast_with_alternative_with_context(
             .and_then(|view| view.spell_effect.as_deref())
     });
     let free_plot_cost = crate::mana::ManaCost::new();
+    if let Some(condition) = method.cast_condition()
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            game,
+            spell.id,
+            condition,
+            &[],
+        )
+    {
+        return false;
+    }
     let mana_cost = match method {
         AlternativeCastingMethod::Foretell { .. } => {
             if !game.is_foretold(spell.id) {

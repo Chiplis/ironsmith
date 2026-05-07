@@ -81,6 +81,13 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
     },
+    FromZone {
+        name: &'static str,
+        zone: Zone,
+        total_cost: TotalCost<C>,
+        condition: Option<Cond>,
+        exiles_after_resolution: bool,
+    },
     Trap {
         name: &'static str,
         cost: ManaCost,
@@ -115,14 +122,24 @@ where
             | Self::Composed { .. }
             | Self::Trap { .. }
             | Self::Bestow { .. } => Zone::Hand,
+            Self::FromZone { zone, .. } => *zone,
         }
     }
 
     pub fn exiles_after_resolution(&self) -> bool {
-        matches!(
-            self,
-            Self::Flashback { .. } | Self::Harmonize { .. } | Self::JumpStart | Self::Escape { .. }
-        )
+        match self {
+            Self::FromZone {
+                exiles_after_resolution,
+                ..
+            } => *exiles_after_resolution,
+            _ => matches!(
+                self,
+                Self::Flashback { .. }
+                    | Self::Harmonize { .. }
+                    | Self::JumpStart
+                    | Self::Escape { .. }
+            ),
+        }
     }
 
     pub fn mana_cost(&self) -> Option<&ManaCost> {
@@ -144,6 +161,7 @@ where
             Self::Foretell { cost } => Some(cost),
             Self::Trap { cost, .. } => Some(cost),
             Self::Composed { total_cost, .. } => total_cost.mana_cost(),
+            Self::FromZone { total_cost, .. } => total_cost.mana_cost(),
             Self::Bestow { total_cost } => total_cost.mana_cost(),
         }
     }
@@ -159,6 +177,7 @@ where
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => non_mana_components(total_cost),
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
+            Self::FromZone { total_cost, .. } => non_mana_components(total_cost),
             Self::Bestow { total_cost } => non_mana_components(total_cost),
             _ => Vec::new(),
         }
@@ -171,6 +190,7 @@ where
             Self::Retrace { total_cost } => Some(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
             Self::Composed { total_cost, .. } => Some(total_cost),
+            Self::FromZone { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
             _ => None,
         }
@@ -178,18 +198,26 @@ where
 
     pub fn cast_condition(&self) -> Option<&Cond> {
         match self {
-            Self::Composed { condition, .. } => condition.as_ref(),
+            Self::Composed { condition, .. } | Self::FromZone { condition, .. } => {
+                condition.as_ref()
+            }
             _ => None,
         }
     }
 
     pub fn with_cast_condition(mut self, condition: Cond) -> Self {
-        if let Self::Composed {
-            condition: existing_condition,
-            ..
-        } = &mut self
-        {
-            *existing_condition = Some(condition);
+        match &mut self {
+            Self::Composed {
+                condition: existing_condition,
+                ..
+            }
+            | Self::FromZone {
+                condition: existing_condition,
+                ..
+            } => {
+                *existing_condition = Some(condition);
+            }
+            _ => {}
         }
         self
     }
@@ -224,6 +252,7 @@ where
             Self::Foretell { .. } => "Foretell",
             Self::Composed { name, .. } => name,
             Self::Trap { name, .. } => name,
+            Self::FromZone { name, .. } => name,
             Self::Bestow { .. } => "Bestow",
         }
     }
@@ -265,6 +294,22 @@ where
             name,
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
+        }
+    }
+
+    pub fn cast_from_zone_with_total_cost(
+        name: &'static str,
+        zone: Zone,
+        total_cost: TotalCost<C>,
+        condition: Option<Cond>,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::FromZone {
+            name,
+            zone,
+            total_cost,
+            condition,
+            exiles_after_resolution,
         }
     }
 
@@ -420,6 +465,19 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 name,
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
                 condition,
+            },
+            Self::FromZone {
+                name,
+                zone,
+                total_cost,
+                condition,
+                exiles_after_resolution,
+            } => AlternativeCastingMethod::FromZone {
+                name,
+                zone,
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                condition,
+                exiles_after_resolution,
             },
             Self::Trap {
                 name,

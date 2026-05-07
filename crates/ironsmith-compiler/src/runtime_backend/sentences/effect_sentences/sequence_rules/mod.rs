@@ -121,6 +121,10 @@ fn first_word_choose(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "choose")
 }
 
+fn first_word_choose_or_each(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["choose", "each"])
+}
+
 fn first_word_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "target")
 }
@@ -272,12 +276,29 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_match_into_hand_rest_graveyard,
     },
     SequenceRuleDef {
+        name: "top-cards-may-cast-match-rest-bottom",
+        feature_tag: Some("looked-cards-cast-bottom"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: generic_subject_verb_sequences::triples::parse_top_cards_may_cast_match_rest_bottom,
+    },
+    SequenceRuleDef {
         name: "top-cards-put-any-matching-to-zone-rest-bottom",
         feature_tag: Some("looked-cards-any-matching-bottom"),
         priority: 335,
         consumed_sentences: 3,
         predicate: first_word_look_or_reveal,
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "top-cards-reveal-any-matching-to-hand-rest-bottom",
+        feature_tag: Some("looked-cards-revealed-hand-bottom"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser:
+            generic_subject_verb_sequences::triples::parse_top_cards_reveal_any_matching_to_hand_rest_bottom,
     },
     SequenceRuleDef {
         name: "look-at-top-split-hand-bottom-exile-play",
@@ -440,6 +461,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_choose,
         parser: generic_subject_verb_sequences::pairs::parse_choose_same_controller_targets_then_sacrifice_one,
+    },
+    SequenceRuleDef {
+        name: "choose-then-affect-rest",
+        feature_tag: Some("choice-remainder-action"),
+        priority: 238,
+        consumed_sentences: 2,
+        predicate: first_word_choose_or_each,
+        parser: generic_subject_verb_sequences::pairs::parse_choose_then_affect_rest,
     },
     SequenceRuleDef {
         name: "delayed-dies-exile-top-power-choose-play",

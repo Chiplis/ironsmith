@@ -534,6 +534,11 @@ pub(crate) fn resolve_choose_spec_it_tag(
             Box::new(resolve_choose_spec_it_tag(inner, refs)?),
             *count,
         )),
+        ChooseSpec::WithCountValue(inner, count, value) => Ok(ChooseSpec::WithCountValue(
+            Box::new(resolve_choose_spec_it_tag(inner, refs)?),
+            *count,
+            resolve_value_it_tag(value, refs)?,
+        )),
         ChooseSpec::All(filter) => Ok(ChooseSpec::All(resolve_it_tag(filter, refs)?)),
         ChooseSpec::Player(filter) => Ok(ChooseSpec::Player(resolve_contextual_player_filter(
             filter, refs,
@@ -697,6 +702,9 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
         }
         TargetAst::Tagged(tag, _) => ChooseSpec::Tagged(tag.clone()),
         TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),
+        TargetAst::WithCountValue(inner, count, value) => {
+            choose_spec_for_target(inner).with_count_value(*count, value.clone())
+        }
     }
 }
 

@@ -606,6 +606,21 @@ pub(crate) fn parse_deal_damage_with_amount(
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
         ));
     }
+    if matches!(
+        target_words.as_slice(),
+        ["the", "creatures", "controller"]
+            | ["that", "creatures", "controller"]
+            | ["the", "creature's", "controller"]
+            | ["that", "creature's", "controller"]
+    ) {
+        return Ok(EffectAst::subject_verb_damage(
+            amount,
+            TargetAst::Player(
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+                span_from_tokens(target_tokens),
+            ),
+        ));
+    }
     if target_words.as_slice() == ["the", "player"] {
         return Ok(EffectAst::subject_verb_damage(
             amount,

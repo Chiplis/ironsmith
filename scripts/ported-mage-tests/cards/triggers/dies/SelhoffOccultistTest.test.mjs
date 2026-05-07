@@ -1,0 +1,227 @@
+import { registerPortedMageTests } from "../../../../mage-port-runner.mjs";
+
+registerPortedMageTests({
+  "sourcePath": "scripts/cards/triggers/dies/SelhoffOccultistTest.java",
+  "tests": [
+    {
+      "name": "testDiesTriggeredAbility",
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Selhoff Occultist",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "target": "Selhoff Occultist"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 0,
+          "name": 2
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 1,
+          "name": 1
+        }
+      ]
+    },
+    {
+      "name": "testDiesTriggeredAbilityForTwoCopies",
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Selhoff Occultist",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Ana Disciple",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "target": "Ana Disciple"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 0,
+          "name": 3
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 1,
+          "name": 1
+        }
+      ]
+    },
+    {
+      "name": "testDiesTriggeredAbilityInOtherZone",
+      "operations": [
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 0,
+          "name": "Mountain",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Selhoff Occultist",
+          "count": 2
+        },
+        {
+          "op": "addCard",
+          "zone": "HAND",
+          "player": 1,
+          "name": "Selhoff Occultist",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 1,
+          "name": "Selhoff Occultist",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "BATTLEFIELD",
+          "player": 1,
+          "name": "Ana Disciple",
+          "count": 1
+        },
+        {
+          "op": "castSpell",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "player": 0,
+          "name": "Lightning Bolt",
+          "target": "Ana Disciple"
+        },
+        {
+          "op": "setStopAt",
+          "turn": 1,
+          "phase": "BEGIN_COMBAT"
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "assertLife",
+          "player": 0,
+          "life": 20
+        },
+        {
+          "op": "assertLife",
+          "player": 1,
+          "life": 20
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 0,
+          "name": 3
+        },
+        {
+          "op": "assertGraveyardCount",
+          "player": 0,
+          "count": 1,
+          "name": 2
+        }
+      ]
+    }
+  ]
+});

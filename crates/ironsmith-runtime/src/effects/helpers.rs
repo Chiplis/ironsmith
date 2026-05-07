@@ -1582,7 +1582,9 @@ pub(crate) fn preview_object_ids_for_choose_spec(
         ChooseSpec::SurfaceHinted { spec, .. } => {
             preview_object_ids_for_choose_spec(game, spec, ctx)
         }
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => {
             preview_object_ids_for_choose_spec(game, inner, ctx)
         }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
@@ -1741,7 +1743,9 @@ pub fn resolve_player_from_spec(
         ChooseSpec::EachPlayer(filter) => resolve_player_filter(game, filter, ctx),
 
         // WithCount wrapper - delegate to inner spec
-        ChooseSpec::WithCount(inner, _) => resolve_player_from_spec(game, inner, ctx),
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            resolve_player_from_spec(game, inner, ctx)
+        }
 
         // Iterated player (in ForEach loops)
         ChooseSpec::Iterated => ctx.iteration.iterated_player.ok_or_else(|| {
@@ -2335,10 +2339,13 @@ pub fn resolve_objects_for_effect(
         }
 
         let (min, max) = if count.is_dynamic_x() {
-            let x = ctx
-                .x_value
-                .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
-                as usize;
+            let x = if let Some(count_value) = spec.count_value() {
+                resolve_value(game, count_value, ctx)?.max(0) as usize
+            } else {
+                ctx.x_value.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("X value not set".to_string())
+                })? as usize
+            };
             if count.is_up_to_dynamic_x() {
                 (0, x.min(candidates.len()))
             } else if x > candidates.len() {
@@ -2580,7 +2587,7 @@ pub fn resolve_objects_from_spec(
 
             Ok(objects)
         }
-        ChooseSpec::WithCount(inner, count) => {
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             if inner.is_target() {
                 return resolve_objects_from_spec(game, inner, ctx);
             }
@@ -2834,7 +2841,9 @@ pub fn resolve_players_from_spec(
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => resolve_players_from_spec(game, spec, ctx),
         // Target/WithCount wrappers - delegate to inner
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => {
             let players = matching_player_targets_for_spec(game, spec, ctx);
 
             if !players.is_empty() {

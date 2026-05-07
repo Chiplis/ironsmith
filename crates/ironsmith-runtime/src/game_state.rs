@@ -179,6 +179,8 @@ pub struct TurnStore {
     /// Total number of spells cast during the immediately previous turn.
     /// Updated when turn advances.
     pub spells_cast_last_turn_total: u32,
+    /// Static or temporary grant sources whose once-per-turn cast permission was used.
+    pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -1269,6 +1271,16 @@ impl ActiveManaSpendPermission {
                     return false;
                 };
                 stable_ids.contains(&source_obj.stable_id)
+            }
+            crate::effect::ManaSpendScope::CastingSpellsMatching(filter) => {
+                let Some(source_id) = source else {
+                    return false;
+                };
+                let Some(source_obj) = game.object(source_id) else {
+                    return false;
+                };
+                let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
+                filter.matches(source_obj, &filter_ctx, game)
             }
         }
     }
@@ -5839,6 +5851,7 @@ impl GameState {
         // Clear turn-based tracking
         self.turn_store.spells_cast_last_turn_total =
             self.turn_store.turn_history.clear_for_new_turn();
+        self.turn_store.grant_cast_uses_this_turn.clear();
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();

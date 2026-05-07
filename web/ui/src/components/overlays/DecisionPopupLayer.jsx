@@ -583,9 +583,16 @@ function PriorityActionPillLabel({
           highlightColor={highlightColor}
         />
       </span>
+      <span aria-hidden="true" className="invisible block min-w-0 overflow-hidden whitespace-nowrap" style={{ textOverflow: "clip" }}>
+        <HighlightedDecisionText
+          text={displayText}
+          highlightText={highlightText}
+          highlightColor={highlightColor}
+        />
+      </span>
       <span
         ref={marqueeRef}
-        className="inline-flex whitespace-nowrap will-change-transform"
+        className="absolute left-0 top-0 inline-flex whitespace-nowrap will-change-transform"
       >
         <span className="pr-7">
           <HighlightedDecisionText

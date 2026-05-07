@@ -36,6 +36,7 @@ pub enum ChooseSpec {
     EachPlayer(PlayerFilter),
     Iterated,
     WithCount(Box<ChooseSpec>, ChoiceCount),
+    WithCountValue(Box<ChooseSpec>, ChoiceCount, crate::Value),
 }
 
 impl ChooseSpec {
@@ -112,7 +113,7 @@ impl ChooseSpec {
             | Self::AnyTarget
             | Self::AnyOtherTarget
             | Self::PlayerOrPlaneswalker(_) => true,
-            Self::WithCount(inner, _) => inner.is_target(),
+            Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => inner.is_target(),
             _ => false,
         }
     }
@@ -121,7 +122,7 @@ impl ChooseSpec {
         match self {
             Self::SurfaceHinted { spec, .. } => spec.inner(),
             Self::Target(inner) => inner.as_ref(),
-            Self::WithCount(inner, _) => inner.inner(),
+            Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => inner.inner(),
             _ => self,
         }
     }
@@ -130,7 +131,7 @@ impl ChooseSpec {
         match self {
             Self::SurfaceHinted { spec, .. } => spec.base(),
             Self::Target(inner) => inner.base(),
-            Self::WithCount(inner, _) => inner.base(),
+            Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => inner.base(),
             _ => self,
         }
     }
@@ -141,17 +142,42 @@ impl ChooseSpec {
                 spec: Box::new(spec.with_count(count)),
                 hints,
             },
-            Self::WithCount(inner, _) => Self::WithCount(inner, count),
+            Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => {
+                Self::WithCount(inner, count)
+            }
             other => Self::WithCount(Box::new(other), count),
+        }
+    }
+
+    pub fn with_count_value(self, count: ChoiceCount, value: crate::Value) -> Self {
+        match self {
+            Self::SurfaceHinted { spec, hints } => Self::SurfaceHinted {
+                spec: Box::new(spec.with_count_value(count, value)),
+                hints,
+            },
+            Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => {
+                Self::WithCountValue(inner, count, value)
+            }
+            other => Self::WithCountValue(Box::new(other), count, value),
         }
     }
 
     pub fn count(&self) -> ChoiceCount {
         match self {
             Self::SurfaceHinted { spec, .. } => spec.count(),
-            Self::WithCount(_, count) => *count,
+            Self::WithCount(_, count) | Self::WithCountValue(_, count, _) => *count,
             Self::Target(inner) => inner.count(),
             _ => ChoiceCount::default(),
+        }
+    }
+
+    pub fn count_value(&self) -> Option<&crate::Value> {
+        match self {
+            Self::SurfaceHinted { spec, .. } | Self::Target(spec) | Self::WithCount(spec, _) => {
+                spec.count_value()
+            }
+            Self::WithCountValue(_, _, value) => Some(value),
+            _ => None,
         }
     }
 

@@ -26,9 +26,12 @@ pub fn validate_target(
 
     match (target, spec) {
         // Selection wrappers do not change target legality.
-        (_, ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)) => {
-            validate_target(game, target, inner, ctx)
-        }
+        (
+            _,
+            ChooseSpec::Target(inner)
+            | ChooseSpec::WithCount(inner, _)
+            | ChooseSpec::WithCountValue(inner, _, _),
+        ) => validate_target(game, target, inner, ctx),
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
             if let Some(obj) = game.object(*id) {
                 filter.matches(obj, &filter_ctx, game)

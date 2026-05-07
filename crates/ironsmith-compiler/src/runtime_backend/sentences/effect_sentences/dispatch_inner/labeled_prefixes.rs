@@ -97,6 +97,55 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             },
         }]);
     }
+    if slice_starts_with(sentence_words.as_slice(), &["you", "may", "cast"])
+        && sentence_words
+            .windows(3)
+            .any(|window| window == ["from", "among", "them"])
+        && sentence_words
+            .windows(5)
+            .any(|window| window == ["without", "paying", "its", "mana", "cost"])
+    {
+        let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        filter.card_types.push(CardType::Instant);
+        filter.card_types.push(CardType::Sorcery);
+        filter.card_types.push(CardType::Artifact);
+        filter.card_types.push(CardType::Creature);
+        filter.card_types.push(CardType::Enchantment);
+        filter.card_types.push(CardType::Planeswalker);
+        filter.card_types.push(CardType::Battle);
+        filter.type_or_subtype_union = true;
+        if let Some(mana_idx) = sentence_words
+            .windows(5)
+            .position(|window| window == ["mana", "value", "3", "or", "less"])
+        {
+            let _ = mana_idx;
+            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(3));
+        }
+        let chosen = TagKey::from("__chosen_cast_from_among");
+        return Ok(vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::up_to(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen.clone(),
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::You,
+                },
+                action: SubjectVerbActionAst::CastTagged {
+                    tag: chosen,
+                    player: PlayerAst::You,
+                    allow_land: false,
+                    as_copy: false,
+                    without_paying_mana_cost: true,
+                    cost_reduction: None,
+                },
+            }),
+        ]);
+    }
     if contains_unquoted_word(tokens, &["search", "searches"])
         && let Some(mut effects) = parse_search_library_sentence_lexed(tokens)?
     {
