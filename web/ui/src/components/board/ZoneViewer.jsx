@@ -8,6 +8,8 @@ const VIEWABLE_ZONES = [
   { id: "command", label: "CZ" },
 ];
 
+const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => zone.id !== "battlefield");
+
 function normalizeZones(zones) {
   if (!Array.isArray(zones)) return ["battlefield"];
   const normalized = zones.filter((zone) => VIEWABLE_ZONES.some((entry) => entry.id === zone));
@@ -58,19 +60,18 @@ export default function ZoneViewer({
         </svg>
       </span>
       <div className="flex items-center gap-2 flex-wrap">
-        {VIEWABLE_ZONES.map((zone) => {
+        {TOGGLEABLE_ZONES.map((zone) => {
           const checked = activeZones.includes(zone.id);
           return (
             <label
               key={zone.id}
               className={`inline-flex items-center gap-1 text-[13px] whitespace-nowrap cursor-pointer uppercase transition-colors ${
                 checked ? "text-[#eadbbb]" : "text-[#b8aa8c] hover:text-[#eadbbb]"
-              } ${zone.id === "battlefield" ? "cursor-default opacity-85" : ""}`}
+              }`}
             >
               <Checkbox
                 className="h-3.5 w-3.5"
                 checked={checked}
-                disabled={zone.id === "battlefield"}
                 onCheckedChange={() => toggleZone(zone.id)}
               />
               {zone.label}

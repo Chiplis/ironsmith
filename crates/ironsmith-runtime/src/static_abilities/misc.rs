@@ -3163,6 +3163,33 @@ impl StaticAbilityKind for DrawReplacementExileTopFaceDown {
     }
 }
 
+/// "If you would draw a card, draw two cards instead."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DrawReplacementDouble;
+
+impl StaticAbilityKind for DrawReplacementDouble {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementDouble
+    }
+
+    fn display(&self) -> String {
+        "If you would draw a card, draw two cards instead.".to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawCardMatcher::you(),
+            ReplacementAction::Modify(EventModification::Multiply(2)),
+        ))
+    }
+}
+
 /// "If a card would be put into an opponent's graveyard from anywhere, instead exile it with a
 /// void counter on it."
 #[derive(Debug, Clone, PartialEq)]
@@ -3852,6 +3879,20 @@ mod tests {
             !choose_debug.contains("RevealTopEffect"),
             "draw replacement should not reveal the card, got {choose_debug}"
         );
+    }
+
+    #[test]
+    fn test_draw_replacement_double() {
+        let ability = DrawReplacementDouble;
+        assert_eq!(ability.id(), StaticAbilityId::DrawReplacementDouble);
+
+        let replacement = ability
+            .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
+            .expect("draw replacement should create replacement effect");
+        assert!(matches!(
+            replacement.replacement,
+            ReplacementAction::Modify(EventModification::Multiply(2))
+        ));
     }
 
     #[test]

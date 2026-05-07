@@ -194,6 +194,7 @@ pub enum StaticAbilityId {
     CastThisCardFromLibraryWhileSearching,
     EffectDiscardToLibraryReplacement,
     DrawReplacementExileTopFaceDown,
+    DrawReplacementDouble,
     ExileToCounteredExileInsteadOfGraveyard,
     ModifyDamageAmountReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
@@ -411,6 +412,7 @@ impl StaticAbilityId {
             | CastThisCardFromLibraryWhileSearching
             | EffectDiscardToLibraryReplacement
             | DrawReplacementExileTopFaceDown
+            | DrawReplacementDouble
             | ExileToCounteredExileInsteadOfGraveyard
             | ModifyDamageAmountReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

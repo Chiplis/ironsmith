@@ -207,6 +207,57 @@ pub(crate) fn parse_take_extra_turn_sentence(
     Ok(None)
 }
 
+pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use crate::effects::AdditionalPhase;
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let phases = match words.as_slice() {
+        [
+            "after",
+            "this",
+            "phase",
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+        ] => vec![AdditionalPhase::Combat],
+        [
+            "after",
+            "this",
+            "main",
+            "phase",
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+        ] => vec![AdditionalPhase::Combat],
+        [
+            "after",
+            "this",
+            "main",
+            "phase",
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+            "followed",
+            "by",
+            "an",
+            "additional",
+            "main",
+            "phase",
+        ] => vec![AdditionalPhase::Combat, AdditionalPhase::Main],
+        _ => return None,
+    };
+    Some(EffectAst::subject_verb_additional_phases(phases))
+}
+
 pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

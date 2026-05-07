@@ -1727,6 +1727,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::PumpForEach { count, .. } => {
                 resolve_effect_result_value(count, state)?;
             }
+            SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
         | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
@@ -2523,6 +2524,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
+            SubjectVerbActionAst::AdditionalPhases { .. } => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
         },
         EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),

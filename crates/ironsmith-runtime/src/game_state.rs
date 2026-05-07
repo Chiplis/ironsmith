@@ -156,6 +156,11 @@ pub struct TurnStore {
     /// Extra turns queued up (Time Walk, etc.).
     /// Players take these turns in order after the current turn ends.
     pub extra_turns: Vec<PlayerId>,
+    /// Additional phases inserted after the current phase.
+    /// These are consumed before the normal turn sequence advances.
+    pub additional_phases: Vec<Phase>,
+    /// Normal phase to resume after inserted additional phases finish.
+    pub additional_phase_continuation: Option<Phase>,
     /// Players who will skip their next turn.
     /// Checked and cleared when a player would start their turn.
     pub skip_next_turn: HashSet<PlayerId>,

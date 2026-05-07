@@ -20,7 +20,7 @@ test("decision button color is driven by the decision player before priority sta
   const decision = { kind: "priority", player: 0 };
 
   assert.equal(decisionButtonPlayerId(state, decision), 0);
-  assert.equal(decisionButtonAccentVars(state, decision)["--decision-main-accent"], "#4484d7");
+  assert.equal(decisionButtonAccentVars(state, decision)["--decision-main-accent"], "#f28c28");
 });
 
 test("decision button color does not fall back to active player during phase transitions", () => {
@@ -32,5 +32,5 @@ test("decision button color does not fall back to active player during phase tra
   };
 
   assert.equal(decisionButtonPlayerId(state, null), 0);
-  assert.equal(decisionButtonAccentVars(state, null)["--decision-main-accent"], "#4484d7");
+  assert.equal(decisionButtonAccentVars(state, null)["--decision-main-accent"], "#f28c28");
 });

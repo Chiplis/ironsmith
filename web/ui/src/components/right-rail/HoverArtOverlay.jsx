@@ -36,6 +36,7 @@ const INSPECTOR_LEFT_ART_HEADER_ALLOWANCE = 188;
 const INSPECTOR_ORACLE_TOP_PADDING = 54;
 const INSPECTOR_ORACLE_BOTTOM_PADDING = 10;
 const INSPECTOR_ORACLE_HORIZONTAL_PADDING = 28;
+const INSPECTOR_ORACLE_EARLY_WRAP_WIDTH = 640;
 const INSPECTOR_MEASURE_FONT = `"Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif`;
 const INSPECTOR_ART_ASPECT_RATIO = 626 / 457;
 const INSPECTOR_ART_SAFE_GAP = 36;
@@ -913,6 +914,9 @@ export default function HoverArtOverlay({
       INSPECTOR_RULES_MAX_LINE_WIDTH
     ));
   }, [ruleLineWidths]);
+  const measuredPreferredWrappedRulesWidth = measuredPreferredRulesWidth == null
+    ? null
+    : Math.min(measuredPreferredRulesWidth, INSPECTOR_ORACLE_EARLY_WRAP_WIDTH);
   const measuredPreferredHeaderWidth = useMemo(() => {
     if (typeof document === "undefined") return null;
     if (!displayObjectName && !displayManaCost && !hasTopLeftInlineMetadata) return null;
@@ -985,7 +989,7 @@ export default function HoverArtOverlay({
     : measuredPreferredHeaderWidth + measuredHeaderArtAllowance + INSPECTOR_HEADER_HORIZONTAL_PADDING;
   const measuredPreferredOracleInspectorWidth = measuredPreferredRulesWidth == null
     ? 0
-    : measuredPreferredRulesWidth + INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE;
+    : (measuredPreferredWrappedRulesWidth || measuredPreferredRulesWidth) + INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE;
   const measuredPreferredInspectorWidth = Math.max(
     measuredPreferredHeaderInspectorWidth,
     measuredPreferredOracleInspectorWidth
@@ -1586,10 +1590,7 @@ export default function HoverArtOverlay({
     : 18;
   const inspectorRulesBodyMaxWidth = compact
     ? null
-    : Math.max(
-      44 * 16,
-      measuredPreferredRulesWidth || 0
-    );
+    : (measuredPreferredWrappedRulesWidth || measuredPreferredRulesWidth || INSPECTOR_RULES_MIN_WIDTH);
   const inspectorArtSafeWidth = (
     !compact
     && imageUrl
@@ -1601,7 +1602,7 @@ export default function HoverArtOverlay({
   )
     ? Math.min(
       availableInspectorWidthNum,
-      Math.max(0, (availableInspectorHeightNum - 20) * INSPECTOR_ART_ASPECT_RATIO) + INSPECTOR_ART_SAFE_GAP
+      Math.max(0, availableInspectorHeightNum * INSPECTOR_ART_ASPECT_RATIO) + INSPECTOR_ART_SAFE_GAP
     )
     : null;
   const inspectorRulesSafeWidth = (
@@ -1983,44 +1984,6 @@ export default function HoverArtOverlay({
                   </div>
                 </div>
               )}
-              {transitionTitle && (
-                <div
-                  className={cn(
-                    "inspector-banner inspector-banner--meta flex min-w-0 max-w-full items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
-                    topMetadataTextClassName
-                  )}
-                  style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
-                >
-                  {hasTransitionNavigator && (
-                    <button
-                      type="button"
-                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
-                      onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
-                      aria-label="Show previous moved card"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <span className="min-w-0 truncate">{transitionTitle}</span>
-                  {transitionSequenceLabel && (
-                    <span className="rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
-                      {transitionSequenceLabel}
-                    </span>
-                  )}
-                  {hasTransitionNavigator && (
-                    <button
-                      type="button"
-                      className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
-                      onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
-                      aria-label="Show next moved card"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
               </div>
               {!lowProfileInspector && displayTypeLineBadges.length > 0 && (
                 <div className="flex max-w-full flex-wrap gap-1">
@@ -2066,6 +2029,49 @@ export default function HoverArtOverlay({
               lineClassName="text-right"
               style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
             />
+          </div>
+        )}
+        {!compactTopbarLayout && transitionTitle && (
+          <div
+            className="pointer-events-auto absolute bottom-2 left-2 z-[70] flex max-w-[min(72%,24rem)] items-end"
+            aria-label="Card movement"
+          >
+            <div
+              className={cn(
+                "inspector-banner inspector-banner--meta flex min-w-0 max-w-full items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
+                topMetadataTextClassName
+              )}
+              style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+            >
+              {hasTransitionNavigator && (
+                <button
+                  type="button"
+                  className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                  onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
+                  onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
+                  aria-label="Show previous moved card"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <span className="min-w-0 truncate">{transitionTitle}</span>
+              {transitionSequenceLabel && (
+                <span className="rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
+                  {transitionSequenceLabel}
+                </span>
+              )}
+              {hasTransitionNavigator && (
+                <button
+                  type="button"
+                  className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                  onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
+                  onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
+                  aria-label="Show next moved card"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         )}
         {!compactTopbarLayout && (

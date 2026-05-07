@@ -2477,6 +2477,10 @@ impl StaticAbility {
         Self::new(DrawReplacementExileTopFaceDown)
     }
 
+    pub fn draw_replacement_double() -> Self {
+        Self::new(DrawReplacementDouble)
+    }
+
     pub fn reveal_first_card_you_draw_each_turn(optional: bool, your_turns_only: bool) -> Self {
         Self::new(RevealFirstCardYouDrawEachTurn::new(
             optional,

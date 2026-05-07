@@ -1474,6 +1474,14 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
         && contains_word_lexed(tokens, "instead")
 }
 
+pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    words
+        == [
+            "if", "you", "would", "draw", "a", "card", "draw", "two", "cards", "instead",
+        ]
+}
+
 pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

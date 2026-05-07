@@ -168,7 +168,13 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
 
     let current_phase = game.turn.phase;
 
-    if let Some(mut next) = next_phase(current_phase) {
+    if let Some(mut next) = if !game.turn_store.additional_phases.is_empty() {
+        Some(game.turn_store.additional_phases.remove(0))
+    } else if game.turn_store.additional_phase_continuation.is_some() {
+        game.turn_store.additional_phase_continuation.take()
+    } else {
+        next_phase(current_phase)
+    } {
         if matches!(next, Phase::Combat)
             && game
                 .turn_store

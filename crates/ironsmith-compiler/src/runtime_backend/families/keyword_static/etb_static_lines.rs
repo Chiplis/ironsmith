@@ -830,6 +830,13 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
             return Some(Value::ThisAbilityResolvedThisTurnCount);
         }
         Some(["your", "life", "total"]) => return Some(Value::LifeTotal(PlayerFilter::You)),
+        Some(["half", "your", "life", "total"])
+        | Some(["half", "your", "life", "total", "rounded", "up"]) => {
+            return Some(Value::HalfLifeTotalRoundedUp(PlayerFilter::You));
+        }
+        Some(["half", "your", "life", "total", "rounded", "down"]) => {
+            return Some(Value::HalfLifeTotalRoundedDown(PlayerFilter::You));
+        }
         Some(["your", "speed"]) => return Some(Value::Speed(PlayerFilter::You)),
         Some(["the", "number", "of", "opponents", "you", "have"])
         | Some(["number", "of", "opponents", "you", "have"])
@@ -1207,6 +1214,42 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
         ) || etb_word_slice_starts_with(
             value_words,
             &["sacrificed", "creatures", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "mana", "value", "of", "the", "exiled", "creature"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "mana", "value", "of", "the", "exiled", "creature's"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "mana", "value", "of", "the", "exiled", "creatures"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["mana", "value", "of", "the", "exiled", "creature"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["mana", "value", "of", "the", "exiled", "creature's"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["mana", "value", "of", "the", "exiled", "creatures"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "exiled", "creature", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "exiled", "creature's", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["the", "exiled", "creatures", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["exiled", "creature", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["exiled", "creature's", "mana", "value"],
+        ) || etb_word_slice_starts_with(
+            value_words,
+            &["exiled", "creatures", "mana", "value"],
         ) {
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
         } else {

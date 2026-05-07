@@ -4011,6 +4011,31 @@ impl ExtraTurnAfterNextTurnEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdditionalPhase {
+    Combat,
+    Main,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdditionalPhasesEffect {
+    pub phases: Vec<AdditionalPhase>,
+}
+
+impl AdditionalPhasesEffect {
+    pub fn new(phases: Vec<AdditionalPhase>) -> Self {
+        Self { phases }
+    }
+
+    pub fn combat() -> Self {
+        Self::new(vec![AdditionalPhase::Combat])
+    }
+
+    pub fn combat_then_main() -> Self {
+        Self::new(vec![AdditionalPhase::Combat, AdditionalPhase::Main])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringObjectEffect {
     pub tag: TagKey,

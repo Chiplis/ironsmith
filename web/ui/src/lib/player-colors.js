@@ -1,5 +1,5 @@
 const PLAYER_ACCENT_PALETTE = [
-  { hex: "#4484d7", rgb: "68, 132, 215" },
+  { hex: "#f28c28", rgb: "242, 140, 40" },
   { hex: "#ff3b30", rgb: "255, 59, 48" },
   { hex: "#22c55e", rgb: "34, 197, 94" },
   { hex: "#f3b25a", rgb: "243, 178, 90" },

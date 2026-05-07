@@ -33,7 +33,7 @@ use super::super::util::{
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
-use super::dispatch_inner::parse_take_extra_turn_sentence;
+use super::dispatch_inner::{parse_additional_phase_sentence, parse_take_extra_turn_sentence};
 use super::for_each_helpers::{
     has_demonstrative_object_reference, is_mana_replacement_clause_words,
     is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,
@@ -359,6 +359,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
     if let Some(effect) = parse_take_extra_turn_sentence(tokens)? {
+        return Ok(effect);
+    }
+    if let Some(effect) = parse_additional_phase_sentence(tokens) {
         return Ok(effect);
     }
     if is_mana_replacement_clause_words(&clause_words) {

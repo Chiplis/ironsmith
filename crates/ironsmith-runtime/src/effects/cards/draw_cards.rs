@@ -374,6 +374,33 @@ mod tests {
     }
 
     #[test]
+    fn test_draw_cards_respects_double_draw_replacement() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        add_cards_to_library(&mut game, alice, 5);
+        let source = game.new_object_id();
+        game.effect_store.replacement_effects.add_resolution_effect(
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Modify(
+                    crate::replacement::EventModification::Multiply(2),
+                ),
+            ),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = DrawCardsEffect::you(1);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+        assert_eq!(game.player(alice).unwrap().library.len(), 3);
+    }
+
+    #[test]
     fn test_draw_cards_for_opponent() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

@@ -161,6 +161,7 @@ impl StaticAbility {
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }
+            Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
             Some(StaticAbilityId::LookAtTopCardOfLibrary) => Self::look_at_top_card_of_library(),
             Some(StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries) => {
                 Self::all_players_look_at_top_cards_of_libraries()

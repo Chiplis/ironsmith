@@ -5,6 +5,7 @@
 //! win/lose conditions, turn manipulation, and emblem creation.
 
 mod additional_land_plays;
+mod additional_phases;
 mod become_monarch;
 mod cascade;
 mod cast_source;
@@ -53,6 +54,7 @@ mod venture_into_dungeon;
 mod win_the_game;
 
 pub use additional_land_plays::AdditionalLandPlaysEffect;
+pub use additional_phases::{AdditionalPhase, AdditionalPhasesEffect};
 pub use become_monarch::BecomeMonarchEffect;
 pub use cascade::CascadeEffect;
 pub use cast_source::CastSourceEffect;

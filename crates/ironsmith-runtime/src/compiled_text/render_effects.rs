@@ -27305,6 +27305,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&skip_combat.player)
         );
     }
+    if let Some(additional_phases) = effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>()
+    {
+        if additional_phases.phases == [crate::effects::AdditionalPhase::Combat] {
+            return "After this phase, there is an additional combat phase".to_string();
+        }
+        if additional_phases.phases
+            == [
+                crate::effects::AdditionalPhase::Combat,
+                crate::effects::AdditionalPhase::Main,
+            ]
+        {
+            return "After this main phase, there is an additional combat phase followed by an additional main phase".to_string();
+        }
+    }
     if let Some(monstrosity) = effect.downcast_ref::<crate::effects::MonstrosityEffect>() {
         return format!("Monstrosity {}", describe_value(&monstrosity.n));
     }

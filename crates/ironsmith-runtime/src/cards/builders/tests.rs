@@ -1105,6 +1105,25 @@ fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_max_speed_draw_replacement_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vnwxt Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Start your engines!\nYou have no maximum hand size.\nMax speed — If you would draw a card, draw two cards instead.",
+        )
+        .expect("max-speed draw replacement line should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Start your engines!")
+            && rendered.contains("no maximum hand size")
+            && rendered.contains("If you would draw a card, draw two cards instead")
+            && rendered.contains("max speed"),
+        "expected max-speed draw replacement static ability, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_exploit_keyword_line_lowers_to_keyword_action_event() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Exploit Parse Test")
         .card_types(vec![CardType::Creature])
@@ -37315,5 +37334,58 @@ fn card_fixer_parse_color_conditional_keyword_grants_merge_to_oracle_surface() {
             "Each creature you control has vigilance if it's white, hexproof if it's blue, lifelink if it's black, first strike if it's red, and trample if it's green"
         ),
         "expected merged color-conditional grant surface, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_additional_combat_phase_followed_by_main_phase() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Extra Combat Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "After this main phase, there is an additional combat phase followed by an additional main phase.",
+        )
+        .expect("additional combat and main phase clause should parse");
+
+    let effect = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>())
+        .expect("additional phases effect");
+    assert_eq!(
+        effect.phases,
+        vec![
+            crate::effects::AdditionalPhase::Combat,
+            crate::effects::AdditionalPhase::Main
+        ]
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "After this main phase, there is an additional combat phase followed by an additional main phase"
+        ),
+        "expected additional phase surface, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_must_be_blocked_each_combat_this_turn_if_able() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Must Be Blocked Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(8, 4))
+        .parse_text("This creature must be blocked each combat this turn if able.")
+        .expect("each-combat must-be-blocked clause should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("must be blocked this turn if able"),
+        "expected must-be-blocked surface, got {rendered}"
     );
 }

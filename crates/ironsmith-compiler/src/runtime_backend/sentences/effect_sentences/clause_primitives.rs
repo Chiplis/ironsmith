@@ -685,6 +685,14 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
                     tokens,
                     &["must", "be", "blocked", "this", "turn", "if", "able"],
                 )
+            })
+            .or_else(|| {
+                grammar::strip_lexed_suffix_phrase(
+                    tokens,
+                    &[
+                        "must", "be", "blocked", "each", "combat", "this", "turn", "if", "able",
+                    ],
+                )
             });
     let Some(subject_part) = suffix else {
         return Ok(None);

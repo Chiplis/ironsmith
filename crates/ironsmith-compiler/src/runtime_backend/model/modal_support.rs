@@ -476,6 +476,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
             | SubjectVerbActionAst::SearchLibrary { .. }
             | SubjectVerbActionAst::Cant { .. }
+            | SubjectVerbActionAst::AdditionalPhases { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::CreateTokenCopy { count: amount, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { count: amount, .. } => {

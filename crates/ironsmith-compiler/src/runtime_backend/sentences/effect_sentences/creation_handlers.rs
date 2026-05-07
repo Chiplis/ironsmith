@@ -1059,6 +1059,28 @@ pub(crate) fn parse_create(
         }
     }
 
+    if let Some(where_word_idx) = tail_words.iter().position(|word| *word == "where")
+        && let Some(where_token_idx) = token_index_for_word_index(&tail_tokens, where_word_idx)
+    {
+        let where_value =
+            parse_value_binding_clause(&tail_tokens[where_token_idx..]).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported where-x clause in create clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let where_value = where_value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+        if let Some((power, toughness)) = dynamic_power_toughness.as_mut() {
+            if value_contains_unbound_x(power) {
+                *power = where_value.clone();
+            }
+            if value_contains_unbound_x(toughness) {
+                *toughness = where_value.clone();
+            }
+        }
+        modifier_tail_words.truncate(where_word_idx);
+    }
+
     tapped |= word_slice_contains(&modifier_tail_words, "tapped");
     attacking |= word_slice_contains(&modifier_tail_words, "attacking");
     if attacking

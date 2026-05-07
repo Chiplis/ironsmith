@@ -1883,6 +1883,10 @@ impl Effect {
         Self::new(crate::effects::ExtraTurnAfterNextTurnEffect::new(player))
     }
 
+    pub fn additional_phases(phases: Vec<crate::effects::AdditionalPhase>) -> Self {
+        Self::new(crate::effects::AdditionalPhasesEffect::new(phases))
+    }
+
     pub fn move_all_counters(
         from: crate::target::ChooseSpec,
         to: crate::target::ChooseSpec,

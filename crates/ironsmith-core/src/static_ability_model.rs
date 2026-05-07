@@ -2797,6 +2797,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn draw_replacement_double() -> Self {
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementDouble),
+            label: "draw replacement double".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn exile_to_countered_exile_instead_of_graveyard(
         player: PlayerFilter,
         counter_type: CounterType,

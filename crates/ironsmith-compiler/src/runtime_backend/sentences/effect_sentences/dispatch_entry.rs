@@ -2267,6 +2267,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
             | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
+            | SubjectVerbActionAst::AdditionalPhases { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::Cant { .. } => {}
             SubjectVerbActionAst::SearchLibrary {

@@ -3120,6 +3120,20 @@ fn rewrite_etb_where_x_total_power_of_sacrificed_creatures_uses_the_sacrifice_re
 }
 
 #[test]
+fn rewrite_etb_where_x_one_plus_exiled_creatures_mana_value() {
+    let tokens = lex_line("where x is 1 plus the exiled creature's mana value", 0)
+        .expect("rewrite lexer should classify fixed-plus exiled reference clause");
+
+    let parsed = super::keyword_static::parse_value_binding_clause(&tokens)
+        .expect("fixed-plus exiled mana-value clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Add"), "{debug}");
+    assert!(debug.contains("Fixed(1)"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+}
+
+#[test]
 fn rewrite_zone_handlers_keep_conditional_destroy_clause_after_structure_cutover() {
     let tokens = lex_line("Destroy target creature if it's white.", 0)
         .expect("rewrite lexer should classify conditional destroy clause");
