@@ -12,6 +12,9 @@ use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::types::CardType;
+use crate::zone::Zone;
+
+pub type RevealSourceFromHandEffect = ironsmith_core::RevealSourceFromHandEffect;
 
 /// Effect that reveals cards from the controller's hand.
 ///
@@ -191,6 +194,94 @@ impl CostExecutableEffect for RevealFromHandEffect {
     }
 }
 
+impl EffectExecutor for RevealSourceFromHandEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Some(source) = game.object(ctx.source) else {
+            return Ok(EffectOutcome::count(0));
+        };
+        if source.owner != ctx.controller || source.zone != Zone::Hand {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let source_id = ctx.source;
+        for viewer_idx in 0..game.players.len() {
+            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+            let view_ctx = ViewCardsContext::new(
+                viewer,
+                ctx.controller,
+                Some(ctx.source),
+                Zone::Hand,
+                "Reveal source card from hand",
+            )
+            .with_public(true);
+            ctx.decision_maker
+                .view_cards(game, viewer, &[source_id], &view_ctx);
+        }
+
+        let Some(snapshot) = game
+            .object(source_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, game))
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+        let entry = ctx
+            .tagged_objects
+            .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+            .or_default();
+        if !entry
+            .iter()
+            .any(|existing| existing.object_id == snapshot.object_id)
+        {
+            entry.push(snapshot.clone());
+        }
+
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::CardRevealedEvent::new(
+                ctx.controller,
+                source_id,
+                Zone::Hand,
+                Some(ctx.source),
+                Some(snapshot),
+            ),
+            ctx.provenance,
+        );
+        Ok(EffectOutcome::count(1).with_events(vec![event]))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        Some("Reveal this card from your hand".to_string())
+    }
+}
+
+impl CostExecutableEffect for RevealSourceFromHandEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let Some(object) = game.object(source) else {
+            return Err(CostValidationError::Other(
+                "source card is not available to reveal".to_string(),
+            ));
+        };
+        if object.owner != controller || object.zone != Zone::Hand {
+            return Err(CostValidationError::Other(
+                "source card is not in your hand".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +346,24 @@ mod tests {
         let mut ctx = CostContext::new(source, alice, &mut dm).with_pre_chosen_cards(vec![id1]);
 
         assert_eq!(cost.pay(&mut game, &mut ctx), Ok(CostPaymentResult::Paid));
+    }
+
+    #[test]
+    fn reveal_source_from_hand_cost_reveals_the_source_card() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(99), "Forecast Card").build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Hand);
+
+        let cost = Cost::effect(RevealSourceFromHandEffect::new());
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+
+        assert_eq!(cost.pay(&mut game, &mut ctx), Ok(CostPaymentResult::Paid));
+        assert!(dm.calls.iter().all(|(_, _, zone, public, cards)| {
+            *zone == Zone::Hand && *public && cards.as_slice() == [source]
+        }));
+        assert_eq!(dm.calls.len(), 2);
     }
 
     #[test]

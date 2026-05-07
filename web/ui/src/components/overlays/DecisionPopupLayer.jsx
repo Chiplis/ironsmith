@@ -1247,10 +1247,10 @@ function MobileDecisionDock({
   inline = false,
   orientation = "horizontal",
 }) {
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const decision = state?.decision || null;
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
   const isVertical = orientation === "vertical";
   const effectivePrimaryDisabled = primaryDisabled || attackButtonTransition.locked;
@@ -2148,6 +2148,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     setHoldRule,
     cancelDecision,
     triggerOrderingState,
+    playerAccentOverrides,
   } = useGame();
   const {
     hoveredObjectId,
@@ -2159,7 +2160,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const decision = state?.decision || null;
   const manaPayment = state?.mana_payment || null;
   const canAct = !!decision && state?.perspective === decision.player;
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
   const isPriorityDecision = decision?.kind === "priority";
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
@@ -2919,6 +2920,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     holdRule,
     setHoldRule,
     cancelDecision,
+    playerAccentOverrides,
   } = useGame();
   const decisionIdentity = [
     decision?.kind || "",
@@ -2932,7 +2934,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   ].join("|");
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
   const handleCombatActionChange = useCallback(
     (nextAction) => {

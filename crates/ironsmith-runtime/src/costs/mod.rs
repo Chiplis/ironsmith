@@ -198,7 +198,14 @@ impl Cost {
             ironsmith_core::Cost::RemoveAnyCountersFromSource {
                 counter_type,
                 display_x,
-            } => Self::remove_any_counters_from_source(counter_type, display_x),
+                remove_all,
+            } => {
+                if remove_all {
+                    Self::remove_all_counters_from_source(counter_type)
+                } else {
+                    Self::remove_any_counters_from_source(counter_type, display_x)
+                }
+            }
             ironsmith_core::Cost::Energy(amount) => Self::energy(fixed_u32(amount, "energy cost")?),
             ironsmith_core::Cost::Mill(count) => Self::mill(fixed_u32(count, "mill cost")?),
             ironsmith_core::Cost::Life(amount) => Self::life(fixed_u32(amount, "life cost")?),
@@ -320,6 +327,13 @@ impl Cost {
         Self::validated_effect(crate::effect::Effect::remove_any_counters_from_source(
             counter_type,
             display_x,
+        ))
+    }
+
+    /// Create a remove-all-counters-from-source cost.
+    pub fn remove_all_counters_from_source(counter_type: Option<CounterType>) -> Self {
+        Self::validated_effect(crate::effect::Effect::remove_all_counters_from_source(
+            counter_type,
         ))
     }
 

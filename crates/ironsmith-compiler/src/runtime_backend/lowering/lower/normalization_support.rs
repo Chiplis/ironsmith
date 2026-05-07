@@ -243,111 +243,7 @@ fn normalize_rewrite_line_ast(
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut normalized_chunks = Vec::with_capacity(chunks.len());
     for chunk in chunks {
-        normalized_chunks.push(match chunk {
-            LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
-            LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
-            LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
-            LineAst::Ability(parsed) => {
-                NormalizedLineChunk::Ability(normalize_rewrite_parsed_ability(parsed)?)
-            }
-            LineAst::Triggered {
-                trigger,
-                effects,
-                max_triggers_per_turn,
-            } => {
-                let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-                    trigger,
-                    &effects,
-                    ReferenceImports::default(),
-                )?;
-                NormalizedLineChunk::Triggered {
-                    trigger,
-                    prepared,
-                    max_triggers_per_turn,
-                }
-            }
-            LineAst::Statement { effects } => {
-                let prepared = rewrite_prepare_effects_for_lowering(
-                    &effects,
-                    state.statement_reference_imports(),
-                )?;
-                state.latest_spell_exports = prepared.exports.clone();
-                NormalizedLineChunk::Statement {
-                    effects_ast: effects,
-                    prepared,
-                }
-            }
-            LineAst::AdditionalCost { effects } => {
-                let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
-                let prepared =
-                    rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
-                state.latest_additional_cost_exports = prepared.exports.clone();
-                NormalizedLineChunk::AdditionalCost {
-                    effects_ast: effects,
-                    prepared,
-                }
-            }
-            LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost.into_runtime()),
-            LineAst::GiftKeyword {
-                cost,
-                effects,
-                followup_text,
-                timing,
-            } => {
-                let prepared =
-                    rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
-                NormalizedLineChunk::GiftKeyword {
-                    cost: cost.into_runtime(),
-                    prepared,
-                    followup_text,
-                    timing,
-                }
-            }
-            LineAst::OptionalCostWithCastTrigger {
-                cost,
-                effects,
-                followup_text,
-            } => {
-                let prepared = rewrite_prepare_effects_for_lowering(
-                    &effects,
-                    state.latest_additional_cost_exports.to_imports(),
-                )?;
-                NormalizedLineChunk::OptionalCostWithCastTrigger {
-                    cost: cost.into_runtime(),
-                    prepared,
-                    followup_text,
-                }
-            }
-            LineAst::AdditionalCostChoice { options } => {
-                let mut normalized_options = Vec::with_capacity(options.len());
-                let mut exports = ReferenceExports::default();
-                let mut saw_option = false;
-                for option in options {
-                    let prepared = rewrite_prepare_effects_for_lowering(
-                        &option.effects,
-                        ReferenceImports::default(),
-                    )?;
-                    exports = if saw_option {
-                        ReferenceExports::join(&exports, &prepared.exports)
-                    } else {
-                        saw_option = true;
-                        prepared.exports.clone()
-                    };
-                    normalized_options.push(NormalizedAdditionalCostChoiceOptionAst {
-                        description: option.description,
-                        effects_ast: option.effects,
-                        prepared,
-                    });
-                }
-                state.latest_additional_cost_exports = exports;
-                NormalizedLineChunk::AdditionalCostChoice {
-                    options: normalized_options,
-                }
-            }
-            LineAst::AlternativeCastingMethod(method) => {
-                NormalizedLineChunk::AlternativeCastingMethod(method.into_runtime())
-            }
-        });
+        normalize_rewrite_line_chunk(chunk, state, &mut normalized_chunks)?;
     }
 
     Ok(NormalizedLineAst {
@@ -355,6 +251,129 @@ fn normalize_rewrite_line_ast(
         chunks: normalized_chunks,
         restrictions,
     })
+}
+
+fn normalize_rewrite_line_chunk(
+    chunk: LineAst,
+    state: &mut RewriteNormalizationState,
+    normalized_chunks: &mut Vec<NormalizedLineChunk>,
+) -> Result<(), CardTextError> {
+    if let LineAst::Multiple(chunks) = chunk {
+        for chunk in chunks {
+            normalize_rewrite_line_chunk(chunk, state, normalized_chunks)?;
+        }
+        return Ok(());
+    }
+
+    normalized_chunks.push(match chunk {
+        LineAst::Multiple(_) => {
+            unreachable!("multiple line chunks are flattened before normalization")
+        }
+        LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
+        LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
+        LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
+        LineAst::Ability(parsed) => {
+            NormalizedLineChunk::Ability(normalize_rewrite_parsed_ability(parsed)?)
+        }
+        LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn,
+        } => {
+            let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                trigger,
+                &effects,
+                ReferenceImports::default(),
+            )?;
+            NormalizedLineChunk::Triggered {
+                trigger,
+                prepared,
+                max_triggers_per_turn,
+            }
+        }
+        LineAst::Statement { effects } => {
+            let prepared = rewrite_prepare_effects_for_lowering(
+                &effects,
+                state.statement_reference_imports(),
+            )?;
+            state.latest_spell_exports = prepared.exports.clone();
+            NormalizedLineChunk::Statement {
+                effects_ast: effects,
+                prepared,
+            }
+        }
+        LineAst::AdditionalCost { effects } => {
+            let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
+            let prepared =
+                rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+            state.latest_additional_cost_exports = prepared.exports.clone();
+            NormalizedLineChunk::AdditionalCost {
+                effects_ast: effects,
+                prepared,
+            }
+        }
+        LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost.into_runtime()),
+        LineAst::GiftKeyword {
+            cost,
+            effects,
+            followup_text,
+            timing,
+        } => {
+            let prepared =
+                rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+            NormalizedLineChunk::GiftKeyword {
+                cost: cost.into_runtime(),
+                prepared,
+                followup_text,
+                timing,
+            }
+        }
+        LineAst::OptionalCostWithCastTrigger {
+            cost,
+            effects,
+            followup_text,
+        } => {
+            let prepared = rewrite_prepare_effects_for_lowering(
+                &effects,
+                state.latest_additional_cost_exports.to_imports(),
+            )?;
+            NormalizedLineChunk::OptionalCostWithCastTrigger {
+                cost: cost.into_runtime(),
+                prepared,
+                followup_text,
+            }
+        }
+        LineAst::AdditionalCostChoice { options } => {
+            let mut normalized_options = Vec::with_capacity(options.len());
+            let mut exports = ReferenceExports::default();
+            let mut saw_option = false;
+            for option in options {
+                let prepared = rewrite_prepare_effects_for_lowering(
+                    &option.effects,
+                    ReferenceImports::default(),
+                )?;
+                exports = if saw_option {
+                    ReferenceExports::join(&exports, &prepared.exports)
+                } else {
+                    saw_option = true;
+                    prepared.exports.clone()
+                };
+                normalized_options.push(NormalizedAdditionalCostChoiceOptionAst {
+                    description: option.description,
+                    effects_ast: option.effects,
+                    prepared,
+                });
+            }
+            state.latest_additional_cost_exports = exports;
+            NormalizedLineChunk::AdditionalCostChoice {
+                options: normalized_options,
+            }
+        }
+        LineAst::AlternativeCastingMethod(method) => {
+            NormalizedLineChunk::AlternativeCastingMethod(method.into_runtime())
+        }
+    });
+    Ok(())
 }
 
 fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {

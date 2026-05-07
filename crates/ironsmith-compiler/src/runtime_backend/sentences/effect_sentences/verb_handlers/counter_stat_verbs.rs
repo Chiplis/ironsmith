@@ -748,6 +748,21 @@ pub(crate) fn parse_life_equal_to_value(
     ) {
         return Ok(Some(Value::EventValue(EventValueSpec::LifeAmount)));
     }
+    if matches!(
+        amount_words.as_slice(),
+        [
+            "equal", "to", "the", "life", "that", "player", "lost", "this", "turn"
+        ] | [
+            "equal", "to", "life", "that", "player", "lost", "this", "turn"
+        ] | [
+            "equal", "to", "the", "amount", "of", "life", "that", "player", "lost", "this",
+            "turn"
+        ] | [
+            "equal", "to", "amount", "of", "life", "that", "player", "lost", "this", "turn"
+        ]
+    ) {
+        return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer)));
+    }
     if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }

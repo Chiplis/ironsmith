@@ -229,8 +229,8 @@ impl CostPayer for CostEffect {
         use crate::effects::{
             DiscardEffect, DiscardHandEffect, ExileEffect, MillEffect, PayEnergyEffect,
             PutCountersEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-            ReturnToHandEffect, RevealFromHandEffect, SacrificeEffect, SacrificeTargetEffect,
-            TapEffect, UntapEffect,
+            ReturnToHandEffect, RevealFromHandEffect, RevealSourceFromHandEffect, SacrificeEffect,
+            SacrificeTargetEffect, TapEffect, UntapEffect,
         };
         use crate::target::{ChooseSpec, PlayerFilter};
 
@@ -287,6 +287,14 @@ impl CostPayer for CostEffect {
                 count: effect.count,
                 card_type: effect.card_type,
             };
+        }
+
+        if self
+            .effect
+            .downcast_ref::<RevealSourceFromHandEffect>()
+            .is_some()
+        {
+            return CostProcessingMode::Immediate;
         }
 
         if let Some(effect) = self.effect.downcast_ref::<SacrificeTargetEffect>()

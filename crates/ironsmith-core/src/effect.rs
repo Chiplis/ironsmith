@@ -1039,6 +1039,15 @@ impl RevealTaggedEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevealSourceFromHandEffect;
+
+impl RevealSourceFromHandEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseSpellCastHistoryEffect {
     pub chooser: PlayerFilter,
@@ -1922,6 +1931,34 @@ pub struct GoadEffect {
 impl GoadEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuspectEffect {
+    pub target: ChooseSpec,
+}
+
+impl SuspectEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClearSuspectedEffect {
+    pub target: Option<ChooseSpec>,
+}
+
+impl ClearSuspectedEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self {
+            target: Some(target),
+        }
+    }
+
+    pub const fn all() -> Self {
+        Self { target: None }
     }
 }
 
@@ -3037,6 +3074,7 @@ impl DiscardEffect {
 pub struct RemoveAnyCountersFromSourceEffect {
     pub counter_type: Option<crate::counter::CounterType>,
     pub display_x: bool,
+    pub remove_all: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3290,6 +3328,15 @@ impl RegisterZoneReplacementEffect {
         self.optional = true;
         self.choice_description = Some(description.into());
         self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LearnEffect;
+
+impl LearnEffect {
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -5398,6 +5445,21 @@ pub struct SequenceEffect<E> {
 impl<E> SequenceEffect<E> {
     pub fn new(effects: Vec<E>) -> Self {
         Self { effects }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaRestrictedEffect<E> {
+    pub effects: Vec<E>,
+    pub restrictions: Vec<crate::ManaUsageRestriction>,
+}
+
+impl<E> ManaRestrictedEffect<E> {
+    pub fn new(effects: Vec<E>, restrictions: Vec<crate::ManaUsageRestriction>) -> Self {
+        Self {
+            effects,
+            restrictions,
+        }
     }
 }
 

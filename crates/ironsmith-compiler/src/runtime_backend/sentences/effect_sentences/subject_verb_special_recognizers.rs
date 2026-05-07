@@ -1,16 +1,18 @@
 use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::parse_pt_modifier_values;
 use super::super::lexer::{OwnedLexToken, TokenWordView};
+use super::super::object_filters::parse_object_filter_lexed;
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
 use super::super::token_primitives::find_window_index as find_word_sequence_index;
 use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
-use crate::cards::builders::{CardTextError, EffectAst};
+use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
 use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, TargetAst, Value};
-use crate::effect::Until;
+use crate::effect::{EventValueSpec, Until};
 use crate::object::CounterType;
 use crate::runtime_backend::contains_until_end_of_turn;
+use crate::runtime_backend::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::runtime_backend::token_index_for_word_index;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -450,7 +452,74 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
     Ok(None)
 }
 
-pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 5] = [
+pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
+    view: &LexClauseView<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if grammar::words_match_prefix(view.tokens, &["sacrifice", "any", "number", "of"]).is_none() {
+        return Ok(None);
+    }
+    let words = crate::runtime_backend::token_word_refs(view.tokens);
+    let Some(then_idx) = words.iter().position(|word| *word == "then") else {
+        return Ok(None);
+    };
+    if words.get(then_idx + 1..) != Some(&["draw", "that", "many", "cards"][..]) {
+        return Ok(None);
+    }
+
+    let Some(then_token_idx) =
+        crate::runtime_backend::token_index_for_word_index(view.tokens, then_idx)
+    else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_commas(&view.tokens[4..then_token_idx]);
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing sacrifice object after 'any number of' (clause: '{}')",
+            view.display_text()
+        )));
+    }
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let filter_text = view.display_text().to_ascii_lowercase();
+    let filter = if filter_text.contains("token")
+        && filter_words
+            .iter()
+            .any(|word| matches!(*word, "artifact" | "artifacts"))
+        && filter_words
+            .iter()
+            .any(|word| matches!(*word, "enchantment" | "enchantments"))
+    {
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![
+            ObjectFilter::artifact().you_control(),
+            ObjectFilter::enchantment().you_control(),
+            ObjectFilter::default().token().you_control(),
+        ];
+        filter
+    } else {
+        parse_object_filter_lexed(&filter_tokens, false)?
+    };
+    let tag = TagKey::from("sacrificed_0");
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::any_number(),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+        },
+        EffectAst::subject_verb_sacrifice_all(PlayerAst::You, ObjectFilter::tagged(tag)),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::EventValue(EventValueSpec::Amount),
+            },
+        ),
+    ]))
+}
+
+pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6] = [
     LexRuleDef {
         id: "redirect-next-damage",
         priority: 100,
@@ -485,6 +554,13 @@ pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<Effect
         heads: &["if"],
         shape_mask: RULE_SHAPE_STARTS_IF,
         run: parse_spell_this_way_pay_life_rule_lexed,
+    },
+    LexRuleDef {
+        id: "sacrifice-any-number-then-draw-that-many",
+        priority: 140,
+        heads: &["sacrifice"],
+        shape_mask: 0,
+        run: parse_sacrifice_any_number_then_draw_that_many_rule_lexed,
     },
 ];
 

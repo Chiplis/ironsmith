@@ -1457,6 +1457,8 @@ pub struct StackEntry {
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    /// Numeric value computed by the trigger matcher for resolving "that many".
+    pub event_value_amount: Option<i32>,
     /// Structural identity of the triggered ability represented by this stack entry.
     pub trigger_identity: Option<TriggerIdentity>,
     /// Index of the activated ability represented by this stack entry.
@@ -1518,6 +1520,7 @@ impl StackEntry {
             source_snapshot: None,
             source_name: None,
             triggering_event: None,
+            event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
             intervening_if: None,
@@ -1555,6 +1558,7 @@ impl StackEntry {
             source_snapshot: None,
             source_name: None,
             triggering_event: None,
+            event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
             intervening_if: None,
@@ -1650,6 +1654,12 @@ impl StackEntry {
     /// Set the triggering event for this triggered ability.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.triggering_event = Some(event);
+        self
+    }
+
+    /// Set a numeric value computed by the trigger matcher for grouped events.
+    pub fn with_event_value_amount(mut self, amount: i32) -> Self {
+        self.event_value_amount = Some(amount);
         self
     }
 
@@ -1796,6 +1806,9 @@ pub struct GameState {
     /// Creatures that are renowned.
     pub renowned: HashSet<ObjectId>,
 
+    /// Permanents that are suspected.
+    pub suspected: HashSet<ObjectId>,
+
     /// Flipped permanents (for flip cards like Budoka Gardener).
     pub flipped: HashSet<ObjectId>,
 
@@ -1926,6 +1939,7 @@ impl GameState {
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
             renowned: HashSet::new(),
+            suspected: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
             manifested: HashSet::new(),
@@ -4692,6 +4706,16 @@ impl GameState {
         id: ObjectId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        if self.is_suspected(id)
+            && matches!(
+                ability_id,
+                crate::static_abilities::StaticAbilityId::Menace
+                    | crate::static_abilities::StaticAbilityId::CantBlock
+            )
+        {
+            return true;
+        }
+
         if let Some(chars) = self.calculated_characteristics(id) {
             return chars
                 .static_abilities
@@ -6801,6 +6825,26 @@ impl GameState {
         self.renowned.insert(id);
     }
 
+    /// Check if a permanent is suspected.
+    pub fn is_suspected(&self, id: ObjectId) -> bool {
+        self.suspected.contains(&id)
+    }
+
+    /// Mark a permanent as suspected.
+    pub fn set_suspected(&mut self, id: ObjectId) {
+        self.mark_continuous_state_dirty();
+        self.suspected.insert(id);
+    }
+
+    /// Clear the suspected designation from a permanent.
+    pub fn clear_suspected(&mut self, id: ObjectId) -> bool {
+        let removed = self.suspected.remove(&id);
+        if removed {
+            self.mark_continuous_state_dirty();
+        }
+        removed
+    }
+
     /// Check if a permanent is saddled (until end of turn).
     pub fn is_saddled(&self, id: ObjectId) -> bool {
         self.saddled_until_end_of_turn.contains(&id)
@@ -6977,6 +7021,7 @@ impl GameState {
         self.regeneration_shields.remove(&id);
         self.monstrous.remove(&id);
         self.renowned.remove(&id);
+        self.suspected.remove(&id);
         self.flipped.remove(&id);
         self.face_down.remove(&id);
         self.manifested.remove(&id);

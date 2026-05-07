@@ -4,8 +4,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
+import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
+import { getPlayerAccent } from "@/lib/player-colors";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
+const fontListId = "ironsmith-ui-font-options";
 
 export default function AddCardBar({
   compact = false,
@@ -23,6 +26,12 @@ export default function AddCardBar({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
+    uiFont,
+    setUiFont,
+    playerAccentOverrides,
+    setPlayerAccentOverride,
+    phaseAccent,
+    setPhaseAccent,
   } = useGame();
 
   const players = state?.players || [];
@@ -30,6 +39,7 @@ export default function AddCardBar({
   const matchLocked = multiplayer.matchStarted;
   const activePlayer = players.find((player) => player.id === state?.active_player) || null;
   const priorityPlayer = players.find((player) => player.id === state?.priority_player) || null;
+  const perspectiveAccent = getPlayerAccent(players, perspective, perspective, playerAccentOverrides);
   const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
 
   return (
@@ -115,6 +125,49 @@ export default function AddCardBar({
             ))}
           </select>
         </label>
+        <label className="add-card-toolbar-font add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
+          <span>Font</span>
+          <input
+            className={`${selectPill} add-card-toolbar-font-input`}
+            list={fontListId}
+            value={uiFont}
+            onChange={(event) => setUiFont(event.target.value)}
+            aria-label="UI font"
+            spellCheck={false}
+          />
+          <datalist id={fontListId}>
+            {UI_FONT_OPTIONS.map((font) => (
+              <option key={font.name} value={font.name} />
+            ))}
+          </datalist>
+        </label>
+        <div className="add-card-toolbar-accent add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
+          <span>Accent</span>
+          <div
+            className="add-card-toolbar-accent-split"
+            style={{
+              "--toolbar-phase-accent": phaseAccent || "#876221",
+              "--toolbar-player-accent": perspectiveAccent?.hex || "#731bde",
+            }}
+          >
+            <input
+              className="add-card-toolbar-accent-input add-card-toolbar-accent-input--phase"
+              type="color"
+              value={phaseAccent || "#876221"}
+              onChange={(event) => setPhaseAccent(event.target.value)}
+              aria-label="Phase tracker accent color"
+              title="Phase tracker accent"
+            />
+            <input
+              className="add-card-toolbar-accent-input add-card-toolbar-accent-input--player"
+              type="color"
+              value={perspectiveAccent?.hex || "#731bde"}
+              onChange={(event) => setPlayerAccentOverride(perspective, event.target.value)}
+              aria-label="Player and decision accent color"
+              title="Player and decision accent"
+            />
+          </div>
+        </div>
       </div>
 
       <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />

@@ -225,13 +225,18 @@ export default function MyZone({
   onMobileCardLongPress = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const mobileZoneRef = useRef(null);
   const mobileHandRef = useRef(null);
   const mobileHandMeasureRafRef = useRef(null);
   const [mobileHandViewportBounds, setMobileHandViewportBounds] = useState(null);
   const [mobileHandOcclusionViewportTop, setMobileHandOcclusionViewportTop] = useState(null);
-  const playerAccent = explicitPlayerAccent || getPlayerAccent(state?.players || [], player?.id, state?.perspective);
+  const playerAccent = explicitPlayerAccent || getPlayerAccent(
+    state?.players || [],
+    player?.id,
+    state?.perspective,
+    playerAccentOverrides
+  );
   const visibleStackObjects = getVisibleStackObjects(state);
   const stackPreviewCount = Array.isArray(state?.stack_preview) ? state.stack_preview.length : 0;
   const triggerOrderingCount = isTriggerOrderingDecision(state?.decision)
@@ -641,7 +646,6 @@ export default function MyZone({
                 onPointerDown={handlePlayerTargetPointerDown}
                 onClick={handlePlayerTargetClick}
                 style={{
-                  color: playerAccent?.hex,
                   cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
                 }}
               >

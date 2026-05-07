@@ -603,6 +603,7 @@ pub(crate) enum SubjectVerbActionAst {
         amount: Value,
         count: Value,
     },
+    Learn,
     EmitKeywordAction {
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -1467,6 +1468,12 @@ pub(crate) enum SubjectVerbActionAst {
     Goad {
         target: TargetAst,
     },
+    Suspect {
+        target: TargetAst,
+    },
+    ClearSuspected {
+        target: Option<TargetAst>,
+    },
     RemoveFromCombat {
         target: TargetAst,
     },
@@ -1539,6 +1546,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("count", count)
                 .finish(),
+            Self::Learn => f.write_str("Learn"),
             Self::EmitKeywordAction { action, amount } => f
                 .debug_struct("EmitKeywordAction")
                 .field("action", action)
@@ -2749,6 +2757,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::WinGame => f.write_str("WinGame"),
             Self::Detain { target } => f.debug_tuple("Detain").field(target).finish(),
             Self::Goad { target } => f.debug_tuple("Goad").field(target).finish(),
+            Self::Suspect { target } => f.debug_tuple("Suspect").field(target).finish(),
+            Self::ClearSuspected { target } => f
+                .debug_tuple("ClearSuspected")
+                .field(target)
+                .finish(),
             Self::RemoveFromCombat { target } => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
@@ -2826,6 +2839,10 @@ pub(crate) enum EffectAst {
         predicate: PredicateAst,
         if_true: Vec<EffectAst>,
         if_false: Vec<EffectAst>,
+    },
+    ManaRestricted {
+        effects: Vec<EffectAst>,
+        restrictions: Vec<crate::ability::ManaUsageRestriction>,
     },
     SelfReplacement {
         predicate: PredicateAst,
@@ -4226,6 +4243,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_learn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::Learn,
+        )
+    }
+
     pub(crate) fn subject_verb_emit_keyword_action(
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -5499,6 +5524,22 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Goad { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_suspect(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Suspect { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_clear_suspected(target: Option<TargetAst>) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ClearSuspected { target },
         )
     }
 

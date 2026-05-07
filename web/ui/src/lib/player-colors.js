@@ -1,9 +1,22 @@
 const PLAYER_ACCENT_PALETTE = [
-  { hex: "#f28c28", rgb: "242, 140, 40" },
+  { hex: "#731bde", rgb: "115, 27, 222" },
   { hex: "#ff3b30", rgb: "255, 59, 48" },
   { hex: "#22c55e", rgb: "34, 197, 94" },
   { hex: "#f3b25a", rgb: "243, 178, 90" },
 ];
+
+function normalizeHexColor(color) {
+  const raw = String(color || "").trim();
+  const match = raw.match(/^#?([0-9a-f]{6})$/i);
+  return match ? `#${match[1].toLowerCase()}` : null;
+}
+
+export function hexToRgbString(color) {
+  const hex = normalizeHexColor(color);
+  if (!hex) return null;
+  const value = Number.parseInt(hex.slice(1), 16);
+  return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
+}
 
 function modulo(value, size) {
   return ((value % size) + size) % size;
@@ -19,7 +32,19 @@ export function getPlayerSeatIndex(players, playerId) {
   return 0;
 }
 
-export function getPlayerAccent(players, playerId, perspectivePlayerId = null) {
+export function getPlayerAccent(players, playerId, perspectivePlayerId = null, accentOverrides = null) {
+  const numericPlayerId = Number(playerId);
+  const override = accentOverrides && numericPlayerId != null
+    ? normalizeHexColor(accentOverrides[String(numericPlayerId)])
+    : null;
+  if (override) {
+    return {
+      hex: override,
+      rgb: hexToRgbString(override),
+      seatIndex: getPlayerSeatIndex(players, playerId),
+    };
+  }
+
   if (PLAYER_ACCENT_PALETTE.length === 0) return null;
   const seatIndex = getPlayerSeatIndex(players, playerId);
   const perspectiveSeatIndex = perspectivePlayerId == null

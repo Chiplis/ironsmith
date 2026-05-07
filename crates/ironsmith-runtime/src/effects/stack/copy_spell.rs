@@ -54,6 +54,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.chosen_player = ctx.combat.chosen_player;
     entry.source_snapshot = ctx.source_snapshot.clone();
     entry.triggering_event = ctx.triggering_event.clone();
+    entry.event_value_amount = ctx.event_value_amount;
     entry.chosen_modes = ctx.chosen_modes.clone();
     entry.tagged_objects = ctx.tagged_objects.clone();
     entry

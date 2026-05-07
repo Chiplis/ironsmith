@@ -21,6 +21,7 @@ use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::life::LifeGainEvent;
 use crate::events::life::LifeLossEvent;
 use crate::events::other::{CounterPlacedEvent, MarkersChangedEvent};
+use crate::events::zones::ZoneChangeEvent;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -1298,6 +1299,9 @@ pub fn resolve_value(
 
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => {
+            if let Some(amount) = ctx.event_value_amount {
+                return Ok(amount);
+            }
             let Some(triggering_event) = &ctx.triggering_event else {
                 return Err(ExecutionError::UnresolvableValue(
                     "EventValue(Amount) requires a triggering event".to_string(),
@@ -1318,8 +1322,11 @@ pub fn resolve_value(
             if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
                 return Ok(counter_event.amount as i32);
             }
+            if let Some(zone_change_event) = triggering_event.downcast::<ZoneChangeEvent>() {
+                return Ok(zone_change_event.count() as i32);
+            }
             Err(ExecutionError::UnresolvableValue(
-                "EventValue(Amount) requires a life gain/loss, damage, or marker-change event"
+                "EventValue(Amount) requires a life gain/loss, damage, marker-change, or zone-change event"
                     .to_string(),
             ))
         }
@@ -1342,6 +1349,9 @@ pub fn resolve_value(
 
         Value::EventValueOffset(EventValueSpec::Amount, offset)
         | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
+            if let Some(amount) = ctx.event_value_amount {
+                return Ok(amount + *offset);
+            }
             let Some(triggering_event) = &ctx.triggering_event else {
                 return Err(ExecutionError::UnresolvableValue(
                     "EventValue(Amount) requires a triggering event".to_string(),
@@ -1357,9 +1367,11 @@ pub fn resolve_value(
                 markers_event.amount as i32
             } else if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
                 counter_event.amount as i32
+            } else if let Some(zone_change_event) = triggering_event.downcast::<ZoneChangeEvent>() {
+                zone_change_event.count() as i32
             } else {
                 return Err(ExecutionError::UnresolvableValue(
-                    "EventValue(Amount) requires a life gain/loss, damage, or marker-change event"
+                    "EventValue(Amount) requires a life gain/loss, damage, marker-change, or zone-change event"
                         .to_string(),
                 ));
             };

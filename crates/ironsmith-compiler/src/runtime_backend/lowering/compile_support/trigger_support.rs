@@ -460,10 +460,14 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::AttacksOneOrMore(_)
+            | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+            | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
             | TriggerSpec::KeywordAction { .. }
             | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
-            | TriggerSpec::CounterPutOn { .. } => true,
+            | TriggerSpec::CounterPutOn { .. }
+            | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
             TriggerSpec::StateBased { .. } => false,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)

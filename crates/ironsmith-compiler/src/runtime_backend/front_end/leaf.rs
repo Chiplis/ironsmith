@@ -78,6 +78,7 @@ pub(crate) enum ActivationCostSegmentCst {
     ExileTopLibrary {
         count: u32,
     },
+    RevealSourceFromHand,
     ReturnSelfToHand,
     ReturnChosenToHand {
         count: u32,
@@ -109,6 +110,7 @@ pub(crate) enum ActivationCostSegmentCst {
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,
         display_x: bool,
+        remove_all: bool,
     },
     Behold {
         subtype: Subtype,
@@ -439,6 +441,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
                     return Some(vec![ActivationCostSegmentCst::RemoveCountersDynamic {
                         counter_type: Some(CounterType::Loyalty),
                         display_x: true,
+                        remove_all: false,
                     }]);
                 }
                 if let Ok(amount) = rest.parse::<u32>() {
@@ -473,6 +476,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
                 Some(vec![ActivationCostSegmentCst::RemoveCountersDynamic {
                     counter_type: Some(CounterType::Loyalty),
                     display_x: true,
+                    remove_all: false,
                 }])
             } else {
                 value.parse::<u32>().ok().map(|amount| {
@@ -1107,6 +1111,37 @@ fn parse_remove_counter_segment_tokens(
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,
                 display_x: true,
+                remove_all: false,
+            })
+        };
+    }
+
+    if word_slice_starts_with(descriptor, &["all"]) {
+        let counter_type = if descriptor.len() <= 1 {
+            None
+        } else {
+            let counter_tokens =
+                token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
+            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
+            (!counter_descriptor.is_empty()
+                && counter_descriptor != "counter"
+                && counter_descriptor != "counters")
+                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
+                .transpose()?
+        };
+        return if target_among {
+            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type,
+                count: 0,
+                filter_text: target_filter_text,
+                display_x: false,
+                dynamic: true,
+            })
+        } else {
+            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type,
+                display_x: false,
+                remove_all: true,
             })
         };
     }
@@ -1136,6 +1171,7 @@ fn parse_remove_counter_segment_tokens(
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,
                 display_x: false,
+                remove_all: false,
             })
         };
     }
@@ -1165,6 +1201,7 @@ fn parse_remove_counter_segment_tokens(
             Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,
                 display_x: false,
+                remove_all: false,
             })
         };
     }
@@ -1250,6 +1287,7 @@ fn parse_activation_cost_segment_tokens(
         }
         "behold" => Some(parse_behold_segment_tokens(tokens)),
         "exile" => Some(parse_exile_segment_tokens(tokens)),
+        "reveal" => Some(parse_reveal_segment_tokens(tokens)),
         "return" => Some(parse_return_segment_tokens(tokens)),
         "exert" => Some(parse_exert_segment_tokens(tokens)),
         "put" => Some(parse_put_counter_segment_tokens(tokens)),
@@ -1488,6 +1526,21 @@ fn parse_behold_segment_tokens(
     Ok(ActivationCostSegmentCst::Behold { subtype, count })
 }
 
+fn parse_reveal_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LeafCompatWords::new(tokens);
+    let lowered = words.to_word_refs();
+    if lowered == ["reveal", "this", "card", "from", "your", "hand"] {
+        return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "rewrite reveal-cost parser does not yet support '{raw}'"
+    )))
+}
+
 fn parse_shard_style_branch_tokens(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
     let tokens = trim_activation_cost_segment_tokens(tokens);
     let comma_idx = find_token_index(tokens, OwnedLexToken::is_comma)?;
@@ -1543,6 +1596,7 @@ fn starts_new_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
                 | "remove"
                 | "behold"
                 | "exert"
+                | "reveal"
                 | "waterbend"
                 | "e"
                 | "and"
@@ -1942,6 +1996,10 @@ pub(crate) fn lower_activation_cost_cst(
                     PlayerFilter::You,
                 )));
             }
+            ActivationCostSegmentCst::RevealSourceFromHand => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(Effect::reveal_source_from_hand()));
+            }
             ActivationCostSegmentCst::ReturnSelfToHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::return_self_to_hand());
@@ -2057,12 +2115,15 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,
                 display_x,
+                remove_all,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::remove_any_counters_from_source(
-                    *counter_type,
-                    *display_x,
-                ));
+                let cost = if *remove_all {
+                    Cost::remove_all_counters_from_source(*counter_type)
+                } else {
+                    Cost::remove_any_counters_from_source(*counter_type, *display_x)
+                };
+                costs.push(cost);
             }
         }
     }

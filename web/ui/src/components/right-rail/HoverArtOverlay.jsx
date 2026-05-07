@@ -6,6 +6,7 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects, getVisibleTopStackObject } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
+import { uiFontStack } from "@/lib/ui-fonts";
 import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 
 const ORACLE_TEXT_STYLE = {
@@ -29,7 +30,8 @@ const INSPECTOR_LOW_PROFILE_HEIGHT = 140;
 const INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING = 10;
 const INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING = 8;
 const INSPECTOR_RULES_MIN_WIDTH = 220;
-const INSPECTOR_RULES_MAX_LINE_WIDTH = 1120;
+const INSPECTOR_RULES_MAX_LINE_WIDTH = 1600;
+const INSPECTOR_RULES_COMFORT_WRAP_WIDTH = 680;
 const INSPECTOR_HEADER_HORIZONTAL_PADDING = 24;
 const INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE = 72;
 const INSPECTOR_LEFT_ART_HEADER_ALLOWANCE = 188;
@@ -37,7 +39,6 @@ const INSPECTOR_ORACLE_TOP_PADDING = 54;
 const INSPECTOR_ORACLE_BOTTOM_PADDING = 10;
 const INSPECTOR_ORACLE_HORIZONTAL_PADDING = 28;
 const INSPECTOR_ORACLE_EARLY_WRAP_WIDTH = 640;
-const INSPECTOR_MEASURE_FONT = `"Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif`;
 const INSPECTOR_ART_ASPECT_RATIO = 626 / 457;
 const INSPECTOR_ART_SAFE_GAP = 36;
 const INSPECTOR_RULES_FALLBACK_SAFE_WIDTH = "54%";
@@ -564,7 +565,7 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
 }) {
-  const { state, game } = useGame();
+  const { state, game, uiFont } = useGame();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
   const { byId: objectNameById, byStableId: objectNameByStableId } = useMemo(
@@ -596,6 +597,9 @@ export default function HoverArtOverlay({
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
+  const [fontMeasureVersion, setFontMeasureVersion] = useState(0);
+  const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
+  const inspectorMeasureFont = useMemo(() => uiFontStack(uiFont), [uiFont]);
   const detailsObjectIdNum = useMemo(
     () => resolveObjectDetailsId(state, objectIdNum),
     [objectIdNum, state]
@@ -626,6 +630,25 @@ export default function HoverArtOverlay({
       active = false;
     };
   }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts?.load) return undefined;
+
+    let cancelled = false;
+    Promise.all([
+      document.fonts.load(`${INSPECTOR_RULES_FONT_SIZE}px ${inspectorMeasureFont}`),
+      document.fonts.load(`800 ${INSPECTOR_TITLE_FONT_SIZE}px ${inspectorMeasureFont}`),
+      document.fonts.load(`600 ${INSPECTOR_METADATA_FONT_SIZE}px ${inspectorMeasureFont}`),
+    ])
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setFontMeasureVersion((version) => version + 1);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inspectorMeasureFont]);
 
   const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey] || null) : null;
   const cardSnapshot = useMemo(
@@ -901,9 +924,9 @@ export default function HoverArtOverlay({
     const ctx = canvas.getContext("2d");
     if (!ctx) return [];
 
-    ctx.font = `${INSPECTOR_RULES_FONT_SIZE}px ${INSPECTOR_MEASURE_FONT}`;
+    ctx.font = `${INSPECTOR_RULES_FONT_SIZE}px ${inspectorMeasureFont}`;
     return displayRulesLines.map((line) => measureInspectorTextWidth(ctx, line));
-  }, [displayRulesLines]);
+  }, [displayRulesLines, fontMeasureVersion, inspectorMeasureFont]);
   const measuredPreferredRulesWidth = useMemo(() => {
     if (ruleLineWidths.length === 0) return null;
 
@@ -914,6 +937,21 @@ export default function HoverArtOverlay({
       INSPECTOR_RULES_MAX_LINE_WIDTH
     ));
   }, [ruleLineWidths]);
+  const shouldComfortWrapOracle = displayRulesLines.length > 0 && displayRulesLines.length <= 2;
+  const preferredRenderedRulesWidth = renderedRulesWidth == null
+    ? null
+    : Math.ceil(clampNumber(
+      renderedRulesWidth + 6,
+      INSPECTOR_RULES_MIN_WIDTH,
+      INSPECTOR_RULES_MAX_LINE_WIDTH
+    ));
+  const effectivePreferredRulesWidth = preferredRenderedRulesWidth
+    ? (shouldComfortWrapOracle
+      ? Math.min(preferredRenderedRulesWidth, INSPECTOR_RULES_COMFORT_WRAP_WIDTH)
+      : preferredRenderedRulesWidth)
+    : (shouldComfortWrapOracle && measuredPreferredRulesWidth
+      ? Math.min(measuredPreferredRulesWidth, INSPECTOR_RULES_COMFORT_WRAP_WIDTH)
+      : measuredPreferredRulesWidth);
   const measuredPreferredWrappedRulesWidth = measuredPreferredRulesWidth == null
     ? null
     : Math.min(measuredPreferredRulesWidth, INSPECTOR_ORACLE_EARLY_WRAP_WIDTH);
@@ -926,13 +964,13 @@ export default function HoverArtOverlay({
     if (!ctx) return null;
 
     const titleFontSize = compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE;
-    ctx.font = `800 ${titleFontSize}px ${INSPECTOR_MEASURE_FONT}`;
+    ctx.font = `800 ${titleFontSize}px ${inspectorMeasureFont}`;
     const nameWidth = displayObjectName
       ? measureInspectorTextWidth(ctx, displayObjectName)
       : 0;
 
     const metadataFontSize = titleFontSize * 0.5;
-    ctx.font = `600 ${metadataFontSize}px ${INSPECTOR_MEASURE_FONT}`;
+    ctx.font = `600 ${metadataFontSize}px ${inspectorMeasureFont}`;
     const metadataLines = [
       ...displayTopLeftDetailLines,
       ...displayTopLeftZoneLines,
@@ -964,7 +1002,9 @@ export default function HoverArtOverlay({
     displayObjectName,
     displayTopLeftDetailLines,
     displayTopLeftZoneLines,
+    fontMeasureVersion,
     hasTopLeftInlineMetadata,
+    inspectorMeasureFont,
   ]);
   const preferredInlineWidth = null;
   const availableInspectorWidthNum = Number(availableInspectorWidth);
@@ -984,12 +1024,27 @@ export default function HoverArtOverlay({
   )
     ? INSPECTOR_LEFT_ART_HEADER_ALLOWANCE
     : 0;
+  const measuredOracleArtAllowance = (
+    !compact
+    && displayMode === "inspector"
+    && imageUrl
+    && !imageErrored
+  )
+    ? Math.max(
+      INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE,
+      Math.ceil(
+        (Number.isFinite(availableInspectorHeightNum) && availableInspectorHeightNum > 0
+          ? availableInspectorHeightNum
+          : INSPECTOR_DEFAULT_HEIGHT) * INSPECTOR_ART_ASPECT_RATIO
+      ) + INSPECTOR_ART_SAFE_GAP
+    )
+    : 0;
   const measuredPreferredHeaderInspectorWidth = measuredPreferredHeaderWidth == null
     ? 0
     : measuredPreferredHeaderWidth + measuredHeaderArtAllowance + INSPECTOR_HEADER_HORIZONTAL_PADDING;
-  const measuredPreferredOracleInspectorWidth = measuredPreferredRulesWidth == null
+  const measuredPreferredOracleInspectorWidth = effectivePreferredRulesWidth == null
     ? 0
-    : (measuredPreferredWrappedRulesWidth || measuredPreferredRulesWidth) + INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE;
+    : effectivePreferredRulesWidth + measuredOracleArtAllowance + 18;
   const measuredPreferredInspectorWidth = Math.max(
     measuredPreferredHeaderInspectorWidth,
     measuredPreferredOracleInspectorWidth
@@ -1590,7 +1645,7 @@ export default function HoverArtOverlay({
     : 18;
   const inspectorRulesBodyMaxWidth = compact
     ? null
-    : (measuredPreferredWrappedRulesWidth || measuredPreferredRulesWidth || INSPECTOR_RULES_MIN_WIDTH);
+    : (effectivePreferredRulesWidth || measuredPreferredWrappedRulesWidth || INSPECTOR_RULES_MIN_WIDTH);
   const inspectorArtSafeWidth = (
     !compact
     && imageUrl
@@ -1650,6 +1705,60 @@ export default function HoverArtOverlay({
     fontSize: `${INSPECTOR_RULES_FONT_SIZE * inspectorScale}px`,
     lineHeight: INSPECTOR_RULES_LINE_HEIGHT / INSPECTOR_RULES_FONT_SIZE,
   };
+
+  useLayoutEffect(() => {
+    if (compact || displayMode !== "inspector" || displayRulesLines.length === 0) {
+      setRenderedRulesWidth(null);
+      return undefined;
+    }
+
+    let rafId = null;
+    const measureRenderedRulesWidth = () => {
+      const lineWidths = [];
+      for (const node of ruleLineRefs.current.values()) {
+        const textNode = node?.firstElementChild;
+        if (!textNode) continue;
+
+        const clone = textNode.cloneNode(true);
+        clone.style.position = "fixed";
+        clone.style.left = "-10000px";
+        clone.style.top = "0";
+        clone.style.width = "max-content";
+        clone.style.maxWidth = "none";
+        clone.style.whiteSpace = "nowrap";
+        clone.style.visibility = "hidden";
+        clone.style.pointerEvents = "none";
+        clone.style.contain = "layout style paint";
+        document.body.appendChild(clone);
+        const rect = clone.getBoundingClientRect();
+        clone.remove();
+
+        if (rect.width > 0) lineWidths.push(rect.width);
+      }
+
+      const nextWidth = lineWidths.length > 0
+        ? Math.ceil(Math.max(...lineWidths, INSPECTOR_RULES_MIN_WIDTH))
+        : null;
+      setRenderedRulesWidth((currentWidth) => (
+        currentWidth === nextWidth || Math.abs((currentWidth || 0) - (nextWidth || 0)) < 1
+          ? currentWidth
+          : nextWidth
+      ));
+    };
+
+    rafId = requestAnimationFrame(measureRenderedRulesWidth);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, [
+    compact,
+    displayMode,
+    displayRulesText,
+    fontMeasureVersion,
+    inspectorScale,
+    rulesRenderKey,
+  ]);
 
   const showImageBackdrop = !!imageUrl && !imageErrored;
   const hasRenderableContent = Boolean(

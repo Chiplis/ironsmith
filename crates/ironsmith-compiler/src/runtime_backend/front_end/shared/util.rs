@@ -2501,6 +2501,15 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     let mut random_choice = false;
     let token_word_view = UtilWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
+    if matches!(
+        token_words.as_slice(),
+        ["your", "opponents"] | ["opponents"]
+    ) {
+        return Ok(TargetAst::Player(
+            PlayerFilter::Opponent,
+            span_from_tokens(tokens),
+        ));
+    }
     if words_contain(token_words.as_slice(), "defending")
         && words_contain(token_words.as_slice(), "player")
         && words_contain(token_words.as_slice(), "choice")
@@ -4369,6 +4378,24 @@ pub(crate) fn parse_flashback_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_flashback_line(tokens)
+}
+
+pub(crate) fn parse_retrace_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("retrace")) {
+        return Ok(None);
+    }
+
+    Ok(Some(AlternativeCastingMethod::Retrace {
+        total_cost: TotalCost::from_cost(Cost::discard(1, Some(CardType::Land))),
+    }))
+}
+
+pub(crate) fn parse_retrace_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_retrace_line(tokens)
 }
 
 pub(crate) fn parse_harmonize_line(

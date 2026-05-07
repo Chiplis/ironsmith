@@ -394,6 +394,7 @@ pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)>
             "takes" | "take" => Verb::Take,
             "detains" | "detain" => Verb::Detain,
             "goads" | "goad" => Verb::Goad,
+            "suspects" | "suspect" => Verb::Suspect,
             _ => continue,
         };
         return Some((local, idx));

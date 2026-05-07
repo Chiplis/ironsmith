@@ -1189,7 +1189,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     let (tag, as_copy, consumed) = if slice_starts_with(&rest, &["it"]) {
         (TagKey::from(IT_TAG), false, 1usize)
     } else if slice_starts_with(&rest, &["the", "exiled", "card"]) {
-        (TagKey::from(IT_TAG), false, 3usize)
+        (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false, 3usize)
     } else if slice_starts_with(&rest, &["the", "revealed", "card"])
         || slice_starts_with(&rest, &["that", "revealed", "card"])
     {

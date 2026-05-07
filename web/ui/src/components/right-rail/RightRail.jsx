@@ -14,7 +14,7 @@ const INSPECTOR_INLINE_MAX_WIDTH = "25vw";
 const INSPECTOR_INLINE_MAX_WIDTH_PX = 420;
 const INLINE_EXPANDED_MIN_WIDTH = 220;
 const INLINE_EXPANDED_FALLBACK_WIDTH = 300;
-const INLINE_EXPANDED_MAX_WIDTH_PX = 1200;
+const INLINE_EXPANDED_MAX_WIDTH_PX = 1800;
 const INLINE_EXPANDED_MIN_HAND_WIDTH = 168;
 const DEFAULT_INSPECTOR_BOTTOM_OFFSET = 8;
 const INLINE_EXPANDED_DEFAULT_HEIGHT = 248;
@@ -34,10 +34,10 @@ function getViewportTierInspectorOverrides() {
     return { minWidth: 180, widthFraction: 0.22, expandedMaxWidth: 600, minHandWidth: 120 };
   }
   if (window.matchMedia(SMALL_DESKTOP_QUERY).matches) {
-    return { minWidth: 200, widthFraction: 0.22, expandedMaxWidth: 800, minHandWidth: 140 };
+    return { minWidth: 200, widthFraction: 0.22, expandedMaxWidth: 1000, minHandWidth: 140 };
   }
   if (window.matchMedia(LARGE_DESKTOP_QUERY).matches) {
-    return { minWidth: 260, widthFraction: 0.20, expandedMaxWidth: 1400, minHandWidth: 180 };
+    return { minWidth: 260, widthFraction: 0.20, expandedMaxWidth: 2200, minHandWidth: 180 };
   }
   return {};
 }

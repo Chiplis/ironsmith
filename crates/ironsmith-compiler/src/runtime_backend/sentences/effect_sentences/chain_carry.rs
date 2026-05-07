@@ -45,7 +45,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
-use crate::effect::{ChoiceCount, Until};
+use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::Subtype;
 use crate::zone::Zone;
@@ -873,6 +873,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     let mut previous_segment: Option<Vec<OwnedLexToken>> = None;
     for segment in segments {
         let mut segment = segment;
+        if is_orphan_rounded_up_where_x_tail(&segment, previous_segment.as_deref(), effects.last())
+        {
+            continue;
+        }
         if let Some(previous) = &previous_segment
             && let Some(expanded) = expand_gain_lose_followup_segment_lexed(previous, &segment)
         {
@@ -1041,6 +1045,57 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
     Ok(effects)
+}
+
+fn is_orphan_rounded_up_where_x_tail(
+    segment: &[OwnedLexToken],
+    previous: Option<&[OwnedLexToken]>,
+    previous_effect: Option<&EffectAst>,
+) -> bool {
+    let segment_words = token_word_refs(segment);
+    if segment_words.as_slice() != ["rounded", "up"] {
+        return false;
+    }
+    if previous.is_none() && previous_effect.is_none() {
+        return true;
+    }
+    previous.is_some_and(|previous| {
+        grammar::words_find_phrase(previous, &["where", "x", "is", "half"]).is_some()
+    }) || previous_effect.is_some_and(effect_uses_half_life_total_value)
+}
+
+fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    dynamic_power_toughness,
+                    ..
+                },
+            ..
+        }) => dynamic_power_toughness
+            .as_ref()
+            .is_some_and(|(power, toughness)| {
+                value_is_half_life_total(power) || value_is_half_life_total(toughness)
+            }),
+        EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::WhenResult { effects, .. }
+        | EffectAst::ManaRestricted { effects, .. } => {
+            effects.iter().any(effect_uses_half_life_total_value)
+        }
+        _ => false,
+    }
+}
+
+fn value_is_half_life_total(value: &Value) -> bool {
+    matches!(value.unhinted(), Value::HalfLifeTotalRoundedUp(_))
 }
 
 fn leading_duration_for_followup_carry(tokens: &[OwnedLexToken]) -> Option<Until> {
@@ -2590,4 +2645,5 @@ pub(crate) enum Verb {
     Take,
     Detain,
     Goad,
+    Suspect,
 }

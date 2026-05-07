@@ -55,6 +55,9 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Harmonize {
         total_cost: TotalCost<C>,
     },
+    Retrace {
+        total_cost: TotalCost<C>,
+    },
     JumpStart,
     Escape {
         cost: Option<ManaCost>,
@@ -101,6 +104,7 @@ where
             Self::Plot { .. } | Self::Suspend { .. } => Zone::Exile,
             Self::Flashback { .. }
             | Self::Harmonize { .. }
+            | Self::Retrace { .. }
             | Self::JumpStart
             | Self::Escape { .. }
             | Self::Disturb { .. } => Zone::Graveyard,
@@ -131,6 +135,7 @@ where
             Self::Overload { cost, .. } => Some(cost),
             Self::Flashback { total_cost } => total_cost.mana_cost(),
             Self::Harmonize { total_cost } => total_cost.mana_cost(),
+            Self::Retrace { total_cost } => total_cost.mana_cost(),
             Self::JumpStart => None,
             Self::Escape { cost, .. } => cost.as_ref(),
             Self::Madness { cost } => Some(cost),
@@ -151,6 +156,7 @@ where
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
+            Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => non_mana_components(total_cost),
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
             Self::Bestow { total_cost } => non_mana_components(total_cost),
@@ -162,6 +168,7 @@ where
         match self {
             Self::Flashback { total_cost } => Some(total_cost),
             Self::Harmonize { total_cost } => Some(total_cost),
+            Self::Retrace { total_cost } => Some(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
             Self::Composed { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
@@ -208,6 +215,7 @@ where
             Self::Overload { .. } => "Overload",
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
+            Self::Retrace { .. } => "Retrace",
             Self::JumpStart => "Jump-start",
             Self::Escape { .. } => "Escape",
             Self::Madness { .. } => "Madness",
@@ -385,6 +393,9 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
             Self::Harmonize { total_cost } => AlternativeCastingMethod::Harmonize {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
+            Self::Retrace { total_cost } => AlternativeCastingMethod::Retrace {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
             Self::JumpStart => AlternativeCastingMethod::JumpStart,

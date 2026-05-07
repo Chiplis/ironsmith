@@ -1,5 +1,7 @@
+use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::ir::RewriteActivatedLine;
 use super::*;
+use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     let line_words = token_word_refs(tokens);
@@ -35,7 +37,7 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
     cost.costs().iter().any(|component| match component {
         Cost::Mana(cost) => cost.has_x(),
         Cost::Energy(amount) | Cost::Life(amount) | Cost::Mill(amount) => value_uses_x(amount),
-        Cost::RemoveAnyCountersFromSource { display_x, .. } => *display_x,
+        Cost::RemoveAnyCountersFromSource { .. } => true,
         Cost::Effect(effect) => {
             effect
                 .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
@@ -61,6 +63,85 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
         }
         _ => false,
     })
+}
+
+fn activation_cost_sets_x_from_counter_removal(cost: &TotalCost) -> bool {
+    fn component_sets_x(component: &Cost) -> bool {
+        match component {
+            Cost::RemoveCounters { .. } | Cost::RemoveAnyCountersFromSource { .. } => true,
+            Cost::Effect(effect) => {
+                effect
+                    .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                    .is_some_and(|effect| {
+                        matches!(effect.target.base(), crate::target::ChooseSpec::Source)
+                    })
+                    || effect
+                        .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+                        .is_some()
+                    || effect
+                        .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
+                        .is_some()
+            }
+            _ => false,
+        }
+    }
+
+    match cost.kind() {
+        TotalCostKind::All(components) => components.iter().any(component_sets_x),
+        TotalCostKind::OneOf(branches) => branches
+            .iter()
+            .any(activation_cost_sets_x_from_counter_removal),
+    }
+}
+
+fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
+    use crate::effect::{EventValueSpec, Value};
+
+    match value {
+        Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount) => {
+            *value = Value::X;
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
+            *value = Value::Add(Box::new(Value::X), Box::new(Value::Fixed(*offset)));
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            bind_event_amount_to_cost_x(left);
+            bind_event_amount_to_cost_x(right);
+        }
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            bind_event_amount_to_cost_x(inner);
+        }
+        Value::SurfaceHinted { value, .. } => bind_event_amount_to_cost_x(value),
+        _ => {}
+    }
+}
+
+fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. }
+            | SubjectVerbActionAst::Mill { count: amount }
+            | SubjectVerbActionAst::Draw { count: amount } => {
+                bind_event_amount_to_cost_x(amount);
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for inner in nested {
+            bind_event_amounts_to_cost_x_in_effect(inner);
+        }
+    });
+}
+
+fn bind_event_amounts_to_cost_x(effects: &mut [EffectAst]) {
+    for effect in effects {
+        bind_event_amounts_to_cost_x_in_effect(effect);
+    }
 }
 
 fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
@@ -530,11 +611,14 @@ fn lower_rewrite_activated_to_chunk_impl(
         )));
     }
 
-    let effects_ast = parse_activated_effects_lexed(
+    let mut effects_ast = parse_activated_effects_lexed(
         effect_text.as_str(),
         &effect_parse_tokens,
         line.info.line_index,
     )?;
+    if activation_cost_sets_x_from_counter_removal(&normalized_cost) {
+        bind_event_amounts_to_cost_x(&mut effects_ast);
+    }
     let functional_zones = infer_rewrite_activated_functional_zones(
         line,
         cost_parse_tokens,

@@ -68,6 +68,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Detain { target }
             | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
             | SubjectVerbActionAst::Regenerate { target }
@@ -607,6 +608,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }
         | SubjectVerbActionAst::Goad { .. }
+        | SubjectVerbActionAst::Suspect { .. }
+        | SubjectVerbActionAst::ClearSuspected { .. }
         | SubjectVerbActionAst::RemoveFromCombat { .. }
         | SubjectVerbActionAst::Flip { .. }
         | SubjectVerbActionAst::Regenerate { .. }
@@ -719,6 +722,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }
+        | SubjectVerbActionAst::Learn
         | SubjectVerbActionAst::ShuffleLibrary => None,
     }
 }

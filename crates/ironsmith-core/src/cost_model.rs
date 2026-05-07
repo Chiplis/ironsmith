@@ -120,6 +120,7 @@ pub enum Cost<E> {
     RemoveAnyCountersFromSource {
         counter_type: Option<CounterType>,
         display_x: bool,
+        remove_all: bool,
     },
     Energy(Value),
     Mill(Value),
@@ -205,6 +206,15 @@ impl<E> Cost<E> {
         Self::RemoveAnyCountersFromSource {
             counter_type,
             display_x,
+            remove_all: false,
+        }
+    }
+
+    pub fn remove_all_counters_from_source(counter_type: Option<CounterType>) -> Self {
+        Self::RemoveAnyCountersFromSource {
+            counter_type,
+            display_x: false,
+            remove_all: true,
         }
     }
 
@@ -278,9 +288,11 @@ impl<E> Cost<E> {
             Self::RemoveAnyCountersFromSource {
                 counter_type,
                 display_x,
+                remove_all,
             } => Cost::RemoveAnyCountersFromSource {
                 counter_type,
                 display_x,
+                remove_all,
             },
             Self::Energy(amount) => Cost::Energy(amount),
             Self::Mill(count) => Cost::Mill(count),
@@ -329,7 +341,8 @@ where
             Self::RemoveAnyCountersFromSource {
                 counter_type,
                 display_x,
-            } => format!("remove any counters {counter_type:?} {display_x}"),
+                remove_all,
+            } => format!("remove any counters {counter_type:?} {display_x} {remove_all}"),
             Self::Energy(amount) => format!("pay {amount:?} energy"),
             Self::Mill(count) => format!("mill {count:?}"),
             Self::Life(amount) => format!("pay {amount:?} life"),

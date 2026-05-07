@@ -781,6 +781,12 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if let Some(chunk) = try_lower_hideaway_text(line.text.as_str(), line.info.raw_line.as_str())? {
+        return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
+    }
+    if let Some(chunk) = try_lower_partner_with_text(line.text.as_str(), line.text.as_str())? {
+        return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
+    }
 
     let lexed = parse_tokens;
     if str_starts_with(line.text.as_str(), "level up ") {
@@ -1305,6 +1311,14 @@ pub(crate) fn lower_keyword_special_cases(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
+    if let Some(chunk) = try_lower_hideaway_keyword(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
+    if let Some(chunk) =
+        try_lower_partner_with_text(line.info.raw_line.as_str(), line.text.as_str())?
+    {
+        return Ok(Some(chunk));
+    }
     if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line, parse_tokens)? {
         return Ok(Some(chunk));
     }
@@ -1312,6 +1326,127 @@ pub(crate) fn lower_keyword_special_cases(
         return Ok(Some(chunk));
     }
     Ok(None)
+}
+
+fn try_lower_hideaway_keyword(
+    line: &RewriteKeywordLine,
+    _parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    try_lower_hideaway_text(line.text.as_str(), line.info.raw_line.as_str())
+}
+
+fn try_lower_hideaway_text(text: &str, raw_line: &str) -> Result<Option<LineAst>, CardTextError> {
+    let normalized_words = text
+        .split_whitespace()
+        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    if normalized_words.len() != 2 || !normalized_words[0].eq_ignore_ascii_case("hideaway") {
+        return Ok(None);
+    }
+    let Ok(count) = normalized_words[1].parse::<i32>() else {
+        return Err(CardTextError::ParseError(format!(
+            "hideaway keyword expected numeric count in '{}'",
+            raw_line
+        )));
+    };
+    if count <= 0 {
+        return Err(CardTextError::ParseError(format!(
+            "hideaway keyword expected positive count in '{}'",
+            raw_line
+        )));
+    }
+
+    Ok(Some(hideaway_line_ast(count)))
+}
+
+fn hideaway_line_ast(count: i32) -> LineAst {
+    let looked_tag = TagKey::from("hideaway_looked");
+    let chosen_tag = TagKey::from("hideaway_exiled");
+    let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
+    choose_filter.zone = Some(Zone::Library);
+
+    LineAst::Triggered {
+        trigger: TriggerSpec::ThisEntersBattlefield,
+        effects: vec![
+            EffectAst::subject_verb_look_at_top_cards(
+                PlayerAst::You,
+                crate::effect::Value::Fixed(count),
+                looked_tag.clone(),
+            ),
+            EffectAst::ChooseObjects {
+                filter: choose_filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen_tag.clone(),
+            },
+            EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag.clone(), None), true),
+            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                looked_tag,
+                Some(chosen_tag),
+                LibraryBottomOrderAst::Random,
+                PlayerAst::You,
+            ),
+        ],
+        max_triggers_per_turn: None,
+    }
+}
+
+fn try_lower_partner_with_text(
+    raw_line: &str,
+    normalized_text: &str,
+) -> Result<Option<LineAst>, CardTextError> {
+    let Some(partner_name) = partner_with_name_from_text(raw_line)
+        .or_else(|| partner_with_name_from_text(normalized_text))
+    else {
+        return Ok(None);
+    };
+
+    let mut filter = ObjectFilter::default();
+    filter.name = Some(partner_name.clone());
+
+    Ok(Some(LineAst::Multiple(vec![
+        LineAst::StaticAbility(StaticAbility::partner().into()),
+        LineAst::Triggered {
+            trigger: TriggerSpec::ThisEntersBattlefield,
+            effects: vec![EffectAst::MayByPlayer {
+                player: PlayerAst::Target,
+                effects: vec![EffectAst::subject_verb_search_library(
+                    filter,
+                    Zone::Hand,
+                    PlayerAst::Target,
+                    PlayerAst::Target,
+                    crate::effect::SearchSelectionMode::Exact,
+                    false,
+                    true,
+                    ChoiceCount::up_to(1),
+                    None,
+                    false,
+                )],
+            }],
+            max_triggers_per_turn: None,
+        },
+    ])))
+}
+
+fn partner_with_name_from_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let rest_start = "partner with ".len();
+    if !lower.starts_with("partner with ") {
+        return None;
+    }
+
+    let rest = trimmed.get(rest_start..)?.trim();
+    let name = rest
+        .split_once('(')
+        .map(|(name, _)| name)
+        .unwrap_or(rest)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    (!name.is_empty()).then(|| name.replace('"', ""))
 }
 
 pub(crate) fn try_lower_optional_cost_with_cast_trigger(

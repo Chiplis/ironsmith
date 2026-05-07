@@ -48,7 +48,7 @@ export default function TableCore({
   zoneActionControls = null,
   middleInspectorDock = null,
 }) {
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const {
@@ -66,7 +66,7 @@ export default function TableCore({
   const meIndex = me ? players.findIndex((p) => p.id === me.id) : -1;
   const ordered = me && meIndex >= 0 ? [...players.slice(meIndex), ...players.slice(0, meIndex)] : players;
   const opponents = me ? ordered.filter((p) => p.id !== me.id) : [];
-  const playerAccent = me ? getPlayerAccent(players, me?.id, perspective) : null;
+  const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
   const expandedActionBar = Boolean(
     decision
@@ -180,7 +180,6 @@ export default function TableCore({
           onPointerDown={handlePlayerTargetPointerDown}
           onClick={handlePlayerTargetClick}
           style={{
-            color: playerAccent?.hex,
             cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
           }}
         >

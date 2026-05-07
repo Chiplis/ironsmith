@@ -11,7 +11,8 @@ use self::subject_verb_followups::{
 };
 use super::super::activation_and_restrictions::{
     contains_word_sequence, find_word_sequence_start, parse_choose_card_type_phrase_words,
-    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
+    parse_mana_usage_restriction_sentence_lexed, parse_target_player_choose_objects_clause,
+    parse_you_choose_objects_clause,
 };
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
@@ -876,6 +877,24 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         sentence_tokens = rewrite_when_one_or_more_this_way_clause_prefix(&sentence_tokens);
 
+        if crate::runtime_backend::token_word_refs(&sentence_tokens).as_slice() == ["learn"] {
+            effects.push(EffectAst::subject_verb_learn(PlayerAst::You));
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        if let Some(restriction) = parse_mana_usage_restriction_sentence_lexed(&sentence_tokens) {
+            apply_mana_usage_restriction_to_previous_effect(
+                &mut effects,
+                restriction,
+                &sentence_tokens,
+            )?;
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         if is_still_lands_followup_sentence(&sentence_tokens)
             && previous_sentence_is_temporary_land_animation(&sentences, sentence_idx)
         {
@@ -1033,6 +1052,75 @@ pub(crate) fn parse_effect_sentences_lexed(
     stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         parse_effect_sentences_lexed_inner(tokens)
     })
+}
+
+fn apply_mana_usage_restriction_to_previous_effect(
+    effects: &mut Vec<EffectAst>,
+    restriction: crate::ability::ManaUsageRestriction,
+    tokens: &[OwnedLexToken],
+) -> Result<(), CardTextError> {
+    let Some(previous) = effects.pop() else {
+        return Err(CardTextError::ParseError(format!(
+            "mana restriction has no preceding mana effect (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    };
+
+    if !effect_ast_can_produce_mana(&previous) {
+        effects.push(previous);
+        return Err(CardTextError::ParseError(format!(
+            "mana restriction does not follow a mana-producing effect (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    let wrapped = match previous {
+        EffectAst::ManaRestricted {
+            effects,
+            mut restrictions,
+        } => {
+            restrictions.push(restriction);
+            EffectAst::ManaRestricted {
+                effects,
+                restrictions,
+            }
+        }
+        previous => EffectAst::ManaRestricted {
+            effects: vec![previous],
+            restrictions: vec![restriction],
+        },
+    };
+    effects.push(wrapped);
+    Ok(())
+}
+
+fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => matches!(
+            &subject_verb.action,
+            SubjectVerbActionAst::AddMana { .. }
+                | SubjectVerbActionAst::AddManaScaled { .. }
+                | SubjectVerbActionAst::AddManaAnyColor { .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
+                | SubjectVerbActionAst::AddManaChosenColor { .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::AddManaImprintedColors
+        ),
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            (!if_true.is_empty() && if_true.iter().all(effect_ast_can_produce_mana))
+                || (!if_false.is_empty() && if_false.iter().all(effect_ast_can_produce_mana))
+        }
+        EffectAst::ManaRestricted { effects, .. } => {
+            !effects.is_empty() && effects.iter().all(effect_ast_can_produce_mana)
+        }
+        _ => false,
+    }
 }
 
 fn parse_effect_sentences_lexed_inner(
@@ -1737,6 +1825,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::Detain { target }
             | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
             | SubjectVerbActionAst::Regenerate { target }
@@ -2161,6 +2250,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }
+            | SubjectVerbActionAst::Suspect { .. }
+            | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
@@ -2295,6 +2386,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     replace_value(toughness, replacement, clause)?;
                 }
             }
+            SubjectVerbActionAst::Learn => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
@@ -2415,6 +2507,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 target: effect_target,
             }
             | SubjectVerbActionAst::Goad {
+                target: effect_target,
+            }
+            | SubjectVerbActionAst::Suspect {
                 target: effect_target,
             }
             | SubjectVerbActionAst::RemoveFromCombat {

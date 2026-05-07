@@ -698,6 +698,21 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
+    if matches!(
+        clause_words.as_slice(),
+        [
+            "all",
+            "suspected",
+            "creatures",
+            "are",
+            "no",
+            "longer",
+            "suspected"
+        ]
+    ) {
+        return Ok(EffectAst::subject_verb_clear_suspected(None));
+    }
+
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [
@@ -737,6 +752,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             "pay",
             "detain",
             "goad",
+            "suspect",
         ];
         CardTextError::ParseError(format!(
             "could not find verb in effect clause (clause: '{clause}'; known verbs: {})",

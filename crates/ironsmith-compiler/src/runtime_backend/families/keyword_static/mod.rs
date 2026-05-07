@@ -6089,8 +6089,14 @@ pub(crate) fn parse_additional_land_play_line(
     let Some(count_token_idx) = count_token_idx else {
         return Ok(None);
     };
-    let Some((count, used)) = parse_number(&tokens[count_token_idx..]) else {
-        return Ok(None);
+    let (count, used) = match tokens[count_token_idx].as_word() {
+        Some("a" | "an") => (1, 1),
+        _ => {
+            let Some((count, used)) = parse_number(&tokens[count_token_idx..]) else {
+                return Ok(None);
+            };
+            (count, used)
+        }
     };
     let rest_word_idx = count_word_idx + used;
     if rest_word_idx >= words.len() {

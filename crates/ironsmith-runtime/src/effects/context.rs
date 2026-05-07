@@ -224,6 +224,8 @@ pub struct ExecutionContext<'a> {
     /// The event that triggered this ability (for triggered abilities).
     /// Contains information about what caused the trigger (e.g., which object entered the battlefield).
     pub triggering_event: Option<crate::triggers::TriggerEvent>,
+    /// Numeric value computed by the trigger matcher for resolving "that many".
+    pub event_value_amount: Option<i32>,
     /// Structural identity of the resolving triggered ability, when available.
     pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
     /// Index of the resolving activated ability on its source object, when available.
@@ -269,6 +271,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             )
             .field("face_down_exile_viewers", &self.face_down_exile_viewers)
             .field("triggering_event", &self.triggering_event)
+            .field("event_value_amount", &self.event_value_amount)
             .field("trigger_identity", &self.trigger_identity)
             .field("ability_index", &self.ability_index)
             .field("cause", &self.cause)
@@ -308,6 +311,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
+            event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
             chosen_modes: None,
@@ -350,6 +354,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             triggering_event: None,
+            event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
             chosen_modes: None,
@@ -382,6 +387,7 @@ impl<'a> ExecutionContext<'a> {
             tagged_players: self.tagged_players,
             face_down_exile_viewers: self.face_down_exile_viewers,
             triggering_event: self.triggering_event,
+            event_value_amount: self.event_value_amount,
             trigger_identity: self.trigger_identity,
             ability_index: self.ability_index,
             chosen_modes: self.chosen_modes,
@@ -678,6 +684,12 @@ impl<'a> ExecutionContext<'a> {
         }
 
         self.triggering_event = Some(event);
+        self
+    }
+
+    /// Set a numeric value computed by the trigger matcher for grouped events.
+    pub fn with_event_value_amount(mut self, amount: i32) -> Self {
+        self.event_value_amount = Some(amount);
         self
     }
 

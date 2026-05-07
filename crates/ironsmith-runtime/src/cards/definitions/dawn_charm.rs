@@ -98,6 +98,7 @@ mod tests {
             source_snapshot: None,
             source_name: Some(name.to_string()),
             triggering_event: None,
+            event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
             intervening_if: None,

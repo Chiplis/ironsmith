@@ -321,7 +321,13 @@ function OpponentSlot({
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
-  const playerAccent = getPlayerAccent(state?.players || [], player?.id, state?.perspective);
+  const { playerAccentOverrides } = useGame();
+  const playerAccent = getPlayerAccent(
+    state?.players || [],
+    player?.id,
+    state?.perspective,
+    playerAccentOverrides
+  );
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);

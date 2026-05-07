@@ -408,10 +408,6 @@ sentence_unsupported_adapters_lexed!(
         sentence_has_when_you_sacrifice_this_way_clause
     ),
     (
-        sentence_has_sacrifice_any_number_then_draw_that_many_clause_rule_lexed,
-        sentence_has_sacrifice_any_number_then_draw_that_many_clause
-    ),
-    (
         sentence_has_greatest_mana_value_clause_rule_lexed,
         sentence_has_greatest_mana_value_clause
     ),
@@ -547,15 +543,6 @@ fn sentence_has_for_each_mana_from_spent_to_cast_clause(
 
 fn sentence_has_when_you_sacrifice_this_way_clause(_: &[&str], tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::has_when_you_sacrifice_this_way_clause_sentence_lexed(tokens)
-}
-
-fn sentence_has_sacrifice_any_number_then_draw_that_many_clause(
-    words: &[&str],
-    tokens: &[OwnedLexToken],
-) -> bool {
-    effect_grammar::has_sacrifice_any_number_then_draw_that_many_clause_sentence_lexed(
-        words, tokens,
-    )
 }
 
 fn sentence_has_greatest_mana_value_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
@@ -809,6 +796,14 @@ fn parse_effect_sentence_with_where_x_lexed(
     {
         prelude_effects.push(choice_effect);
         value
+    } else if matches!(
+        where_words.get(3..),
+        Some(["the", "power", "of", "the", "creature", "tapped", "this", "way"])
+            | Some(["power", "of", "the", "creature", "tapped", "this", "way"])
+    ) {
+        Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+            "tap_cost_0",
+        ))))
     } else if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
         value
     } else {
@@ -871,6 +866,12 @@ fn parse_effect_sentence_with_where_x_lexed(
                 } else {
                     crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
                 }))
+            }
+            Some(["the", "power", "of", "the", "creature", "tapped", "this", "way"])
+            | Some(["power", "of", "the", "creature", "tapped", "this", "way"]) => {
+                Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                    "tap_cost_0",
+                ))))
             }
             Some(
                 [

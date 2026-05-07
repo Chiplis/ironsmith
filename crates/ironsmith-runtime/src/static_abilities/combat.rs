@@ -230,6 +230,7 @@ impl StaticAbilityKind for ExertAttack {
                     source,
                     controller,
                     x_value: source_object.x_value,
+                    event_value_amount: None,
                     ability: linked_trigger.clone(),
                     triggering_event: exert_event,
                     source_stable_id: source_object.stable_id,

@@ -118,6 +118,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Take => parse_take(tokens, subject),
         Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
+        Verb::Suspect => parse_suspect(tokens),
     }
 }
 
@@ -740,4 +741,34 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     Ok(EffectAst::subject_verb_detain(parse_target_phrase(
         &target_tokens,
     )?))
+}
+
+pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let target_tokens = trim_commas(tokens);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing suspect target".to_string(),
+        ));
+    }
+
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+        return Ok(EffectAst::subject_verb_suspect(TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(&target_tokens),
+        )));
+    }
+
+    let target = parse_target_phrase(&target_tokens)?;
+    if matches!(
+        target,
+        TargetAst::Player(_, _) | TargetAst::PlayerOrPlaneswalker(_, _)
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "suspect target must be a creature (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    Ok(EffectAst::subject_verb_suspect(target))
 }

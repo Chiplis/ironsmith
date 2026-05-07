@@ -59,7 +59,8 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => normalize_effects_vec(effects),
+        | EffectAst::VoteOption { effects, .. }
+        | EffectAst::ManaRestricted { effects, .. } => normalize_effects_vec(effects),
         EffectAst::UnlessAction {
             effects,
             alternative,

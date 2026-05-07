@@ -801,6 +801,11 @@ pub(crate) fn parse_negated_object_restriction_clause(
         return Ok(None);
     };
     let subject_tokens = trim_commas(&tokens[..neg_start]);
+    let subject_words_storage = normalize_cant_words(&subject_tokens);
+    let subject_words = subject_words_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
 
     let (mut filter, mut target, ability_scope) =
         if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {
@@ -823,6 +828,11 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 Some(target),
                 None,
             )
+        } else if matches!(
+            subject_words.as_slice(),
+            ["you"] | ["your", "opponents"] | ["opponents"] | ["players"] | ["each", "player"]
+        ) {
+            (ObjectFilter::default(), None, None)
         } else {
             let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
                 return Err(CardTextError::ParseError(format!(
@@ -845,11 +855,46 @@ pub(crate) fn parse_negated_object_restriction_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let subject_words_storage = normalize_cant_words(&subject_tokens);
-    let subject_words = subject_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+
+    let player_subject = match subject_words.as_slice() {
+        ["you"] => Some(PlayerFilter::You),
+        ["your", "opponents"] | ["opponents"] => Some(PlayerFilter::Opponent),
+        ["players"] | ["each", "player"] => Some(PlayerFilter::Any),
+        _ => None,
+    };
+    if let Some(player) = player_subject {
+        let restriction = match remainder_words.as_slice() {
+            words if slice_starts_with(words, &["gain", "life"]) => Restriction::gain_life(player),
+            words if slice_starts_with(words, &["search", "libraries"]) => {
+                Restriction::search_libraries(player)
+            }
+            words if slice_starts_with(words, &["lose", "the", "game"]) => {
+                Restriction::lose_game(player)
+            }
+            words if slice_starts_with(words, &["win", "the", "game"]) => {
+                Restriction::win_game(player)
+            }
+            words if slice_starts_with(words, &["draw", "cards"]) => {
+                Restriction::draw_cards(player)
+            }
+            words if slice_starts_with(words, &["draw", "more", "than", "one", "card"]) => {
+                Restriction::draw_extra_cards(player)
+            }
+            words if slice_starts_with(words, &["cast", "spells"]) => {
+                Restriction::cast_spells_matching(player, ObjectFilter::spell())
+            }
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported player negated restriction tail (clause: '{}')",
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                )));
+            }
+        };
+        return Ok(Some(ParsedCantRestriction {
+            restriction,
+            target: None,
+        }));
+    }
 
     if subject_tokens.is_empty() && is_supported_untap_restriction_tail(&remainder_words) {
         filter = ObjectFilter::source();

@@ -252,9 +252,25 @@ impl Effect {
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()
     }
 
+    pub fn mana_restricted(
+        effects: Vec<Effect>,
+        restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    ) -> Self {
+        Self::new(crate::effects::ManaRestrictedEffect::new(
+            effects,
+            restrictions,
+        ))
+    }
+
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         if let Some(sequence) = self.downcast_ref::<crate::effects::SequenceEffect>() {
             for effect in &sequence.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(restricted) = self.downcast_ref::<crate::effects::ManaRestrictedEffect>() {
+            for effect in &restricted.effects {
                 visitor(effect);
             }
             return;
@@ -1397,6 +1413,18 @@ impl Effect {
         Self::new(crate::effects::GoadEffect::new(target))
     }
 
+    pub fn suspect(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::SuspectEffect::new(target))
+    }
+
+    pub fn clear_suspected(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::ClearSuspectedEffect::new(target))
+    }
+
+    pub fn clear_all_suspected() -> Self {
+        Self::new(crate::effects::ClearSuspectedEffect::all())
+    }
+
     pub fn return_from_graveyard_to_hand(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::ReturnFromGraveyardToHandEffect::new(
             target, false,
@@ -1542,6 +1570,10 @@ impl Effect {
         Self::new(crate::effects::IncubateEffect::new(amount, count, player))
     }
 
+    pub fn learn() -> Self {
+        Self::new(crate::effects::LearnEffect::new())
+    }
+
     pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
         Self::new(crate::effects::AmassEffect::new(subtype, amount))
     }
@@ -1551,6 +1583,10 @@ impl Effect {
         tag: impl Into<crate::tag::TagKey>,
     ) -> Self {
         Self::new(crate::effects::RevealTopEffect::tagged(player, tag))
+    }
+
+    pub fn reveal_source_from_hand() -> Self {
+        Self::new(crate::effects::RevealSourceFromHandEffect::new())
     }
 
     pub fn cipher() -> Self {

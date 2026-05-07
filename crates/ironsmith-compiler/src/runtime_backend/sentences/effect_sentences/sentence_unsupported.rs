@@ -3,7 +3,7 @@ use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsup
 use super::dispatch_inner as inner;
 use crate::cards::builders::CardTextError;
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 29] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
@@ -123,14 +123,6 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 29] = [
         shape_mask: 0,
         message: "unsupported when-you-sacrifice-this-way clause",
         predicate: inner::sentence_has_when_you_sacrifice_this_way_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
-        id: "sacrifice-any-number-then-draw-that-many",
-        priority: 240,
-        heads: &["sacrifice", "each", "target", "you"],
-        shape_mask: 0,
-        message: "unsupported sacrifice-any-number-then-draw-that-many clause",
-        predicate: inner::sentence_has_sacrifice_any_number_then_draw_that_many_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
         id: "greatest-mana-value",

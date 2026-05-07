@@ -9,9 +9,9 @@ export function decisionButtonPlayerId(state, decision = state?.decision) {
   );
 }
 
-export function decisionButtonAccentVars(state, decision = state?.decision) {
+export function decisionButtonAccentVars(state, decision = state?.decision, accentOverrides = null) {
   const playerId = decisionButtonPlayerId(state, decision);
-  const accent = getPlayerAccent(state?.players || [], playerId, state?.perspective);
+  const accent = getPlayerAccent(state?.players || [], playerId, state?.perspective, accentOverrides);
   if (!accent) return undefined;
 
   return {

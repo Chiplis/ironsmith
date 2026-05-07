@@ -1,6 +1,7 @@
 use super::*;
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
+const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
 
 pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::ConditionExpr {
     if label == MAX_SPEED_CONDITION_LABEL {
@@ -8,6 +9,16 @@ pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::Condition
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(4),
+        };
+    }
+    if let Some(threshold) = label
+        .strip_prefix(STATION_THRESHOLD_CONDITION_PREFIX)
+        .and_then(|value| value.parse::<i32>().ok())
+    {
+        return crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(threshold),
         };
     }
     crate::ConditionExpr::SourceChosenOption(label.to_string())
@@ -129,6 +140,12 @@ pub(crate) fn wrap_chosen_option_static_chunk(
     };
     let condition = condition_for_chosen_option_label(label);
     Ok(match chunk {
+        LineAst::Multiple(chunks) => LineAst::Multiple(
+            chunks
+                .into_iter()
+                .map(|chunk| wrap_chosen_option_static_chunk(chunk, chosen_option_label))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
         LineAst::StaticAbility(ability) => LineAst::StaticAbility(
             crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(ability),

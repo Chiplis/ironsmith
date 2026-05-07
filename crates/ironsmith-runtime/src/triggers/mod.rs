@@ -211,6 +211,10 @@ impl Trigger {
         self.0.trigger_count(event)
     }
 
+    pub fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.0.event_value_amount(event, ctx)
+    }
+
     /// Saga chapter numbers for saga chapter triggers.
     pub fn saga_chapters(&self) -> Option<&[u32]> {
         self.0.saga_chapters()
@@ -1019,6 +1023,14 @@ impl TriggerMatcher for Trigger {
 
     fn uses_snapshot(&self) -> bool {
         self.0.uses_snapshot()
+    }
+
+    fn trigger_count(&self, event: &TriggerEvent) -> u32 {
+        self.0.trigger_count(event)
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        self.0.event_value_amount(event, ctx)
     }
 }
 

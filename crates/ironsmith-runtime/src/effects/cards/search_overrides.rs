@@ -590,6 +590,7 @@ fn cast_from_library_while_searching(
         source_snapshot: None,
         source_name: Some(card_name),
         triggering_event: None,
+        event_value_amount: None,
         trigger_identity: None,
         ability_index: None,
         intervening_if: None,

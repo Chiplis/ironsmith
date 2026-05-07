@@ -396,6 +396,19 @@ pub(super) fn format_alternative_method(
                 format!("{cost_desc} from graveyard"),
             )
         }
+        AlternativeCastingMethod::Retrace { .. } => {
+            let mut parts = Vec::new();
+            if let Some(mana) = method.mana_cost() {
+                parts.push(format_mana_cost_simple(mana));
+            }
+            for cost in method.non_mana_costs() {
+                let rendered = cost.display();
+                if !rendered.trim().is_empty() {
+                    parts.push(rendered);
+                }
+            }
+            ("Retrace".to_string(), parts.join(", "))
+        }
         AlternativeCastingMethod::JumpStart => {
             // Jump-start uses the spell's mana cost plus discarding a card
             let cost_desc = spell

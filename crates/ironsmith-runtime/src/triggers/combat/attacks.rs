@@ -76,6 +76,20 @@ impl AttacksTrigger {
         }
         true
     }
+
+    fn matching_attacker_count_this_combat(&self, ctx: &TriggerContext) -> Option<i32> {
+        let combat = ctx.game.combat.as_ref()?;
+        let count = combat
+            .attackers
+            .iter()
+            .filter(|info| {
+                ctx.game
+                    .object(info.creature)
+                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            })
+            .count();
+        (count > 0).then_some(count as i32)
+    }
 }
 
 impl TriggerMatcher for AttacksTrigger {
@@ -125,6 +139,13 @@ impl TriggerMatcher for AttacksTrigger {
             );
         }
         format!("Whenever {} attacks", self.filter.description())
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.one_or_more || !self.matches(event, ctx) {
+            return None;
+        }
+        self.matching_attacker_count_this_combat(ctx)
     }
 }
 
@@ -279,5 +300,44 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn test_one_or_more_event_value_counts_matching_attackers() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let attacker_one = create_creature(&mut game, "A", alice);
+        let attacker_two = create_creature(&mut game, "B", alice);
+        let other_attacker = create_creature(&mut game, "C", bob);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_one,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: attacker_two,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: other_attacker,
+            target: AttackTarget::Player(alice),
+        });
+        game.combat = Some(combat);
+
+        let trigger = AttacksTrigger::one_or_more(ObjectFilter::creature().you_control());
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                attacker_one,
+                AttackEventTarget::Player(bob),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert_eq!(trigger.event_value_amount(&event, &ctx), Some(2));
     }
 }

@@ -153,7 +153,7 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
                     as_copy: false,
                 }),
                 grammar::phrase(&["the", "exiled", "card"]).value(TaggedPermissionTarget {
-                    tag: TagKey::from(IT_TAG),
+                    tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                     as_copy: false,
                 }),
                 grammar::phrase(&["that", "revealed", "card"]).value(TaggedPermissionTarget {

@@ -77,6 +77,8 @@ export default function PhaseTrack({ compact = false }) {
       {PHASE_TRACK.map((name) => (
         <div
           key={name}
+          aria-current={name === active ? "step" : undefined}
+          data-phase-name={name}
           data-phase-active={name === active ? "true" : "false"}
           className={cn(
             "phase-track-cell relative z-[1] grid items-center justify-items-center text-[13px] uppercase tracking-wide font-semibold transition-colors duration-300",

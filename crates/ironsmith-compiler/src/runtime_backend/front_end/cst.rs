@@ -56,6 +56,7 @@ pub(crate) enum KeywordLineKindCst {
     Replicate,
     Offspring,
     Reinforce,
+    Retrace,
     Squad,
     Transmute,
     Entwine,

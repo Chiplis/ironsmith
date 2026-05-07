@@ -95,14 +95,14 @@ export default function AttackersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { updateArrows, clearArrows, startDragArrow, updateDragArrow, endDragArrow, setCombatMode } = useCombatArrows();
   const options = useMemo(() => decision.attacker_options || [], [decision.attacker_options]);
   const players = state?.players || [];
   const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const optionsRef = useRef(options);
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const [declarations, setDeclarations] = useState(() => {

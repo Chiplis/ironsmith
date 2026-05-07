@@ -566,6 +566,41 @@ fn describe_reveal_top_two_optional_picks_rest_bottom(effects: &[&Effect]) -> Op
     ))
 }
 
+fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
+    let [look_effect, choose_effect, exile_effect, rest_effect] = effects else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let rest =
+        rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    if look.player != PlayerFilter::You
+        || look.reveal
+        || !choose.count.is_single()
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look.tag
+        })
+        || !matches!(exile.spec, ChooseSpec::Tagged(ref tag) if tag == &choose.tag)
+        || !exile.face_down
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.player != PlayerFilter::You
+        || rest.order != LibraryBottomOrder::Random
+    {
+        return None;
+    }
+
+    let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
+    Some(format!(
+        "Look at the top {count_text} {noun} of your library, then exile one of them face down. Put the rest on the bottom of your library in a random order"
+    ))
+}
+
 fn describe_exile_targets_opponent_piles_return_chosen(effects: &[&Effect]) -> Option<String> {
     let [
         exile_effect,
@@ -1427,6 +1462,23 @@ fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'static str> {
     }
 }
 
+fn describe_life_amount_phrase(amount: &Value) -> String {
+    if matches!(
+        amount,
+        Value::SourcePower
+            | Value::SourceToughness
+            | Value::PowerOf(_)
+            | Value::ToughnessOf(_)
+            | Value::ManaValueOf(_)
+            | Value::Speed(_)
+            | Value::LifeGainedThisTurn(_)
+            | Value::LifeLostThisTurn(_)
+    ) {
+        return format!("life equal to {}", describe_value(amount));
+    }
+    format!("{} life", describe_value(amount))
+}
+
 fn describe_for_players_simple_iterated_action(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -1446,9 +1498,9 @@ fn describe_for_players_simple_iterated_action(
         )
     {
         return Some(format!(
-            "{subject} {} {} life",
+            "{subject} {} {}",
             verb("lose", "loses"),
-            describe_value(&lose.amount)
+            describe_life_amount_phrase(&lose.amount)
         ));
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>()
@@ -1458,9 +1510,9 @@ fn describe_for_players_simple_iterated_action(
         )
     {
         return Some(format!(
-            "{subject} {} {} life",
+            "{subject} {} {}",
             verb("gain", "gains"),
-            describe_value(&gain.amount)
+            describe_life_amount_phrase(&gain.amount)
         ));
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>()
@@ -3760,6 +3812,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
     if filtered.len() == 7
         && let Some(compact) = describe_reveal_top_two_optional_picks_rest_bottom(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 4
+        && let Some(compact) = describe_hideaway_effects(&filtered)
     {
         return compact;
     }
@@ -23376,6 +23433,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return describe_effect_list(&sequence.effects);
     }
+    if let Some(restricted) = effect.downcast_ref::<crate::effects::ManaRestrictedEffect>() {
+        let mut parts = Vec::new();
+        let effect_text = describe_effect_list(&restricted.effects);
+        if !effect_text.trim().is_empty() {
+            parts.push(effect_text);
+        }
+        parts.extend(
+            restricted
+                .restrictions
+                .iter()
+                .filter_map(|restriction| describe_mana_usage_restriction(restriction, None)),
+        );
+        return cleanup_decompiled_text(&parts.join(". "));
+    }
+    if effect
+        .downcast_ref::<crate::effects::LearnEffect>()
+        .is_some()
+    {
+        return "Learn".to_string();
+    }
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
         if let Some(compact) =
             describe_divided_evenly_x_damage_to_target_opponent_creatures(for_each)
@@ -24654,6 +24731,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(reveal_from_hand) = effect.downcast_ref::<crate::effects::RevealFromHandEffect>() {
         return reveal_from_hand.cost_display();
     }
+    if effect
+        .downcast_ref::<crate::effects::RevealSourceFromHandEffect>()
+        .is_some()
+    {
+        return "Reveal this card from your hand".to_string();
+    }
     if let Some(return_to_battlefield) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
     {
@@ -24886,6 +24969,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::ToughnessOf(_)
                 | Value::ManaValueOf(_)
                 | Value::Speed(_)
+                | Value::LifeGainedThisTurn(_)
+                | Value::LifeLostThisTurn(_)
                 | Value::EffectMetric { .. }
                 | Value::EffectMetricOffset { .. }
                 | Value::PendingEffectMetric { .. }
@@ -24899,10 +24984,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
         return format!(
-            "{} {} {} life",
+            "{} {} {}",
             player,
             player_verb(&player, "gain", "gains"),
-            describe_value(&gain.amount)
+            describe_life_amount_phrase(&gain.amount)
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantManaAbilityUntilEotEffect>() {
@@ -25034,6 +25119,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::ToughnessOf(_)
                 | Value::ManaValueOf(_)
                 | Value::Speed(_)
+                | Value::LifeGainedThisTurn(_)
+                | Value::LifeLostThisTurn(_)
         ) {
             return format!(
                 "{} {} life equal to {}",
@@ -25043,10 +25130,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
         return format!(
-            "{} {} {} life",
+            "{} {} {}",
             player,
             player_verb(&player, "lose", "loses"),
-            describe_value(&lose.amount)
+            describe_life_amount_phrase(&lose.amount)
         );
     }
     if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() {
@@ -27245,6 +27332,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
         return format!("Goad {}", describe_goad_target(&goad.target));
+    }
+    if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
+        return format!("Suspect {}", describe_choose_spec(&suspect.target));
+    }
+    if let Some(clear_suspected) = effect.downcast_ref::<crate::effects::ClearSuspectedEffect>() {
+        return match &clear_suspected.target {
+            Some(target) => format!("{} is no longer suspected", describe_choose_spec(target)),
+            None => "All suspected creatures are no longer suspected".to_string(),
+        };
     }
     if let Some(extra_turn) = effect.downcast_ref::<crate::effects::ExtraTurnAfterNextTurnEffect>()
     {

@@ -99,6 +99,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::ManaRestricted {
+                effects: $effects,
+                ..
+            }
     };
 }
 
@@ -115,6 +119,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DelayedTriggerThisTurn { .. } => {}
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
         EffectAst::Conditional { .. } => {}
+        EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}

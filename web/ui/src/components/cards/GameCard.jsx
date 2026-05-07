@@ -216,7 +216,7 @@ function BattlefieldCounterBadge({ badge }) {
           fill="#061019"
           fontSize={amountFontSize}
           fontWeight="800"
-          fontFamily="Optima, Avenir Next, Segoe UI, Candara, sans-serif"
+          fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
         >
           {amountLabel}
         </text>
@@ -228,7 +228,7 @@ function BattlefieldCounterBadge({ badge }) {
           fontSize={labelFontSize}
           fontWeight="800"
           letterSpacing="1.1"
-          fontFamily="Optima, Avenir Next, Segoe UI, Candara, sans-serif"
+          fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
         >
           {badge.shortLabel}
         </text>
@@ -559,7 +559,7 @@ function renderBattlefieldManaSymbolShape(code, isMain) {
         fontSize={fontSize}
         fontWeight="900"
         letterSpacing="-0.02em"
-        fontFamily="Bahnschrift, Avenir Next Condensed, Segoe UI, sans-serif"
+        fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
       >
         {code}
       </text>

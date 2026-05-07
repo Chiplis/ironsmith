@@ -168,10 +168,12 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
         Cost::RemoveAnyCountersFromSource {
             counter_type,
             display_x,
+            remove_all,
         } => Some(crate::effect::Effect::new(
             crate::effects::RemoveAnyCountersFromSourceEffect {
                 counter_type: *counter_type,
                 display_x: *display_x,
+                remove_all: *remove_all,
             },
         )),
         Cost::Energy(amount) => Some(crate::effect::Effect::new(

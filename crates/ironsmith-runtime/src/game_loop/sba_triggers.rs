@@ -361,6 +361,9 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
+    if let Some(event_value_amount) = entry.event_value_amount {
+        ctx = ctx.with_event_value_amount(event_value_amount);
+    }
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
     }
@@ -881,6 +884,9 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
     .with_triggering_event(trigger.triggering_event.clone())
     .with_trigger_identity(trigger.trigger_identity);
+    if let Some(event_value_amount) = trigger.event_value_amount {
+        entry = entry.with_event_value_amount(event_value_amount);
+    }
     if let Some(source_obj) = game.object(trigger.source) {
         entry = entry.with_optional_costs_paid(source_obj.optional_costs_paid.clone());
     }

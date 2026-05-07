@@ -1520,6 +1520,24 @@ impl Effect {
         Self::new(DetainEffect::new(target))
     }
 
+    /// Create a "suspect target creature" effect.
+    pub fn suspect(target: ChooseSpec) -> Self {
+        use crate::effects::SuspectEffect;
+        Self::new(SuspectEffect::new(target))
+    }
+
+    /// Create a "target creature is no longer suspected" effect.
+    pub fn clear_suspected(target: ChooseSpec) -> Self {
+        use crate::effects::ClearSuspectedEffect;
+        Self::new(ClearSuspectedEffect::new(target))
+    }
+
+    /// Create an "all suspected creatures are no longer suspected" effect.
+    pub fn clear_all_suspected() -> Self {
+        use crate::effects::ClearSuspectedEffect;
+        Self::new(ClearSuspectedEffect::all())
+    }
+
     /// Create an "explore" effect for a chosen object.
     pub fn explore(target: ChooseSpec) -> Self {
         use crate::effects::ExploreEffect;
@@ -2067,6 +2085,11 @@ impl Effect {
         Self::new(IncubateEffect::new(amount, count, player))
     }
 
+    pub fn learn() -> Self {
+        use crate::effects::LearnEffect;
+        Self::new(LearnEffect::new())
+    }
+
     /// Create a cipher resolution effect.
     pub fn cipher() -> Self {
         use crate::effects::CipherEffect;
@@ -2177,6 +2200,13 @@ impl Effect {
             RemoveAnyCountersFromSourceEffect::any_number(counter_type)
         };
         Self::new(effect)
+    }
+
+    /// Create an effect for removing all matching counters from the source.
+    pub fn remove_all_counters_from_source(counter_type: Option<CounterType>) -> Self {
+        Self::new(crate::effects::RemoveAnyCountersFromSourceEffect::all(
+            counter_type,
+        ))
     }
 
     /// Create a "remove up to N counters from target" effect (player chooses how many).

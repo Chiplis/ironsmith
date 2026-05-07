@@ -88,11 +88,12 @@ pub use cards::{
     ClashEffect, ClashOpponentMode, ConniveEffect, ConsultTopOfLibraryEffect,
     ConsultTopOfLibraryStopRule, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, ExileTopOfLibraryEffect,
-    ExileUntilMatchEffect, FatesealEffect, LookAtHandEffect, LookAtTopCardsEffect, MillEffect,
-    PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    RevealFromHandEffect, RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
-    SearchLibrarySlot, SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
-    ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
+    ExileUntilMatchEffect, FatesealEffect, LearnEffect, LookAtHandEffect, LookAtTopCardsEffect,
+    MillEffect, PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
+    RevealFromHandEffect, RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect,
+    ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
+    ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
+    ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
@@ -108,7 +109,7 @@ pub use composition::{
     ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
     EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
-    ForPlayersEffect, IfEffect, LocalRewriteEffect, ManifestDreadEffect,
+    ForPlayersEffect, IfEffect, LocalRewriteEffect, ManaRestrictedEffect, ManifestDreadEffect,
     ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
     ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
     SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
@@ -146,12 +147,12 @@ pub use mana::{
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
-    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ConspireCostEffect, ConvertEffect,
-    CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect, ExertCostEffect, FlipEffect,
-    GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect,
-    PhaseInEffect, PhaseOutEffect, PutStickerEffect, RegenerateEffect, RenownEffect,
-    SaddleCostEffect, SoulbondPairEffect, TapEffect, TransformEffect, UmbraArmorEffect,
-    UnearthEffect, UntapEffect,
+    BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ClearSuspectedEffect,
+    ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
+    ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
+    NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
+    RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect, SuspectEffect, TapEffect,
+    TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,

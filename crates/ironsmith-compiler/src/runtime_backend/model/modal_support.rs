@@ -370,6 +370,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }
+            | SubjectVerbActionAst::Suspect { .. }
+            | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
@@ -493,6 +495,7 @@ fn replace_modal_header_x_in_effect_ast(
                     replace_modal_header_x_in_value(toughness, replacement, clause)?;
                 }
             }
+            SubjectVerbActionAst::Learn => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {

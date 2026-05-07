@@ -132,6 +132,7 @@ impl EffectExecutor for DiscoverEffect {
                         source_snapshot: None,
                         source_name: Some(candidate_name),
                         triggering_event: None,
+                        event_value_amount: None,
                         trigger_identity: None,
                         ability_index: None,
                         intervening_if: None,

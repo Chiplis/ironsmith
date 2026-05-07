@@ -205,17 +205,6 @@ pub(crate) fn has_when_you_sacrifice_this_way_clause_sentence_lexed(
         && primitives::words_find_phrase(tokens, &["this", "way"]).is_some()
 }
 
-pub(crate) fn has_sacrifice_any_number_then_draw_that_many_clause_sentence_lexed(
-    words: &[&str],
-    tokens: &[OwnedLexToken],
-) -> bool {
-    (primitives::contains_word(tokens, "sacrifice")
-        || primitives::contains_word(tokens, "sacrifices"))
-        && contains_word_window(words, &["any", "number", "of"])
-        && (primitives::contains_word(tokens, "draw") || primitives::contains_word(tokens, "draws"))
-        && contains_word_window(words, &["that", "many"])
-}
-
 pub(crate) fn has_greatest_mana_value_clause_sentence_lexed(words: &[&str]) -> bool {
     contains_word_window(words, &["greatest", "mana", "value"])
 }

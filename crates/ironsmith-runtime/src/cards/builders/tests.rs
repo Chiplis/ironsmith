@@ -4614,16 +4614,100 @@ fn compiled_lines_render_zurgo_restriction_before_dash() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn test_parse_hideaway_marker_line() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
+fn test_parse_hideaway_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
         .card_types(vec![CardType::Land])
         .parse_text("Hideaway 4")
-        .expect_err("hideaway marker line should fail until it has real semantics");
+        .expect("hideaway should lower to real ETB semantics");
 
+    let debug = format!("{def:#?}");
     assert!(
-        format!("{err:?}").contains("KeywordFallbackText")
-            && format!("{err:?}").contains("Hideaway 4"),
-        "expected hideaway marker to fail loudly, got {err:?}"
+        !debug.contains("KeywordFallbackText") && !debug.contains("unsupported"),
+        "hideaway should avoid unsupported placeholders, got {debug}"
+    );
+    assert!(
+        !debug.contains("EntersTapped") && !debug.contains("enters_tapped"),
+        "hideaway no longer implies enters tapped, got {debug}"
+    );
+    assert!(
+        debug.contains("LookAtTopCards"),
+        "expected hideaway ETB trigger to look at top cards, got {debug}"
+    );
+    assert!(
+        debug.contains("face_down: true"),
+        "expected hideaway to exile the chosen card face down, got {debug}"
+    );
+    assert!(
+        debug.contains("PutTaggedRemainderOnLibraryBottom")
+            || debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "expected hideaway to put the rest on the bottom, got {debug}"
+    );
+    assert!(
+        debug.contains("Random"),
+        "expected hideaway to bottom the rest in random order, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_partner_with_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Partner with Bebop, Skull & Crossbones")
+        .expect("partner-with should lower to partner plus a real ETB search trigger");
+
+    let rendered = unprocessed_compiled_lines(&def);
+    assert!(
+        rendered.iter().any(|line| line == "Partner"),
+        "expected partner static keyword, got {rendered:?}"
+    );
+    let search_lines = rendered
+        .iter()
+        .filter(|line| {
+            line.to_ascii_lowercase()
+                .contains("bebop skull and crossbones")
+        })
+        .count();
+    assert_eq!(
+        search_lines, 1,
+        "expected exactly one partner-with search trigger, got {rendered:?}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        (debug.contains("SearchLibraryEffect") || debug.contains("ChooseObjectsEffect"))
+            && debug.contains("is_search: true")
+            && !debug.contains("KeywordFallbackText"),
+        "expected real library-search effect without fallback, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_reveal_opponent_exiles_rest_hand_then_may_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Allure Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top six cards of your library. An opponent exiles a nonland card from among them, then you put the rest into your hand. That opponent may cast the exiled card without paying its mana cost.",
+        )
+        .expect("opponent-exiles reveal/rest/cast sequence should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("top six cards of your library")
+            && rendered.contains("may cast")
+            && rendered.contains("without paying its mana cost"),
+        "expected reveal/rest/cast sequence to render, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChooseObjects")
+            && debug.contains("MoveToZone")
+            && debug.contains("CastTagged")
+            && debug.contains("reveal: true")
+            && debug.contains("IsNotTaggedObject")
+            && !debug.contains("KeywordFallbackText")
+            && !debug.contains("unsupported"),
+        "expected real tagged choose/move/cast effects without fallback, got {debug}"
     );
 }
 
@@ -7885,6 +7969,98 @@ fn parse_enters_with_counter_where_x_is_total_life_lost_by_opponents_this_turn_l
         debug.contains("LifeLostThisTurn(\n                                                            Opponent,\n                                                        )")
             || debug.contains("LifeLostThisTurn(Opponent)"),
         "expected life-lost-this-turn value in static ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_each_opponent_loses_life_equal_to_that_players_life_lost_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Archfiend Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of each end step, each opponent loses life equal to the life that player lost this turn.",
+        )
+        .expect("that-player-life-lost-this-turn amount should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LifeLostThisTurn(\n                                                            IteratedPlayer,\n                                                        )")
+            || debug.contains("LifeLostThisTurn(IteratedPlayer)"),
+        "expected iterated-player life-lost-this-turn value, got {debug}"
+    );
+    assert!(
+        debug.contains("ForPlayersEffect") && debug.contains("filter: Opponent"),
+        "expected effect to iterate over opponents, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_one_or_more_etb_trigger_binds_that_much_to_zone_change_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Artillerist Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more artifacts you control enter, this creature deals that much damage to each opponent.",
+        )
+        .expect("one-or-more ETB that-much amount should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("count_mode: OneOrMore"),
+        "expected one-or-more enters trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("EventValue(\n                                                                    Amount,\n                                                                )")
+            || debug.contains("EventValue(Amount)"),
+        "expected event-derived amount to remain bound to the trigger, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_sacrifice_any_number_then_draw_that_many_uses_sacrifice_result_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Witchkite Variant")
+        .parse_text(
+            "Sacrifice any number of artifacts, enchantments, and/or tokens, then draw that many cards.",
+        )
+        .expect("sacrifice-any-number then draw-that-many should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChoiceCount") && debug.contains("max: None"),
+        "expected any-number choice before sacrifice, got {debug}"
+    );
+    assert!(
+        debug.contains("Artifact")
+            && debug.contains("Enchantment")
+            && debug.contains("token: true"),
+        "expected sacrifice choice to include artifacts, enchantments, and tokens, got {debug}"
+    );
+    assert!(
+        debug.contains("EffectValue"),
+        "expected draw count to reference sacrifice result count, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_remove_all_counters_cost_binds_that_much_to_cost_x() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{2}, {T}, Remove all charge counters from this artifact: This artifact deals that much damage to target creature.",
+        )
+        .expect("remove-all-counter cost should bind that-much damage to cost X");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("remove_all: true"),
+        "expected remove-all counter cost, got {debug}"
+    );
+    assert!(
+        debug.contains("DealDamage")
+            && (debug.contains("amount: X") || debug.contains("amount: X,")),
+        "expected that-much damage to bind to cost X, got {debug}"
     );
 }
 
@@ -37387,5 +37563,44 @@ fn parse_must_be_blocked_each_combat_this_turn_if_able() {
     assert!(
         rendered.contains("must be blocked this turn if able"),
         "expected must-be-blocked surface, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_suspect_designation_clauses() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Suspect Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "Flying\nWhen this creature enters, all suspected creatures are no longer suspected.\nWhen this creature dies, you gain 3 life and suspect up to one target creature an opponent controls.",
+        )
+        .expect("suspect clauses should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("all suspected creatures are no longer suspected"),
+        "expected clear-suspected surface, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("suspect up to one target creature an opponent controls"),
+        "expected suspect-target surface, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_suspect_it_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Self Suspect Variant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text("When this creature enters, suspect it.")
+        .expect("suspect it should parse");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("suspect it"),
+        "expected suspect-it surface, got {rendered}"
     );
 }

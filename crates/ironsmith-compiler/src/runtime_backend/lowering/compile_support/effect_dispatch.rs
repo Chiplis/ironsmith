@@ -72,6 +72,26 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::ManaRestricted {
+        effects,
+        restrictions,
+    } = effect
+    {
+        let mut compiled_effects = Vec::new();
+        let mut choices = Vec::new();
+        for child in effects {
+            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
+            compiled_effects.append(&mut child_effects);
+            choices.append(&mut child_choices);
+        }
+        return Ok((
+            vec![Effect::mana_restricted(
+                compiled_effects,
+                restrictions.clone(),
+            )],
+            choices,
+        ));
+    }
     if matches!(
         effect,
         EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce
@@ -255,6 +275,7 @@ fn compile_subject_verb_effect(
                 |filter| Effect::incubate_player(amount, count, filter),
             )
         }
+        SubjectVerbActionAst::Learn => Ok((vec![Effect::learn()], Vec::new())),
         SubjectVerbActionAst::EmitKeywordAction { action, amount } => {
             Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
         }
@@ -4744,6 +4765,43 @@ fn compile_subject_verb_effect(
                 spec
             };
             let effect = tag_object_target_effect(Effect::goad(spec.clone()), &spec, ctx, "goaded");
+            Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Suspect { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
+            let effect =
+                tag_object_target_effect(Effect::suspect(spec.clone()), &spec, ctx, "suspected");
+            Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::ClearSuspected { target } => {
+            let Some(target) = target else {
+                return Ok((vec![Effect::clear_all_suspected()], Vec::new()));
+            };
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
+            let effect = tag_object_target_effect(
+                Effect::clear_suspected(spec.clone()),
+                &spec,
+                ctx,
+                "no_longer_suspected",
+            );
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RemoveFromCombat { target } => {

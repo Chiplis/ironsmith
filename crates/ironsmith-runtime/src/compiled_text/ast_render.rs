@@ -1651,6 +1651,7 @@ pub(super) fn describe_alternative_cast_line(
                 format!("Harmonize {mana_cost}, {extra}")
             }
         }
+        AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
         AlternativeCastingMethod::JumpStart => "Jump-start".to_string(),
         AlternativeCastingMethod::Escape { cost, exile_count } => {
             let count_text = small_number_word(*exile_count)

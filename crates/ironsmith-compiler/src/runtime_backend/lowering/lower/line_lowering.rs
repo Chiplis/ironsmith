@@ -1395,6 +1395,18 @@ fn lower_alternative_casting_method_chunk(
             crate::cost::TotalCost::mana(total_mana_cost),
         );
     }
+    if let crate::alternative_cast::AlternativeCastingMethod::Retrace { total_cost } = &method {
+        let printed_cost = builder
+            .card_builder
+            .mana_cost_ref()
+            .cloned()
+            .unwrap_or_default();
+        let mut costs = vec![crate::costs::Cost::mana(printed_cost)];
+        costs.extend(total_cost.costs().iter().cloned());
+        method = crate::alternative_cast::AlternativeCastingMethod::Retrace {
+            total_cost: crate::cost::TotalCost::from_costs(costs),
+        };
+    }
     builder.alternative_casts.push(method);
     Ok(builder)
 }

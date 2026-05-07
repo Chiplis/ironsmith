@@ -20,6 +20,7 @@ pub(crate) enum GiftTimingAst {
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineAst {
+    Multiple(Vec<LineAst>),
     Abilities(Vec<KeywordAction>),
     StaticAbility(StaticAbilityAst),
     StaticAbilities(Vec<StaticAbilityAst>),

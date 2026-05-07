@@ -77,7 +77,11 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::AttacksOneOrMore(_)
+            | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+            | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
             | TriggerSpec::CounterPutOn { .. }
+            | TriggerSpec::EntersBattlefieldOneOrMore { .. }
     ) || matches!(
         trigger,
         TriggerSpec::Either(left, right)
@@ -514,6 +518,13 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Goad { target } => {
                     maybe_tag_target(target, frame, id_gen, "goaded")?;
                 }
+                SubjectVerbActionAst::Suspect { target } => {
+                    maybe_tag_target(target, frame, id_gen, "suspected")?;
+                }
+                SubjectVerbActionAst::ClearSuspected { target: Some(target) } => {
+                    maybe_tag_target(target, frame, id_gen, "no_longer_suspected")?;
+                }
+                SubjectVerbActionAst::ClearSuspected { target: None } => {}
                 SubjectVerbActionAst::RemoveFromCombat { target } => {
                     maybe_tag_target(target, frame, id_gen, "removed_from_combat")?;
                 }
@@ -1036,6 +1047,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::RepeatProcess { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
+        EffectAst::ManaRestricted { effects, .. } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::RepeatThisProcess
         | EffectAst::RepeatThisProcessMay
         | EffectAst::RepeatThisProcessOnce
@@ -1555,6 +1569,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }
+            | SubjectVerbActionAst::Suspect { .. }
+            | SubjectVerbActionAst::ClearSuspected { .. }
             | SubjectVerbActionAst::RemoveFromCombat { .. }
             | SubjectVerbActionAst::Flip { .. }
             | SubjectVerbActionAst::Regenerate { .. }
@@ -1727,6 +1743,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::PumpForEach { count, .. } => {
                 resolve_effect_result_value(count, state)?;
             }
+            SubjectVerbActionAst::Learn => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
@@ -2119,11 +2136,16 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::Detain { target }
             | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
             | SubjectVerbActionAst::Regenerate { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::ClearSuspected {
+                target: Some(target),
+            } => bind_unresolved_it_in_target(target, seed_tag),
+            SubjectVerbActionAst::ClearSuspected { target: None } => {}
             SubjectVerbActionAst::RegenerateAll { filter } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
@@ -2525,6 +2547,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 replacements
             }
             SubjectVerbActionAst::AdditionalPhases { .. } => 0,
+            SubjectVerbActionAst::Learn => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
         },
         EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),

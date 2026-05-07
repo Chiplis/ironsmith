@@ -63,6 +63,8 @@ pub struct TriggeredAbilityEntry {
     pub controller: PlayerId,
     /// X value to use when resolving this trigger (if any).
     pub x_value: Option<u32>,
+    /// Numeric value derived by the trigger from the matched event context.
+    pub event_value_amount: Option<i32>,
     /// The triggered ability definition.
     pub ability: TriggeredAbility,
     /// The event that triggered this ability (for "intervening if" checks).
@@ -464,6 +466,7 @@ fn push_monarch_trigger(
         source,
         controller,
         x_value: None,
+        event_value_amount: None,
         ability,
         triggering_event: trigger_event.clone(),
         source_stable_id,
@@ -486,6 +489,7 @@ fn push_ring_trigger(
         source,
         controller,
         x_value: None,
+        event_value_amount: None,
         ability,
         triggering_event: trigger_event.clone(),
         source_stable_id,
@@ -508,6 +512,7 @@ fn push_initiative_trigger(
         source,
         controller,
         x_value: None,
+        event_value_amount: None,
         ability,
         triggering_event: trigger_event.clone(),
         source_stable_id,
@@ -893,6 +898,9 @@ pub(crate) fn check_triggers_with_view(
                 if trigger_count == 0 {
                     continue;
                 }
+                let event_value_amount = trigger_ability
+                    .trigger
+                    .event_value_amount(trigger_event, &ctx);
                 let trigger_identity = compute_trigger_identity(trigger_ability);
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
@@ -911,6 +919,7 @@ pub(crate) fn check_triggers_with_view(
                     source: obj_id,
                     controller: game.controller_of(obj),
                     x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+                    event_value_amount,
                     ability: TriggeredAbility {
                         trigger: trigger_ability.trigger.clone(),
                         effects: trigger_ability.effects.clone(),
@@ -958,6 +967,9 @@ pub(crate) fn check_triggers_with_view(
                     if trigger_count == 0 {
                         continue;
                     }
+                    let event_value_amount = trigger_ability
+                        .trigger
+                        .event_value_amount(trigger_event, &ctx);
                     let trigger_identity = compute_trigger_identity(trigger_ability);
                     if let Some(ref condition) = trigger_ability.intervening_if
                         && !verify_intervening_if(
@@ -976,6 +988,7 @@ pub(crate) fn check_triggers_with_view(
                         source: snapshot.object_id,
                         controller: snapshot.controller,
                         x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                        event_value_amount,
                         ability: TriggeredAbility {
                             trigger: trigger_ability.trigger.clone(),
                             effects: trigger_ability.effects.clone(),
@@ -1067,6 +1080,7 @@ pub(crate) fn check_triggers_with_view(
                     source: cast.spell,
                     controller: cast.caster,
                     x_value: entry.x_value,
+                    event_value_amount: None,
                     ability: ability.clone(),
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
@@ -1111,6 +1125,7 @@ pub(crate) fn check_triggers_with_view(
                 source: cast.spell,
                 controller: cast.caster,
                 x_value: entry.x_value,
+                event_value_amount: None,
                 ability,
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
@@ -1175,6 +1190,7 @@ fn add_speed_increase_triggers(
         source,
         controller,
         x_value: None,
+        event_value_amount: None,
         ability,
         triggering_event: trigger_event.clone(),
         source_stable_id: StableId::from_raw(0),
@@ -1248,6 +1264,7 @@ fn collect_state_triggers_for_object(
             source: obj.id,
             controller: game.controller_of(obj),
             x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
+            event_value_amount: None,
             ability: TriggeredAbility {
                 trigger: trigger_ability.trigger.clone(),
                 effects: trigger_ability.effects.clone(),
@@ -1407,6 +1424,7 @@ pub fn check_delayed_triggers(
                 source: ability_source,
                 controller: delayed.controller,
                 x_value: delayed.x_value,
+                event_value_amount: delayed.trigger.event_value_amount(trigger_event, &ctx),
                 ability: TriggeredAbility {
                     trigger: delayed.trigger.clone(),
                     effects: delayed.effects.clone(),
@@ -1485,6 +1503,9 @@ fn check_triggers_in_zone(
             if trigger_count == 0 {
                 continue;
             }
+            let event_value_amount = trigger_ability
+                .trigger
+                .event_value_amount(trigger_event, &ctx);
             let trigger_identity = compute_trigger_identity(trigger_ability);
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
@@ -1503,6 +1524,7 @@ fn check_triggers_in_zone(
                 source: obj_id,
                 controller: game.controller_of(obj),
                 x_value: trigger_entry_x_value(trigger_event, obj.x_value),
+                event_value_amount,
                 ability: TriggeredAbility {
                     trigger: trigger_ability.trigger.clone(),
                     effects: trigger_ability.effects.clone(),

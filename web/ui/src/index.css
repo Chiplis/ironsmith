@@ -98,9 +98,10 @@
   --game-line: #6b4f2c;
   --game-line-2: #4a3520;
 
-  /* Fantasy typography */
-  --font-heading: "Cinzel", "Optima", "Avenir Next", serif;
-  --font-body-fantasy: "Cormorant Garamond", "Optima", serif;
+  /* UI typography */
+  --ironsmith-ui-font: "Alegreya Sans SC", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-heading: var(--ironsmith-ui-font);
+  --font-body-fantasy: var(--ironsmith-ui-font);
 }
 
 @layer base {
@@ -120,8 +121,8 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Avenir Next Condensed", "Bahnschrift Condensed", "Arial Narrow", sans-serif;
-    letter-spacing: 0.15px;
+    font-family: var(--ironsmith-ui-font);
+    letter-spacing: 0;
     color-scheme: dark;
     background:
       radial-gradient(1200px 640px at 38% -8%, #3a2916 0%, transparent 52%),
@@ -167,7 +168,7 @@
   border-radius: 999px;
   background: rgba(7, 12, 18, 0.94);
   color: #f5d08b;
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   font-size: 0.62em;
   font-weight: 900;
   line-height: 1;
@@ -1274,7 +1275,7 @@
 .game-card.field-card.battlefield-token-card .battlefield-token-main-text,
 .game-card.field-card.battlefield-token-card .battlefield-token-side-text {
   fill: #f4f7fb;
-  font-family: "Bahnschrift", "Avenir Next Condensed", "Segoe UI", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
@@ -4810,7 +4811,7 @@
 }
 
 body {
-  font-family: "Avenir Next Condensed", "Bahnschrift Condensed", "Arial Narrow", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   color: #ece2ca;
   background:
     radial-gradient(1200px 620px at 50% -10%, rgba(241, 204, 126, 0.13), transparent 48%),
@@ -4943,7 +4944,7 @@ body {
 .battlefield-zone-label,
 .decision-neon-button,
 .pass-priority-btn {
-  font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   letter-spacing: 0.04em;
 }
 
@@ -5114,7 +5115,7 @@ body {
 .puzzle-setup-kicker,
 .puzzle-setup-label,
 .puzzle-zone-header {
-  font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   text-transform: uppercase;
   letter-spacing: 0.16em;
 }
@@ -5127,7 +5128,7 @@ body {
 .puzzle-setup-title {
   margin: 0;
   color: #f0ead9;
-  font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -5241,7 +5242,7 @@ body {
 .puzzle-zone-count {
   min-width: 22px;
   color: #948a7c;
-  font-family: "Avenir Next Condensed", "Bahnschrift Condensed", "Arial Narrow", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   letter-spacing: 0.08em;
   text-align: right;
 }
@@ -5710,7 +5711,7 @@ body {
 }
 
 body {
-  font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  font-family: var(--ironsmith-ui-font);
   letter-spacing: 0.015em;
 }
 
@@ -5723,7 +5724,7 @@ body {
 .battlefield-overlay-zone-label,
 .zone-viewer,
 .priority-control-stack {
-  font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  font-family: var(--ironsmith-ui-font);
 }
 
 .table-shell,
@@ -6341,7 +6342,9 @@ body {
 
 /* ---- Final Theme Cleanup ---- */
 :root {
-  --ironsmith-ui-font: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+  --ironsmith-ui-font: "Alegreya Sans SC", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-heading: var(--ironsmith-ui-font);
+  --font-body-fantasy: var(--ironsmith-ui-font);
 }
 
 body,
@@ -6364,7 +6367,21 @@ textarea,
 .inspector-oracle-line-bullet,
 .ironsmith-inspector-shell,
 .inspector-chip,
-.inspector-banner {
+.inspector-banner,
+.topbar-brand,
+.topbar-phase-chip-label,
+.phase-track,
+.fantasy-sheet-header,
+.fantasy-sheet-title,
+.fantasy-sheet-subtitle,
+.lobby-sheet [data-slot="sheet-title"],
+[data-slot="sheet-title"],
+.add-card-toolbar,
+.table-action-bar,
+.action-strip-pill,
+.priority-control-toggle,
+.mobile-battle-self-identity,
+.mobile-battle-overlay-pill {
   font-family: var(--ironsmith-ui-font) !important;
 }
 
@@ -8818,6 +8835,60 @@ textarea,
   max-width: 8.25rem;
 }
 
+.add-card-toolbar-font-input {
+  width: 8.75rem;
+  max-width: 8.75rem;
+  text-transform: none !important;
+  letter-spacing: 0.04em !important;
+}
+
+.add-card-toolbar-accent-split {
+  position: relative;
+  width: 32px;
+  height: 24px;
+  flex: 0 0 32px;
+  border: 1px solid rgba(201, 156, 83, 0.52);
+  border-radius: 4px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, var(--toolbar-phase-accent, #876221) 0 49.25%, rgba(10, 8, 7, 0.82) 49.25% 50.75%, var(--toolbar-player-accent, #731bde) 50.75% 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 238, 190, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.42);
+}
+
+.add-card-toolbar-accent-split::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 44%, rgba(0, 0, 0, 0.2));
+}
+
+.add-card-toolbar-accent-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  opacity: 0.01;
+  cursor: pointer;
+}
+
+.add-card-toolbar-accent-input--phase {
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.add-card-toolbar-accent-input--player {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.add-card-toolbar-accent-input:focus-visible {
+  outline: 2px solid rgba(255, 238, 190, 0.72);
+  outline-offset: -2px;
+}
+
 .my-zone-board-shell {
   min-width: 0;
 }
@@ -9674,7 +9745,7 @@ select::-ms-expand {
       0 0 9px rgba(255, 165, 57, 0.13),
       0 6px 14px rgba(0, 0, 0, 0.22);
     color: #fff7e6;
-    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-family: var(--ironsmith-ui-font);
     font-size: 15px;
     font-weight: 800;
     line-height: 1;
@@ -11037,7 +11108,7 @@ select::-ms-expand {
   .mobile-decision-secondary-button {
     min-height: 38px;
     border-radius: 14px 0 0 14px;
-    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-family: var(--ironsmith-ui-font);
     text-transform: none;
     letter-spacing: 0;
     box-shadow:
@@ -11306,7 +11377,7 @@ select::-ms-expand {
 
   .mobile-decision-title {
     color: #f2e5c6;
-    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-family: var(--ironsmith-ui-font);
     font-size: 24px;
     font-weight: 800;
     line-height: 1;
@@ -13357,9 +13428,8 @@ select::-ms-expand {
 
 /* ============================================================
    HIGH FANTASY (warm tavern / guildhall) reskin
-   - Heading typography: Cinzel on player names, panel headers,
-     phase track labels, fantasy-sheet titles. Card-dense numeric
-     readouts keep the existing sans for legibility.
+   - App chrome uses one dense UI font. Card-dense numeric
+     readouts share that same family for consistency.
    - Decorative SVGs mounted via pseudo-elements with
      pointer-events: none so they never intercept interactions.
    ============================================================ */
@@ -14495,21 +14565,25 @@ select::-ms-expand {
 /* Reference royal-orange priority button. */
 .action-strip-layout--segmented {
   --decision-edge-text: #eef6ff;
-  --decision-edge-text-shadow: 0 1px 1px rgba(2, 8, 24, 0.72);
+  --decision-edge-text-shadow:
+    0 1px 0 rgba(1, 7, 18, 0.98),
+    0 0 1px rgba(1, 7, 18, 0.95),
+    0 2px 2px rgba(1, 7, 18, 0.72),
+    0 0 5px rgba(1, 7, 18, 0.38);
 }
 
 .action-strip-command-region,
 .action-strip-layout--segmented > .action-strip-main-region {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 38px !important;
+  min-height: 38px !important;
   border: 1px solid #f28c28 !important;
-  border-radius: 8px !important;
+  border-radius: 4px !important;
   background:
-    linear-gradient(180deg, #f2a23b 0%, #c46b16 52%, #6f3007 100%) !important;
+    linear-gradient(180deg, #e99a35 0%, #bd6515 54%, #673006 100%) !important;
   box-shadow:
-    inset 0 0 9px rgba(242, 140, 40, 0.36),
-    inset 0 1px 0 rgba(255, 195, 96, 0.28),
-    0 2px 5px rgba(0, 0, 0, 0.42) !important;
+    inset 0 0 7px rgba(242, 140, 40, 0.26),
+    inset 0 1px 0 rgba(255, 204, 122, 0.26),
+    0 1px 4px rgba(0, 0, 0, 0.44) !important;
   filter: none !important;
   transform: none !important;
 }
@@ -14518,34 +14592,34 @@ select::-ms-expand {
 .action-strip-layout--segmented > .action-strip-main-region:hover {
   border-color: #f28c28 !important;
   background:
-    linear-gradient(180deg, #ffad44 0%, #c46b16 52%, #7d3709 100%) !important;
+    linear-gradient(180deg, #f0a23d 0%, #c46b16 54%, #733409 100%) !important;
   box-shadow:
-    inset 0 0 10px rgba(242, 140, 40, 0.42),
-    inset 0 1px 0 rgba(255, 202, 113, 0.3),
-    0 2px 5px rgba(0, 0, 0, 0.42) !important;
+    inset 0 0 8px rgba(242, 140, 40, 0.34),
+    inset 0 1px 0 rgba(255, 209, 136, 0.3),
+    0 2px 6px rgba(0, 0, 0, 0.42) !important;
   filter: none !important;
-  transform: scale(1.1) !important;
+  transform: scale(1.035) !important;
 }
 
 .action-strip-command-region .action-strip-main-region {
-  width: 96px !important;
+  width: 116px !important;
   background: transparent !important;
 }
 
 .action-strip-layout--segmented > .action-strip-main-region {
-  width: 96px !important;
+  width: 116px !important;
 }
 
 .action-strip-main-region .decision-main-button {
-  padding: 4px 22px 4px 7px !important;
+  padding: 5px 24px 5px 8px !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
 .action-strip-main-region .action-strip-main-text-stack {
-  left: 7px !important;
-  top: 5px !important;
-  width: calc(100% - 27px) !important;
+  left: 8px !important;
+  top: 6px !important;
+  width: calc(100% - 34px) !important;
 }
 
 .action-strip-main-region .action-strip-main-title-row {
@@ -14553,13 +14627,15 @@ select::-ms-expand {
 }
 
 .action-strip-main-region .action-strip-main-title-text {
-  font-size: min(var(--action-strip-main-title-size, 13px), 13px) !important;
+  font-size: min(var(--action-strip-main-title-size, 12px), 12px) !important;
   font-weight: 800 !important;
   letter-spacing: 0 !important;
+  -webkit-text-stroke: 0.35px rgba(1, 7, 18, 0.76);
+  paint-order: stroke fill;
 }
 
 .action-strip-main-region .action-strip-main-controls {
-  margin-top: 1px !important;
+  margin-top: 3px !important;
 }
 
 .action-strip-main-region .action-strip-main-controls .priority-control-stack,
@@ -14570,23 +14646,36 @@ select::-ms-expand {
 .action-strip-main-region .action-strip-main-controls .priority-control-advance-label,
 .action-strip-main-region .action-strip-main-controls .priority-control-toggle,
 .action-strip-main-region .action-strip-main-controls .priority-control-toggle:hover {
-  font-size: 6.5px !important;
+  font-size: 7.5px !important;
   font-weight: 800 !important;
-  letter-spacing: 0.03em !important;
+  letter-spacing: 0.02em !important;
   line-height: 1 !important;
   text-transform: uppercase;
+  -webkit-text-stroke: 0.25px rgba(1, 7, 18, 0.72);
+  paint-order: stroke fill;
 }
 
 .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] {
-  width: 3px !important;
-  height: 3px !important;
-  min-width: 3px !important;
-  min-height: 3px !important;
-  margin: 0 1px !important;
-  border: 0 !important;
+  width: 7px !important;
+  height: 7px !important;
+  min-width: 7px !important;
+  min-height: 7px !important;
+  margin: 0 1px 0 2px !important;
+  border: 1px solid rgba(238, 246, 255, 0.78) !important;
   border-radius: 999px !important;
-  background: rgba(232, 242, 255, 0.82) !important;
-  box-shadow: none !important;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(238, 246, 255, 0.32), rgba(31, 62, 111, 0.26) 52%, rgba(7, 17, 44, 0.62) 100%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(3, 9, 28, 0.42),
+    0 0 3px rgba(162, 207, 255, 0.26) !important;
+}
+
+.action-strip-main-region .action-strip-main-controls [data-slot="checkbox"][data-state="checked"] {
+  background:
+    radial-gradient(circle at 50% 50%, #eef8ff 0 25%, #79bcff 31% 50%, #133f96 58% 100%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(3, 9, 28, 0.46),
+    0 0 5px rgba(162, 207, 255, 0.48) !important;
 }
 
 .action-strip-main-region .action-strip-main-controls [data-slot="checkbox"] svg {
@@ -14594,12 +14683,12 @@ select::-ms-expand {
 }
 
 .action-strip-main-region .action-strip-main-title-help {
-  top: 5px !important;
-  right: 5px !important;
-  width: 13px !important;
-  height: 13px !important;
-  min-width: 13px !important;
-  min-height: 13px !important;
+  top: 6px !important;
+  right: 7px !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
 }
 
 .action-strip-main-region .decision-phase-help-button,
@@ -14666,7 +14755,7 @@ select::-ms-expand {
 
   .action-strip-command-region .action-strip-main-region,
   .action-strip-layout--segmented > .action-strip-main-region {
-    width: 146px !important;
+    width: 116px !important;
   }
 
   .battlefield-panel--self {
@@ -14712,13 +14801,33 @@ select::-ms-expand {
     min-height: 36px !important;
     min-width: 92px !important;
     padding: 4px 13px !important;
-    border: 0 !important;
-    border-radius: 0 !important;
+    border: 1px solid rgba(166, 137, 88, 0.44) !important;
+    border-radius: 3px !important;
     color: #fff0cf !important;
     background:
-      url("/theme/action-button-frame.svg") center / 100% 100% no-repeat !important;
+      linear-gradient(180deg, rgba(50, 44, 37, 0.92), rgba(16, 14, 13, 0.96)) !important;
     box-shadow:
-      0 2px 6px rgba(0, 0, 0, 0.44) !important;
+      inset 0 1px 0 rgba(255, 236, 188, 0.06),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.54),
+      0 2px 5px rgba(0, 0, 0, 0.38) !important;
+  }
+
+  .action-strip-options-region.action-strip-scroll button.action-strip-pill.is-interactive:hover,
+  .action-strip-options-region.action-strip-scroll button.action-strip-pill.is-linked-active,
+  .action-strip-options-region .action-strip-scroll button.action-strip-pill.is-interactive:hover,
+  .action-strip-options-region .action-strip-scroll button.action-strip-pill.is-linked-active,
+  .action-strip-options-region .action-strip-pill.is-interactive:hover,
+  .action-strip-options-region .action-strip-pill.is-linked-active {
+    border-color: rgba(232, 184, 98, 0.82) !important;
+    color: #fff7e6 !important;
+    background:
+      linear-gradient(180deg, rgba(67, 57, 44, 0.96), rgba(23, 19, 16, 0.98)) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 240, 202, 0.1),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.58),
+      0 0 0 1px rgba(232, 184, 98, 0.16),
+      0 0 12px rgba(232, 184, 98, 0.16),
+      0 2px 6px rgba(0, 0, 0, 0.42) !important;
   }
 
   .action-strip-command-region,
@@ -14841,7 +14950,8 @@ select::-ms-expand {
   .add-card-toolbar-meta,
   .add-card-toolbar-meta-value,
   .add-card-toolbar-toggle,
-  .add-card-toolbar-perspective-select {
+  .add-card-toolbar-perspective-select,
+  .add-card-toolbar-font-input {
     font-size: 11px !important;
     letter-spacing: 0.08em !important;
   }
@@ -14861,8 +14971,212 @@ select::-ms-expand {
     max-width: 7.25rem !important;
   }
 
+  .add-card-toolbar-font-input {
+    width: 7.5rem !important;
+    max-width: 7.5rem !important;
+    letter-spacing: 0.04em !important;
+  }
+
+  .add-card-toolbar-accent-split {
+    width: 28px !important;
+    height: 22px !important;
+    flex-basis: 28px !important;
+  }
+
   .table-shared-player-slot {
     margin-top: 4px !important;
+  }
+}
+
+/* Unified player status header: compact identity plus readable resources. */
+.battlefield-panel-header,
+.table-shared-player-header {
+  min-height: 38px !important;
+  border-radius: 0 !important;
+  border: 1px solid rgba(170, 132, 70, 0.22) !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  background:
+    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.16), transparent 18%),
+    linear-gradient(180deg, rgba(31, 30, 28, 0.96), rgba(18, 17, 16, 0.98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 188, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.46) !important;
+}
+
+.table-shared-player-header {
+  padding: 4px 12px !important;
+}
+
+[data-my-zone] .battlefield-panel-header {
+  padding: 4px 10px !important;
+}
+
+.battlefield-panel-header::before,
+.table-shared-player-header::before,
+.battlefield-life::before,
+.battlefield-name::before,
+.battlefield-name::after {
+  display: none !important;
+}
+
+.battlefield-panel-header > [data-my-zone-header-content],
+.table-shared-player-header > [data-my-zone-header-content],
+.battlefield-panel-header [data-my-zone-header-content] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100%;
+  min-width: 0;
+}
+
+.battlefield-panel-header .battlefield-life,
+.table-shared-player-header .battlefield-life {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 34px !important;
+  height: 28px !important;
+  padding: 0 8px !important;
+  border: 1px solid rgba(226, 185, 103, 0.42) !important;
+  border-radius: 3px !important;
+  color: #f7dfac !important;
+  background:
+    linear-gradient(180deg, rgba(68, 54, 29, 0.82), rgba(27, 22, 15, 0.94)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 188, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.36) !important;
+  font-family: var(--ironsmith-ui-font) !important;
+  font-size: 19px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72) !important;
+}
+
+.battlefield-panel-header .battlefield-name,
+.table-shared-player-header .battlefield-name {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 28px !important;
+  min-width: 0 !important;
+  max-width: clamp(96px, 18cqw, 180px) !important;
+  padding: 0 10px 0 12px !important;
+  border: 1px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.36) !important;
+  border-left: 3px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.86) !important;
+  border-radius: 3px !important;
+  color: #f2e6c8 !important;
+  background:
+    linear-gradient(90deg, rgba(var(--player-accent-rgb, 216, 191, 106), 0.14), rgba(31, 27, 22, 0.72) 44%, rgba(18, 16, 14, 0.58)) !important;
+  box-shadow: none !important;
+  font-family: var(--ironsmith-ui-font) !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7) !important;
+}
+
+.battlefield-panel-header--compact .battlefield-name,
+.table-shared-player-header .battlefield-name {
+  max-width: clamp(96px, 18cqw, 180px) !important;
+}
+
+.battlefield-name-text--active {
+  text-decoration: none !important;
+}
+
+.battlefield-name-text--active::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 999px;
+  background: rgba(var(--player-accent-rgb, 216, 191, 106), 0.96);
+  box-shadow: 0 0 7px rgba(var(--player-accent-rgb, 216, 191, 106), 0.42);
+  vertical-align: 1px;
+}
+
+.battlefield-panel-header .player-name-mana.mana-pool-inline,
+.table-shared-player-header .player-name-mana.mana-pool-inline {
+  max-width: clamp(70px, 13cqw, 130px) !important;
+  padding-inline: 0 !important;
+}
+
+.battlefield-panel-header .battlefield-header-zone-counts,
+.table-shared-player-header .battlefield-header-zone-counts {
+  margin-left: auto !important;
+  padding-left: 10px !important;
+  min-width: 0 !important;
+}
+
+.battlefield-panel-header .battlefield-counts,
+.table-shared-player-header .battlefield-counts {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  overflow: hidden !important;
+  color: #b9ad94 !important;
+  font-family: var(--ironsmith-ui-font) !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+  white-space: nowrap !important;
+}
+
+.battlefield-count-item {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  min-width: auto !important;
+  padding: 4px 6px !important;
+  border: 1px solid rgba(156, 129, 82, 0.24);
+  border-radius: 3px;
+  background: rgba(9, 9, 8, 0.34);
+}
+
+.battlefield-count-label {
+  color: #a99d85 !important;
+  font-weight: 700 !important;
+}
+
+.battlefield-count-item > span:not(.battlefield-count-label):not(.battlefield-count-top) {
+  color: #efe1bd !important;
+  font-weight: 800 !important;
+}
+
+.battlefield-count-top {
+  max-width: 86px !important;
+  color: #d9c391 !important;
+}
+
+.battlefield-panel-header[data-turn-priority="true"],
+.table-shared-player-header[data-turn-priority="true"] {
+  border-color: rgba(var(--player-accent-rgb, 216, 191, 106), 0.4) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 188, 0.08),
+    inset 0 -1px 0 rgba(var(--player-accent-rgb, 216, 191, 106), 0.18),
+    0 0 14px rgba(var(--player-accent-rgb, 216, 191, 106), 0.14) !important;
+}
+
+@media (max-width: 768px) {
+  .battlefield-panel-header .battlefield-name,
+  .table-shared-player-header .battlefield-name {
+    height: 24px !important;
+    padding-inline: 8px !important;
+    font-size: 12px !important;
+  }
+
+  .battlefield-panel-header .battlefield-life,
+  .table-shared-player-header .battlefield-life {
+    height: 24px !important;
+    min-width: 30px !important;
+    font-size: 16px !important;
   }
 }
 
@@ -14871,19 +15185,24 @@ select::-ms-expand {
   .action-strip-layout--segmented {
     --decision-edge-text: #eef6ff;
     --decision-edge-text-shadow:
-      0 1px 1px rgba(2, 8, 24, 0.72),
-      0 0 2px rgba(2, 8, 24, 0.42);
+      0 1px 0 rgba(1, 7, 18, 0.98),
+      0 0 1px rgba(1, 7, 18, 0.95),
+      0 2px 2px rgba(1, 7, 18, 0.72),
+      0 0 5px rgba(1, 7, 18, 0.38);
   }
 
   .action-strip-command-region,
   .action-strip-layout--segmented > .action-strip-main-region {
+    width: 116px !important;
+    height: 38px !important;
+    min-height: 38px !important;
     border-radius: 0 !important;
     border: 0 !important;
     background:
       url("/theme/decision-button-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      0 0 12px rgba(var(--decision-main-rgb, 242, 140, 40), 0.38),
-      0 2px 5px rgba(0, 0, 0, 0.52) !important;
+      0 0 8px rgba(var(--decision-main-rgb, 242, 140, 40), 0.28),
+      0 1px 4px rgba(0, 0, 0, 0.5) !important;
   }
 
   .action-strip-command-region::before,
@@ -14896,8 +15215,9 @@ select::-ms-expand {
     background:
       url("/theme/decision-button-frame.svg") center / 100% 100% no-repeat !important;
     box-shadow:
-      0 0 14px rgba(var(--decision-main-rgb, 242, 140, 40), 0.46),
-      0 2px 5px rgba(0, 0, 0, 0.52) !important;
+      0 0 10px rgba(var(--decision-main-rgb, 242, 140, 40), 0.36),
+      0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    transform: scale(1.035) !important;
   }
 
   .action-strip-main-region .decision-phase-help-button,
@@ -14985,4 +15305,138 @@ select::-ms-expand {
   .table-action-bar[data-expanded="true"] .decision-option-row--strip {
     flex: 0 0 auto;
   }
+}
+
+/* Clean fantasy chrome: retire ornate SVG backgrounds that clash with the flatter UI. */
+.table-toolbar::before,
+.table-toolbar--secondary::before,
+.fantasy-sheet::before,
+.fantasy-sheet::after,
+.fantasy-sheet-header::after,
+.battlefield-panel::before,
+.battlefield-panel::after,
+.table-shell::after,
+.battlefield-subpanel::after {
+  content: none !important;
+  display: none !important;
+}
+
+.table-shell {
+  border: 1px solid rgba(178, 139, 69, 0.34) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 161, 0.04),
+    inset 0 0 24px rgba(0, 0, 0, 0.58) !important;
+}
+
+.battlefield-subpanel {
+  border: 1px solid rgba(145, 118, 74, 0.2) !important;
+  background:
+    linear-gradient(180deg, rgba(31, 29, 25, 0.82), rgba(11, 12, 12, 0.94)) !important;
+}
+
+.topbar-phase-shell .phase-track,
+.phase-track {
+  --phase-accent: var(--ironsmith-phase-accent, #876221);
+  --phase-accent-rgb: var(--ironsmith-phase-accent-rgb, 135, 98, 33);
+  min-height: 36px !important;
+  gap: 0 !important;
+  border: 1px solid rgba(var(--phase-accent-rgb), 0.18) !important;
+  border-radius: 5px !important;
+  padding: 3px !important;
+  background:
+    linear-gradient(180deg, rgba(22, 20, 18, 0.94), rgba(8, 9, 10, 0.98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.68),
+    0 1px 8px rgba(0, 0, 0, 0.42) !important;
+}
+
+.phase-track-indicator {
+  top: 3px !important;
+  bottom: 3px !important;
+  border: 1px solid rgba(var(--phase-accent-rgb), 0.82) !important;
+  border-radius: 4px !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--phase-accent) 78%, #fff1cf 22%) 0%,
+      color-mix(in srgb, var(--phase-accent) 72%, #3a1703 28%) 58%,
+      color-mix(in srgb, var(--phase-accent) 42%, #090806 58%) 100%
+    ) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 238, 202, 0.26),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(var(--phase-accent-rgb), 0.16),
+    0 0 18px rgba(var(--phase-accent-rgb), 0.2) !important;
+  clip-path: none !important;
+}
+
+.phase-track-cell {
+  min-height: 28px !important;
+  color: rgba(236, 222, 190, 0.72) !important;
+  letter-spacing: 0.08em !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72) !important;
+}
+
+.phase-track-cell:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(var(--phase-accent-rgb), 0.2),
+    rgba(255, 255, 255, 0.06),
+    transparent
+  );
+}
+
+.phase-track-cell[data-phase-active="true"] {
+  color: #fff7e6 !important;
+  font-weight: 800 !important;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.78),
+    0 0 10px rgba(var(--phase-accent-rgb), 0.34) !important;
+}
+
+.phase-track-cell[data-phase-active="true"]::after {
+  opacity: 0;
+}
+
+.action-strip-command-region,
+.action-strip-layout--segmented > .action-strip-main-region {
+  border: 1px solid rgba(var(--decision-main-rgb, 242, 140, 40), 0.82) !important;
+  border-radius: 3px !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 88%, #fff1c8 12%) 0%,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 76%, #2e1605 24%) 54%,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 42%, #090806 58%) 100%
+    ) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 166, 0.24),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.76),
+    0 0 8px rgba(var(--decision-main-rgb, 242, 140, 40), 0.22),
+    0 1px 4px rgba(0, 0, 0, 0.5) !important;
+}
+
+.action-strip-command-region:hover,
+.action-strip-layout--segmented > .action-strip-main-region:hover {
+  border-color: rgba(var(--decision-main-rgb, 242, 140, 40), 0.95) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 78%, #fff4d0 22%) 0%,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 82%, #311604 18%) 54%,
+      color-mix(in srgb, var(--decision-main-accent, #f28c28) 48%, #090806 52%) 100%
+    ) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 188, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.78),
+    0 0 14px rgba(var(--decision-main-rgb, 242, 140, 40), 0.34),
+    0 2px 6px rgba(0, 0, 0, 0.5) !important;
 }

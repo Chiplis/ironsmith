@@ -3,7 +3,7 @@ use super::super::super::dispatch_entry::{
     find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
     parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
     parse_consult_traversal_sentence, parse_if_declined_put_match_into_hand,
-    parse_if_you_dont_sentence, parse_top_cards_view_sentence,
+    parse_if_you_dont_sentence, parse_looked_card_choice_filter, parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
@@ -200,6 +200,136 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     };
     *existing = if_not_chosen;
     Ok(Some(effects))
+}
+
+pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let Some((player, count, true)) = parse_top_cards_view_sentence(&first) else {
+        return Ok(None);
+    };
+    if player != PlayerAst::You {
+        return Ok(None);
+    }
+
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second);
+    let second_word_refs = second_words.word_refs();
+    let Some(then_word_idx) = find_word_sequence_start(&second_word_refs, &["then"]) else {
+        return Ok(None);
+    };
+    let Some(then_token_idx) = second_words.token_index_for_word_index(then_word_idx) else {
+        return Ok(None);
+    };
+    let exile_tokens = trim_commas(&second[..then_token_idx]);
+    let rest_tokens = trim_commas(&second[then_token_idx + 1..]);
+
+    let exile_words = TokenWordView::new(&exile_tokens);
+    let exile_word_refs = exile_words.word_refs();
+    let Some(exile_word_idx) = find_word_sequence_start(&exile_word_refs, &["exiles"]) else {
+        return Ok(None);
+    };
+    let actor_words = exile_word_refs[..exile_word_idx]
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    if actor_words.as_slice() != ["opponent"] {
+        return Ok(None);
+    }
+    let Some(exile_tail_start) = exile_words.token_index_after_words(exile_word_idx + 1) else {
+        return Ok(None);
+    };
+    let exile_tail = trim_commas(&exile_tokens[exile_tail_start..]);
+    let exile_tail_words = TokenWordView::new(&exile_tail);
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&exile_tail_words)
+    else {
+        return Ok(None);
+    };
+    let Some(filter_end) = exile_tail_words.token_index_for_word_index(from_among_word_idx) else {
+        return Ok(None);
+    };
+
+    let revealed_tag = helper_tag_for_tokens(&first, "revealed");
+    let exiled_tag = helper_tag_for_tokens(&first, "exiled");
+    let mut exile_filter =
+        if let Some(filter) = parse_looked_card_choice_filter(&exile_tail[..filter_end]) {
+            filter
+        } else {
+            return Ok(None);
+        };
+    exile_filter.zone = Some(Zone::Library);
+    exile_filter =
+        exile_filter.match_tagged(revealed_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+
+    let after_from_among = &exile_tail_words.word_refs()[from_among_word_idx + from_among_len..];
+    if !after_from_among.is_empty() {
+        return Ok(None);
+    }
+
+    let rest_words = TokenWordView::new(&rest_tokens).word_refs();
+    let rest_without_articles = rest_words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    if rest_without_articles.as_slice() != ["you", "put", "rest", "into", "your", "hand"] {
+        return Ok(None);
+    }
+
+    let third = trim_commas(sentences[sentence_idx + 2].lowered());
+    let third_words = TokenWordView::new(&third).word_refs();
+    let third_without_articles = third_words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    if third_without_articles.as_slice()
+        != [
+            "that", "opponent", "may", "cast", "exiled", "card", "without", "paying", "its",
+            "mana", "cost",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let rest_filter = ObjectFilter::tagged(revealed_tag.clone())
+        .not_tagged(exiled_tag.clone())
+        .in_zone(Zone::Library);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_top_cards(PlayerAst::You, count, revealed_tag),
+        EffectAst::ChooseObjects {
+            filter: exile_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::Opponent,
+            tag: exiled_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Object(rest_filter, None, None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::MayByPlayer {
+            player: PlayerAst::Opponent,
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                exiled_tag,
+                PlayerAst::Opponent,
+                false,
+                false,
+                true,
+                None,
+            )],
+        },
+    ]))
 }
 
 pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(

@@ -123,6 +123,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     multiplayer,
     startRematchSideboarding,
     readyForRematch,
+    playerAccentOverrides,
   } = useGame();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
@@ -180,7 +181,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const passHelpAdvanceLabel = resolvingStackPriority
     ? "Resolve"
     : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const undoAvailable = !!state?.cancelable && (!decision || canAct);

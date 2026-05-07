@@ -312,6 +312,9 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(triggering_event) = entry.triggering_event.clone() {
         ctx = ctx.with_triggering_event(triggering_event);
     }
+    if let Some(event_value_amount) = entry.event_value_amount {
+        ctx = ctx.with_event_value_amount(event_value_amount);
+    }
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
     }

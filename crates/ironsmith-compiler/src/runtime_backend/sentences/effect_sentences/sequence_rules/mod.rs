@@ -216,6 +216,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
     },
     SequenceRuleDef {
+        name: "reveal-top-opponent-exiles-one-rest-hand-then-may-cast",
+        feature_tag: Some("reveal-opponent-exile-rest-hand-cast"),
+        priority: 340,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: generic_subject_verb_sequences::triples::parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast,
+    },
+    SequenceRuleDef {
         name: "search-player-names-card-conditional-put-then-shuffle",
         feature_tag: Some("search-name-choice-conditional-put"),
         priority: 340,

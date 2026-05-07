@@ -19,6 +19,8 @@ pub struct RemoveAnyCountersFromSourceEffect {
     pub counter_type: Option<CounterType>,
     /// Whether display should use `X` instead of `any number`.
     pub display_x: bool,
+    /// Whether this cost must remove every available matching counter.
+    pub remove_all: bool,
 }
 
 impl RemoveAnyCountersFromSourceEffect {
@@ -26,6 +28,7 @@ impl RemoveAnyCountersFromSourceEffect {
         Self {
             counter_type,
             display_x: false,
+            remove_all: false,
         }
     }
 
@@ -33,6 +36,15 @@ impl RemoveAnyCountersFromSourceEffect {
         Self {
             counter_type,
             display_x: true,
+            remove_all: false,
+        }
+    }
+
+    pub fn all(counter_type: Option<CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+            remove_all: true,
         }
     }
 
@@ -52,7 +64,13 @@ impl RemoveAnyCountersFromSourceEffect {
     }
 
     pub fn cost_display(&self) -> String {
-        let amount_text = if self.display_x { "X" } else { "any number of" };
+        let amount_text = if self.remove_all {
+            "all"
+        } else if self.display_x {
+            "X"
+        } else {
+            "any number of"
+        };
         match self.counter_type {
             Some(counter_type) => format!(
                 "Remove {amount_text} {} counter{} from this source",
@@ -94,20 +112,26 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
             .max_removable(game, ctx.source)
             .map_err(ExecutionError::Impossible)?;
 
-        let description = if self.display_x {
+        let description = if self.remove_all {
+            "Remove all matching counters"
+        } else if self.display_x {
             "Choose X counters to remove"
         } else {
             "Choose counters to remove"
         };
-        let to_remove = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            ctx.controller,
-            Some(ctx.source),
-            NumberSpec::up_to(ctx.source, max_removable, description),
-            FallbackStrategy::Maximum,
-        )
-        .min(max_removable);
+        let to_remove = if self.remove_all {
+            max_removable
+        } else {
+            make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                NumberSpec::up_to(ctx.source, max_removable, description),
+                FallbackStrategy::Maximum,
+            )
+            .min(max_removable)
+        };
 
         let mut removed_total = 0u32;
         let mut outcome = EffectOutcome::count(0);
@@ -221,6 +245,10 @@ mod tests {
             RemoveAnyCountersFromSourceEffect::x(Some(CounterType::Storage)).cost_display(),
             "Remove X storage counter from this source"
         );
+        assert_eq!(
+            RemoveAnyCountersFromSourceEffect::all(Some(CounterType::Charge)).cost_display(),
+            "Remove all charge counters from this source"
+        );
     }
 
     #[test]
@@ -243,6 +271,29 @@ mod tests {
         let result = cost.pay(&mut game, &mut ctx);
         assert_eq!(result, Ok(CostPaymentResult::Paid));
         assert_eq!(ctx.x_value, Some(3));
+        assert_eq!(game.counter_count(card_id, CounterType::Charge), 0);
+    }
+
+    #[test]
+    fn pay_all_sets_x_to_all_removed_counters() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = simple_card("Relic", 1);
+        let card_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(card_id) {
+            obj.counters.insert(CounterType::Charge, 4);
+        }
+
+        let cost = Cost::effect(RemoveAnyCountersFromSourceEffect::all(Some(
+            CounterType::Charge,
+        )));
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(card_id, alice, &mut dm);
+
+        let result = cost.pay(&mut game, &mut ctx);
+        assert_eq!(result, Ok(CostPaymentResult::Paid));
+        assert_eq!(ctx.x_value, Some(4));
         assert_eq!(game.counter_count(card_id, CounterType::Charge), 0);
     }
 }

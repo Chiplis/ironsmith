@@ -6257,6 +6257,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str() == crate::tag::EXPLOITED_TAG {
                 return "the exploited creature".to_string();
             }
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                return "the exiled card".to_string();
+            }
             if is_implicit_reference_tag(tag.as_str()) {
                 "it".to_string()
             } else {

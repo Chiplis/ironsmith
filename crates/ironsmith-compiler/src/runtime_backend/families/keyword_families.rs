@@ -37,6 +37,7 @@ pub(super) enum KeywordDispatchHint {
     Kicker,
     Flashback,
     Harmonize,
+    Retrace,
     Multikicker,
     Replicate,
     Entwine,
@@ -173,6 +174,12 @@ mod spell_keywords {
             lower: registry::lower_harmonize,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Retrace,
+            hints: &[KeywordDispatchHint::Retrace],
+            matches: registry::matches_retrace,
+            lower: registry::lower_retrace,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Multikicker,
             hints: &[KeywordDispatchHint::Multikicker],
             matches: registry::matches_multikicker,
@@ -279,6 +286,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("offspring").value(KeywordDispatchHint::Offspring),
             )),
             winnow::combinator::alt((
+                grammar::kw("retrace").value(KeywordDispatchHint::Retrace),
                 grammar::kw("madness").value(KeywordDispatchHint::Madness),
                 grammar::kw("escape").value(KeywordDispatchHint::Escape),
                 winnow::combinator::alt((
@@ -290,6 +298,8 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("transmute").value(KeywordDispatchHint::Transmute),
                 grammar::phrase(&["cast", "this", "spell", "only"])
                     .value(KeywordDispatchHint::CastThisSpellOnly),
+            )),
+            winnow::combinator::alt((
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),
                 grammar::kw("warp").value(KeywordDispatchHint::Warp),
                 grammar::kw("exploit").value(KeywordDispatchHint::Exploit),

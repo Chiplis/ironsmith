@@ -138,6 +138,15 @@ pub trait TriggerMatcher:
         1
     }
 
+    /// Numeric value derived by this trigger from the matched event context.
+    ///
+    /// This is distinct from `trigger_count`: a trigger can queue once for a
+    /// grouped event such as "one or more creatures attack" while resolving
+    /// "that many" using the number of matching objects in the group.
+    fn event_value_amount(&self, _event: &TriggerEvent, _ctx: &TriggerContext) -> Option<i32> {
+        None
+    }
+
     /// If this is a saga chapter trigger, return its chapter numbers.
     ///
     /// This lets callers use semantic data instead of parsing `display()`.

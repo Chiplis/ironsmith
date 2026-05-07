@@ -115,9 +115,11 @@ where
         ironsmith_core::Cost::RemoveAnyCountersFromSource {
             counter_type,
             display_x,
+            remove_all,
         } => ironsmith_core::Cost::RemoveAnyCountersFromSource {
             counter_type,
             display_x,
+            remove_all,
         },
         ironsmith_core::Cost::Energy(amount) => ironsmith_core::Cost::Energy(amount),
         ironsmith_core::Cost::Mill(count) => ironsmith_core::Cost::Mill(count),
@@ -680,6 +682,14 @@ where
             convert_effects(payload.effects.iter().cloned(), hooks)?,
         )));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::ManaRestrictedEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::ManaRestrictedEffect::new(
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+            payload.restrictions.clone(),
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::MayEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
         let converted = if let Some(decider) = &payload.decider {
@@ -1174,6 +1184,16 @@ where
             payload.target.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SuspectEffect::new(
+            payload.target.clone(),
+        )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ClearSuspectedEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ClearSuspectedEffect {
+            target: payload.target.clone(),
+        }));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseColorEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ChooseColorEffect::new(
             payload.chooser.clone(),
@@ -1400,6 +1420,7 @@ where
     clone_direct!(
         crate::effects::AmassEffect,
         crate::effects::IncubateEffect,
+        crate::effects::LearnEffect,
         crate::effects::BecomeBasicLandTypeChoiceEffect,
         crate::effects::BecomeColorChoiceEffect,
         crate::effects::BecomeCreatureTypeChoiceEffect,
@@ -1441,6 +1462,7 @@ where
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
         crate::effects::ReturnToHandEffect,
+        crate::effects::RevealSourceFromHandEffect,
         crate::effects::RevealTaggedEffect,
         crate::effects::SacrificeTargetEffect,
         crate::effects::ScryEffect,

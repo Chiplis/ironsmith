@@ -31,6 +31,7 @@ mod for_each_tagged;
 mod for_players;
 mod if_effect;
 mod local_rewrite;
+mod mana_restricted;
 mod may;
 mod mechanic_actions;
 mod reflexive_trigger;
@@ -68,6 +69,7 @@ pub use for_each_tagged::{
 pub use for_players::ForPlayersEffect;
 pub use if_effect::IfEffect;
 pub use local_rewrite::LocalRewriteEffect;
+pub use mana_restricted::ManaRestrictedEffect;
 pub use may::MayEffect;
 pub use mechanic_actions::{
     AdaptEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect, CipherEffect,

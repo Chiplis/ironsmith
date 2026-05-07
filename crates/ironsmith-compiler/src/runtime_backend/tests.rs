@@ -2385,6 +2385,46 @@ fn rewrite_lexed_mana_restrictions_parse_supported_spell_filter_shapes() {
 }
 
 #[test]
+fn rewrite_spell_mana_restriction_wraps_preceding_mana_effect() {
+    let tokens = lex_line(
+        "Add one mana of any one color. Spend this mana only to cast creature spells.",
+        0,
+    )
+    .expect("rewrite lexer should classify spell mana restriction");
+
+    let effects = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("effect sentences should parse");
+
+    let debug = format!("{effects:?}");
+    assert!(
+        debug.contains("ManaRestricted"),
+        "expected mana restriction wrapper in parsed effects, got {debug}"
+    );
+    assert!(
+        debug.contains("AddManaAnyOneColor"),
+        "expected wrapped mana-producing effect, got {debug}"
+    );
+    assert!(
+        debug.contains("Creature"),
+        "expected creature spell usage restriction, got {debug}"
+    );
+}
+
+#[test]
+fn learn_keyword_line_lowers_to_real_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Learn Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("You gain 4 life.\nLearn.")
+        .expect("learn keyword action should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("GainLifeEffect") && debug.contains("LearnEffect"),
+        "expected learn to lower to a real effect, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_activation_line_attaches_special_mana_restriction_filters() {
     let tokens = lex_line(
         "{T}, Sacrifice this artifact: Add three mana of any one color. Spend this mana only to cast your commander.",
@@ -4905,6 +4945,24 @@ fn where_x_life_total_can_drive_create_count() {
     assert!(
         debug.contains("CreateTokenEffect") && debug.contains("LifeTotal") && debug.contains("You"),
         "expected dynamic create count to use your life total, got {debug}"
+    );
+}
+
+#[test]
+fn where_x_half_life_create_token_keeps_rounded_up_tail() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rounded Life Token Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create an X/X black Nightmare Horror creature token, where X is half your life total, rounded up. It deals X damage to you.",
+        )
+        .expect("half-life rounded-up where-X token creation should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("HalfLifeTotalRoundedUp")
+            && debug.contains("DealDamageEffect"),
+        "expected rounded-up half-life create token plus X damage, got {debug}"
     );
 }
 
@@ -9773,6 +9831,8 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
         .expect("parser should parse remove-counter cost");
     let exile_hand = parse_activation_cost_rewrite("Exile a blue card from your hand")
         .expect("parser should parse exile-from-hand cost");
+    let reveal_source = parse_activation_cost_rewrite("Reveal this card from your hand")
+        .expect("parser should parse reveal-source-from-hand cost");
 
     assert!(matches!(
         energy.segments.as_slice(),
@@ -9802,6 +9862,10 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
             count: 1,
             color_filter: Some(colors)
         }] if *colors == crate::color::ColorSet::BLUE
+    ));
+    assert!(matches!(
+        reveal_source.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RevealSourceFromHand]
     ));
 }
 

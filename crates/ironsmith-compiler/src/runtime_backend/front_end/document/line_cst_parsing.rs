@@ -178,6 +178,13 @@ pub(super) fn parse_triggered_line_cst(
                         tokens_without_cap.len() / 2
                     }
                 }
+                LineAst::Multiple(chunks)
+                    if chunks
+                        .iter()
+                        .any(|chunk| matches!(chunk, LineAst::Triggered { .. })) =>
+                {
+                    tokens_without_cap.len() / 2
+                }
                 _ => tokens_without_cap.len(),
             };
             let period_count = tokens_without_cap
@@ -233,6 +240,7 @@ pub(super) fn parse_static_line_cst(
             | "while voting, you may vote an additional time."
             | "while voting, you get an additional vote."
     ) || is_first_equip_cost_alternative_line(normalized)
+        || is_additional_land_play_static_line(normalized)
     {
         return Ok(Some(make_static(None)));
     }
@@ -299,6 +307,41 @@ fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
     s.starts_with("you may pay ")
         && s.contains(" rather than pay the equip cost of the first equip ability you activate")
         && (s.ends_with("each turn") || s.ends_with("during each of your turns"))
+}
+
+fn is_additional_land_play_static_line(normalized: &str) -> bool {
+    let words = normalized
+        .trim_end_matches('.')
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    matches!(
+        words.as_slice(),
+        [
+            "You",
+            "may",
+            "play",
+            "a" | "an" | "one" | "two",
+            "additional",
+            "land" | "lands",
+            "on",
+            "each",
+            "of",
+            "your",
+            "turns"
+        ] | [
+            "you",
+            "may",
+            "play",
+            "a" | "an" | "one" | "two",
+            "additional",
+            "land" | "lands",
+            "on",
+            "each",
+            "of",
+            "your",
+            "turns"
+        ]
+    )
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {

@@ -46,7 +46,7 @@ export default function BlockersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const {
     updateArrows,
     clearArrows,
@@ -63,7 +63,7 @@ export default function BlockersDecision({
   const blockerOptionsRef = useRef(blockerOptions);
   const selectedBlockerRef = useRef(null);
   const declarationsRef = useRef([]);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision);
+  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
   const localDecisionButton = isLocalDecisionButton(state, decision);
 
   const [declarations, setDeclarations] = useState([]);
